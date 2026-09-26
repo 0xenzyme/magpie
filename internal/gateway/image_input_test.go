@@ -390,3 +390,78 @@ func TestFailedKeyFetchKeepsUnknownImageCapabilityAtGateway(t *testing.T) {
 		t.Fatalf("image after failed key fetch: %d %s; upstream got %d images", rec.Code, rec.Body.String(), sent)
 	}
 }
+
+// Gemini fileData also carries documents and audio. A text-only model must
+// reject images, but it must not silently discard a non-image file part.
+func TestGeminiTextOnlyBodyKeepsNonImageFileData(t *testing.T) {
+	for _, tc := range []struct {
+		mime    string
+		blocked bool
+	}{
+		{"application/pdf", false},
+		{"audio/wav", false},
+		{"image/png", true},
+	} {
+		source := `{"contents":[{"role":"user","parts":[{"text":"read this"},{"fileData":{"mimeType":"` + tc.mime + `","fileUri":"gs://bucket/file"}}]}]}`
+		body, blocked := textOnlyBody(provider.Gemini, []byte(source))
+		if blocked != tc.blocked {
+			t.Errorf("%s blocked=%v, want %v", tc.mime, blocked, tc.blocked)
+		}
+		if !tc.blocked && !strings.Contains(string(body), "gs://bucket/file") {
+			t.Errorf("%s was stripped: %s", tc.mime, body)
+		}
+	}
+}
+
+// A non-image Gemini file must not become image_url when routed to Chat.
+func TestGeminiNonImageFileTranslation(t *testing.T) {
+	for _, tc := range []struct {
+		name, mime, field, value string
+	}{
+		{"file-pdf", "application/pdf", "fileData", `"fileUri":"gs://bucket/file.pdf"`},
+		{"file-audio", "audio/wav", "fileData", `"fileUri":"gs://bucket/file.wav"`},
+		{"inline-pdf", "application/pdf", "inlineData", `"data":"cGRm"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := `{"contents":[{"role":"user","parts":[{"text":"read this"},{"` + tc.field + `":{"mimeType":"` + tc.mime + `",` + tc.value + `}}]}]}`
+			body, blocked := textOnlyBody(provider.Gemini, []byte(source))
+			if blocked {
+				t.Fatal("non-image attachment blocked as image")
+			}
+			r, err := parseGemini(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			claude, err := renderClaudePrompt(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			prompt, err := json.Marshal(claude)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(prompt), "[attachment "+tc.mime) || strings.Contains(string(prompt), `"type":"image"`) {
+				t.Fatalf("Claude subscription lost or mislabeled file: %s", prompt)
+			}
+			chat := buildChat(r, "text", "", false)
+			if strings.Contains(string(chat), `"image_url"`) || !strings.Contains(string(chat), "[attachment "+tc.mime) {
+				t.Fatalf("non-image attachment translated as an image or lost: %s", chat)
+			}
+			// Code Assist speaks Gemini's file format and must keep the data.
+			assist := buildCodeAssist(r, "gemini-2.5-pro", "gemini")
+			if !strings.Contains(string(assist), `"`+tc.field+`"`) || !strings.Contains(string(assist), tc.value) {
+				t.Fatalf("Gemini attachment lost in Code Assist: %s", assist)
+			}
+			if strings.Contains(string(assist), "[attachment ") {
+				t.Fatalf("Code Assist received a placeholder instead of the file: %s", assist)
+			}
+			responses := buildResponses(r, "text", "", false)
+			anthropic := buildAnthropic(r, "text")
+			for protocol, out := range map[string][]byte{"Responses": responses, "Anthropic": anthropic} {
+				if strings.Contains(string(out), `"image_url"`) || strings.Contains(string(out), `"type":"image"`) || !strings.Contains(string(out), "[attachment "+tc.mime) {
+					t.Errorf("%s lost or mislabeled file: %s", protocol, out)
+				}
+			}
+		})
+	}
+}
