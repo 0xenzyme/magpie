@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -167,11 +168,11 @@ func TestOffered(t *testing.T) {
 
 // skillsSh is skills.sh as the market reads it: its front page with the
 // list in its data, and a page for each skill.
-func skillsSh(t *testing.T) *int {
+func skillsSh(t *testing.T) *atomic.Int64 {
 	t.Helper()
-	hits := new(int)
+	hits := new(atomic.Int64) // the pages are asked for at once
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		*hits++
+		hits.Add(1)
 		switch r.URL.Path {
 		case "/":
 			list := `[{"source":"o/r","skillId":"pdf","name":"pdf","installs":9},{"source":"not a repo","skillId":"x","name":"x"},{"source":"o/r","skillId":"","name":"y"}]`
@@ -208,12 +209,12 @@ func TestSkillsShPages(t *testing.T) {
 		t.Fatalf("about: %v", got)
 	}
 	// known ones come from what was kept, on disk too
-	n := *hits
+	n := hits.Load()
 	abouts.Lock()
 	abouts.m, abouts.loaded = map[string]string{}, false
 	abouts.Unlock()
-	if got := SkillsAbout([]string{"o/r/pdf"}); got["o/r/pdf"] != "Reads & fills PDFs" || *hits != n {
-		t.Fatalf("kept: %v, %d fetches", got, *hits-n)
+	if got := SkillsAbout([]string{"o/r/pdf"}); got["o/r/pdf"] != "Reads & fills PDFs" || hits.Load() != n {
+		t.Fatalf("kept: %v, %d fetches", got, hits.Load()-n)
 	}
 }
 
