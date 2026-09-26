@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yetone/magpie/internal/gateway"
@@ -34,7 +35,22 @@ func TestCline(t *testing.T) {
 		json.Unmarshal(b, &f)
 		return f, string(b)
 	}
+	mpath := filepath.Join(filepath.Dir(path), "models.json")
+	type list struct {
+		Provider map[string]any            `json:"provider"`
+		Models   map[string]map[string]any `json:"models"`
+	}
+	models := func() (map[string]list, string) {
+		var f struct {
+			Providers map[string]list `json:"providers"`
+		}
+		b, _ := os.ReadFile(mpath)
+		json.Unmarshal(b, &f)
+		return f.Providers, string(b)
+	}
 	os.MkdirAll(filepath.Dir(path), 0o700)
+	mine := `{"provider":{"name":"OpenAI Compatible","baseUrl":"https://x/v1","defaultModelId":"mine"},"models":{"mine":{"id":"mine","name":"mine"}}}`
+	os.WriteFile(mpath, []byte(`{"version":1,"providers":{"openai-compatible":`+mine+`,"ollama":{"models":{"q":{"id":"q"}}}}}`), 0o600)
 	os.WriteFile(path, []byte(`{"version":1,"lastUsedProvider":"anthropic","modes":{},"providers":{
   "anthropic":{"settings":{"provider":"anthropic","apiKey":"sk-a","model":"claude-opus-5","reasoning":{"effort":"high"}},"updatedAt":"2026-09-01T00:00:00.000Z","tokenSource":"manual"},
   "openai-compatible":{"settings":{"provider":"openai-compatible","apiKey":"sk-o","model":"mine","baseUrl":"https://x/v1"},"updatedAt":"2026-09-01T00:00:00.000Z","tokenSource":"manual"}}}`), 0o600)
@@ -53,6 +69,13 @@ func TestCline(t *testing.T) {
 		s["headers"].(map[string]any)["User-Agent"] != "cline" || s["reasoning"].(map[string]any)["effort"] != "high" ||
 		c.Providers["anthropic"].Settings["apiKey"] != "sk-a" {
 		t.Fatalf("magpie:\n%s", raw)
+	}
+	// Cline's openai-compatible lists only gpt-4o: magpie's models take
+	// its place in models.json, the user's other entries kept
+	ml, mraw := models()
+	if m := ml["openai-compatible"]; m.Provider["baseUrl"] != gatewayV1() || m.Provider["defaultModelId"] != "deepseek/pro" ||
+		m.Models["deepseek/pro"] == nil || m.Models["deepseek/flash"] == nil || m.Models["mine"] != nil || ml["ollama"].Models["q"] == nil {
+		t.Fatalf("models:\n%s", mraw)
 	}
 	if f.Get() != "magpie/deepseek/pro" || e.Get() != "high" || a.Check() != "" {
 		t.Fatalf("get: %q %q %q", f.Get(), e.Get(), a.Check())
@@ -79,10 +102,15 @@ func TestCline(t *testing.T) {
 		c.Providers["openai-compatible"].Settings["apiKey"] != "sk-o" || c.Providers["openai-compatible"].Settings["baseUrl"] != "https://x/v1" {
 		t.Fatalf("own:\n%s", raw)
 	}
+	if ml, mraw := models(); ml["openai-compatible"].Models["mine"] == nil || ml["openai-compatible"].Models["deepseek/pro"] != nil ||
+		ml["openai-compatible"].Provider["baseUrl"] != "https://x/v1" || ml["ollama"].Models["q"] == nil {
+		t.Fatalf("own models:\n%s", mraw)
+	}
 
 	// reset from magpie, with no Cline settings before it: nothing of
 	// magpie's is left
 	os.Remove(path)
+	os.Remove(mpath)
 	if f.Get() != "" {
 		t.Fatalf("empty get: %q", f.Get())
 	}
@@ -102,5 +130,8 @@ func TestCline(t *testing.T) {
 	c, raw = read()
 	if c.LastUsed != "" || len(c.Providers) != 0 || c.Version != 1 {
 		t.Fatalf("reset:\n%s", raw)
+	}
+	if ml, mraw := models(); len(ml) != 0 || !strings.Contains(mraw, `"version"`) {
+		t.Fatalf("reset models:\n%s", mraw)
 	}
 }

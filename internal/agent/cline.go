@@ -13,9 +13,12 @@ package agent
 // refused when a session starts ("Unknown or disabled provider",
 // cline/cline#14180), so magpie takes Cline's built-in openai-compatible
 // provider, which reads the models from the gateway's /v1/models, and makes
-// it the one in use. What was there, and the provider in use, are stashed
-// and put back when magpie steps out. Cline's requests name only the AI SDK,
-// so the header says they are Cline's.
+// it the one in use. That provider lists only gpt-4o, so magpie's models
+// are put in models.json beside it, as the entry Cline's own migration writes
+// for it ({"provider":{"name","baseUrl","defaultModelId"},"models":{…}}),
+// which takes the place of the built-in list. What was there, and the
+// provider in use, are stashed and put back when magpie steps out. Cline's
+// requests name only the AI SDK, so the header says they are Cline's.
 
 import (
 	"encoding/json"
@@ -37,6 +40,7 @@ func cline(home string) *Agent {
 		dir = filepath.Join(home, ".cline")
 	}
 	path := filepath.Join(dir, "data", "settings", "providers.json")
+	models := filepath.Join(dir, "data", "settings", "models.json")
 	key := "cline:" + path + ":"
 	slot := "providers." + clineSlot
 	get := func(k string) string { v, _ := edit.GetJSON(path, k); return v }
@@ -48,6 +52,13 @@ func cline(home string) *Agent {
 	// use the user had before magpie
 	restore := func() error {
 		entry, last := unstash(key+"entry"), unstash(key+"lastUsedProvider")
+		if list := unstash(key + "models"); list != "" {
+			if err := edit.SetJSON(models, edit.KV{Path: "providers." + clineSlot, Value: json.RawMessage(list)}); err != nil {
+				return err
+			}
+		} else if err := edit.DelJSON(models, "providers."+clineSlot); err != nil {
+			return err
+		}
 		if entry != "" {
 			if err := edit.SetJSON(path, edit.KV{Path: slot, Value: json.RawMessage(entry)}); err != nil {
 				return err
@@ -76,7 +87,10 @@ func cline(home string) *Agent {
 			if !onMagpie() {
 				return nil
 			}
-			return syncJSON(path, slot+".settings.baseUrl", func() any { return gatewayV1() })
+			if err := syncJSON(path, slot+".settings.baseUrl", func() any { return gatewayV1() }); err != nil {
+				return err
+			}
+			return syncJSON(models, "providers."+clineSlot, func() any { return clineModels(get(slot + ".settings.model")) })
 		},
 		Notice: func() string {
 			if Running(`(^|/)cline( |$)`) {
@@ -117,12 +131,18 @@ func cline(home string) *Agent {
 				if ref, ok := cutMagpie(v); ok {
 					effort := get("providers." + own() + ".settings.reasoning.effort")
 					if !onMagpie() {
+						list, _ := edit.GetJSON(models, "providers."+clineSlot)
 						stash(map[string]string{
 							key + "entry":            get(slot),
 							key + "lastUsedProvider": inUse(),
+							key + "models":           list,
 						})
 					}
-					return clineWrite(path,
+					if err := clineWrite(models, `{"version":1,"providers":{}}`,
+						edit.KV{Path: "providers." + clineSlot, Value: clineModels(ref)}); err != nil {
+						return err
+					}
+					return clineWrite(path, providersEmpty,
 						edit.KV{Path: slot, Value: clineProvider(ref, effort)},
 						edit.KV{Path: "lastUsedProvider", Value: clineSlot})
 				}
@@ -132,7 +152,7 @@ func cline(home string) *Agent {
 					}
 				}
 				p := own()
-				return clineWrite(path,
+				return clineWrite(path, providersEmpty,
 					edit.KV{Path: "providers." + p + ".settings.provider", Value: p},
 					edit.KV{Path: "providers." + p + ".settings.model", Value: v})
 			},
@@ -155,7 +175,7 @@ func cline(home string) *Agent {
 				if v == "" {
 					return edit.DelJSON(path, k)
 				}
-				return clineWrite(path, edit.KV{Path: k + ".effort", Value: v})
+				return clineWrite(path, providersEmpty, edit.KV{Path: k + ".effort", Value: v})
 			},
 			Options: func(map[string]string) []Option {
 				return static("none", "low", "medium", "high", "xhigh")
@@ -183,13 +203,44 @@ func clineProvider(model, effort string) map[string]any {
 	return map[string]any{"settings": s, "updatedAt": time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), "tokenSource": "manual"}
 }
 
-// clineWrite sets kvs in providers.json, which Cline keeps private.
-func clineWrite(path string, kvs ...edit.KV) error {
+// clineModels is magpie's entry in models.json: every magpie model, model
+// the one the provider starts on.
+func clineModels(model string) map[string]any {
+	ms := map[string]any{}
+	for _, m := range magpieModels("cline") {
+		caps := []string{"streaming", "tools"}
+		if m.Images {
+			caps = append(caps, "images")
+		}
+		if len(m.Efforts) > 0 {
+			caps = append(caps, "reasoning")
+		}
+		e := map[string]any{"id": m.ID, "name": m.Name, "capabilities": caps}
+		if m.Context > 0 {
+			e["contextWindow"] = m.Context
+		}
+		if m.Output > 0 {
+			e["maxTokens"] = m.Output
+		}
+		ms[m.ID] = e
+	}
+	return map[string]any{
+		"provider": map[string]any{"name": "magpie", "baseUrl": gatewayV1(), "defaultModelId": model},
+		"models":   ms,
+	}
+}
+
+// providersEmpty is a providers.json with nothing in it.
+const providersEmpty = `{"version":1,"modes":{},"providers":{}}`
+
+// clineWrite sets kvs in a file of Cline's settings, which it keeps
+// private, made from empty when there is none.
+func clineWrite(path, empty string, kvs ...edit.KV) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return err
 		}
-		if err := os.WriteFile(path, []byte("{\"version\":1,\"modes\":{},\"providers\":{}}\n"), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte(empty+"\n"), 0o600); err != nil {
 			return err
 		}
 	}
