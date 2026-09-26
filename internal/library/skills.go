@@ -550,6 +550,140 @@ func UpdateSkill(name string) (*Result, error) {
 	if s == nil {
 		return nil, fmt.Errorf("no skill called %s", name)
 	}
+	f := &fetcher{}
+	defer f.clean()
+	up, err := f.prepare(s)
+	if err != nil {
+		return nil, err
+	}
+	return change(func(l *Library) error { return up.apply(l) })
+}
+
+// UpdateSkills fetches again every skill that came from GitHub, each
+// repository once, and writes the agents once. A skill that couldn't be
+// fetched is said in Unupdated; the others are updated all the same.
+func UpdateSkills() (*Result, error) {
+	mu.Lock()
+	l, err := load()
+	mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	f := &fetcher{}
+	defer f.clean()
+	var (
+		ups    []*skillUpdate
+		failed []Problem
+		pmu    sync.Mutex
+		wg     sync.WaitGroup
+		sem    = make(chan struct{}, 4)
+	)
+	for _, s := range l.Skills {
+		if !updatable(s) {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			up, err := f.prepare(s)
+			pmu.Lock()
+			defer pmu.Unlock()
+			if err != nil {
+				failed = append(failed, Problem{What: "skill:" + s.Name, Error: err.Error()})
+				return
+			}
+			ups = append(ups, up)
+		}()
+	}
+	wg.Wait()
+	sort.Slice(failed, func(i, j int) bool { return failed[i].What < failed[j].What })
+	res, err := change(func(l *Library) error {
+		for _, up := range ups {
+			if err := up.apply(l); err != nil {
+				failed = append(failed, Problem{What: "skill:" + up.name, Error: err.Error()})
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	res.Updated = []string{}
+	for _, up := range ups {
+		if !slices.ContainsFunc(failed, func(p Problem) bool { return p.What == "skill:"+up.name }) {
+			res.Updated = append(res.Updated, up.name)
+		}
+	}
+	sort.Strings(res.Updated)
+	res.Unupdated = failed
+	return res, nil
+}
+
+// updatable is whether a skill can be fetched again: one from GitHub, or
+// one CC Switch installed from there.
+func updatable(s *Skill) bool {
+	if s.Source != nil && s.Source.Kind == "github" {
+		return true
+	}
+	_, ok := ccSwitchOrigin(s)
+	return ok
+}
+
+// fetcher downloads each repository at each ref once, however many of
+// its skills are updated.
+type fetcher struct {
+	mu   sync.Mutex
+	got  map[string]*fetched
+	dirs []string
+}
+
+type fetched struct {
+	once sync.Once
+	dir  string
+	err  error
+}
+
+func (f *fetcher) fetch(src Source) (string, error) {
+	f.mu.Lock()
+	if f.got == nil {
+		f.got = map[string]*fetched{}
+	}
+	key := src.Repo + "@" + src.Ref
+	g := f.got[key]
+	if g == nil {
+		g = &fetched{}
+		f.got[key] = g
+	}
+	f.mu.Unlock()
+	g.once.Do(func() {
+		g.dir, g.err = fetch(src)
+		if g.err == nil {
+			f.mu.Lock()
+			f.dirs = append(f.dirs, g.dir)
+			f.mu.Unlock()
+		}
+	})
+	return g.dir, g.err
+}
+
+func (f *fetcher) clean() {
+	for _, d := range f.dirs {
+		os.RemoveAll(d)
+	}
+}
+
+// skillUpdate is a skill fetched again, ready to take the old one's place.
+type skillUpdate struct {
+	name  string
+	src   *Source
+	adopt bool
+	from  string
+}
+
+func (f *fetcher) prepare(s *Skill) (*skillUpdate, error) {
+	name := s.Name
 	src, adopt := s.Source, false
 	if src == nil || src.Kind != "github" {
 		// one CC Switch installed from GitHub becomes the library's own,
@@ -559,16 +693,18 @@ func UpdateSkill(name string) (*Result, error) {
 			return nil, fmt.Errorf("%s isn't from GitHub; it's kept as it is", name)
 		}
 		src, adopt = &o, true
+	} else {
+		c := *src
+		src = &c
 	}
-	tmp, err := fetch(*src)
+	tmp, err := f.fetch(*src)
 	if err != nil && adopt && src.Ref != "" {
 		src.Ref = "" // the branch CC Switch recorded is gone: the default one
-		tmp, err = fetch(*src)
+		tmp, err = f.fetch(*src)
 	}
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(tmp)
 	if adopt {
 		path, ok := origin(tmp, *src, name)
 		if !ok {
@@ -580,41 +716,46 @@ func UpdateSkill(name string) (*Result, error) {
 	if _, ok := readMeta(from); !ok {
 		return nil, fmt.Errorf("%s has no SKILL.md at %s any more", src.Repo, src.Path)
 	}
-	return change(func(l *Library) error {
-		next, old := skillDir("."+name+".next"), skillDir("."+name+".old")
+	return &skillUpdate{name: name, src: src, adopt: adopt, from: from}, nil
+}
+
+// apply puts the fetched skill in the old one's place; the agents' links
+// go on pointing at it.
+func (up *skillUpdate) apply(l *Library) error {
+	name := up.name
+	next, old := skillDir("."+name+".next"), skillDir("."+name+".old")
+	os.RemoveAll(next)
+	os.RemoveAll(old)
+	if err := copyDir(up.from, next); err != nil {
 		os.RemoveAll(next)
-		os.RemoveAll(old)
-		if err := copyDir(from, next); err != nil {
+		return err
+	}
+	if fi, err := os.Lstat(skillDir(name)); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+		// a link to CC Switch's folder: only the link goes
+		if err := os.Remove(skillDir(name)); err != nil {
 			os.RemoveAll(next)
 			return err
 		}
-		if fi, err := os.Lstat(skillDir(name)); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
-			// a link to CC Switch's folder: only the link goes
-			if err := os.Remove(skillDir(name)); err != nil {
-				os.RemoveAll(next)
-				return err
-			}
-			old = ""
-		} else if err := os.Rename(skillDir(name), old); err != nil {
-			os.RemoveAll(next)
-			return err
+		old = ""
+	} else if err := os.Rename(skillDir(name), old); err != nil {
+		os.RemoveAll(next)
+		return err
+	}
+	if err := os.Rename(next, skillDir(name)); err != nil {
+		if old != "" {
+			os.Rename(old, skillDir(name))
 		}
-		if err := os.Rename(next, skillDir(name)); err != nil {
-			if old != "" {
-				os.Rename(old, skillDir(name))
-			}
-			return err
+		return err
+	}
+	if up.adopt {
+		if s := l.skill(name); s != nil {
+			s.Source = up.src
 		}
-		if adopt {
-			if s := l.skill(name); s != nil {
-				s.Source = src
-			}
-		}
-		if old == "" {
-			return nil
-		}
-		return os.RemoveAll(old)
-	})
+	}
+	if old == "" {
+		return nil
+	}
+	return os.RemoveAll(old)
 }
 
 // SkillAgents sets which agents get a skill.

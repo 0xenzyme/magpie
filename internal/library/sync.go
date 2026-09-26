@@ -13,6 +13,10 @@ type Result struct {
 	// Missing are the servers and skills (mcp:<name>, skill:<name>) a
 	// profile named that the library no longer has
 	Missing []string `json:"missing,omitempty"`
+	// Updated and Unupdated are, for an update of every skill, the ones
+	// fetched again and the ones that couldn't be (What is skill:<name>)
+	Updated   []string  `json:"updated,omitempty"`
+	Unupdated []Problem `json:"unupdated,omitempty"`
 }
 
 // Problem is one thing that couldn't be given to an agent.

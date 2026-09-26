@@ -208,6 +208,7 @@ body.window .lib-head { top: -2px; margin: -2px -16px 0; padding: 8px 16px 4px; 
 /* a list's heading: its label, and a quiet line of what it does */
 #view-library .row-head { height: auto; min-height: 26px; margin: 18px 0 6px; padding: 0 2px; gap: 12px; }
 #view-library .row-head .note { min-width: 0; font-size: 11px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#view-library .row-head .lib-updall { height: 24px; padding: 0 9px; font-size: 12px; }
 
 /* the market: servers and skills to add, each with its own picture */
 .mk { display: flex; flex-direction: column; }

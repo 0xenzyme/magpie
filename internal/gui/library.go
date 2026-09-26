@@ -234,6 +234,8 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 			res, err = library.InstallSkills(in.Source, in.Paths, in.Agents)
 		case "skills/update":
 			res, err = library.UpdateSkill(in.Name)
+		case "skills/update-all":
+			res, err = library.UpdateSkills()
 		case "skills/agents":
 			res, err = library.SkillAgents(in.Name, in.Agents)
 		case "skills/remove":

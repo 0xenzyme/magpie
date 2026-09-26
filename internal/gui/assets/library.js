@@ -843,6 +843,18 @@
     if (lib.skills.length) {
       const rh = el("div", "row-head");
       rh.append(el("span", "label", t("In the library")));
+      const fresh = lib.skills.filter((s) => s.kind === "github" || s.origin);
+      if (fresh.length > 1) {
+        const u = button(t("Update all"), "action lib-updall", async (e, b) => {
+          b.classList.add("busy");
+          b.textContent = t("Updating…");
+          await updateAllSkills();
+          b.classList.remove("busy");
+          b.textContent = t("Update all");
+        });
+        u.title = t("Fetch the {n} skills from GitHub again", { n: fresh.length });
+        rh.append(el("span", "grow"), u);
+      }
       body.append(rh);
       const list = el("div", "list lib-list");
       for (const s of lib.skills) list.append(skillRow(s, all));
@@ -859,6 +871,24 @@
     const skip = shownAgents().filter((a) => !a.skills);
     if (skip.length) body.append(el("p", "lib-aside", t("{agents} has no skills folder.", { agents: skip.map((a) => a.name).join(", ") })));
     body.append(discover("skills"));
+  }
+
+  // Every skill from GitHub, fetched again; the ones that couldn't be are
+  // said, and the rest are updated all the same.
+  async function updateAllSkills() {
+    try {
+      const v = await api("library/skills/update-all", {});
+      lib = v;
+      const res = v.result || {};
+      const up = res.updated?.length || 0, no = res.unupdated || [];
+      if (no.length) {
+        const p = no[0];
+        status(t("{name} wasn't updated: {error}", { name: p.what.replace(/^skill:/, ""), error: p.error }) + (no.length > 1 ? " " + t("(and {n} more)", { n: no.length - 1 }) : "") + (up ? " · " + t("{n} up to date", { n: up }) : ""), "warn", 8000);
+      } else report(res, t("{n} skills up to date", { n: up }));
+      render();
+    } catch (e) {
+      status(e.message, "err", 6000);
+    }
   }
 
   // Claude Code's skills are OpenCode's and Crush's too: a chip for one of

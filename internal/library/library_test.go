@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/pelletier/go-toml/v2"
@@ -599,6 +600,59 @@ func TestSkillsFromGitHub(t *testing.T) {
 	}
 	if _, err := InstallSkills(in, []string{"skills/pdf"}, nil); err == nil {
 		t.Error("installed twice")
+	}
+}
+
+func TestUpdateEverySkill(t *testing.T) {
+	h := sandbox(t)
+	version, gone := "one", false
+	asked := map[string]int{}
+	var amu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		amu.Lock()
+		asked[r.URL.Path]++
+		amu.Unlock()
+		if gone && strings.Contains(r.URL.Path, "other") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write(tarball(t, map[string]string{
+			"skills/pdf/SKILL.md":  "---\nname: pdf\ndescription: PDFs " + version + "\n---\n",
+			"skills/docx/SKILL.md": "---\nname: docx\ndescription: Word " + version + "\n---\n",
+			"x/SKILL.md":           "---\nname: x\ndescription: X " + version + "\n---\n",
+		}))
+	}))
+	defer srv.Close()
+	old := tarballURL
+	tarballURL = func(repo, ref string) string { return srv.URL + "/" + repo + "/" + ref }
+	defer func() { tarballURL = old }()
+
+	ok(t)(InstallSkills("owner/repo", []string{"skills/pdf", "skills/docx"}, []string{"claude"}))
+	ok(t)(InstallSkills("owner/other", []string{"x"}, []string{"claude"}))
+	version, gone = "two", true
+	clear(asked)
+	res, err := UpdateSkills()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(res.Updated, []string{"docx", "pdf"}) {
+		t.Errorf("updated %v", res.Updated)
+	}
+	if len(res.Unupdated) != 1 || res.Unupdated[0].What != "skill:x" || !strings.Contains(res.Unupdated[0].Error, "no repository") {
+		t.Errorf("unupdated %+v", res.Unupdated)
+	}
+	if asked["/owner/repo/"] != 1 {
+		t.Errorf("owner/repo fetched %d times, not once", asked["/owner/repo/"])
+	}
+	v, _ := Read(nil)
+	for _, s := range v.Skills {
+		want := map[string]string{"pdf": "PDFs two", "docx": "Word two", "x": "X one"}[s.Name]
+		if s.Description != want {
+			t.Errorf("%s: %q, want %q", s.Name, s.Description, want)
+		}
+	}
+	if !ours(filepath.Join(h, ".claude/skills/docx"), "docx") {
+		t.Error("claude's link went in the update")
 	}
 }
 
