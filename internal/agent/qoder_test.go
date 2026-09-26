@@ -1,0 +1,105 @@
+package agent
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/tidwall/jsonc"
+
+	"github.com/yetone/magpie/internal/gateway"
+	"github.com/yetone/magpie/internal/provider"
+)
+
+func TestQoder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("QODER_CONFIG_DIR", "")
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	if err := provider.Save(provider.Provider{ID: "deepseek", Name: "DeepSeek", Chat: "https://api.deepseek.com/v1", Key: "k", Models: []string{"pro", "flash"}}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".qoder", "settings.json")
+	type file struct {
+		Providers map[string]map[string]any `json:"providers"`
+		Model     map[string]any            `json:"model"`
+		Theme     string                    `json:"theme"`
+	}
+	read := func() (file, string) {
+		var f file
+		b, _ := os.ReadFile(path)
+		json.Unmarshal(jsonc.ToJSON(b), &f)
+		return f, string(b)
+	}
+	os.MkdirAll(filepath.Dir(path), 0o700)
+	os.WriteFile(path, []byte(`{
+  // the user's
+  "theme": "dark",
+  "providers": {"mine": {"baseUrl": "https://x/v1", "apiKey": "sk-m", "model": "m1"}},
+  "model": {"name": "performance", "reasoningEffort": "high"}
+}`), 0o644)
+
+	a := qoder(home)
+	f, e := a.Field("model"), a.Field("effort")
+	if f.Get() != "performance" || e.Get() != "high" {
+		t.Fatalf("get: %q %q", f.Get(), e.Get())
+	}
+	if err := f.Set("magpie/deepseek/pro"); err != nil {
+		t.Fatal(err)
+	}
+	c, raw := read()
+	p := c.Providers[magpieID]
+	if !strings.Contains(raw, "// the user's") || c.Model["name"] != "magpie/deepseek/pro" || p["baseUrl"] != gatewayV1() || p["apiKey"] != gateway.Token ||
+		p["protocol"] != "openai" || p["model"] != "deepseek/pro" || c.Providers["mine"]["apiKey"] != "sk-m" || c.Theme != "dark" {
+		t.Fatalf("magpie:\n%s", raw)
+	}
+	var ids []string
+	for _, m := range p["models"].([]any) {
+		ids = append(ids, m.(map[string]any)["model"].(string))
+	}
+	if len(ids) < 2 || a.Check() != "" {
+		t.Fatalf("models %v, check %q", ids, a.Check())
+	}
+	// another magpie model keeps the model stashed first
+	if err := f.Set("magpie/deepseek/flash"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Set("low"); err != nil {
+		t.Fatal(err)
+	}
+	c, raw = read()
+	if c.Providers[magpieID]["model"] != "deepseek/flash" || c.Model["reasoningEffort"] != "low" {
+		t.Fatalf("flash:\n%s", raw)
+	}
+
+	// reset: magpie's provider goes and the user's model comes back
+	if err := f.Set(""); err != nil {
+		t.Fatal(err)
+	}
+	c, raw = read()
+	if _, ok := c.Providers[magpieID]; ok || c.Model["name"] != "performance" || c.Providers["mine"] == nil {
+		t.Fatalf("reset:\n%s", raw)
+	}
+
+	// a model of Qoder's own, from magpie, takes magpie's provider out too
+	f.Set("magpie/deepseek/pro")
+	if err := f.Set("ultimate"); err != nil {
+		t.Fatal(err)
+	}
+	c, raw = read()
+	if _, ok := c.Providers[magpieID]; ok || c.Model["name"] != "ultimate" {
+		t.Fatalf("own:\n%s", raw)
+	}
+
+	// no settings before: a new file with magpie's provider
+	os.Remove(path)
+	if err := f.Set("magpie/deepseek/pro"); err != nil {
+		t.Fatal(err)
+	}
+	if c, raw = read(); c.Model["name"] != "magpie/deepseek/pro" {
+		t.Fatalf("new file:\n%s", raw)
+	}
+}

@@ -812,6 +812,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	switch proto {
 	case provider.Chat:
 		body = developerAsSystem(body)
+		if strings.HasSuffix(p.Host(), "openai.com") {
+			body = withoutFields(body, "enable_thinking")
+		}
 	case provider.Anthropic:
 		body = thinkingOffUnlessAsked(body)
 	}
@@ -1298,6 +1301,33 @@ func withFields(body []byte, fields map[string]any) []byte {
 	}
 	for k, v := range fields {
 		m[k] = v
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+// withoutFields drops fields the vendor refuses to see: Qoder asks every
+// model for Qwen's enable_thinking, which OpenAI turns away as an
+// unrecognized argument.
+func withoutFields(body []byte, fields ...string) []byte {
+	found := false
+	for _, f := range fields {
+		found = found || bytes.Contains(body, []byte(`"`+f+`"`))
+	}
+	if !found {
+		return body
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+	var m map[string]any
+	if err := dec.Decode(&m); err != nil {
+		return body
+	}
+	for _, f := range fields {
+		delete(m, f)
 	}
 	out, err := json.Marshal(m)
 	if err != nil {
