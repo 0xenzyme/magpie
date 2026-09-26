@@ -112,6 +112,13 @@ function icon(name) {
       const m = el("span", "mask");
       m.style.setProperty("--i", `url(icons/${name}.svg)`);
       e.append(m);
+      // a mask that fails to load draws nothing, and says nothing
+      const probe = new Image();
+      probe.onerror = () => {
+        e.classList.add("generic");
+        e.replaceChildren(...icon("generic").childNodes);
+      };
+      probe.src = `icons/${name}.svg`;
     }
     return e;
   }

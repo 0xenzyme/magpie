@@ -8,6 +8,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"mime"
 	"net/http"
 	"os"
 	"strings"
@@ -119,6 +120,18 @@ func settingsState() settingsJSON {
 // onDock puts the app in the Mac's Dock or takes it out, when the Settings
 // page changes that; set by the process that has the app.
 var onDock func(bool)
+
+// assetTypes are the page's own files' types. The file server takes them
+// from Windows' registry, which another program may have changed — an SVG
+// served as something else draws no icon.
+var assetTypes = map[string]string{".svg": "image/svg+xml", ".png": "image/png", ".css": "text/css; charset=utf-8",
+	".js": "text/javascript; charset=utf-8", ".html": "text/html; charset=utf-8"}
+
+func init() {
+	for ext, t := range assetTypes {
+		mime.AddExtensionType(ext, t)
+	}
+}
 
 // Handler serves the embedded UI and the JSON API.
 // gw is the gateway this process serves, or nil when another magpie has it
