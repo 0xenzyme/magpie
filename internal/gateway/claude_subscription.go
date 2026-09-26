@@ -90,7 +90,7 @@ type subscriptionRun struct {
 
 	// search answers magpie's web search tool, searchName, which the
 	// client never sees
-	search     func(ctx context.Context, query string) (string, error)
+	search     func(ctx context.Context, query string) (string, []Hit, error)
 	searchName string
 	begin      func() Event
 	resume     func() // after a resumed turn has its segment
@@ -473,7 +473,10 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			Subtype string `json:"subtype"`
 			IsError bool   `json:"is_error"`
 			Result  string `json:"result"`
-			Event   struct {
+			// what Claude Code's WebSearch found, on the message that
+			// answers its call
+			ToolUseResult json.RawMessage `json:"tool_use_result"`
+			Event         struct {
 				Type    string `json:"type"`
 				Index   int    `json:"index"`
 				Message struct {
@@ -507,6 +510,23 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			}
 			continue
 		}
+		var searched struct {
+			Query   string            `json:"query"`
+			Results []json.RawMessage `json:"results"`
+		}
+		if envelope.Type == "user" && json.Unmarshal(envelope.ToolUseResult, &searched) == nil && searched.Query != "" && searched.Results != nil {
+			var hits []Hit
+			for _, raw := range searched.Results {
+				var found struct {
+					Content []Hit `json:"content"`
+				}
+				if json.Unmarshal(raw, &found) == nil {
+					hits = append(hits, found.Content...)
+				}
+			}
+			r.emit(Event{Kind: KSearch, Text: searched.Query, Hits: hits})
+			continue
+		}
 		if envelope.Type != "stream_event" {
 			continue
 		}
@@ -526,7 +546,12 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			switch e.ContentBlock.Type {
 			case "tool_use":
 				name, ok := strings.CutPrefix(e.ContentBlock.Name, "mcp__magpie__")
-				if !ok {
+				r.mu.Lock()
+				search := r.search != nil && name == r.searchName
+				r.mu.Unlock()
+				// magpie answers its own web search, as Claude Code does
+				// its WebSearch
+				if !ok || search {
 					own[e.Index] = true
 					continue
 				}
@@ -810,11 +835,12 @@ func (b *subscriptionBridge) mcpCall(w http.ResponseWriter, r *http.Request) {
 		// within the minute its MCP client waits for a call
 		ctx, cancel := context.WithTimeout(r.Context(), 55*time.Second)
 		defer cancel()
-		found, err := search(ctx, a.Query)
+		found, hits, err := search(ctx, a.Query)
 		if err != nil {
 			writeJSON(w, 200, mcpToolResult{Content: []map[string]any{{"type": "text", "text": "search failed: " + err.Error()}}, IsError: true})
 			return
 		}
+		run.emit(Event{Kind: KSearch, Text: a.Query, Hits: hits})
 		writeJSON(w, 200, mcpToolResult{Content: []map[string]any{{"type": "text", "text": found}}})
 		return
 	}

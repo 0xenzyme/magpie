@@ -23,6 +23,7 @@ const (
 	ToolCall   Kind = "tool_call"
 	ToolResult Kind = "tool_result"
 	Thinking   Kind = "thinking"
+	Search     Kind = "web_search" // a web search run for the model: its query and hits
 )
 
 // Part is one block of a message.
@@ -46,6 +47,15 @@ type Part struct {
 
 	// thinking
 	Signature string
+
+	// web_search: Text is the query
+	Hits []Hit
+}
+
+// Hit is a page a web search found.
+type Hit struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
 }
 
 // Message is one turn.
@@ -92,6 +102,7 @@ const (
 	KStop                       // Stop
 	KUsage                      // Usage
 	KError                      // Text
+	KSearch                     // Text (the query), Hits: a web search run for the model
 )
 
 // Event is one thing a streaming reply said.
@@ -104,6 +115,7 @@ type Event struct {
 	Model string
 	Stop  string // stop | length | tool | filter
 	Usage Usage
+	Hits  []Hit
 }
 
 // Usage counts tokens.
@@ -210,6 +222,9 @@ func (c *collector) add(ev Event) {
 		c.res.Usage.add(ev.Usage)
 	case KError:
 		c.err = ev.Text
+	case KSearch:
+		c.closeTool()
+		c.res.Parts = append(c.res.Parts, Part{Kind: Search, Text: ev.Text, Hits: ev.Hits})
 	}
 }
 

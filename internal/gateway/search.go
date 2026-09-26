@@ -160,11 +160,11 @@ func searchTool(tools []Tool) Tool {
 const searchSystem = "You are a web search tool. Search the web for what is asked and report what the results say: the facts that answer it, as specifically as they are given (numbers, dates, versions, names), each with the title and URL of its page. Report only what the pages say; don't answer from memory, don't add advice. Be concise."
 
 // webSearch searches the web with the searcher's model and says what it
-// found.
-func (s *Server) webSearch(ctx context.Context, query string) (string, error) {
+// found, and on which pages.
+func (s *Server) webSearch(ctx context.Context, query string) (string, []Hit, error) {
 	p, model, ok := searcher()
 	if !ok {
-		return "", errors.New("no provider that can search the web is set up in magpie")
+		return "", nil, errors.New("no provider that can search the web is set up in magpie")
 	}
 	ctx, cancel := context.WithTimeout(context.WithValue(ctx, searchingKey{}, true), searchTimeout)
 	defer cancel()
@@ -175,7 +175,7 @@ func (s *Server) webSearch(ctx context.Context, query string) (string, error) {
 	})
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://magpie/v1/messages", nil)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("User-Agent", SearchAgent)
@@ -199,35 +199,34 @@ func (s *Server) webSearch(ctx context.Context, query string) (string, error) {
 		if ctx.Err() != nil {
 			msg = "no answer in " + searchTimeout.String()
 		}
-		return "", fmt.Errorf("%s/%s: %s", p.ID, model, msg)
+		return "", nil, fmt.Errorf("%s/%s: %s", p.ID, model, msg)
 	}
 	var text strings.Builder
 	var sources []string
+	var found []Hit
 	for _, b := range out.Content {
 		switch b.Type {
 		case "text":
 			text.WriteString(b.Text)
 		case "web_search_tool_result":
-			var hits []struct {
-				Title string `json:"title"`
-				URL   string `json:"url"`
-			}
+			var hits []Hit
 			json.Unmarshal(b.Content, &hits)
 			for _, h := range hits {
 				if h.URL != "" {
 					sources = append(sources, "- "+h.Title+" — "+h.URL)
+					found = append(found, h)
 				}
 			}
 		}
 	}
-	found := strings.TrimSpace(text.String())
-	if found == "" {
-		return "", fmt.Errorf("%s/%s found nothing", p.ID, model)
+	said := strings.TrimSpace(text.String())
+	if said == "" {
+		return "", nil, fmt.Errorf("%s/%s found nothing", p.ID, model)
 	}
 	if len(sources) > 0 && len(sources) <= 20 {
-		found += "\n\nSources:\n" + strings.Join(sources, "\n")
+		said += "\n\nSources:\n" + strings.Join(sources, "\n")
 	}
-	return found, nil
+	return said, found, nil
 }
 
 // SearchAgent is the User-Agent of the searches magpie makes for a model.
@@ -338,6 +337,7 @@ func (s *Server) searchRounds(ctx context.Context, q *Request, tool string, in <
 			return
 		}
 		results := make([]Part, len(calls))
+		searches := make([]Event, len(calls))
 		var wg sync.WaitGroup
 		for i, c := range calls {
 			wg.Add(1)
@@ -356,17 +356,24 @@ func (s *Server) searchRounds(ctx context.Context, q *Request, tool string, in <
 					results[i].Text, results[i].IsError = "query is empty", true
 					return
 				}
-				found, err := s.webSearch(ctx, a.Query)
+				found, hits, err := s.webSearch(ctx, a.Query)
 				if err != nil {
 					results[i].Text, results[i].IsError = "search failed: "+err.Error(), true
 					return
 				}
 				results[i].Text = found
+				searches[i] = Event{Kind: KSearch, Text: a.Query, Hits: hits}
 			}()
 		}
 		wg.Wait()
 		if ctx.Err() != nil {
 			return
+		}
+		// the client hears of the searches as its provider's own
+		for _, ev := range searches {
+			if ev.Kind == KSearch && !send(ev) {
+				return
+			}
 		}
 		q.Messages = append(q.Messages, Message{Role: "assistant", Parts: res.Parts}, Message{Role: "user", Parts: results})
 		before, this = before.plus(this, false), Usage{}

@@ -118,7 +118,8 @@ func TestWebSearchForAModelThatCannot(t *testing.T) {
 		t.Fatalf("%d %s", rec.Code, out)
 	}
 	var text strings.Builder
-	var stop string
+	var stop, query string
+	var found []Hit
 	for _, line := range strings.Split(out, "\n") {
 		data, ok := strings.CutPrefix(line, "data: ")
 		if !ok {
@@ -127,17 +128,24 @@ func TestWebSearchForAModelThatCannot(t *testing.T) {
 		var ev struct {
 			Type  string `json:"type"`
 			Delta struct {
-				Text       string `json:"text"`
-				StopReason string `json:"stop_reason"`
+				Text        string `json:"text"`
+				StopReason  string `json:"stop_reason"`
+				PartialJSON string `json:"partial_json"`
 			} `json:"delta"`
 			ContentBlock struct {
-				Type string `json:"type"`
+				Type    string `json:"type"`
+				Content []Hit  `json:"content"`
 			} `json:"content_block"`
 		}
 		json.Unmarshal([]byte(data), &ev)
 		if ev.ContentBlock.Type == "tool_use" {
 			t.Fatalf("the search reached the client: %s", out)
 		}
+		// told as Anthropic's own search, which Claude Code counts
+		if ev.ContentBlock.Type == "web_search_tool_result" {
+			found = ev.ContentBlock.Content
+		}
+		query += ev.Delta.PartialJSON
 		text.WriteString(ev.Delta.Text)
 		if ev.Delta.StopReason != "" {
 			stop = ev.Delta.StopReason
@@ -148,6 +156,9 @@ func TestWebSearchForAModelThatCannot(t *testing.T) {
 	}
 	if len(searched) != 1 || !strings.Contains(searched[0], "latest go") {
 		t.Fatalf("searched %q", searched)
+	}
+	if query != `{"query":"latest go"}` || len(found) != 1 || found[0].URL != "https://go.dev/dl/" {
+		t.Fatalf("search told as %q %+v\n%s", query, found, out)
 	}
 	if len(asked) != 2 {
 		t.Fatalf("model asked %d times", len(asked))
@@ -205,7 +216,7 @@ func TestWebSearchAskedOfEachAPI(t *testing.T) {
 		}
 	}
 	r := &Request{Model: "m", Messages: []Message{{Role: "user", Parts: []Part{{Kind: Text, Text: "hi"}}}}, WebSearch: true}
-	if b := string(buildResponses(r, "m", false)); !strings.Contains(b, `"tools":[{"type":"web_search"}]`) {
+	if b := string(buildResponses(r, "m", "", false)); !strings.Contains(b, `"tools":[{"type":"web_search"}]`) {
 		t.Errorf("responses: %s", b)
 	}
 	if b := string(buildChat(r, "m", "openrouter.ai", false)); !strings.Contains(b, `"plugins":[{"id":"web"}]`) {
@@ -278,5 +289,33 @@ func TestToolSearchReferenceIsTold(t *testing.T) {
 	}
 	if got := r.Messages[2].Parts[0].Text; !strings.Contains(got, "WebSearch is loaded") {
 		t.Fatalf("tool result = %q", got)
+	}
+}
+
+func TestSearchToldAsAnthropics(t *testing.T) {
+	res := Result{Parts: []Part{{Kind: Search, Text: "go", Hits: []Hit{{Title: "Go", URL: "https://go.dev/"}}}, {Kind: Text, Text: "1.27"}}}
+	var out struct {
+		Content []struct {
+			Type      string         `json:"type"`
+			ID        string         `json:"id"`
+			ToolUseID string         `json:"tool_use_id"`
+			Input     map[string]any `json:"input"`
+			Content   []Hit          `json:"content"`
+		} `json:"content"`
+	}
+	json.Unmarshal(renderAnthropic(res, "m"), &out)
+	c := out.Content
+	if len(c) != 3 || c[0].Type != "server_tool_use" || c[0].Input["query"] != "go" || c[1].Type != "web_search_tool_result" ||
+		c[1].ToolUseID != c[0].ID || len(c[1].Content) != 1 || c[1].Content[0].URL != "https://go.dev/" || c[2].Type != "text" {
+		t.Fatalf("%+v", out)
+	}
+
+	// a Responses provider's own search, with the pages it found
+	var events []Event
+	d := &responsesDecoder{}
+	d.decode(`{"type":"response.output_item.done","item":{"type":"web_search_call","status":"completed","action":{"type":"search","query":"bun","sources":[{"type":"url","url":"https://bun.com/"}]}}}`,
+		func(ev Event) { events = append(events, ev) })
+	if len(events) != 1 || events[0].Kind != KSearch || events[0].Text != "bun" || len(events[0].Hits) != 1 || events[0].Hits[0].URL != "https://bun.com/" {
+		t.Fatalf("%+v", events)
 	}
 }

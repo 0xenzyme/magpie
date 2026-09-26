@@ -548,6 +548,21 @@ func (e *anthropicEncoder) event(ev Event) {
 			e.args = true
 			e.delta(map[string]any{"type": "input_json_delta", "partial_json": ev.Text})
 		}
+	case KSearch:
+		// as Anthropic's own web search tells it, which Claude Code's
+		// WebSearch counts and takes its links from
+		e.close()
+		id := "srvtoolu_" + newID()
+		query, _ := json.Marshal(map[string]string{"query": ev.Text})
+		e.w.event("content_block_start", map[string]any{"type": "content_block_start", "index": e.index,
+			"content_block": map[string]any{"type": "server_tool_use", "id": id, "name": "web_search", "input": map[string]any{}}})
+		e.delta(map[string]any{"type": "input_json_delta", "partial_json": string(query)})
+		e.w.event("content_block_stop", map[string]any{"type": "content_block_stop", "index": e.index})
+		e.index++
+		e.w.event("content_block_start", map[string]any{"type": "content_block_start", "index": e.index,
+			"content_block": searchResultBlock(id, ev.Hits)})
+		e.w.event("content_block_stop", map[string]any{"type": "content_block_stop", "index": e.index})
+		e.index++
 	case KError:
 		e.close()
 		e.w.event("error", map[string]any{"type": "error", "error": map[string]any{"type": "api_error", "message": ev.Text}})
@@ -582,6 +597,11 @@ func renderAnthropic(res Result, model string) []byte {
 				id = "toolu_" + newID()
 			}
 			content = append(content, map[string]any{"type": "tool_use", "id": id, "name": p.Name, "input": argsOf(p)})
+		case Search:
+			id := "srvtoolu_" + newID()
+			content = append(content,
+				map[string]any{"type": "server_tool_use", "id": id, "name": "web_search", "input": map[string]any{"query": p.Text}},
+				searchResultBlock(id, p.Hits))
 		}
 	}
 	id := res.ID
@@ -594,6 +614,17 @@ func renderAnthropic(res Result, model string) []byte {
 	b, _ := json.Marshal(map[string]any{"id": id, "type": "message", "role": "assistant", "model": model,
 		"content": content, "stop_reason": stopToAnthropic(res.Stop), "stop_sequence": nil, "usage": res.Usage.anthropic()})
 	return b
+}
+
+// searchResultBlock is a web_search_tool_result block of the pages a
+// search found.
+func searchResultBlock(id string, hits []Hit) map[string]any {
+	results := []map[string]any{}
+	for _, h := range hits {
+		results = append(results, map[string]any{"type": "web_search_result", "title": h.Title, "url": h.URL,
+			"encrypted_content": "", "page_age": nil})
+	}
+	return map[string]any{"type": "web_search_tool_result", "tool_use_id": id, "content": results}
 }
 
 func newID() string {

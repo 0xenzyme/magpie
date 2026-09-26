@@ -1136,7 +1136,7 @@ func build(proto provider.Protocol, r *Request, model, host string, rejectTemp b
 	case provider.Chat:
 		return buildChat(r, model, host, rejectTemp)
 	case provider.Responses:
-		return buildResponses(r, model, rejectTemp)
+		return buildResponses(r, model, host, rejectTemp)
 	}
 	return buildAnthropic(r, model)
 }

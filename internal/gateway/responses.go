@@ -23,6 +23,13 @@ type rItem struct {
 	// reasoning
 	Summary          []rText `json:"summary,omitempty"`
 	EncryptedContent string  `json:"encrypted_content,omitempty"`
+	// web_search_call
+	Action *struct {
+		Query   string `json:"query"`
+		Sources []struct {
+			URL string `json:"url"`
+		} `json:"sources"`
+	} `json:"action,omitempty"`
 }
 
 type rText struct {
@@ -172,7 +179,7 @@ func responsesParts(raw json.RawMessage) []Part {
 }
 
 // buildResponses renders a request for a Responses upstream.
-func buildResponses(r *Request, model string, rejectTemp bool) []byte {
+func buildResponses(r *Request, model, host string, rejectTemp bool) []byte {
 	var input []map[string]any
 	for _, m := range r.Messages {
 		var content []map[string]any
@@ -243,6 +250,11 @@ func buildResponses(r *Request, model string, rejectTemp bool) []byte {
 		}
 		if r.WebSearch {
 			tools = append(tools, map[string]any{"type": "web_search"})
+			// the pages it found, which a client of another protocol is
+			// told of (OpenAI's option; xAI's API isn't known to take it)
+			if host != "api.x.ai" {
+				out["include"] = []string{"web_search_call.action.sources"}
+			}
 		}
 		out["tools"] = tools
 		switch {
@@ -337,6 +349,15 @@ func (d *responsesDecoder) decode(data string, emit func(Event)) error {
 	case "response.output_item.done":
 		if ev.Item.Type == "function_call" && !d.argsSeen && ev.Item.Arguments != "" {
 			emit(Event{Kind: KToolArgs, Text: ev.Item.Arguments})
+		}
+		if a := ev.Item.Action; ev.Item.Type == "web_search_call" && a != nil && a.Query != "" {
+			var hits []Hit
+			for _, src := range a.Sources {
+				if src.URL != "" {
+					hits = append(hits, Hit{Title: src.URL, URL: src.URL})
+				}
+			}
+			emit(Event{Kind: KSearch, Text: a.Query, Hits: hits})
 		}
 	case "response.completed", "response.incomplete", "response.failed":
 		if ev.Response.Error != nil {
