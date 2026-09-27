@@ -137,6 +137,9 @@ type Provider struct {
 	// Hidden is set on an account the user removed from magpie; the
 	// agent stays signed in, magpie just leaves it alone.
 	Hidden bool `json:"hidden,omitempty"`
+	// Quiet is set on a removed account whose "Add it back" line the user
+	// dismissed: it is offered again only from the Add sheet (#116).
+	Quiet bool `json:"quiet,omitempty"`
 
 	// Account is set when the provider is an agent the user signed in to
 	// (see account.go); it is derived, never stored.
@@ -218,6 +221,7 @@ func Hidden() []Provider {
 	for _, a := range Accounts() {
 		for _, p := range load().Providers {
 			if p.ID == a.ID && p.Hidden {
+				a.Quiet = p.Quiet
 				out = append(out, a)
 			}
 		}
@@ -287,7 +291,7 @@ func Save(p Provider) error {
 		if p.ID == "kiro" {
 			key = p.Key
 		}
-		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Contexts: p.Contexts, Family: p.Family, Hidden: hiddenAccount(p.ID)}
+		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Contexts: p.Contexts, Family: p.Family, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID)}
 	} else {
 		if slices.Contains(accountIDs, p.ID) && !stored(p.ID) {
 			// taken, it would hide that subscription once signed in
@@ -375,13 +379,35 @@ func hiddenAccount(id string) bool {
 	return false
 }
 
+func quietAccount(id string) bool {
+	for _, p := range load().Providers {
+		if p.ID == id {
+			return p.Quiet
+		}
+	}
+	return false
+}
+
+// QuietAccount stops reminding the user of an account they removed: its
+// "Add it back" line goes, and it is offered only from the Add sheet.
+func QuietAccount(id string) error {
+	f := load()
+	for i := range f.Providers {
+		if f.Providers[i].ID == id && f.Providers[i].Hidden {
+			f.Providers[i].Quiet = true
+			return store(f)
+		}
+	}
+	return nil
+}
+
 // ShowAccount brings back the signed-in account of an agent the user had
 // removed from magpie.
 func ShowAccount(id string) error {
 	f := load()
 	for i := range f.Providers {
 		if f.Providers[i].ID == id && f.Providers[i].Hidden {
-			f.Providers[i].Hidden = false
+			f.Providers[i].Hidden, f.Providers[i].Quiet = false, false
 			return store(f)
 		}
 	}

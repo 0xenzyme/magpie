@@ -140,12 +140,36 @@ func TestAccountsAreProviders(t *testing.T) {
 	if _, ok := find(All(), "codex"); ok || len(Excluded()) != 1 {
 		t.Fatal("a save brought a removed codex back")
 	}
+	// not being reminded of it (#116) keeps it removed, through a save
+	if err := QuietAccount("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(Provider{ID: "codex", Models: []string{"gpt-5.5"}}); err != nil {
+		t.Fatal(err)
+	}
+	if x := Excluded(); len(x) != 1 || !x[0].Quiet {
+		t.Fatalf("quiet: %+v", x)
+	}
+	if _, ok := find(All(), "codex"); ok {
+		t.Fatal("quieting brought codex back")
+	}
 	if err := ShowAccount("codex"); err != nil {
 		t.Fatal(err)
 	}
 	if codex, ok = find(All(), "codex"); !ok || len(codex.Models) != 1 || codex.Account == nil || len(Excluded()) != 0 {
 		t.Fatalf("after add back: %+v", codex)
 	}
+	// removed again, it is reminded of again
+	if err := Delete("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if x := Excluded(); len(x) != 1 || x[0].Quiet {
+		t.Fatalf("removed again: %+v", x)
+	}
+	if err := ShowAccount("codex"); err != nil {
+		t.Fatal(err)
+	}
+	codex, _ = find(All(), "codex")
 	// only through routing groups holds for an account too
 	codex.Unlisted = true
 	if err := Save(codex); err != nil {

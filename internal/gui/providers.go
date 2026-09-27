@@ -413,6 +413,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				fail(rw, err)
 				return
 			}
+		case "quiet":
+			// a removed account's "Add it back" line, dismissed (#116)
+			if err := provider.QuietAccount(in.ID); err != nil {
+				fail(rw, err)
+				return
+			}
 		case "save":
 			// a preset needs nothing but the key; a saved provider keeps
 			// its key when the form left it blank

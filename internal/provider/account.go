@@ -125,6 +125,9 @@ type Exclusion struct {
 	// SignedOut: the agent has accounts saved in magpie but isn't signed
 	// in where magpie looks, and so none of them is offered.
 	SignedOut bool `json:"signedOut,omitempty"`
+	// Quiet: the user asked not to be reminded of it; only the Add sheet
+	// offers it back.
+	Quiet bool `json:"quiet,omitempty"`
 }
 
 // Excluded lists sign-ins magpie detects but leaves out: the accounts the
@@ -133,7 +136,7 @@ type Exclusion struct {
 func Excluded() []Exclusion {
 	var out []Exclusion
 	for _, a := range Hidden() {
-		out = append(out, Exclusion{Agent: a.Account.Agent, Provider: a.ID, Why: "You removed it from magpie."})
+		out = append(out, Exclusion{Agent: a.Account.Agent, Provider: a.ID, Why: "You removed it from magpie.", Quiet: a.Quiet})
 	}
 	return append(out, savedButSignedOut()...)
 }

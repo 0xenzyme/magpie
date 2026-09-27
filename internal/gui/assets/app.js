@@ -1294,13 +1294,17 @@ function renderExcluded() {
   const box = $("#excluded");
   box.replaceChildren();
   for (const x of providers.excluded) {
+    if (x.quiet) continue; // dismissed: the Add sheet offers it back (#116)
     const r = el("div", "excluded");
     r.append(icon(x.agentIcon), el("span", "", ""));
     r.lastChild.append(el("b", "", t(x.signedOut ? "{agent}'s saved accounts aren't offered. " : "{agent} is signed in, but stays out of this list. ", { agent: x.agentName })), x.signedOut ? x.why : t(x.why));
     if (x.provider) {
       const back = el("button", "link", t("Add it back"));
       back.onclick = () => providerAction("show", { id: x.provider }, t("{name} added back", { name: x.agentName }));
-      r.lastChild.append(" ", back);
+      const quiet = el("button", "link", t("Don't remind me"));
+      quiet.title = t("Hide this line; Add a provider still offers it back");
+      quiet.onclick = () => providerAction("quiet", { id: x.provider });
+      r.lastChild.append(" ", back, " · ", quiet);
     }
     box.append(r);
   }
@@ -1808,6 +1812,22 @@ function renderAdd() {
       tiles.append(grid);
       const w = subs.find((x) => signing?.agent === x.agent);
       if (w) tiles.append(renderSigning(w));
+    }
+    const gone = providers.excluded.filter((x) => x.quiet && x.provider && (!f || x.agentName.toLowerCase().includes(f) || x.agent.includes(f)));
+    if (gone.length) {
+      any = true;
+      tiles.append(el("div", "kind", t("Removed from magpie · still signed in")));
+      const grid = el("div", "grid");
+      for (const x of gone) {
+        const b = el("button", "tile");
+        b.append(icon(x.agentIcon));
+        const tt = el("span", "tt");
+        tt.append(el("span", "n", x.agentName), el("span", "s", t("Add it back")));
+        b.append(tt);
+        b.onclick = () => providerAction("show", { id: x.provider }, t("{name} added back", { name: x.agentName }));
+        grid.append(b);
+      }
+      tiles.append(grid);
     }
     for (const [kind, title] of [["vendor", "Vendors"], ["relay", "Relays · many vendors behind one key"], ["local", "On this machine"]]) {
       const ps = providers.presets.filter((p) => p.kind === kind && hit(p));
