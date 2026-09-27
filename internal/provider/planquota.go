@@ -1,7 +1,7 @@
 package provider
 
-// A plan bought with an API key — Zhipu's GLM Coding Plan (and Z.ai's), and
-// OpenCode Go — has windows of allowance like a subscription's, which the
+// A plan bought with an API key — Zhipu's GLM Coding Plan (and Z.ai's),
+// Kimi Code and OpenCode Go — has windows of allowance like a subscription's, which the
 // vendor tells to the key: the Usage page shows them beside the
 // subscriptions'.
 
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,10 @@ func planQuotaSourceOf(p Provider) (planQuotaSource, bool) {
 			return planQuotaSource{"https://open.bigmodel.cn/api/monitor/usage/quota/limit", false, readZhipuPlan, coding}, true
 		case "api.z.ai":
 			return planQuotaSource{"https://api.z.ai/api/monitor/usage/quota/limit", false, readZhipuPlan, coding}, true
+		case "api.kimi.com", "api.kimi.ai":
+			if strings.Contains(base, "/coding") {
+				return planQuotaSource{strings.TrimSuffix(kimiCodeBase(base), "/") + "/usages", true, readKimiCode, true}, true
+			}
 		case "opencode.ai":
 			if u := strings.TrimSuffix(base, "/"); strings.HasSuffix(u, "/zen/go") || strings.Contains(u, "/zen/go/") {
 				return planQuotaSource{"https://opencode.ai/zen/go/v1/usage", true, readOpenCodeGo, true}, true
@@ -143,6 +148,109 @@ func readOpenCodeGo(b []byte) (string, []QuotaWindow, error) {
 	return "", out, nil
 }
 
+// kimiCodeBase is Kimi Code's OpenAI endpoint, /coding/v1, for either of
+// the provider's (its Anthropic one is /coding).
+func kimiCodeBase(base string) string {
+	u := strings.TrimSuffix(base, "/")
+	if strings.HasSuffix(u, "/coding") {
+		return u + "/v1"
+	}
+	return u
+}
+
+// readKimiCode reads Kimi Code's /usages, as kimi-cli's /usage does:
+//
+//	{"usage":{"limit":"100","used":"12","resetTime":"2026-09-30T05:24:18.44Z"},
+//	 "limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},
+//	   "detail":{"limit":"100","remaining":"88","resetTime":"…"}}]}
+//
+// usage is the week's allowance, each of limits a shorter window; the
+// numbers come as strings or numbers, used or what remains.
+func readKimiCode(b []byte) (string, []QuotaWindow, error) {
+	type row map[string]any
+	var r struct {
+		Usage  row `json:"usage"`
+		Limits []struct {
+			Window row `json:"window"`
+			Detail row `json:"detail"`
+		} `json:"limits"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return "", nil, err
+	}
+	num := func(v any) (float64, bool) {
+		switch x := v.(type) {
+		case float64:
+			return x, true
+		case string:
+			f, err := strconv.ParseFloat(strings.TrimSpace(x), 64)
+			return f, err == nil
+		}
+		return 0, false
+	}
+	window := func(d row, name string, span time.Duration) (QuotaWindow, bool) {
+		limit, ok := num(d["limit"])
+		if !ok || limit <= 0 {
+			return QuotaWindow{}, false
+		}
+		used, ok := num(d["used"])
+		if !ok {
+			left, ok := num(d["remaining"])
+			if !ok {
+				return QuotaWindow{}, false
+			}
+			used = limit - left
+		}
+		w := QuotaWindow{Name: name, Span: span, Used: max(0, min(100, used/limit*100))}
+		for _, k := range []string{"resetTime", "resetAt", "reset_at", "reset_time"} {
+			if s, _ := d[k].(string); s != "" {
+				if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+					w.ResetsAt = &t
+					break
+				}
+			}
+		}
+		return w, true
+	}
+	out := []QuotaWindow{}
+	for _, l := range r.Limits {
+		d := l.Detail
+		if d == nil {
+			d = l.Window
+		}
+		n, _ := num(l.Window["duration"])
+		unit, _ := l.Window["timeUnit"].(string)
+		var span time.Duration
+		switch {
+		case strings.Contains(unit, "MINUTE"):
+			span = time.Duration(n) * time.Minute
+		case strings.Contains(unit, "HOUR"):
+			span = time.Duration(n) * time.Hour
+		case strings.Contains(unit, "DAY"):
+			span = time.Duration(n) * 24 * time.Hour
+		}
+		name := "Allowance"
+		switch {
+		case span > 24*time.Hour && span%(24*time.Hour) == 0:
+			name = fmt.Sprintf("%d days", span/(24*time.Hour))
+		case span >= time.Hour && span%time.Hour == 0:
+			name = fmt.Sprintf("%d hours", span/time.Hour)
+		case span > 0:
+			name = fmt.Sprintf("%d minutes", span/time.Minute)
+		}
+		if w, ok := window(d, name, span); ok {
+			out = append(out, w)
+		}
+	}
+	if w, ok := window(r.Usage, "7 days", 7*24*time.Hour); ok {
+		out = append(out, w)
+	}
+	if len(out) == 0 {
+		return "", nil, fmt.Errorf("no usage in the reply")
+	}
+	return "", out, nil
+}
+
 // planWindows asks the vendor for the plan key is on and its windows.
 func planWindows(ctx context.Context, src planQuotaSource, key string) (plan string, ws []QuotaWindow, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, src.url, nil)
@@ -163,7 +271,7 @@ func planWindows(ctx context.Context, src planQuotaSource, key string) (plan str
 	defer res.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	switch {
-	case res.StatusCode == http.StatusForbidden && src.bearer:
+	case res.StatusCode == http.StatusForbidden && strings.Contains(src.url, "opencode.ai"):
 		return "", nil, fmt.Errorf("this key has no OpenCode Go subscription")
 	case res.StatusCode >= 300:
 		return "", nil, fmt.Errorf("%s", res.Status)

@@ -3614,7 +3614,10 @@ function renderQuotas() {
   renderPanelQuota();
   const subscriptions = $("#subscriptionUsage");
   subscriptions.replaceChildren();
-  // used or left: only there when some card has a window to read
+  // the allowances' own heading, apart from the period's cost: used or
+  // left turns their meters, and is only there when some card has one (a
+  // balance is only ever what is left)
+  $("#quotaHead").hidden = !!quotas && !quotas.length;
   const mode = $("#quotaMode");
   mode.hidden = !quotas?.some((q) => !q.balance && !q.error && q.windows?.length);
   if (!mode.hidden) {
@@ -3735,6 +3738,7 @@ function panelQuotaRow(q) {
 function quotaWindows(sub) {
   if (sub.balance) {
     const b = el("div", "quota-balance");
+    b.title = t("What is left on the account: the vendor tells only this, so Used / Left leaves it as it is");
     b.append(el("span", "", t("Balance")), el("b", "", sub.balance));
     return b;
   }

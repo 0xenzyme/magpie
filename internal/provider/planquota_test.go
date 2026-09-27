@@ -22,6 +22,8 @@ func TestPlanQuotaSource(t *testing.T) {
 		{Provider{Chat: "https://opencode.ai/zen/go/v1", Anthropic: "https://opencode.ai/zen/go"}, "https://opencode.ai/zen/go/v1/usage", true, true},
 		{Provider{Anthropic: "https://opencode.ai/zen/go"}, "https://opencode.ai/zen/go/v1/usage", true, true},
 		{Provider{Chat: "https://opencode.ai/zen/v1"}, "", false, false}, // Zen is pay as you go
+		{Provider{Chat: "https://api.kimi.com/coding/v1", Anthropic: "https://api.kimi.com/coding"}, "https://api.kimi.com/coding/v1/usages", true, true},
+		{Provider{Anthropic: "https://api.kimi.ai/coding/"}, "https://api.kimi.ai/coding/v1/usages", true, true},
 		{Provider{Chat: "https://api.deepseek.com"}, "", false, false},
 	} {
 		src, ok := planQuotaSourceOf(c.p)
@@ -173,5 +175,22 @@ func TestPlanQuotas(t *testing.T) {
 	}
 	if q := got["go/"]; q.Name != "OpenCode Go" || len(q.Windows) != 1 || q.Windows[0].Name != "5 hours" {
 		t.Errorf("go: %+v", q)
+	}
+}
+
+func TestReadKimiCode(t *testing.T) {
+	_, ws, err := readKimiCode([]byte(`{"usage":{"limit":"100","used":"12","resetTime":"2026-09-30T05:24:18.443553353Z"},
+		"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"50","remaining":"40","resetTime":"2026-09-27T09:00:00Z"}},
+		          {"window":{"duration":1,"timeUnit":"TIME_UNIT_DAY"},"detail":{"limit":200,"used":200}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ws) != 3 || ws[0].Name != "5 hours" || ws[0].Used != 20 || ws[0].Span != 5*time.Hour || ws[0].ResetsAt == nil ||
+		ws[1].Name != "24 hours" || ws[1].Used != 100 || ws[1].ResetsAt != nil ||
+		ws[2].Name != "7 days" || ws[2].Used != 12 || ws[2].ResetsAt == nil || ws[2].ResetsAt.Day() != 30 {
+		t.Fatalf("%+v", ws)
+	}
+	if _, _, err := readKimiCode([]byte(`{"error":{"message":"bad key"}}`)); err == nil {
+		t.Fatal("nothing read")
 	}
 }

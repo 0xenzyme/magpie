@@ -654,6 +654,7 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .gw .url code { color: var(--fg-2); font-size: 11px; }
 .gw .url:hover code { color: var(--fg); }
 #view-gateway .row-head, #view-usage .row-head { margin: 14px 0 6px; padding: 0 2px; }
+#view-usage .row-head.quota-head { margin: 6px 0 6px; }
 #view-gateway .row-head .note { font-size: 11px; color: var(--faint); }
 
 /* the connect card: label column, then the value with a copy button */
