@@ -97,6 +97,7 @@ type Request struct {
 	Thinking   bool   // the client asked for visible reasoning
 	Parallel   *bool  // parallel tool calls allowed
 	WebSearch  bool   // the client offered its provider's own web search
+	Fast       bool   // the client asked for priority processing (Codex's Fast mode)
 }
 
 // EventKind is what a streamed event carries.

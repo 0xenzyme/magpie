@@ -75,6 +75,8 @@ func TestCodexListedKeepsGroups(t *testing.T) {
 		{ID: GroupPrefix + "fast", Model: "gpt-5.5", Name: "fast", Provider: acct, Group: "fast"},
 		{ID: "codex-me/gpt-5.5", Model: "gpt-5.5", Provider: acct},
 		{ID: "or/glm-5.3", Model: "glm-5.3", Provider: Provider{ID: "or"}},
+	}, func(id string) []Member {
+		return []Member{{Provider: Provider{ID: "or"}, Model: "glm-5.3"}, {Provider: acct, Model: "gpt-5.5"}}
 	})
 	var ids []string
 	for _, m := range ms {
@@ -82,5 +84,9 @@ func TestCodexListedKeepsGroups(t *testing.T) {
 	}
 	if len(ids) != 2 || ids[0] != GroupPrefix+"fast" || ids[1] != "or/glm-5.3" {
 		t.Errorf("listed %v", ids)
+	}
+	// Codex offers /fast on the group, a ChatGPT GPT model being in it
+	if !ms[0].Fast || ms[1].Fast {
+		t.Errorf("fast: group %v, model %v", ms[0].Fast, ms[1].Fast)
 	}
 }

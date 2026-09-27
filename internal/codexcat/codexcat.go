@@ -96,9 +96,10 @@ func Entries(ms []catalog.Model, after int) []any {
 			ApplyPatch: "freeform", Tools: []string{}, Modalities: []string{"text"},
 			Tiers: []tier{},
 		}
-		// Fast mode: a ChatGPT account's GPT model Codex has no entry for
-		// gets the tier Codex's own catalog gives its GPT models
-		if slug, ok := strings.CutPrefix(m.ID, "codex/"); ok && strings.HasPrefix(slug, "gpt-") {
+		// Fast mode: a ChatGPT account's GPT model Codex has no entry for,
+		// or a group one is in, gets the tier Codex's own catalog gives its
+		// GPT models
+		if slug, ok := strings.CutPrefix(m.ID, "codex/"); m.Fast || ok && strings.HasPrefix(slug, "gpt-") {
 			e.Tiers = append(e.Tiers, tier{ID: "priority", Name: "Fast", Description: "1.5x speed, increased usage"})
 		}
 		if m.Images {

@@ -44,6 +44,9 @@ type Model struct {
 	Context int `json:",omitempty"`
 	// Output is the most tokens a reply may hold, when known.
 	Output int `json:",omitempty"`
+	// Fast is set on a model Codex may ask for priority processing (its
+	// Fast mode): one a ChatGPT account serves.
+	Fast bool `json:",omitempty"`
 }
 
 func imageInput(modalities []string) *bool {

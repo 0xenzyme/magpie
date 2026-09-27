@@ -191,16 +191,32 @@ func codexFetchSaved(ctx context.Context) {
 // but is not that provider's.
 func CodexListed() []catalog.Model {
 	shown, _ := CatalogFor("codex")
-	return codexListed(shown)
+	find := GroupFinder()
+	return codexListed(shown, func(id string) []Member {
+		_, ms, _ := find(id)
+		return ms
+	})
 }
 
-func codexListed(shown []Entry) []catalog.Model {
+// codexListed marks a group Fast when a ChatGPT account's GPT model is in
+// it, so Codex offers /fast there too; the tier goes out only to that
+// account (buildResponses).
+func codexListed(shown []Entry, members func(id string) []Member) []catalog.Model {
 	var ms []catalog.Model
 	for _, e := range shown {
 		if e.Group == "" && e.Provider.Account != nil && e.Provider.Account.Agent == "codex" {
 			continue
 		}
-		ms = append(ms, catalog.Model{ID: e.ID, Name: e.Label(), Efforts: e.Efforts, Images: e.Images, Context: e.Context})
+		m := catalog.Model{ID: e.ID, Name: e.Label(), Efforts: e.Efforts, Images: e.Images, Context: e.Context}
+		if e.Group != "" {
+			for _, mb := range members(e.ID) {
+				if a := mb.Provider.Account; a != nil && a.Agent == "codex" && strings.HasPrefix(mb.Model, "gpt-") {
+					m.Fast = true
+					break
+				}
+			}
+		}
+		ms = append(ms, m)
 	}
 	return ms
 }

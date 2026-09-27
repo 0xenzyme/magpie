@@ -53,6 +53,7 @@ type rRequest struct {
 	TopP              *float64        `json:"top_p,omitempty"`
 	Stream            bool            `json:"stream,omitempty"`
 	ParallelToolCalls *bool           `json:"parallel_tool_calls,omitempty"`
+	ServiceTier       string          `json:"service_tier,omitempty"`
 	Reasoning         *struct {
 		Effort  string `json:"effort,omitempty"`
 		Summary string `json:"summary,omitempty"`
@@ -65,7 +66,7 @@ func parseResponses(body []byte) (*Request, error) {
 		return nil, fmt.Errorf("invalid request: %v", err)
 	}
 	r := &Request{Model: q.Model, System: q.Instructions, MaxTokens: q.MaxOutputTokens, Temp: q.Temperature,
-		TopP: q.TopP, Stream: q.Stream, Parallel: q.ParallelToolCalls}
+		TopP: q.TopP, Stream: q.Stream, Parallel: q.ParallelToolCalls, Fast: q.ServiceTier == "priority"}
 	if q.Reasoning != nil {
 		r.Effort = effortOf(q.Reasoning.Effort)
 		r.Thinking = true
@@ -239,6 +240,10 @@ func buildResponses(r *Request, model, host string, rejectTemp bool) []byte {
 		if r.TopP != nil {
 			out["top_p"] = *r.TopP
 		}
+	}
+	// Fast goes to OpenAI's own backends; another's may not know the tier
+	if r.Fast && (host == "chatgpt.com" || host == "api.openai.com") {
+		out["service_tier"] = "priority"
 	}
 	if r.Effort != "" {
 		out["reasoning"] = map[string]any{"effort": r.Effort, "summary": "auto"}
