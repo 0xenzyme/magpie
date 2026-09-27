@@ -107,13 +107,20 @@ const (
 	fmtPi
 	fmtDesktop
 	fmtZCode
+	fmtDsh
 )
 
 // mcpFile is the file an agent keeps its user-wide MCP servers in.
 type mcpFile struct {
 	Path   string
 	Format mcpFormat
+	// Also are files given the same servers, read from Path: dsh's other
+	// profiles.
+	Also []string
 }
+
+// files are every file the servers are written into.
+func (f *mcpFile) files() []string { return append([]string{f.Path}, f.Also...) }
 
 // key is the object the servers are kept under.
 func (f *mcpFile) key() string {
@@ -135,8 +142,11 @@ func (f *mcpFile) supports(s *Server) error {
 	if f.Format == fmtDesktop && s.Remote() {
 		return errNoRemote
 	}
-	if s.Transport == "sse" && (f.Format == fmtCodex || f.Format == fmtGoose) {
+	if s.Transport == "sse" && (f.Format == fmtCodex || f.Format == fmtGoose || f.Format == fmtDsh) {
 		return errNoSSE
+	}
+	if f.Format == fmtDsh && s.Name != "" && !dshServerName.MatchString(s.Name) {
+		return errDshName
 	}
 	return nil
 }
@@ -146,7 +156,7 @@ func (f *mcpFile) supports(s *Server) error {
 var errNoRemote = errors.New("no-remote")
 
 // errNoSSE is what the page says of an agent that can't reach a server
-// over SSE (Codex, Goose).
+// over SSE (Codex, Goose, DeepSeek Harness).
 var errNoSSE = errors.New("no-sse")
 
 // ordered is a JSON object that keeps its keys in the order given, so an
@@ -301,6 +311,18 @@ func (f *mcpFile) encode(s *Server) ordered {
 			add("args", list(s.Args))
 			optional("env", s.Env)
 		}
+	case fmtDsh:
+		add("serverName", s.Name)
+		if s.Remote() {
+			add("transport", "streamable-http")
+			add("url", s.URL)
+			optional("headers", s.Headers)
+		} else {
+			add("transport", "stdio")
+			add("command", s.Command)
+			add("args", list(s.Args))
+			optional("env", s.Env)
+		}
 	}
 	return o
 }
@@ -373,6 +395,19 @@ func (f *mcpFile) decode(name string, m map[string]any) (*Server, bool) {
 		} else {
 			local(str(m, "command"), m["args"], m["env"])
 		}
+	case fmtDsh:
+		// a value dsh works out itself (!!js) isn't one magpie can hold
+		for _, k := range owned[fmtDsh] {
+			if hasJS(m[k]) {
+				return nil, false
+			}
+		}
+		switch str(m, "transport") {
+		case "stdio":
+			local(str(m, "command"), m["args"], m["env"])
+		case "streamable-http":
+			remote("http", str(m, "url"), m["headers"])
+		}
 	case fmtPi:
 		if u := str(m, "url"); u != "" {
 			t := "http"
@@ -406,6 +441,9 @@ func (f *mcpFile) decode(name string, m map[string]any) (*Server, bool) {
 // entries is every entry under the servers' key, as the file has it.
 func (f *mcpFile) entries() (map[string]map[string]any, error) {
 	out := map[string]map[string]any{}
+	if f.Format == fmtDsh {
+		return dshEntries(f.Path)
+	}
 	raw, err := edit.Read(f.Path)
 	if err != nil || len(bytes.TrimSpace(raw)) == 0 {
 		return out, err
@@ -462,6 +500,7 @@ var owned = map[mcpFormat][]string{
 	fmtDesktop:  {"url", "headers", "command", "args", "env"},
 	fmtPi:       {"transport", "httpTransport", "url", "headers", "command", "args", "env"},
 	fmtZCode:    {"type", "url", "headers", "command", "args", "env"},
+	fmtDsh:      {"serverName", "transport", "url", "headers", "command", "args", "env"},
 }
 
 // merged is the entry magpie writes, with what the user added to the old
@@ -497,6 +536,13 @@ func (f *mcpFile) put(s *Server, old map[string]any) error {
 			m[e.k] = e.v
 		}
 		return edit.SetYAML(f.Path, edit.KV{Path: "extensions." + s.Name, Value: m})
+	case fmtDsh:
+		for _, p := range f.files() {
+			if err := dshPut(p, s.Name, o); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	return edit.SetJSON(f.Path, edit.KV{Path: f.key() + "." + s.Name, Value: o})
 }
@@ -504,6 +550,13 @@ func (f *mcpFile) put(s *Server, old map[string]any) error {
 // del takes the server by that name out of the file.
 func (f *mcpFile) del(name string) error {
 	switch f.Format {
+	case fmtDsh:
+		for _, p := range f.files() {
+			if err := dshDel(p, name); err != nil {
+				return err
+			}
+		}
+		return nil
 	case fmtCodex:
 		return delCodex(f.Path, name, true)
 	case fmtGoose:

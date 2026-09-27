@@ -501,6 +501,10 @@ func dshFiles(dir string) []string {
 	return []string{filepath.Join(dir, "config.yaml")}
 }
 
+// DshPatchFiles are the patch lists of the dsh whose home is dir, as magpie
+// writes them: every profile's (web's first), else config.yaml.
+func DshPatchFiles(dir string) []string { return dshFiles(dir) }
+
 // dshGetEffort reads the effort of magpie's llm-deepseek entry.
 func dshGetEffort(dir string) string {
 	_, items, err := dshRead(dshFiles(dir)[0])

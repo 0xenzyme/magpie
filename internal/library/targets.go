@@ -105,6 +105,15 @@ func targetOf(a *agent.Agent) *Target {
 		t.MCP = &mcpFile{Path: piMCP(d), Format: fmtPi}
 		t.MCPVia = "pi-mcp-adapter"
 		t.Skills = filepath.Join(d, "skills")
+	case "dsh":
+		// DeepSeek Harness reads $DSH_HOME/AGENTS.md and $DSH_HOME/skills;
+		// its MCP servers are @deepseek-ai/dsh-mcp-client rows its patch
+		// lists insert, every profile's
+		d := a.Dir
+		t.Instructions = filepath.Join(d, "AGENTS.md")
+		files := agent.DshPatchFiles(d)
+		t.MCP = &mcpFile{Path: files[0], Also: files[1:], Format: fmtDsh}
+		t.Skills = filepath.Join(d, "skills")
 	case "omp":
 		d := filepath.Join(h, ".omp", "agent")
 		t.Instructions = filepath.Join(d, "AGENTS.md")

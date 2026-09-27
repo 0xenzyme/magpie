@@ -74,9 +74,11 @@ func (l *Library) syncMCP(t *Target, b *backups, res *Result) {
 		return
 	}
 	write := func(what string, f func() error) bool {
-		if err := b.keep(id, t.MCP.Path); err != nil {
-			res.fail(id, what, err)
-			return false
+		for _, p := range t.MCP.files() {
+			if err := b.keep(id, p); err != nil {
+				res.fail(id, what, err)
+				return false
+			}
 		}
 		if err := f(); err != nil {
 			res.fail(id, what, err)
