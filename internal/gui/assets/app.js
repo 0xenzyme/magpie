@@ -4,11 +4,15 @@ const $$ = (s) => document.querySelectorAll(s);
 const params = new URLSearchParams(location.search);
 const mode = params.get("mode") || "window";
 document.body.classList.add(mode);
+// `magpie web`: the page in a browser tab, with no window of the app's
+// around it — it opens links itself, and what is the desktop's is left out
+const web = !!window.bootPrefs?.web;
+if (web) document.body.classList.add("web");
 // The Mac window draws its title bar inside the page (the traffic lights);
 // on Linux the page's header is the whole title bar (plainTitlebar), so it
 // has the name, the close button and a double-click to maximise.
-if (/^Mac/.test(navigator.platform)) document.body.classList.add("mac");
-if (/^Linux/.test(navigator.platform)) document.body.classList.add("linux");
+if (!web && /^Mac/.test(navigator.platform)) document.body.classList.add("mac");
+if (!web && /^Linux/.test(navigator.platform)) document.body.classList.add("linux");
 // The window is dragged by its header, and only where the header says so
 // (--wails-draggable), so the tabs and buttons in it stay plain clicks.
 // Outside the app — a browser on the gateway's page — there is no runtime.
@@ -50,6 +54,7 @@ const favoriteKey = (o) => o.ref || o.value;
 const isFavorite = (o) => modelFavorites.has(favoriteKey(o)) || modelFavorites.has(o.value);
 
 async function api(path, body) {
+  if (web && path === "open") { window.open(body.url, "_blank", "noopener"); return null; }
   const res = await fetch("/api/" + path, {
     method: body === undefined ? "GET" : "POST",
     headers: { "Content-Type": "application/json" },
@@ -3080,6 +3085,7 @@ async function startSignIn(agent, risky) {
   renderProviders();
   try {
     signing = await api("signin", { agent });
+    if (web && signing.url) api("open", { url: signing.url });
     renderProviders();
     followSignIn(signing.id);
   } catch (e) {
@@ -3968,8 +3974,9 @@ function renderSettings() {
   $("#themeSegs").replaceChildren(segs(THEMES.map(([id, name]) => [id, t(name)]), s.theme, (theme) => savePrefs({ ...keep, theme })));
   $("#langSegs").replaceChildren(segs(LOCALES.map(([id, name]) => [id, t(name)]), s.lang, (lang) => savePrefs({ ...keep, lang })));
   $("#traySegs").replaceChildren(segs(TRAYS.map(([id, name]) => [id, t(name)]), s.tray || "panel", (tray) => savePrefs({ ...keep, tray })));
-  // the Dock is the Mac's
+  // the Dock is the Mac's; the tray and the login item the app's
   $("#dockRow").hidden = !document.body.classList.contains("mac");
+  $("#traySegs").parentElement.hidden = $("#loginSegs").parentElement.hidden = web;
   $("#dockSegs").replaceChildren(segs([["off", t("Hide")], ["window", t("With window")], ["on", t("Show")]],
     s.dock ? "on" : s.dockWindow ? "window" : "off", (v) => savePrefs({ ...keep, dock: v === "on", dockWindow: v === "window" })));
   // the system's record, set on its own, not with the other choices

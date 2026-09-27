@@ -156,7 +156,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	// they came only with the settings, so the tabs showed English first
 	mux.HandleFunc("GET /boot.js", func(rw http.ResponseWriter, r *http.Request) {
 		s := settings.Load()
-		b, _ := json.Marshal(map[string]string{"lang": s.Lang, "theme": s.Theme})
+		b, _ := json.Marshal(map[string]any{"lang": s.Lang, "theme": s.Theme, "web": isWeb(w)})
 		rw.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		rw.Header().Set("Cache-Control", "no-store")
 		rw.Write(append(append([]byte("window.bootPrefs = "), b...), ";\n"...))

@@ -1,4 +1,4 @@
-//go:build linux && cgo && gtk3
+//go:build linux && cgo && gtk3 && !nogui
 
 package gui
 

@@ -1,0 +1,58 @@
+package main
+
+import (
+	"fmt"
+	"net"
+	"strings"
+
+	"github.com/yetone/magpie/internal/gateway"
+	"github.com/yetone/magpie/internal/gui"
+)
+
+// webAddr is where `magpie web` listens unless told: beside the gateway.
+const webAddr = "127.0.0.1:3430"
+
+// webCmd: magpie web [--addr host:port] [--lan] [--no-open] — the app's
+// window in a browser, for a computer that can't show the app.
+func webCmd(args []string) error {
+	addr, lan, open := webAddr, false, true
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--addr" && i+1 < len(args):
+			i++
+			addr = args[i]
+		case strings.HasPrefix(a, "--addr="):
+			addr = strings.TrimPrefix(a, "--addr=")
+		case a == "--lan":
+			lan = true
+		case a == "--no-open":
+			open = false
+		default:
+			return fmt.Errorf("magpie web: unknown %q · magpie web [--addr host:port] [--lan] [--no-open]", a)
+		}
+	}
+	if lan && addr == webAddr {
+		_, port, _ := net.SplitHostPort(webAddr)
+		addr = "0.0.0.0:" + port
+	}
+	w, err := gui.StartWeb(addr)
+	if err != nil {
+		return err
+	}
+	fmt.Println(green.Render("●"), "magpie web on", bold.Render(w.Link))
+	host, _, _ := net.SplitHostPort(w.Addr)
+	if ip := net.ParseIP(host); ip != nil && !ip.IsLoopback() {
+		_, port, _ := net.SplitHostPort(w.Addr)
+		key := w.Link[strings.Index(w.Link, "/?k="):]
+		for _, a := range gui.LANAddrs() {
+			fmt.Println(muted.Render("  on the network"), "http://"+net.JoinHostPort(a, port)+key)
+		}
+		fmt.Println(amber.Render("!"), "anyone with the link can change magpie and see its keys, and the network carries it unencrypted")
+	}
+	fmt.Println(muted.Render("  the link carries this run's key · gateway " + gateway.URL() + " · Ctrl-C to stop"))
+	if open {
+		openInBrowser(w.Link)
+	}
+	w.Wait()
+	return nil
+}

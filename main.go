@@ -31,6 +31,8 @@ const usage = `magpie — one place to pick every agent's model
   magpie tray                     start in the menu bar only
   magpie autostart [on|off]       open magpie (in the menu bar) when you log in, or say whether it does
   magpie tui                      the same thing, in the terminal
+  magpie web [--addr host:port] [--lan] [--no-open]
+                                  the app's window in a browser, with the gateway (no desktop needed: WSL, a server over SSH)
   magpie ls                       list detected agents and their settings
   magpie <agent>                  show one agent
   magpie <agent> <model>          set an agent's model   e.g. magpie claude deepseek/deepseek-chat
@@ -125,6 +127,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "tui":
 		return tui.Run()
+	case "web":
+		return webCmd(args[1:])
 	case "app", "gui":
 		return runGUI(true, "")
 	case "tray":

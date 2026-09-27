@@ -349,6 +349,7 @@ gateway translates.
 magpie                          # open the app: a window plus the menu bar icon
 magpie tray                     # menu bar icon only (use this in your login items)
 magpie tui                      # the same thing, in the terminal
+magpie web                      # the app's window in a browser (WSL, a server over SSH); --lan, --addr, --no-open
 magpie ls                       # list every agent and its current settings
 magpie claude opus              # set a model (agent names accept prefixes: cc, oc, gem …)
 magpie codex gpt-5.6-sol
