@@ -594,6 +594,7 @@ const I18N = {
     "Account balance": "账户余额",
     "saved · paste a new one to replace it": "已保存 · 粘贴新的即可替换",
     "optional · the account's system access token": "可选 · 账户的系统访问令牌",
+    "What the Balance URL is asked with in place of the key, when it wants the account's own token: a new-api relay's System Access Token, or a sub2api panel's login token (a JWT, sent as a Bearer); it is used for nothing else.": "余额接口需要账户自己的令牌时，用它代替 Key 去请求：new-api 中转站填「系统访问令牌」，sub2api 面板填登录令牌（JWT，会以 Bearer 发送）；不作他用。",
     "A key tells only what is left on itself. For the whole account's balance on the Usage page, generate a System Access Token in {p}'s settings and paste it here; it is used for nothing else.": "API key 只能查到它自己的剩余额度。要在用量页显示整个账户的余额，请在 {p} 的设置中生成系统访问令牌并粘贴到这里；它不作他用。",
     "Antigravity hasn't set this account up — hover for why": "Antigravity 还没为这个账号开通，悬停查看原因",
     "Resets {when}": "重置于 {when}",

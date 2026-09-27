@@ -541,7 +541,7 @@ func Balance(ctx context.Context, p Provider) (amount string, ok bool, err error
 				req.Header.Set(k, v)
 			}
 		}
-		req.Header.Set("Authorization", src.token)
+		req.Header.Set("Authorization", balanceAuthorization(src.token))
 	} else {
 		for k, v := range AuthHeaders(p, Chat) {
 			req.Header.Set(k, v)
@@ -668,4 +668,17 @@ func KeyBalances(ctx context.Context) []SubscriptionQuota {
 		c.Unlock()
 	}
 	return out
+}
+
+// balanceAuthorization is a balance token as its Authorization header: a
+// new-api access token goes as it is, a JWT (a sub2api panel's login token)
+// as a bearer, as does anything pasted with its scheme already in front.
+func balanceAuthorization(token string) string {
+	if strings.Contains(token, " ") {
+		return token
+	}
+	if strings.HasPrefix(token, "eyJ") && strings.Count(token, ".") == 2 {
+		return "Bearer " + token
+	}
+	return token
 }

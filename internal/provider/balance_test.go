@@ -201,3 +201,28 @@ func TestNamedBalanceWithAccessToken(t *testing.T) {
 		t.Fatalf("balance = %q %v %v", got, ok, err)
 	}
 }
+
+// A sub2api panel tells the account's balance to its login JWT, as a bearer.
+func TestNamedBalanceWithSub2APIJWT(t *testing.T) {
+	const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/user/profile" || r.Header.Get("Authorization") != "Bearer "+jwt {
+			http.Error(w, `{"code":401}`, http.StatusUnauthorized)
+			return
+		}
+		w.Write([]byte(`{"code":0,"data":{"balance":12.5}}`))
+	}))
+	defer srv.Close()
+	p := Provider{ID: "relay", Chat: srv.URL + "/v1", Key: "sk-one",
+		BalanceURL: srv.URL + "/api/v1/user/profile", BalancePath: "$data.balance", BalanceToken: jwt}
+	if got, ok, err := Balance(context.Background(), p); err != nil || !ok || got != "$12.50" {
+		t.Fatalf("balance = %q %v %v", got, ok, err)
+	}
+	p.BalanceToken = "Bearer " + jwt // pasted with its scheme
+	if got, _, err := Balance(context.Background(), p); err != nil || got != "$12.50" {
+		t.Fatalf("balance = %q %v", got, err)
+	}
+	if balanceAuthorization("tok") != "tok" {
+		t.Fatal("a new-api access token goes as it is")
+	}
+}

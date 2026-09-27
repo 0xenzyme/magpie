@@ -2414,7 +2414,10 @@ function renderEditor(p, presetID) {
       side.append(drop);
       pair.append(side);
     }
-    ed.append(...field(t("Account balance"), pair, t("A key tells only what is left on itself. For the whole account's balance on the Usage page, generate a System Access Token in {p}'s settings and paste it here; it is used for nothing else.", { p: pr?.name || p.name })));
+    const tokHelp = p.balanceURL
+      ? t("What the Balance URL is asked with in place of the key, when it wants the account's own token: a new-api relay's System Access Token, or a sub2api panel's login token (a JWT, sent as a Bearer); it is used for nothing else.")
+      : t("A key tells only what is left on itself. For the whole account's balance on the Usage page, generate a System Access Token in {p}'s settings and paste it here; it is used for nothing else.", { p: pr?.name || p.name });
+    ed.append(...field(t("Account balance"), pair, tokHelp));
   }
 
   // a relay that offers several regional endpoints, or a vendor whose plans

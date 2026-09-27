@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -38,6 +39,10 @@ func quotaCmd(args []string) error {
 		if len(only) == 0 || quotaMatches(q, only) {
 			qs = append(qs, q)
 		}
+	}
+	qs, err := withUntold(qs, only)
+	if err != nil {
+		return err
 	}
 	if asJSON {
 		b, _ := json.MarshalIndent(qs, "", "  ")
@@ -94,4 +99,22 @@ func quotaMatches(q provider.Quota, only []string) bool {
 		}
 	}
 	return false
+}
+
+// withUntold adds a line for each provider named that told nothing, saying
+// why, rather than leaving it out as if it weren't there; a name that is no
+// provider at all is an error.
+func withUntold(qs []provider.Quota, only []string) ([]provider.Quota, error) {
+	for _, o := range only {
+		if o == "subscription" || o == "plan" || o == "balance" || slices.ContainsFunc(qs, func(q provider.Quota) bool { return quotaMatches(q, []string{o}) }) {
+			continue
+		}
+		p, err := provider.Find(o)
+		if err != nil {
+			return nil, err
+		}
+		qs = append(qs, provider.Quota{Provider: p.ID, Name: p.Name, Kind: "balance", Windows: []provider.QuotaSpan{},
+			Error: "not configured · no balance endpoint known for it; set Balance URL and Balance field in its editor"})
+	}
+	return qs, nil
 }
