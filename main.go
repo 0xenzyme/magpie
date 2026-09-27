@@ -231,13 +231,22 @@ func set(a *agent.Agent, key, value string) error {
 	if err != nil {
 		return err
 	}
+	before := f.Get()
 	if err := a.Apply(f.Key, value); err != nil {
 		return err
 	}
+	// what the config reads now, not what was asked: an agent may name the
+	// model under a provider of its own (OpenCode's magpie-relay/…), and a
+	// value it had already is said to be so
+	now := f.Get()
+	shown := now
 	if value == "" {
-		value = muted.Render("default")
+		shown = muted.Render("default")
 	}
-	fmt.Println(green.Render("✓"), bold.Render(a.Name), muted.Render(f.Label), value)
+	if now == before {
+		shown += " " + muted.Render("(unchanged)")
+	}
+	fmt.Println(green.Render("✓"), bold.Render(a.Name), muted.Render(f.Label), shown)
 	if a.Notice != nil {
 		if n := a.Notice(); n != "" {
 			fmt.Println(muted.Render("  ↻ " + n))
