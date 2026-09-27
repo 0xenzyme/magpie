@@ -44,7 +44,12 @@ type SubscriptionQuota struct {
 	User     string        `json:"user,omitempty"` // the account, so two of one vendor tell apart
 	Windows  []QuotaWindow `json:"windows"`
 	Balance  string        `json:"balance,omitempty"` // what is left on an API key, instead of windows
-	Error    string        `json:"error,omitempty"`
+	// Until is when the plan's paid time ends: it renews then when Renew
+	// is "auto", is over when "off", and either when "" (the vendor
+	// doesn't say which).
+	Until *time.Time `json:"until,omitempty"`
+	Renew string     `json:"renew,omitempty"`
+	Error string     `json:"error,omitempty"`
 }
 
 var subscriptionUsageCache struct {
@@ -430,10 +435,29 @@ func codexSubscriptionUsage(ctx context.Context, path string) SubscriptionQuota 
 		return q
 	}
 	q.Plan, q.Windows, err = codexWindows(ctx, token, accountID)
+	if b, rerr := os.ReadFile(path); rerr == nil {
+		q.Until = codexUntil(b, time.Now())
+	}
 	if err != nil {
 		q.Error = err.Error()
 	}
 	return q
+}
+
+// codexUntil is when the ChatGPT plan of a Codex sign-in (auth.json) is
+// paid until, as its id token says: nil when it doesn't, or names a time
+// gone by — a token not refreshed since, which says nothing of now.
+func codexUntil(auth []byte, now time.Time) *time.Time {
+	var a codexAuth
+	if json.Unmarshal(auth, &a) != nil {
+		return nil
+	}
+	s := claimString(jwtClaims(a.Tokens.IDToken), "https://api.openai.com/auth", "chatgpt_subscription_active_until")
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil || !t.After(now) {
+		return nil
+	}
+	return &t
 }
 
 // codexWindows is the plan and allowance of the ChatGPT account token

@@ -3793,7 +3793,7 @@ function renderQuotas() {
     const card = el("div", "subscription-card" + (first.user ? " several" : ""));
     const head = el("div", "subscription-head");
     head.append(icon(first.icon), el("b", "", first.name));
-    if (!first.user && first.plan) head.append(el("span", "plan", first.plan));
+    if (!first.user && (first.plan || first.until)) head.append(planSpan(first));
     card.append(head);
     for (const sub of subs) {
       if (sub.user) {
@@ -3801,13 +3801,26 @@ function renderQuotas() {
         const u = el("span", "user", sub.user);
         u.title = sub.user;
         who.append(u);
-        if (sub.plan) who.append(el("span", "plan", sub.plan));
+        if (sub.plan || sub.until) who.append(planSpan(sub));
         card.append(who);
       }
       card.append(quotaWindows(sub));
     }
     subscriptions.append(card);
   }
+}
+
+// planTerm says when a plan's paid time ends: renewed then, over, or
+// either (the vendor doesn't say which), as short as a panel row needs.
+function planTerm(q) {
+  if (!q.until) return "";
+  const date = new Date(q.until).toLocaleDateString(locale === "zh" ? "zh-CN" : undefined, { month: "short", day: "numeric" });
+  return t(q.renew === "auto" ? "Renews {date}" : q.renew === "off" ? "Expires {date}" : "Until {date}", { date });
+}
+function planSpan(q) {
+  const s = el("span", "plan", [q.plan, planTerm(q)].filter(Boolean).join(" · "));
+  if (q.until) s.title = t(q.renew === "auto" ? "Renews {date}" : q.renew === "off" ? "Expires {date}" : "Until {date}", { date: new Date(q.until).toLocaleString() });
+  return s;
 }
 
 // The tray panel keeps every subscription's allowance in sight, a line per
@@ -3850,8 +3863,13 @@ function renderPanelQuota() {
 
 function panelQuotaRow(q) {
   const row = el("div", "pq-row");
-  const who = el("span", "pq-who", q.user || q.name);
-  row.title = [q.name, q.user, q.plan].filter(Boolean).join(" · ");
+  let who = el("span", "pq-who", q.user || q.name);
+  row.title = [q.name, q.user, q.plan, planTerm(q)].filter(Boolean).join(" · ");
+  if (q.until) {
+    // when the plan's paid time ends, under the account, the meters kept their width
+    who = el("span", "pq-who two");
+    who.append(el("span", "", q.user || q.name), el("span", "pq-term" + (q.renew === "off" ? " ends" : ""), planTerm(q)));
+  }
   row.append(icon(q.icon), who);
   const ws = el("span", "pq-ws");
   if (q.balance) {

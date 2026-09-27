@@ -512,6 +512,10 @@ body.window .field.solo { grid-column: auto; }
 .pq-row { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 12px; }
 .pq-row .ic { flex: none; }
 .pq-who { flex: 1 1 0; min-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-2); }
+.pq-who.two { display: flex; flex-direction: column; line-height: 1.25; padding: 2px 0; }
+.pq-who.two > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pq-term { font-size: 10px; color: var(--faint); }
+.pq-term.ends { color: var(--muted); }
 .pq-ws { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 14px; font-size: 10.5px; color: var(--muted); }
 .pq-w { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; min-width: 0; }
 .pq-n { max-width: 84px; overflow: hidden; text-overflow: ellipsis; }

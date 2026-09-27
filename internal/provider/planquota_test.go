@@ -137,6 +137,10 @@ func TestPlanQuotas(t *testing.T) {
 			w.Write([]byte(`{"success":true,"data":{"level":"lite","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":90}]}}`))
 		case "open.bigmodel.cn/api/monitor/usage/quota/limit glm-payg":
 			w.Write([]byte(`{"success":true,"data":{"limits":[]}}`))
+		case "open.bigmodel.cn/api/biz/subscription/list glm-a":
+			w.Write([]byte(`{"code":200,"success":true,"data":[{"productName":"GLM Coding Pro","status":"VALID","autoRenew":1,"nextRenewTime":"2026-10-18 10:00:00"}]}`))
+		case "open.bigmodel.cn/api/biz/subscription/list glm-b":
+			w.WriteHeader(http.StatusInternalServerError)
 		case "opencode.ai/zen/go/v1/usage Bearer go-k":
 			w.Write([]byte(`{"usage":{"rolling":{"percent":5,"resetsAt":"2026-09-25T20:00:00Z"}}}`))
 		default:
@@ -167,10 +171,11 @@ func TestPlanQuotas(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("cards: %+v", got)
 	}
-	if q := got["glm/work"]; q.Plan != "pro" || len(q.Windows) != 1 || q.Windows[0].Used != 20 {
+	if q := got["glm/work"]; q.Plan != "pro" || len(q.Windows) != 1 || q.Windows[0].Used != 20 ||
+		q.Until == nil || q.Until.UTC().Hour() != 2 || q.Renew != "auto" {
 		t.Errorf("first key: %+v", q)
 	}
-	if q := got["glm/home"]; q.Plan != "lite" || q.Windows[0].Used != 90 {
+	if q := got["glm/home"]; q.Plan != "lite" || q.Windows[0].Used != 90 || q.Until != nil || q.Error != "" {
 		t.Errorf("second key: %+v", q)
 	}
 	if q := got["go/"]; q.Name != "OpenCode Go" || len(q.Windows) != 1 || q.Windows[0].Name != "5 hours" {

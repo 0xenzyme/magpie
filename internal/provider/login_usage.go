@@ -6,6 +6,7 @@ package provider
 
 import (
 	"context"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -117,6 +118,7 @@ func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
 			if plan, q.Windows, err = codexWindows(ctx, tok, accountID); plan != "" {
 				q.Plan = plan
 			}
+			q.Until = codexUntil(codexLoginAuth(l), time.Now())
 		}
 	}
 	if err != nil {
@@ -137,4 +139,21 @@ func CodexUsedUp(ctx context.Context) bool {
 		}
 	}
 	return false
+}
+
+// codexLoginAuth is the auth.json of a ChatGPT account magpie knows: the
+// file Codex is signed in with, or the one kept for it.
+func codexLoginAuth(l Login) []byte {
+	if l.Active {
+		b, _ := os.ReadFile(codexAuthPath())
+		return b
+	}
+	loginsMu.Lock()
+	defer loginsMu.Unlock()
+	for _, x := range readLogins() {
+		if x.Agent == "codex" && strings.EqualFold(x.User, l.User) {
+			return x.Auth
+		}
+	}
+	return nil
 }

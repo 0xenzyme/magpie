@@ -78,6 +78,9 @@ func quotaTitle(q provider.Quota) string {
 	if q.Plan != "" {
 		t += " · " + q.Plan
 	}
+	if s := provider.PlanTerm(q.Until, q.Renew); s != "" {
+		t += " · " + s
+	}
 	if q.User != "" {
 		t += " · " + q.User
 	}

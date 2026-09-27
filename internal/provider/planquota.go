@@ -343,6 +343,9 @@ func PlanQuotas(ctx context.Context) []SubscriptionQuota {
 				q.Error = err.Error()
 			default:
 				q.Plan, q.Windows = plan, ws
+				if strings.HasSuffix(j.src.url, "/api/monitor/usage/quota/limit") { // Zhipu, Z.ai
+					q.Until, q.Renew = zhipuTerm(ctx, zcodeRoot(j.src.url), j.key)
+				}
 			}
 			got[i] = &q
 		}()

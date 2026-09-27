@@ -71,6 +71,10 @@ type Quota struct {
 	Windows  []QuotaSpan `json:"windows"`
 	Balance  string      `json:"balance,omitempty"`
 	Error    string      `json:"error,omitempty"`
+	// Until is when the plan's paid time ends, renewed then when Renew is
+	// "auto", over when "off", either when "".
+	Until *time.Time `json:"until,omitempty"`
+	Renew string     `json:"renew,omitempty"`
 }
 
 // QuotaSpan is one window of an allowance: how much of it is used and
@@ -93,7 +97,7 @@ func QuotaReport(ctx context.Context, now time.Time) []Quota {
 	}{{"subscription", subs}, {"plan", plans}, {"balance", balances}} {
 		for _, q := range g.qs {
 			r := Quota{Provider: q.Provider, Name: q.Name, Kind: g.kind, Plan: q.Plan, User: q.User,
-				Windows: []QuotaSpan{}, Balance: q.Balance, Error: q.Error}
+				Windows: []QuotaSpan{}, Balance: q.Balance, Error: q.Error, Until: q.Until, Renew: q.Renew}
 			for _, w := range q.Windows {
 				s := QuotaSpan{Name: w.Name, Used: w.Used, Remaining: max(0, 100-w.Used), ResetsAt: w.ResetsAt, Display: w.Display}
 				if s.ResetsAt == nil && w.ResetSecs > 0 {
@@ -106,4 +110,21 @@ func QuotaReport(ctx context.Context, now time.Time) []Quota {
 		}
 	}
 	return out
+}
+
+// PlanTerm says when a plan's paid time ends, "renews Oct 18", "expires
+// Oct 18" or "until Oct 18" when the vendor doesn't say which; "" when
+// it isn't known.
+func PlanTerm(until *time.Time, renew string) string {
+	if until == nil {
+		return ""
+	}
+	d := until.Local().Format("Jan 2")
+	switch renew {
+	case "auto":
+		return "renews " + d
+	case "off":
+		return "expires " + d
+	}
+	return "until " + d
 }

@@ -585,6 +585,10 @@ func quotaLines(qs []provider.SubscriptionQuota, asked, left bool, width int, no
 			plain += " · " + q.Plan
 			styled += sMuted.Render(" · " + q.Plan)
 		}
+		if t := provider.PlanTerm(q.Until, q.Renew); t != "" {
+			plain += " · " + t
+			styled += sFaint.Render(" · " + t)
+		}
 		if q.User != "" {
 			plain += " · " + q.User
 			styled += sFaint.Render(" · " + q.User)

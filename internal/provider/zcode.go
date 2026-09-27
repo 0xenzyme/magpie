@@ -33,6 +33,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -310,7 +311,64 @@ func zcodeQuota(ctx context.Context, l Login, k zcodeKey) SubscriptionQuota {
 		}
 		q.Windows = append(q.Windows, w)
 	}
+	q.Until, q.Renew = zhipuTerm(ctx, zcodeRoot(k.Base), k.Key)
 	return q
+}
+
+// zhipuTerm is how long a GLM Coding plan is paid for, from the
+// account's subscriptions as ZCode reads them: the valid one's next
+// renewal, a charge when it renews itself, else the end of its time — or
+// the last date its "valid" span names.
+func zhipuTerm(ctx context.Context, root, key string) (*time.Time, string) {
+	var subs []zhipuSubscription
+	if zcodeGet(ctx, root+"/api/biz/subscription/list", key, &subs) != nil {
+		return nil, ""
+	}
+	return zhipuTermOf(subs)
+}
+
+type zhipuSubscription struct {
+	Status    string `json:"status"`
+	Valid     string `json:"valid"`
+	AutoRenew any    `json:"autoRenew"` // true or 1
+	NextRenew string `json:"nextRenewTime"`
+}
+
+// zhipuDate finds the dates in a span like "2026-09-18 12:00:00-2026-10-18 12:00:00".
+var zhipuDate = regexp.MustCompile(`\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?`)
+
+// zhipuTime reads the plan's times, "2026-10-18 12:00:00" in Beijing.
+func zhipuTime(s string) *time.Time {
+	s = strings.Replace(strings.TrimSpace(s), " ", "T", 1)
+	cst := time.FixedZone("CST", 8*3600)
+	for _, f := range []string{"2006-01-02T15:04:05", "2006-01-02"} {
+		if t, err := time.ParseInLocation(f, s, cst); err == nil {
+			return &t
+		}
+	}
+	return nil
+}
+
+func zhipuTermOf(subs []zhipuSubscription) (*time.Time, string) {
+	for _, s := range subs {
+		if !strings.EqualFold(s.Status, "VALID") {
+			continue
+		}
+		auto := s.AutoRenew == true || s.AutoRenew == float64(1)
+		if t := zhipuTime(s.NextRenew); t != nil {
+			if auto {
+				return t, "auto"
+			}
+			return t, "off"
+		}
+		if ds := zhipuDate.FindAllString(s.Valid, -1); len(ds) > 0 && !auto {
+			if t := zhipuTime(ds[len(ds)-1]); t != nil {
+				return t, "off"
+			}
+		}
+		return nil, ""
+	}
+	return nil, ""
 }
 
 // zcodeSpan reads a limit's window: unit 3 counts hours, 6 weeks (and
