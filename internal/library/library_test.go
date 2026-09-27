@@ -723,6 +723,37 @@ func TestPiMCP(t *testing.T) {
 	}
 }
 
+// pi-mcp-adapter 3 reads mcp-adapter.json: with it installed, mcp.json is
+// moved there and the servers are written there; before it, mcp.json.
+func TestPiMCPAdapter3(t *testing.T) {
+	h := sandbox(t)
+	d := filepath.Join(h, ".pi/agent")
+	old, adapter := filepath.Join(d, "mcp.json"), filepath.Join(d, "mcp-adapter.json")
+	pkg := filepath.Join(d, "npm/node_modules/pi-mcp-adapter/package.json")
+	write(t, old, `{"mcpServers": {"mine": {"command": "npx", "args": ["x"]}}}`)
+	write(t, pkg, `{"name": "pi-mcp-adapter", "version": "2.9.1"}`)
+	if tg := targetByID("pi"); tg.MCP.Path != old {
+		t.Fatalf("with 2.9.1: %s", tg.MCP.Path)
+	}
+	write(t, pkg, `{"name": "pi-mcp-adapter", "version": "3.0.0"}`)
+	ok(t)(SaveServer("", Server{Name: "ev", Transport: "sse", URL: "https://example.com/sse", Agents: []string{"pi"}}))
+	if exists(old) {
+		t.Error("mcp.json left beside mcp-adapter.json")
+	}
+	var doc struct{ MCPServers map[string]map[string]any }
+	if err := json.Unmarshal([]byte(read(t, adapter)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.MCPServers["mine"] == nil || doc.MCPServers["ev"]["url"] != "https://example.com/sse" {
+		t.Errorf("mcp-adapter.json: %v", doc.MCPServers)
+	}
+	// once there, it is the file whatever is installed
+	write(t, pkg, `{"name": "pi-mcp-adapter", "version": "2.0.0"}`)
+	if tg := targetByID("pi"); tg.MCP.Path != adapter {
+		t.Errorf("after the move: %s", tg.MCP.Path)
+	}
+}
+
 // Claude Desktop is given only the servers it runs itself: a remote one is
 // its Connectors', and the page says so.
 func TestClaudeDesktopMCP(t *testing.T) {
