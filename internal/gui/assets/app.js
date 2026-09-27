@@ -684,7 +684,7 @@ if (mode === "panel") {
 // glide moves the panel's edge there over time instead of at once.
 function fit(extra = 0, glide) {
   if (mode !== "panel") return;
-  const h = $(".top").offsetHeight + $("#agents").offsetHeight + $(".profiles").offsetHeight + $(".foot").offsetHeight + 4 + extra;
+  const h = $(".top").offsetHeight + $("#agents").offsetHeight + $(".profiles").offsetHeight + $("#panelQuota").offsetHeight + $(".foot").offsetHeight + 4 + extra;
   if (h === fit.last) return;
   fit.last = h;
   const still = !glide || matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -701,6 +701,7 @@ async function load() {
     if (applyPrefs(state.settings) && view === "library") window.loadLibrary?.();
     tintPanel();
     renderAgents();
+    if (mode === "panel") { renderPanelQuota(); loadQuotas(); }
     // an open provider editor is someone typing: coming back to the window
     // must not rebuild it under them
     if ((view === "providers" || view === "gateway") && !(editing || adding)) await loadProviders();
@@ -3607,6 +3608,7 @@ function fmtCost(t) {
 const tokensOf = (t) => t.input + t.output;
 
 function renderQuotas() {
+  renderPanelQuota();
   const subscriptions = $("#subscriptionUsage");
   subscriptions.replaceChildren();
   // used or left: only there when some card has a window to read
@@ -3658,6 +3660,72 @@ function renderQuotas() {
     }
     subscriptions.append(card);
   }
+}
+
+// The tray panel keeps every subscription's allowance in sight, a line per
+// account under the agents: its two rolling windows, or its balance, the
+// rest on the Usage page. Its heading folds it away, remembered.
+let panelQuotaOpen = true;
+try { panelQuotaOpen = localStorage.getItem("magpie.panelQuota") !== "0"; } catch {}
+function renderPanelQuota() {
+  const box = $("#panelQuota");
+  if (mode !== "panel" || !box) return;
+  const subs = (quotas || []).filter((q) => q.balance || q.error || q.windows?.length);
+  box.hidden = !!quotas && !subs.length;
+  box.replaceChildren();
+  if (box.hidden) { fit(); return; }
+  const head = el("button", "pq-head" + (panelQuotaOpen ? " open" : ""));
+  head.type = "button";
+  head.setAttribute("aria-expanded", String(panelQuotaOpen));
+  const c = el("span", "chev");
+  c.append(svg(CHEV, 11, 1.7));
+  head.append(el("span", "label", t("Usage")), c);
+  head.title = t(panelQuotaOpen ? "Hide usage" : "Show usage");
+  head.onclick = () => {
+    panelQuotaOpen = !panelQuotaOpen;
+    try { localStorage.setItem("magpie.panelQuota", panelQuotaOpen ? "1" : "0"); } catch {}
+    renderPanelQuota();
+  };
+  box.append(head);
+  if (panelQuotaOpen) {
+    const list = el("div", "pq-list");
+    if (!quotas) {
+      const row = el("div", "pq-row");
+      row.append(el("span", "skeleton sk-aq"), el("span", "skeleton sk-aq"));
+      list.append(row);
+    }
+    for (const q of subs) list.append(panelQuotaRow(q));
+    box.append(list);
+  }
+  fit();
+}
+
+function panelQuotaRow(q) {
+  const row = el("div", "pq-row");
+  const who = el("span", "pq-who", q.user || q.name);
+  row.title = [q.name, q.user, q.plan].filter(Boolean).join(" · ");
+  row.append(icon(q.icon), who);
+  const ws = el("span", "pq-ws");
+  if (q.balance) {
+    ws.append(el("span", "pq-bal", t("Balance")), el("b", "", q.balance));
+  } else if (q.error) {
+    ws.append(el("span", "pq-none", quotaError(q.error)));
+    row.title += "\n" + q.error;
+  } else {
+    for (const w of q.windows.slice(0, 2)) {
+      const used = Math.max(0, Math.min(100, w.used));
+      const m = el("span", "pq-w" + (used >= 90 ? " full" : ""));
+      const track = el("span", "pq-track");
+      const fill = el("i");
+      fill.style.width = quotaFill(w) + "%";
+      track.append(fill);
+      m.append(el("span", "pq-n", t(w.name)), track, el("b", "", quotaFill(w) + "%"));
+      m.title = t(w.name) + " · " + quotaText(w) + (w.resetsAt ? "\n" + t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() }) : "");
+      ws.append(m);
+    }
+  }
+  row.append(ws);
+  return row;
 }
 
 // quotaWindows: one account's allowance as meters, or why there are none.

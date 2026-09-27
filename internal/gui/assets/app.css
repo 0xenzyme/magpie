@@ -451,6 +451,27 @@ body.window .field.solo { grid-column: auto; }
 .row.stat .cost { flex: none; min-width: 58px; text-align: right; color: var(--green); font-variant-numeric: tabular-nums; font-size: 12px; }
 .usage-note { padding: 10px 4px 2px; font-size: 11px; color: var(--faint); user-select: text; -webkit-user-select: text; }
 
+/* ---- the panel's usage, a line per account ------------------------------- */
+.panel-quota { flex: none; padding: 6px 4px 2px; }
+.pq-head { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; background: none; border: 0; color: var(--muted); cursor: default; }
+.pq-head .chev { display: inline-flex; transform: rotate(-90deg); transition: transform .2s; }
+.pq-head.open .chev { transform: none; }
+.pq-list { display: flex; flex-direction: column; gap: 1px; padding-top: 4px; }
+.pq-row { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 12px; }
+.pq-row .ic { flex: none; }
+.pq-who { flex: 1 1 0; min-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-2); }
+.pq-ws { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 14px; font-size: 10.5px; color: var(--muted); }
+.pq-w { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; min-width: 0; }
+.pq-n { max-width: 84px; overflow: hidden; text-overflow: ellipsis; }
+.pq-track { width: 44px; height: 4px; border-radius: 2px; background: var(--pill); overflow: hidden; }
+.pq-track i { display: block; height: 100%; border-radius: inherit; background: var(--fg-2); }
+.pq-w b, .pq-ws > b { min-width: 28px; text-align: right; color: var(--fg-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pq-w.full b { color: var(--fg); }
+.pq-w.full .pq-track i { background: var(--fg); }
+.pq-none { color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pq-row .skeleton.sk-aq { width: 110px; height: 8px; border-radius: 4px; }
+#view-agents.loading .panel-quota { visibility: hidden; }
+
 /* ---- profiles ------------------------------------------------------------- */
 .profiles { display: flex; align-items: center; gap: 10px; padding: 10px 4px 2px; min-height: 36px; flex: none; }
 .profiles .label { flex: none; }
