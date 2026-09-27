@@ -49,7 +49,7 @@ type Bundle struct {
 	App       string                     `json:"app,omitempty"` // the magpie that made it
 	Keys      bool                       `json:"keys"`          // whether the providers carry their keys
 	Providers []provider.Provider        `json:"providers"`
-	Icons     map[string][]byte          `json:"icons,omitempty"` // pictures picked for providers, by file name
+	Icons     map[string][]byte          `json:"icons,omitempty"`  // pictures picked for providers, by file name
 	Groups    []provider.Group           `json:"groups,omitempty"` // the user's model groups
 	Settings  *settings.Settings         `json:"settings,omitempty"`
 	Profiles  map[string]profile.Profile `json:"profiles,omitempty"`
@@ -237,7 +237,7 @@ func Restore(b Bundle, parts Parts) (Result, error) {
 	if parts.Settings && b.Settings != nil {
 		// the window's size and the proxy are this machine's own
 		s, cur := *b.Settings, settings.Load()
-		s.Window, s.Proxy, s.Dock = cur.Window, cur.Proxy, cur.Dock
+		s.Window, s.Proxy, s.Dock, s.DockWindow = cur.Window, cur.Proxy, cur.Dock, cur.DockWindow
 		if err := settings.Save(s); err != nil {
 			return r, err
 		}

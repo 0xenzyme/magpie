@@ -66,6 +66,7 @@ func (h *host) ShowMain(view string) {
 	if view != "" {
 		h.main.SetURL("/?view=" + view + h.query)
 	}
+	h.dock(settings.Load(), true)
 	h.main.Show()
 	h.main.Focus()
 }
@@ -76,10 +77,18 @@ func (h *host) Import(link string) {
 	h.whenReady(func() {
 		h.panel.Hide()
 		h.main.SetURL("/?view=providers&import=" + id + h.query)
+		h.dock(settings.Load(), true)
 		h.main.Show()
 		h.main.Focus()
 	})
 }
+
+// dock puts magpie in the Dock or takes it out as s says, with the window
+// shown or not: always, never, or while the window is.
+func (h *host) dock(s settings.Settings, shown bool) {
+	setDock(s.Dock || s.DockWindow && shown, shown)
+}
+
 func (h *host) Quit()                        { h.app.Quit() }
 func (h *host) OpenURL(url string)           { _ = h.app.Browser.OpenURL(url) }
 func (h *host) OpenFolder(path string) error { return openFolder(h.app, path) }
@@ -152,7 +161,7 @@ func Run(version string, showMain bool, link string) error {
 		ErrorHandler: func(err error) { log.Println("magpie:", err) },
 	})
 
-	onDock = setDock
+	onDock = func(s settings.Settings) { h.dock(s, h.main.IsVisible()) }
 	// The Dock icon opens the window. Wails would show every hidden window
 	// on it, the panel too, so the hook answers first and stops it.
 	h.app.Event.RegisterApplicationEventHook(events.Mac.ApplicationShouldHandleReopen, func(e *application.ApplicationEvent) {
@@ -229,6 +238,7 @@ func Run(version string, showMain bool, link string) error {
 	// Closing the window keeps the tray alive; quitting is a menu action.
 	h.main.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		h.main.Hide()
+		h.dock(settings.Load(), false)
 		e.Cancel()
 	})
 

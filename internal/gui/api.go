@@ -126,9 +126,9 @@ func settingsState() settingsJSON {
 	return s
 }
 
-// onDock puts the app in the Mac's Dock or takes it out, when the Settings
-// page changes that; set by the process that has the app.
-var onDock func(bool)
+// onDock puts the app in the Mac's Dock or takes it out as the settings say,
+// when the Settings page changes them; set by the process that has the app.
+var onDock func(settings.Settings)
 
 // assetTypes are the page's own files' types. The file server takes them
 // from Windows' registry, which another program may have changed — an SVG
@@ -312,8 +312,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			fail(rw, err)
 			return
 		}
-		if in.Dock != cur.Dock && onDock != nil {
-			onDock(in.Dock)
+		if (in.Dock != cur.Dock || in.DockWindow != cur.DockWindow) && onDock != nil {
+			onDock(in)
 		}
 		writeJSON(rw, settingsState())
 	})

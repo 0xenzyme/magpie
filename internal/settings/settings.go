@@ -25,6 +25,10 @@ type Settings struct {
 	// Dock keeps magpie in the Mac's Dock as well as the menu bar, for a
 	// menu bar too full to show its icon.
 	Dock bool `json:"dock,omitempty"`
+	// DockWindow shows it in the Dock only while its window is open, so
+	// Cmd-Tab reaches the window without an icon kept there the rest of
+	// the time. Dock wins over it.
+	DockWindow bool `json:"dockWindow,omitempty"`
 	// Proxy for magpie's own requests to vendors: "" follows the
 	// environment and then the system, "direct" uses none, anything else
 	// is the proxy (http://, https:// or socks5://; host:port means http).

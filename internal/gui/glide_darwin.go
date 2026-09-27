@@ -78,12 +78,15 @@ static int tintPanel(void *w, int r, int g, int b, int a, int ms) {
 }
 
 // A Dock icon is the Regular activation policy, none is Accessory. Leaving
-// the Dock deactivates the app, so it is brought back to the front after,
-// with the window the Settings page is in.
-static void setDock(int on) {
+// the Dock deactivates the app, so with front set it is brought back to the
+// front after, with the window the Settings page is in; a window just closed
+// leaves it where it is.
+static void setDock(int on, int front) {
 	dispatch_async(dispatch_get_main_queue(), ^{
-		[NSApp setActivationPolicy:on ? NSApplicationActivationPolicyRegular : NSApplicationActivationPolicyAccessory];
-		if (!on) [NSApp activateIgnoringOtherApps:YES];
+		NSApplicationActivationPolicy p = on ? NSApplicationActivationPolicyRegular : NSApplicationActivationPolicyAccessory;
+		if ([NSApp activationPolicy] == p) return;
+		[NSApp setActivationPolicy:p];
+		if (front) [NSApp activateIgnoringOtherApps:YES];
 	});
 }
 */
@@ -119,8 +122,9 @@ func dockPolicy(on bool) application.ActivationPolicy {
 	return application.ActivationPolicyAccessory
 }
 
-// setDock shows magpie in the Dock or takes it out, at once.
-func setDock(on bool) { C.setDock(C.int(boolInt(on))) }
+// setDock shows magpie in the Dock or takes it out, at once, bringing it to
+// the front after when front.
+func setDock(on, front bool) { C.setDock(C.int(boolInt(on)), C.int(boolInt(front))) }
 
 func boolInt(b bool) int {
 	if b {
