@@ -3880,10 +3880,13 @@ function panelQuotaRow(q) {
 // beside it, so windows side by side read alike rather than one count up
 // by its name and the next a line below (#90)
 const quotaFit = new ResizeObserver((es) => {
+  // a count's own width, its parts laid end to end: once stacked it spans
+  // the row and may be two lines, so its box no longer says
+  const wide = (e) => [...e.children].reduce((w, c) => w + c.getBoundingClientRect().width, 0) + 4 * (e.children.length - 1);
   for (const { target: g } of es) {
     const wraps = [...g.querySelectorAll(".quota-labels")].some((l) => {
       const [name, n] = l.children;
-      return name.scrollWidth + 6 + n.scrollWidth > l.clientWidth;
+      return name.getBoundingClientRect().width + 6 + wide(n) > l.clientWidth;
     });
     g.classList.toggle("stacked", wraps);
   }
@@ -3906,7 +3909,12 @@ function quotaWindows(sub) {
   for (const w of sub.windows) {
     const quota = el("div", "quota");
     const labels = el("div", "quota-labels");
-    const n = el("button", "quota-n", quotaText(w));
+    // the count and its share in parts, so a count too long for its
+    // window's width goes to a second line at the · rather than cut short
+    const n = el("button", "quota-n");
+    const [count, share] = quotaText(w).split(" · ");
+    n.append(el("span", "", share ? count + " ·" : count));
+    if (share) n.append(" ", el("span", "", share));
     n.title = quotaText(w) + "\n" + t(quotaLeft ? "Show how much of each window is used" : "Show how much of each window is left");
     n.onclick = () => setQuotaLeft(!quotaLeft);
     labels.append(el("span", "", t(w.name)), n);
