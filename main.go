@@ -32,6 +32,7 @@ const usage = `magpie — one place to pick every agent's model
   magpie tui                      the same thing, in the terminal
   magpie web [--addr host:port] [--lan] [--no-open]
                                   the app's window in a browser, with the gateway (no desktop needed: WSL, a server over SSH)
+                                  a new key each run; MAGPIE_WEB_KEY (16+ letters, digits, - . _ ~) keeps one, signed in for 400 days
   magpie ls                       list detected agents and their settings
   magpie <agent>                  show one agent
   magpie <agent> <model>          set an agent's model   e.g. magpie claude deepseek/deepseek-chat

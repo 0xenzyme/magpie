@@ -29,7 +29,7 @@ func webCmd(args []string) error {
 		case a == "--no-open":
 			open = false
 		default:
-			return fmt.Errorf("magpie web: unknown %q · magpie web [--addr host:port] [--lan] [--no-open]", a)
+			return fmt.Errorf("magpie web: unknown %q · magpie web [--addr host:port] [--lan] [--no-open], MAGPIE_WEB_KEY to keep one key", a)
 		}
 	}
 	if lan && addr == webAddr {
@@ -50,7 +50,7 @@ func webCmd(args []string) error {
 		}
 		fmt.Println(amber.Render("!"), "anyone with the link can change magpie and see its keys, and the network carries it unencrypted")
 	}
-	carries := "this run's key"
+	carries := "this run's key (MAGPIE_WEB_KEY keeps one across runs)"
 	if os.Getenv("MAGPIE_WEB_KEY") != "" {
 		carries = "MAGPIE_WEB_KEY"
 	}
