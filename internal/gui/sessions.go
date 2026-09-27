@@ -1,0 +1,103 @@
+package gui
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"os"
+	"os/exec"
+	"runtime"
+	"strconv"
+	"time"
+
+	"github.com/yetone/magpie/internal/agent"
+	"github.com/yetone/magpie/internal/sessions"
+)
+
+// sessionJSON is a session with what the UI needs to draw its agent.
+type sessionJSON struct {
+	sessions.Session
+	Name string `json:"name"`
+	Icon string `json:"icon"`
+}
+
+type sessionsJSON struct {
+	Sessions []sessionJSON `json:"sessions"`
+	// Terminal is set where magpie can open Terminal on the session: the
+	// Mac app, not a browser tab that may be on another computer.
+	Terminal bool     `json:"terminal"`
+	Dirs     []string `json:"dirs"` // where they were read from
+}
+
+func sessionRoutes(mux *http.ServeMux, w Windows) {
+	mux.HandleFunc("GET /api/sessions", func(rw http.ResponseWriter, r *http.Request) {
+		n, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		agents := map[string]*agent.Agent{}
+		for _, a := range agent.Clients() {
+			agents[a.ID] = a
+		}
+		out := sessionsJSON{Sessions: []sessionJSON{}, Terminal: runtime.GOOS == "darwin" && !isWeb(w),
+			Dirs: []string{tilde(sessions.ClaudeDir()), tilde(sessions.CodexDir())}}
+		for _, s := range sessions.List(n) {
+			j := sessionJSON{Session: s, Name: s.Agent, Icon: "generic"}
+			if a := agents[s.Agent]; a != nil {
+				j.Name, j.Icon = a.Name, a.Icon
+			}
+			j.Path = tilde(j.Path)
+			out.Sessions = append(out.Sessions, j)
+		}
+		writeJSON(rw, out)
+	})
+	// terminal opens Terminal on a session's resume command. The command is
+	// made here from the session as listed, never taken from the page.
+	mux.HandleFunc("POST /api/sessions/terminal", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ Agent, ID string }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		if runtime.GOOS != "darwin" || isWeb(w) {
+			fail(rw, errors.New("opening Terminal is only for the Mac app"))
+			return
+		}
+		s, ok := sessions.Find(in.Agent, in.ID)
+		if !ok || s.Resume == "" {
+			fail(rw, errors.New("no such session"))
+			return
+		}
+		if err := openTerminal(s.Resume); err != nil {
+			fail(rw, err)
+			return
+		}
+		rw.WriteHeader(http.StatusNoContent)
+	})
+}
+
+// openTerminal runs a command in a new Terminal window, through a .command
+// file Terminal opens as it would a double-click: no Automation consent.
+// The shell is left open when the agent quits.
+func openTerminal(command string) error {
+	f, err := os.CreateTemp("", "magpie-resume-*.command")
+	if err != nil {
+		return err
+	}
+	script := "#!/bin/sh\n" + command + "\nexec \"${SHELL:-/bin/zsh}\" -l\n"
+	_, err = f.WriteString(script)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(f.Name(), 0o700)
+	}
+	if err != nil {
+		os.Remove(f.Name())
+		return err
+	}
+	if err := exec.Command("open", "-a", "Terminal", f.Name()).Run(); err != nil {
+		os.Remove(f.Name())
+		return err
+	}
+	// Terminal has read it long before
+	time.AfterFunc(time.Minute, func() { os.Remove(f.Name()) })
+	return nil
+}

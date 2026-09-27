@@ -3619,6 +3619,8 @@ const PERIODS = [["today", "Today"], ["7d", "7 days"], ["30d", "30 days"], ["all
 // never waits for them. They don't depend on the period either.
 let quotas = null;
 async function loadUsage() {
+  renderUsageTab();
+  if (usageTab === "sessions") return loadSessions();
   renderUsageLoading();
   loadQuotas();
   usage = await api("usage?period=" + period);
@@ -3943,6 +3945,248 @@ function renderUsage() {
   list("usageModels", u.models);
   $("#usageNote").textContent = t("Counted from the providers' own usage reports on every call through the gateway · {path}", { path: u.path });
 }
+
+// ---------- sessions ----------
+//
+// The agents' own sessions, read from their session files: what each cost,
+// and the command that picks it up again. A segment of the Usage page.
+
+const USAGE_TABS = [["usage", "Overview"], ["sessions", "Sessions"]];
+let usageTab = "usage";
+try { if (localStorage.getItem("magpie.usageTab") === "sessions") usageTab = "sessions"; } catch {}
+let sessions = null; // { sessions, terminal, dirs }
+let sessAgent = "all";
+let sessQuery = "";
+const sessOpen = new Set(); // agent:id of the sessions opened to their details
+
+function renderUsageTab() {
+  const seg = $("#usageTab");
+  seg.replaceChildren();
+  for (const [id, name] of USAGE_TABS) {
+    const b = el("button", "opt" + (id === usageTab ? " on" : ""), t(name));
+    b.onclick = () => {
+      if (id === usageTab) return;
+      usageTab = id;
+      try { localStorage.setItem("magpie.usageTab", id); } catch {}
+      $("#usageCost").replaceChildren();
+      loadUsage().catch((e) => status(e.message, "err"));
+    };
+    seg.append(b);
+  }
+  slide(seg, "usageTab");
+  const on = usageTab === "sessions";
+  $("#period").hidden = on;
+  $("#usagePane").hidden = on;
+  $("#sessionsPane").hidden = !on;
+}
+
+async function loadSessions() {
+  if (!sessions) renderSessionsLoading();
+  const s = await api("sessions");
+  if (sessions && JSON.stringify(s) === JSON.stringify(sessions)) return;
+  sessions = s;
+  if (view === "usage" && usageTab === "sessions") renderSessions();
+}
+
+function renderSessionsLoading() {
+  const view = $("#view-usage");
+  view.classList.add("loading");
+  view.setAttribute("aria-busy", "true");
+  $("#usageCost").replaceChildren(el("span", "skeleton sk-cost"));
+  $("#sessAgent").replaceChildren();
+  const stats = $("#sessStats");
+  stats.classList.remove("empty");
+  stats.replaceChildren();
+  for (let i = 0; i < 4; i++) {
+    const tile = el("div", "kpi loading-kpi");
+    tile.append(el("span", "skeleton sk-number"), el("span", "skeleton sk-label"));
+    stats.append(tile);
+  }
+  const list = $("#sessList");
+  list.hidden = false;
+  list.replaceChildren();
+  for (let i = 0; i < 4; i++) {
+    const r = el("div", "row sess-sk");
+    r.append(el("span", "skeleton sk-title"), el("span", "skeleton sk-line short"));
+    list.append(r);
+  }
+  $("#sessNote").textContent = t("Reading the agents' session files…");
+}
+
+const sessKey = (s) => s.agent + ":" + s.id;
+const sessTokens = (s) => s.input + s.output;
+// a session's cost: "—" when none of its models has a known price
+function sessCost(s) {
+  if (!s.models.some((m) => m.priced && (m.input || m.output || m.cache_read || m.cache_write))) return "—";
+  return "≈" + fmtCost({ cost: s.cost, unpriced: s.unpriced });
+}
+function ago(when) {
+  const sec = (new Date(when) - Date.now()) / 1000;
+  const rtf = new Intl.RelativeTimeFormat(locale === "zh" ? "zh-CN" : "en", { numeric: "auto" });
+  for (const [unit, n] of [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]]) {
+    if (Math.abs(sec) >= n) return rtf.format(Math.round(sec / n), unit);
+  }
+  return t("just now");
+}
+function stamp(when) {
+  return new Date(when).toLocaleString(locale === "zh" ? "zh-CN" : undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+const baseName = (p) => (p || "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
+
+function renderSessions() {
+  const view = $("#view-usage");
+  view.classList.remove("loading");
+  view.removeAttribute("aria-busy");
+  const all = sessions?.sessions || [];
+
+  // one segment per agent that has sessions
+  const agents = [...new Map(all.map((s) => [s.agent, s.name])).entries()];
+  if (sessAgent !== "all" && !agents.some(([id]) => id === sessAgent)) sessAgent = "all";
+  const seg = $("#sessAgent");
+  seg.replaceChildren();
+  seg.hidden = agents.length < 2;
+  for (const [id, name] of [["all", t("All")], ...agents]) {
+    const b = el("button", "opt" + (id === sessAgent ? " on" : ""), name);
+    b.onclick = () => { sessAgent = id; renderSessions(); };
+    seg.append(b);
+  }
+  slide(seg, "sessAgent");
+
+  const q = sessQuery.trim().toLowerCase();
+  const list = all.filter((s) => (sessAgent === "all" || s.agent === sessAgent) &&
+    (!q || [s.title, s.cwd, s.id, s.name, ...s.models.map((m) => m.model)].some((x) => (x || "").toLowerCase().includes(q))));
+
+  // the total of what is listed
+  const tot = { input: 0, output: 0, cache_read: 0, cache_write: 0, cost: 0, unpriced: 0 };
+  for (const s of list) {
+    for (const k of ["input", "output", "cache_read", "cache_write", "cost"]) tot[k] += s[k];
+    if (sessCost(s) === "—" ? sessTokens(s) : s.unpriced) tot.unpriced++;
+  }
+  const cost = $("#usageCost");
+  cost.replaceChildren();
+  cost.title = "";
+  const c = tot.cost ? fmtCost(tot) : "";
+  if (c) {
+    cost.append(el("b", "", "≈" + c), el("span", "", t("list price")));
+    cost.title = tot.unpriced ? t(tot.unpriced === 1 ? "{n} session used a model with no known price; its share is not counted" : "{n} sessions used a model with no known price; their share is not counted", { n: tot.unpriced }) : t("At each model's list price on models.dev");
+  }
+
+  const stats = $("#sessStats");
+  stats.replaceChildren();
+  const box = $("#sessList");
+  box.replaceChildren();
+  if (!list.length) {
+    stats.classList.add("empty");
+    stats.append(el("div", "none", all.length ? t("No session matches.") : t("No sessions yet. Claude Code's and Codex's sessions on this computer show up here, with what each cost and the command that resumes it.")));
+    box.hidden = true;
+  } else {
+    stats.classList.remove("empty");
+    box.hidden = false;
+    const tile = (n, label, sub, title) => {
+      const e = el("div", "kpi");
+      if (title) e.title = title;
+      e.append(el("b", "", n), el("span", "", label));
+      if (sub) e.append(el("small", "", sub));
+      stats.append(e);
+    };
+    const projects = new Set(list.map((s) => s.cwd).filter(Boolean)).size;
+    tile(String(list.length), t(list.length === 1 ? "session" : "sessions"), t(projects === 1 ? "{n} folder" : "{n} folders", { n: projects }));
+    tile(fmtN(tot.input + tot.output), t("tokens"), t("{a} in · {b} out", { a: fmtN(tot.input), b: fmtN(tot.output) }));
+    const prompt = tot.input + tot.cache_read;
+    tile(fmtN(tot.cache_read), t("cache read"), tot.cache_read && prompt ? t("hit rate {p}", { p: Math.round(100 * tot.cache_read / prompt) + "%" }) : "", tot.cache_write ? t("{n} written", { n: fmtN(tot.cache_write) }) : "");
+    tile(c ? "≈" + c : "—", t("cost"), t("at list price"));
+    for (const s of list) box.append(sessionItem(s));
+  }
+  const dirs = (sessions?.dirs || []).join(" · ");
+  $("#sessNote").textContent = t("Read from the agents' own session files, the latest {n} by activity · {dirs}", { n: all.length, dirs });
+}
+
+function sessionItem(s) {
+  const key = sessKey(s);
+  const item = el("div", "sess-item" + (sessOpen.has(key) ? " open" : ""));
+  const r = el("div", "row sess");
+  r.append(icon(s.icon || "generic"));
+  const who = el("div", "who");
+  who.append(el("div", "name", s.title || t("(no prompt)")));
+  const sub = el("div", "sub", [s.cwd ? baseName(s.cwd) : "", s.models.slice(0, 2).map((m) => m.model).join(", ") + (s.models.length > 2 ? " +" + (s.models.length - 2) : ""), ago(s.last)].filter(Boolean).join(" · "));
+  sub.title = s.cwd || "";
+  who.append(sub);
+  r.append(who);
+  const num = el("div", "num");
+  num.append(el("b", "", fmtN(sessTokens(s))), el("small", "", t("{a} in · {b} out", { a: fmtN(s.input), b: fmtN(s.output) }) + (s.cache_read ? " · " + t("{n} cached", { n: fmtN(s.cache_read) }) : "")));
+  r.append(num);
+  const sc = sessCost(s);
+  const cost = el("div", "cost" + (sc === "—" ? " none" : ""), sc);
+  if (sc === "—") cost.title = t("No known price for {models}", { models: s.models.map((m) => m.model).join(", ") || "—" });
+  else if (s.unpriced) cost.title = t("Not counted: {models}, with no known price", { models: s.models.filter((m) => !m.priced).map((m) => m.model).join(", ") });
+  r.append(cost);
+  if (s.resume) {
+    const res = el("button", "sess-resume", t("Resume"));
+    res.title = t("Copy the command that resumes it: {cmd}", { cmd: s.resume });
+    res.onclick = async (ev) => {
+      ev.stopPropagation();
+      await copy(s.resume, t("Resume command"));
+      res.textContent = t("Copied");
+      res.classList.add("done");
+      clearTimeout(res.copiedT);
+      res.copiedT = setTimeout(() => { res.textContent = t("Resume"); res.classList.remove("done"); }, 1400);
+    };
+    r.append(res);
+    if (sessions?.terminal) {
+      const term = el("button", "copy sess-term");
+      term.title = t("Open in Terminal");
+      term.append(svg("M3 4.5 6 7.5 3 10.5M7.5 11.5h5.5", 13, 1.6));
+      term.onclick = (ev) => {
+        ev.stopPropagation();
+        api("sessions/terminal", { agent: s.agent, id: s.id }).then(() => status(t("Opened in Terminal"), "ok"), (e) => status(e.message, "err"));
+      };
+      r.append(term);
+    }
+  }
+  r.onclick = () => {
+    if (window.getSelection()?.toString()) return;
+    if (sessOpen.has(key)) sessOpen.delete(key); else sessOpen.add(key);
+    item.replaceWith(sessionItem(s));
+  };
+  item.append(r);
+  if (sessOpen.has(key)) item.append(sessionDetail(s));
+  return item;
+}
+
+function sessionDetail(s) {
+  const d = el("div", "sess-detail");
+  const line = (label, value, extra) => {
+    const l = el("div", "sess-line");
+    l.append(el("span", "k", label));
+    const v = el("span", "v", value);
+    l.append(v);
+    if (extra) l.append(extra);
+    d.append(l);
+  };
+  line(t("When"), stamp(s.start) + " – " + stamp(s.last));
+  if (s.cwd) line(t("Folder"), s.cwd);
+  line(t("Session"), s.id, copyBtn(s.id, t("Session id")));
+  if (s.resume) {
+    const code = el("code", "", s.resume);
+    const l = el("div", "sess-line");
+    l.append(el("span", "k", t("Resume")), code, copyBtn(s.resume, t("Resume command")));
+    d.append(l);
+  }
+  if (s.models.length) {
+    const m = el("div", "sess-models");
+    for (const x of s.models) {
+      m.append(el("span", "model", x.model),
+        el("span", "n", t("{a} in · {b} out", { a: fmtN(x.input), b: fmtN(x.output) }) + (x.cache_read ? " · " + t("{n} cached", { n: fmtN(x.cache_read) }) : "") + (x.cache_write ? " · " + t("{n} written", { n: fmtN(x.cache_write) }) : "")),
+        el("span", "c" + (x.priced ? "" : " none"), x.priced ? "≈" + fmtCost({ cost: x.cost }) : "—"));
+    }
+    d.append(m);
+  }
+  line(t("File"), s.path);
+  return d;
+}
+
+$("#sessQ").oninput = (e) => { sessQuery = e.target.value; if (sessions) renderSessions(); };
+$("#sessQ").onkeydown = (e) => { if (e.key === "Escape" && e.target.value) { e.stopPropagation(); e.target.value = ""; sessQuery = ""; if (sessions) renderSessions(); } };
 
 // ---------- settings ----------
 //
@@ -4581,12 +4825,18 @@ setInterval(async () => {
 // vendors' answers are cached behind them) — redrawn only on a change
 let usageTicks = 0;
 setInterval(async () => {
-  if (view !== "usage" || document.hidden || !usage || document.querySelector(".pop:not([hidden])")) return;
+  if (view !== "usage" || document.hidden || document.querySelector(".pop:not([hidden])")) return;
+  if (usageTab === "sessions") {
+    // the agents write their session files as they go
+    if (++usageTicks % 3 === 0 && sessions) loadSessions().catch(() => {});
+    return;
+  }
+  if (!usage) return;
   if (++usageTicks % 12 === 0) loadQuotas();
   const p = period;
   let u;
   try { u = await api("usage?period=" + p); } catch { return; }
-  if (view !== "usage" || p !== period || JSON.stringify(u) === JSON.stringify(usage)) return;
+  if (view !== "usage" || usageTab !== "usage" || p !== period || JSON.stringify(u) === JSON.stringify(usage)) return;
   usage = u;
   renderUsage();
 }, 5000);
