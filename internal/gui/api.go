@@ -114,6 +114,8 @@ type settingsJSON struct {
 	Login bool `json:"login"`
 	// where other machines reach the gateway while it is shared
 	LANURLs []string `json:"lanURLs,omitempty"`
+	// when the Codex warm-up last started an account's window
+	CodexWarmed *time.Time `json:"codexWarmed,omitempty"`
 }
 
 func settingsState() settingsJSON {
@@ -122,6 +124,11 @@ func settingsState() settingsJSON {
 	s.Login = autostart.Enabled()
 	if s.LAN {
 		s.LANURLs = gateway.LANURLs()
+	}
+	for _, t := range provider.CodexWarmed() {
+		if s.CodexWarmed == nil || t.After(*s.CodexWarmed) {
+			s.CodexWarmed = &t
+		}
 	}
 	return s
 }

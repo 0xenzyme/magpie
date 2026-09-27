@@ -46,6 +46,11 @@ type Settings struct {
 	// key magpie makes when LAN is first turned on.
 	LAN    bool   `json:"lan,omitempty"`
 	LANKey string `json:"lanKey,omitempty"`
+	// CodexWarmup starts a ChatGPT account's next window as soon as the
+	// last one resets, with one tiny request, so it counts from then (a
+	// Codex window starts at its first use): "" off, "week" the weekly
+	// window, "all" the 5-hour one too.
+	CodexWarmup string `json:"codexWarmup,omitempty"`
 	// How the agents are listed, by agent id. AgentOrder comes first, as
 	// ordered; an agent it doesn't name (one installed since) follows in
 	// magpie's own order. A hidden agent is folded away at the bottom of the
@@ -110,6 +115,8 @@ var (
 	Themes = []string{"system", "light", "dark"}
 	Langs  = []string{"system", "en", "zh"}
 	Trays  = []string{"panel", "window"}
+	// Warmups are CodexWarmup's values, off as "".
+	Warmups = []string{"", "week", "all"}
 )
 
 // Path is the settings file.
@@ -145,6 +152,9 @@ func Save(s Settings) error {
 	if !slices.Contains(Trays, s.Tray) {
 		return fmt.Errorf("tray must be one of %v, not %q", Trays, s.Tray)
 	}
+	if !slices.Contains(Warmups, s.CodexWarmup) {
+		return fmt.Errorf("codex warm-up must be off, week or all, not %q", s.CodexWarmup)
+	}
 	s.Proxy = strings.TrimSpace(s.Proxy)
 	if s.Proxy != "" && s.Proxy != "direct" {
 		raw := s.Proxy
@@ -176,6 +186,9 @@ func (s Settings) normal() Settings {
 	}
 	if s.Tray == "" {
 		s.Tray = "panel"
+	}
+	if s.CodexWarmup == "off" {
+		s.CodexWarmup = ""
 	}
 	return s
 }

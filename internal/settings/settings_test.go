@@ -27,6 +27,15 @@ func TestRoundTrip(t *testing.T) {
 	if filepath.Base(Path()) != "settings.json" {
 		t.Fatal(Path())
 	}
+	if Save(Settings{CodexWarmup: "week"}) != nil || Load().CodexWarmup != "week" {
+		t.Fatal("codex warm-up not kept")
+	}
+	if Save(Settings{CodexWarmup: "off"}) != nil || Load().CodexWarmup != "" {
+		t.Fatal("off is off")
+	}
+	if Save(Settings{CodexWarmup: "daily"}) == nil {
+		t.Fatal("bad codex warm-up accepted")
+	}
 }
 
 func TestMigrate(t *testing.T) {
