@@ -268,3 +268,128 @@ func TestJevTornLevel(t *testing.T) {
 		t.Fatalf("topic unsure: %+v", v)
 	}
 }
+
+// jevAt is ruled's group with the Jev a decision API at decide serves as
+// its classifier.
+func jevAt(t *testing.T, decide, classifier string, rules ...provider.Rule) *Server {
+	t.Helper()
+	s, _, _ := ruled(t)
+	if err := provider.Save(provider.Provider{ID: "jv", Name: "Jev", Key: "kj", Decide: decide}); err != nil {
+		t.Fatal(err)
+	}
+	g, _, _ := provider.FindGroup("group/r")
+	g.Rules, g.Classifier, g.Effort = rules, classifier, provider.EffortAuto
+	if err := provider.SaveGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// Vercel's AI Gateway is asked as the AI SDK asks it — the model in a
+// header, a noul as a boolean — and its probabilities stand for System
+// One's confidence.
+func TestJevOnVercel(t *testing.T) {
+	var mu sync.Mutex
+	var asked []map[string]any
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v4/ai/evaluation-model" || r.Header.Get("Authorization") != "Bearer kj" ||
+			r.Header.Get("ai-model-id") != "typesafe-ai/jev" || r.Header.Get("ai-evaluation-model-specification-version") != "4" ||
+			r.Header.Get("ai-gateway-protocol-version") == "" {
+			http.Error(w, `{"error":{"message":"no"}}`, 400)
+			return
+		}
+		var q map[string]any
+		json.NewDecoder(r.Body).Decode(&q)
+		mu.Lock()
+		asked = append(asked, q)
+		mu.Unlock()
+		answers := map[string]any{}
+		for id, x := range q["questions"].(map[string]any) {
+			switch x.(map[string]any)["type"] {
+			case "boolean":
+				answers[id] = map[string]any{"type": "boolean", "probability": 0.1}
+			case "choice":
+				answers[id] = map[string]any{"type": "choice", "choice": "debugging", "probabilities": map[string]float64{"debugging": 0.87, noIntent: 0.13}}
+			case "score":
+				answers[id] = map[string]any{"type": "score", "score": 2.4, "probabilities": map[string]float64{"0": 0, "1": 0, "2": 0.6, "3": 0.4}}
+			}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"answers": answers, "usage": map[string]int{"inputTokens": 90}})
+	}))
+	defer up.Close()
+	s := jevAt(t, up.URL+"/v4/ai", "jv/typesafe-ai/jev", provider.Rule{Use: "b/big", Intent: "debugging"})
+	out, r := postOK(t, s, "s1", chat("why does this crash?", nil, 0, `,"reasoning_effort":"low"`))
+	c := r.Rule.Classified
+	if !strings.Contains(out, "from kb") || c.Intent != "debugging" || c.Sure < 0.73 || c.Sure > 0.75 || r.Rule.Pick != "high" {
+		t.Fatalf("%s %+v %+v", out, r.Rule, c)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(asked) != 2 || asked[0]["model"] != nil || asked[0]["questions"].(map[string]any)["levels"].(map[string]any)["type"] != "boolean" {
+		t.Fatalf("asked %v", asked)
+	}
+}
+
+// Workers AI is asked at the account its token works in, found once, with
+// System One's questions as the input of a run of Jev, and answers in
+// Cloudflare's envelope.
+func TestJevOnCloudflare(t *testing.T) {
+	j := &jevUp{choice: "debugging", sure: 0.9, score: 1}
+	var mu sync.Mutex
+	accounts := 0
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer kj" {
+			http.Error(w, `{"success":false,"errors":[{"code":10000,"message":"Authentication error"}]}`, 403)
+			return
+		}
+		switch r.URL.Path {
+		case "/client/v4/accounts":
+			mu.Lock()
+			accounts++
+			mu.Unlock()
+			w.Write([]byte(`{"success":true,"result":[{"id":"acc1","name":"me"}]}`))
+		case "/client/v4/accounts/acc1/ai/run":
+			var q struct {
+				Model string          `json:"model"`
+				Input json.RawMessage `json:"input"`
+			}
+			json.NewDecoder(r.Body).Decode(&q)
+			if q.Model != "typesafe/jev" {
+				http.Error(w, `{"success":false,"errors":[{"message":"no such model"}]}`, 400)
+				return
+			}
+			rec := httptest.NewRecorder()
+			j.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/systemone", strings.NewReader(string(q.Input))))
+			w.Write([]byte(`{"success":true,"errors":[],"messages":[],"result":` + rec.Body.String() + `}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer up.Close()
+	s := jevAt(t, up.URL+"/client/v4", "jv/typesafe/jev", provider.Rule{Use: "b/big", Intent: "debugging"})
+	for i, sess := range []string{"s1", "s2"} {
+		out, r := postOK(t, s, sess, chat([]string{"why does this crash?", "and this one?"}[i], nil, 0, `,"reasoning_effort":"low"`))
+		if c := r.Rule.Classified; !strings.Contains(out, "from kb") || c.Intent != "debugging" || c.Sure != 0.9 || r.Rule.Pick != "medium" {
+			t.Fatalf("%s: %s %+v %+v", sess, out, r.Rule, c)
+		}
+	}
+	if accounts != 1 || j.n() != 3 {
+		t.Fatalf("accounts looked up %d times, Jev asked %d", accounts, j.n())
+	}
+}
+
+func TestJevConfidence(t *testing.T) {
+	for _, c := range []struct {
+		ps   map[string]any
+		want float64
+	}{
+		{map[string]any{"a": 0.87, "b": 0.13, "c": 0.0}, 0.805},
+		{map[string]any{"0": 0.0, "1": 0.96, "2": 0.04}, 0.94},
+		{map[string]any{"a": 0.5, "b": 0.5}, 0},
+		{map[string]any{"a": 1.0}, 1},
+	} {
+		if got := confidence(c.ps); got < c.want-0.001 || got > c.want+0.001 {
+			t.Errorf("%v: %v, want %v", c.ps, got, c.want)
+		}
+	}
+}

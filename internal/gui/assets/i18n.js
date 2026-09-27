@@ -745,7 +745,7 @@ const I18N = {
     "Agents never see them: a routing group picks one as its classifier.": "agent 看不到它们：只有路由组把其中一个选作判断模型。",
     "Jev's names · Refresh asks the vendor": "Jev 的名字 · 刷新会向厂商获取",
     "Routing groups name its models as {id} for their classifier": "路由组以 {id} 把它的模型选作判断模型",
-    "TypeSafe's decision API — what a routing group asks as a turn begins": "TypeSafe 的决策 API——每轮开始时路由组询问它",
+    "Jev's decision API (TypeSafe's, or a gateway's) — what a routing group asks as a turn begins": "Jev 的决策 API（TypeSafe 或网关提供）——每轮开始时路由组询问它",
     "at {level} reasoning": "以 {level} 推理强度",
     "Jev is asked once as each turn begins, with the message and what it said of the turn before. Its calls show in the usage as magpie’s own.": "每轮开始时只问 Jev 一次，给它这条消息和它对上一轮的判断。它的调用在用量里记为 magpie 自己的。",
     "Effort": "推理强度",

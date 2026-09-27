@@ -237,10 +237,16 @@ func APIError(b []byte, fallback string) string {
 		Error   json.RawMessage `json:"error"`
 		Message string          `json:"message"`
 		Detail  json.RawMessage `json:"detail"` // FastAPI's (TypeSafe)
+		Errors  []struct {
+			Message string `json:"message"`
+		} `json:"errors"` // Cloudflare's
 	}
 	if json.Unmarshal(b, &v) == nil {
 		if len(v.Detail) > 0 {
 			v.Error = v.Detail
+		}
+		if len(v.Errors) > 0 && v.Errors[0].Message != "" {
+			return v.Errors[0].Message
 		}
 		var e struct {
 			Message string `json:"message"`

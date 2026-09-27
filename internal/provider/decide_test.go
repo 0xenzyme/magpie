@@ -1,6 +1,9 @@
 package provider
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -65,5 +68,52 @@ func TestAPIErrorDetail(t *testing.T) {
 	b := []byte(`{"detail":{"error_type":"authentication_error","message":"Must supply an API key! Check your request and try again."}}`)
 	if got := APIError(b, "403 Forbidden"); got != "Must supply an API key! Check your request and try again." {
 		t.Fatal(got)
+	}
+}
+
+// Jev on Vercel's and Cloudflare's gateways: known by where it is, named
+// as each names it, and a key checked by the gateway's own free call.
+func TestDecideGateways(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	for id, want := range map[string][2]string{"typesafe": {ViaSystemOne, "jev-latest"}, "vercel-jev": {ViaVercel, "typesafe-ai/jev"}, "cloudflare-jev": {ViaCloudflare, "typesafe/jev"}} {
+		p, err := FromPreset(id)
+		if err != nil || !p.Decides() || p.DecideVia() != want[0] || p.Jev() != want[1] || p.decideModels()[0].ID != want[1] {
+			t.Errorf("%s: %+v %v", id, p, err)
+		}
+	}
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer good" {
+			if strings.HasPrefix(r.URL.Path, "/client/") {
+				http.Error(w, `{"success":false,"errors":[{"code":10000,"message":"Authentication error"}]}`, 403)
+			} else {
+				http.Error(w, `{"error":{"message":"Invalid API key"}}`, 401)
+			}
+			return
+		}
+		switch r.URL.Path {
+		case "/v1/credits":
+			w.Write([]byte(`{"balance":"5.00","total_used":"0.00"}`))
+		case "/client/v4/accounts":
+			w.Write([]byte(`{"success":true,"result":[{"id":"acc9"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer up.Close()
+	for _, c := range []struct{ decide, bad string }{{up.URL + "/v4/ai", "Invalid API key"}, {up.URL + "/client/v4/", "Authentication error"}} {
+		p := Provider{ID: "g", Name: "G", Key: "good", Decide: c.decide}
+		if r := p.Test(context.Background()); len(r) != 1 || !r[0].OK || r[0].Model != p.Jev() {
+			t.Errorf("%s: %+v", c.decide, r)
+		}
+		p.Key = "bad"
+		if r := p.Test(context.Background()); len(r) != 1 || r[0].OK || !strings.Contains(r[0].Error, c.bad) {
+			t.Errorf("%s bad key: %+v", c.decide, r)
+		}
+	}
+	p := Provider{ID: "g", Name: "G", Key: "good", Decide: up.URL + "/client/v4"}
+	if u, err := p.DecideURL(context.Background()); err != nil || u != up.URL+"/client/v4/accounts/acc9/ai/run" {
+		t.Fatalf("%s %v", u, err)
 	}
 }

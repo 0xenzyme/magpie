@@ -216,7 +216,7 @@ func (s *Server) askJev(p provider.Provider, model string, intents []string, pre
 	ctx, cancel := context.WithTimeout(context.Background(), classifyTimeout)
 	defer cancel()
 	if model == "" {
-		model = provider.JevLatest
+		model = p.Jev()
 	}
 	levels := false
 	if len(intents) > 0 {
@@ -233,15 +233,29 @@ func (s *Server) askJev(p provider.Provider, model string, intents []string, pre
 }
 
 // systemOne posts body to p's System One API and returns the answer,
-// counting it in the usage as magpie's own.
+// counting it in the usage as magpie's own. A gateway serving Jev is asked
+// and answers in its own way (decideAsk, decideAnswer).
 func (s *Server) systemOne(ctx context.Context, p provider.Provider, model string, body []byte) ([]byte, error) {
 	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Decide+"/systemone", bytes.NewReader(body))
+	u, err := p.DecideURL(ctx)
+	if err != nil {
+		return nil, err
+	}
+	via := p.DecideVia()
+	body = decideAsk(via, model, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", RouterAgent)
+	if via == provider.ViaVercel {
+		// what the AI SDK's gateway provider sends with an evaluation
+		req.Header.Set("ai-gateway-protocol-version", "0.0.1")
+		req.Header.Set("ai-gateway-auth-method", "api-key")
+		req.Header.Set("ai-model-id", model)
+		req.Header.Set("ai-evaluation-model-specification-version", "4")
+	}
 	if err := p.Sign(ctx, req, provider.Chat, body); err != nil {
 		return nil, err
 	}
@@ -257,16 +271,102 @@ func (s *Server) systemOne(ctx context.Context, p provider.Provider, model strin
 	if res.StatusCode >= 300 {
 		return nil, fmt.Errorf("%s: %s", p.Name, provider.APIError(b, res.Status))
 	}
-	var u struct {
+	b = decideAnswer(via, b)
+	var use struct {
 		Usage struct {
 			Input  int `json:"input_tokens"`
 			Output int `json:"output_tokens"`
 		} `json:"usage"`
 	}
-	_ = json.Unmarshal(b, &u)
+	_ = json.Unmarshal(b, &use)
 	usage.Append(usage.Record{Time: start, Agent: usage.AgentOf(RouterAgent), Provider: p.ID, Host: p.Where(), Model: model,
-		Input: u.Usage.Input, Output: u.Usage.Output, Millis: time.Since(start).Milliseconds(), Status: res.StatusCode})
+		Input: use.Usage.Input, Output: use.Usage.Output, Millis: time.Since(start).Milliseconds(), Status: res.StatusCode})
 	return b, nil
+}
+
+// decideAsk is a System One request (body) as via takes it: Vercel names
+// the model in a header and asks a noul as a boolean; Workers AI takes the
+// state and questions as the input of a run of the model.
+func decideAsk(via, model string, body []byte) []byte {
+	var q map[string]any
+	if via == provider.ViaSystemOne || json.Unmarshal(body, &q) != nil {
+		return body
+	}
+	delete(q, "model")
+	switch via {
+	case provider.ViaVercel:
+		qs, _ := q["questions"].(map[string]any)
+		for _, v := range qs {
+			if x, ok := v.(map[string]any); ok && x["type"] == "noul" {
+				x["type"] = "boolean"
+			}
+		}
+		b, _ := json.Marshal(q)
+		return b
+	case provider.ViaCloudflare:
+		b, _ := json.Marshal(map[string]any{"model": model, "input": q})
+		return b
+	}
+	return body
+}
+
+// decideAnswer is a gateway's answer as System One gives it: out of
+// Cloudflare's envelope, or, from Vercel, a boolean's probability as a
+// noul, a confidence from the probabilities where there is none, and its
+// usage named as System One names it.
+func decideAnswer(via string, b []byte) []byte {
+	switch via {
+	case provider.ViaCloudflare:
+		var env struct {
+			Result json.RawMessage `json:"result"`
+		}
+		if json.Unmarshal(b, &env) == nil && len(env.Result) > 0 && env.Result[0] == '{' {
+			return env.Result
+		}
+	case provider.ViaVercel:
+		var v struct {
+			Model   string                    `json:"model"`
+			Answers map[string]map[string]any `json:"answers"`
+			Usage   struct {
+				Input  int `json:"inputTokens"`
+				Output int `json:"outputTokens"`
+			} `json:"usage"`
+		}
+		if json.Unmarshal(b, &v) != nil || v.Answers == nil {
+			return b
+		}
+		for _, a := range v.Answers {
+			if a["type"] == "boolean" {
+				a["type"], a["noul"] = "noul", a["probability"]
+				continue
+			}
+			if _, ok := a["confidence"]; !ok {
+				if ps, ok := a["probabilities"].(map[string]any); ok {
+					a["confidence"] = confidence(ps)
+				}
+			}
+		}
+		out, _ := json.Marshal(map[string]any{"model": v.Model, "answers": v.Answers,
+			"usage": map[string]int{"input_tokens": v.Usage.Input, "output_tokens": v.Usage.Output}})
+		return out
+	}
+	return b
+}
+
+// confidence is how sure a set of probabilities is of its likeliest, as
+// System One gives it: 0 with every option as likely, 1 with one certain
+// (its 0.87 of three options is 0.8).
+func confidence(ps map[string]any) float64 {
+	top, n := 0.0, 0
+	for _, v := range ps {
+		if f, ok := v.(float64); ok {
+			top, n = math.Max(top, f), n+1
+		}
+	}
+	if n < 2 {
+		return 1
+	}
+	return max(0, (top-1/float64(n))/(1-1/float64(n)))
 }
 
 // withEffort asks a request, in the client's own API, for reasoning at
