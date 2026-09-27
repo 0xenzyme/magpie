@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yetone/magpie/internal/library"
 	"github.com/yetone/magpie/internal/profile"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
@@ -21,7 +22,8 @@ func home(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(h, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(h, ".cache"))
 	t.Setenv("PATH", h)
-	for _, v := range []string{"CLAUDE_CONFIG_DIR", "CODEX_HOME", "DSH_HOME", "GEMINI_CLI_HOME", "OPENCODE_CONFIG"} {
+	for _, v := range []string{"CLAUDE_CONFIG_DIR", "CODEX_HOME", "DSH_HOME", "GEMINI_CLI_HOME", "OPENCODE_CONFIG",
+		"PI_CODING_AGENT_DIR", "COPILOT_HOME", "CLINE_DIR", "GROK_HOME", "HERMES_HOME", "APPDATA", "LOCALAPPDATA"} {
 		t.Setenv(v, "")
 	}
 }
@@ -134,6 +136,69 @@ func TestNoKeys(t *testing.T) {
 	}
 	if p, _ := provider.Find("acme"); p.Key != "sk-here" || p.Chat != "https://acme.example.com/v1" || p.Headers["X-Team"] != "a" {
 		t.Fatalf("acme: %+v", p)
+	}
+}
+
+// The library goes too: its sets, servers and skills' files; without keys
+// a server's secret-looking values stay behind, and the ones on the
+// machine restored to stay. A backup from before the library leaves it.
+func TestLibrary(t *testing.T) {
+	home(t)
+	text := "Be brief."
+	if _, err := library.SaveInstructions(library.InstructionsChange{Shared: &text}); err != nil {
+		t.Fatal(err)
+	}
+	srv := library.Server{Name: "gh", Transport: "http", URL: "https://mcp.example.com",
+		Headers: map[string]string{"Authorization": "Bearer lib-secret", "X-Org": "acme"}, Agents: []string{}}
+	if _, err := library.SaveServer("", srv); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(os.Getenv("HOME"), "skills", "notes")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: notes\ndescription: Notes\n---\n"), 0o644)
+	if _, err := library.InstallSkills(dir, []string{""}, nil); err != nil {
+		t.Fatal(err)
+	}
+	full, err := Collect(true, "test")
+	if err != nil || full.Library == nil || full.Library.MCP[0].Headers["Authorization"] != "Bearer lib-secret" {
+		t.Fatalf("with keys: %+v %v", full.Library, err)
+	}
+	b, _ := Collect(false, "test")
+	if h := b.Library.MCP[0].Headers; h["Authorization"] != "" || h["X-Org"] != "acme" {
+		t.Fatalf("without keys: %v", h)
+	}
+	data, _ := Seal(b, "pw")
+	older, _ := Seal(Bundle{Version: 1, Providers: []provider.Provider{}}, "pw")
+
+	home(t) // another machine, with the server and its key already
+	srv.Headers = map[string]string{"Authorization": "Bearer here", "X-Org": "old"}
+	if _, err := library.SaveServer("", srv); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := Open(older, "pw")
+	if r, err := Restore(got, All); err != nil || r.Library {
+		t.Fatalf("an older backup: %+v %v", r, err)
+	}
+	got, err = Open(data, "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := Restore(got, Parts{Library: false, Settings: true}); err != nil || r.Library {
+		t.Fatalf("library not picked: %+v %v", r, err)
+	}
+	if l, _ := library.Collect(); l.Texts["default"] != "" {
+		t.Fatal("the library came in unpicked")
+	}
+	r, err := Restore(got, All)
+	if err != nil || !r.Library {
+		t.Fatalf("restore: %+v %v", r, err)
+	}
+	l, _ := library.Collect()
+	if l.Texts["default"] != "Be brief." || len(l.Skills) != 1 || l.Skills[0].Name != "notes" || len(l.Skills[0].Files) != 1 {
+		t.Fatalf("library: %+v", l)
+	}
+	if h := l.MCP[0].Headers; h["Authorization"] != "Bearer here" || h["X-Org"] != "acme" {
+		t.Fatalf("server: %v", h)
 	}
 }
 

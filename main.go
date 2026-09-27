@@ -44,8 +44,8 @@ const usage = `magpie — one place to pick every agent's model
   magpie profiles                 list profiles
   magpie rm <name>                delete a profile
 
-  magpie backup [--no-keys] [file]    providers, keys, settings, profiles and agent models in one file, sealed with a passphrase
-  magpie restore [--no-agents] <file> put a backup in on this machine
+  magpie backup [--no-keys] [--no-library] [file]    providers, keys, settings, profiles, agent models and the library in one file, sealed with a passphrase
+  magpie restore [--no-agents] [--no-library] <file> put a backup in on this machine
 
   magpie library [sync|instructions|mcp|skill]   the instructions, MCP servers and skills written into every agent (magpie library help)
 

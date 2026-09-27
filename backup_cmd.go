@@ -13,20 +13,23 @@ import (
 	"github.com/yetone/magpie/internal/edit"
 )
 
-// backupCmd writes every provider, setting, profile and agent model to one
-// file sealed with a passphrase: magpie backup [--no-keys] [file].
+// backupCmd writes every provider, setting, profile and agent model, and
+// the library, to one file sealed with a passphrase:
+// magpie backup [--no-keys] [--no-library] [file].
 func backupCmd(args []string) error {
-	keys, file := true, ""
+	keys, lib, file := true, true, ""
 	for _, a := range args {
 		switch {
 		case a == "--no-keys":
 			keys = false
+		case a == "--no-library":
+			lib = false
 		case strings.HasPrefix(a, "-"):
-			return fmt.Errorf("unknown flag %s (magpie backup [--no-keys] [file])", a)
+			return fmt.Errorf("unknown flag %s (magpie backup [--no-keys] [--no-library] [file])", a)
 		case file == "":
 			file = a
 		default:
-			return errors.New("usage: magpie backup [--no-keys] [file]")
+			return errors.New("usage: magpie backup [--no-keys] [--no-library] [file]")
 		}
 	}
 	if file == "" {
@@ -35,6 +38,9 @@ func backupCmd(args []string) error {
 	b, err := backup.Collect(keys, version)
 	if err != nil {
 		return err
+	}
+	if !lib {
+		b.Library = nil
 	}
 	pass, err := passphrase("Passphrase for the backup: ", true)
 	if err != nil {
@@ -52,29 +58,35 @@ func backupCmd(args []string) error {
 	if !keys {
 		what = "without keys"
 	}
-	fmt.Printf("%s %s: %d providers %s, %d profiles, %d agent settings\n",
+	fmt.Printf("%s %s: %d providers %s, %d profiles, %d agent settings",
 		green.Render("saved"), file, len(b.Providers), what, len(b.Profiles), len(b.Agents))
+	if l := b.Library; l != nil {
+		fmt.Printf("; library: %d MCP servers, %d skills", len(l.MCP), len(l.Skills))
+	}
+	fmt.Println()
 	fmt.Println(muted.Render("Subscriptions are not in it: sign in to them on the other machine. Keep the passphrase: without it the file can't be opened."))
 	return nil
 }
 
-// restoreCmd puts a backup in: magpie restore [--no-agents] <file>.
+// restoreCmd puts a backup in: magpie restore [--no-agents] [--no-library] <file>.
 func restoreCmd(args []string) error {
 	parts, file := backup.All, ""
 	for _, a := range args {
 		switch {
 		case a == "--no-agents":
 			parts.Agents = false
+		case a == "--no-library":
+			parts.Library = false
 		case strings.HasPrefix(a, "-"):
-			return fmt.Errorf("unknown flag %s (magpie restore [--no-agents] <file>)", a)
+			return fmt.Errorf("unknown flag %s (magpie restore [--no-agents] [--no-library] <file>)", a)
 		case file == "":
 			file = a
 		default:
-			return errors.New("usage: magpie restore [--no-agents] <file>")
+			return errors.New("usage: magpie restore [--no-agents] [--no-library] <file>")
 		}
 	}
 	if file == "" {
-		return errors.New("usage: magpie restore [--no-agents] <file>")
+		return errors.New("usage: magpie restore [--no-agents] [--no-library] <file>")
 	}
 	data, err := os.ReadFile(file)
 	if err != nil {
@@ -96,9 +108,16 @@ func restoreCmd(args []string) error {
 	if r.Settings {
 		fmt.Print("; settings")
 	}
-	fmt.Printf("; %d profiles; %d agent settings changed\n", r.Profiles, r.Agents)
+	fmt.Printf("; %d profiles; %d agent settings changed", r.Profiles, r.Agents)
+	if r.Library {
+		fmt.Print("; library")
+	}
+	fmt.Println()
 	if len(r.NeedKey) > 0 {
 		fmt.Println(muted.Render("Needs a key (magpie provider key <id>): " + strings.Join(r.NeedKey, ", ")))
+	}
+	for _, p := range r.LibraryProblems {
+		fmt.Println(muted.Render(fmt.Sprintf("Library: %s couldn't get %s: %s", p.Agent, p.What, p.Error)))
 	}
 	if len(r.Skipped) > 0 {
 		fmt.Println(muted.Render("Left as they are (agent not here, or its model can't be reached yet): " + strings.Join(r.Skipped, ", ")))

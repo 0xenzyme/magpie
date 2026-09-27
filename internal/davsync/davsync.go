@@ -4,8 +4,9 @@
 // only ever holds a file it can't read.
 //
 // The magpie serving the gateway syncs every few minutes. The setup is
-// taken in four parts: providers (with their pictures and groups),
-// settings, profiles and the agents' models. A part changed only here is
+// taken in five parts: providers (with their pictures and groups),
+// settings, profiles, the agents' models and the library (instructions,
+// MCP servers and skills). A part changed only here is
 // pushed; one changed only on the server is brought in; one changed on
 // both since the last sync keeps the newer, and the one it replaced is
 // saved in the sync folder beside magpie's files and named in a notice.
@@ -32,6 +33,7 @@ import (
 	"github.com/yetone/magpie/internal/agent"
 	"github.com/yetone/magpie/internal/backup"
 	"github.com/yetone/magpie/internal/edit"
+	"github.com/yetone/magpie/internal/library"
 	"github.com/yetone/magpie/internal/profile"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
@@ -41,7 +43,7 @@ import (
 const Every = 3 * time.Minute
 
 // Parts, in the order they are told.
-var Parts = []string{"providers", "settings", "profiles", "agents"}
+var Parts = []string{"providers", "settings", "profiles", "agents", "library"}
 
 // Config is the sync's setup, kept in sync.json beside magpie's other
 // files, readable by the user alone, as provider keys are.
@@ -52,7 +54,12 @@ type Config struct {
 	Passphrase string `json:"passphrase"`
 	Keys       bool   `json:"keys"`   // providers carry their API keys
 	Agents     bool   `json:"agents"` // the agents' models go too
+	// Library is whether the library goes too; nil, as in a setup made
+	// before it could, is yes
+	Library *bool `json:"library,omitempty"`
 }
+
+func (c Config) library() bool { return c.Library == nil || *c.Library }
 
 // Notice says what a sync replaced when a part had changed on both sides,
 // or when this computer first joined a folder with a setup in it.
@@ -140,6 +147,7 @@ type View struct {
 	PassphraseSet bool      `json:"passphraseSet,omitempty"`
 	Keys          bool      `json:"keys"`
 	Agents        bool      `json:"agents"`
+	Library       bool      `json:"library"`
 	Last          time.Time `json:"last,omitzero"`
 	Error         string    `json:"error,omitempty"`
 	Notice        *Notice   `json:"notice,omitempty"`
@@ -149,11 +157,11 @@ type View struct {
 func Status() View {
 	c, ok := Load()
 	if !ok {
-		return View{Keys: true, Agents: true}
+		return View{Keys: true, Agents: true, Library: true}
 	}
 	st := loadState()
 	v := View{On: true, URL: c.URL, User: c.User, PasswordSet: c.Password != "", PassphraseSet: c.Passphrase != "",
-		Keys: c.Keys, Agents: c.Agents, Error: st.Error, Notice: st.Notice}
+		Keys: c.Keys, Agents: c.Agents, Library: c.library(), Error: st.Error, Notice: st.Notice}
 	if st.Key == stateKey(c) {
 		v.Last = st.Last
 	}
@@ -251,6 +259,9 @@ func collect(c Config) (backup.Bundle, error) {
 	if !c.Agents {
 		b.Agents = nil
 	}
+	if !c.library() {
+		b.Library = nil
+	}
 	return b, err
 }
 
@@ -267,6 +278,7 @@ func hashes(b backup.Bundle) map[string]string {
 		"settings":  h(s),
 		"profiles":  h(orEmpty(b.Profiles)),
 		"agents":    h(orEmpty(b.Agents)),
+		"library":   h(b.Library),
 	}
 }
 
@@ -302,6 +314,12 @@ func take(to *backup.Bundle, from backup.Bundle, part string) {
 		to.Profiles = from.Profiles
 	case "agents":
 		to.Agents = from.Agents
+	case "library":
+		lib := from.Library
+		if lib != nil && !from.Keys && to.Keys { // sent without keys: keep the ones the server has
+			lib = lib.WithSecrets(to.Library, backup.Secret)
+		}
+		to.Library = lib
 	}
 }
 
@@ -320,6 +338,8 @@ func changed(part string) time.Time {
 		return mtime(settings.Path())
 	case "profiles":
 		return mtime(profile.Path())
+	case "library":
+		return library.Changed()
 	}
 	var t time.Time
 	for _, a := range agent.Detected() {
@@ -363,6 +383,9 @@ func bring(b backup.Bundle, part string) error {
 		return err
 	case "agents":
 		_, err := backup.Restore(b, backup.Parts{Agents: true})
+		return err
+	case "library":
+		_, err := backup.Restore(b, backup.Parts{Library: true})
 		return err
 	}
 	return nil
@@ -416,7 +439,11 @@ func syncOnce(ctx context.Context, c Config, st *state) error {
 	merged := remote
 	var bringIn, here, there []string
 	for _, p := range Parts {
-		if L[p] == R[p] || (p == "agents" && !c.Agents) {
+		if L[p] == R[p] || (p == "agents" && !c.Agents) || (p == "library" && !c.library()) {
+			continue
+		}
+		if p == "library" && remote.Library == nil { // from a magpie before the library went: this computer's goes up
+			take(&merged, local, p)
 			continue
 		}
 		lc := !first && L[p] != st.Local[p]

@@ -4059,10 +4059,10 @@ async function renderSync(v) {
   };
   const btn = (label, fn, cls = "text") => { const b = el("button", cls, label); b.onclick = fn; return b; };
   const toggle = (id) => () => { syncOpen = syncOpen === id ? "" : id; renderSync(); };
-  const parts = (ps) => ps.map((p) => t({ providers: "providers", settings: "settings", profiles: "profiles", agents: "agents' models" }[p])).join(t(", "));
+  const parts = (ps) => ps.map((p) => t({ providers: "providers", settings: "settings", profiles: "profiles", agents: "agents' models", library: "library" }[p])).join(t(", "));
 
   // WebDAV
-  let status = t("Keeps providers, settings, profiles and agents' models the same on every computer");
+  let status = t("Keeps providers, settings, profiles, agents' models and the library the same on every computer");
   if (v.on) {
     const host = (() => { try { return new URL(v.url).host; } catch { return v.url; } })();
     status = v.error ? t("Couldn't sync: {error}", { error: v.error })
@@ -4132,8 +4132,9 @@ function davForm(v) {
   const phrase = input("", v.passphraseSet ? t("saved · type a new one to replace it") : t("the same on every computer"), "password");
   const [keysL, keys] = tick(t("Providers' API keys"), v.keys !== false);
   const [agentsL, agents] = tick(t("Agents' models"), v.agents !== false);
+  const [libL, lib] = tick(t("Library: instructions, MCP servers and skills"), v.library !== false);
   const what = el("div", "stack");
-  what.append(keysL, agentsL);
+  what.append(keysL, agentsL, libL);
   ed.append(...field(t("Address"), url, t("A folder named magpie is made in it.")),
     ...field(t("User"), user),
     ...field(t("Password"), pass),
@@ -4149,7 +4150,7 @@ function davForm(v) {
     if (!v.passphraseSet && !phrase.value) return say(t("Pick a passphrase: the file is sealed with it"));
     save.classList.add("busy");
     try {
-      const r = await api("davsync/save", { url: url.value.trim(), user: user.value.trim(), password: pass.value, passphrase: phrase.value, keys: keys.checked, agents: agents.checked });
+      const r = await api("davsync/save", { url: url.value.trim(), user: user.value.trim(), password: pass.value, passphrase: phrase.value, keys: keys.checked, agents: agents.checked, library: lib.checked });
       if (!r.error) syncOpen = "";
       renderSync(r);
       if (r.error) return;
@@ -4167,8 +4168,11 @@ function exportForm() {
   const p1 = input("", t("passphrase"), "password");
   const p2 = input("", t("again"), "password");
   const [keysL, keys] = tick(t("With the providers' API keys"), true);
+  const [libL, lib] = tick(t("With the library: instructions, MCP servers and skills"), true);
+  const what = el("div", "stack");
+  what.append(keysL, libL);
   ed.append(...field(t("Passphrase"), p1, t("Needed to open the file. Subscriptions aren't in it: sign in to them on the other computer.")),
-    ...field("", p2), ...field("", keysL));
+    ...field("", p2), ...field("", what));
   const go = el("button", "text primary", t("Export"));
   const cancel = el("button", "text", t("Cancel"));
   const say = syncBar(ed, "", el("span", "grow"), cancel, go);
@@ -4178,7 +4182,7 @@ function exportForm() {
     if (p1.value !== p2.value) return say(t("The two passphrases differ"));
     go.classList.add("busy");
     try {
-      const r = await api("backup/export", { pass: p1.value, keys: keys.checked });
+      const r = await api("backup/export", { pass: p1.value, keys: keys.checked, library: lib.checked });
       ed.replaceChildren(el("div", "done", t("Saved to {path}", { path: r.path })));
     } catch (e) {
       go.classList.remove("busy");
@@ -4212,7 +4216,10 @@ function importForm() {
   pf.append(name, pick, file);
   const pass = input("", t("passphrase"), "password");
   const [agentsL, agents] = tick(t("Set the agents' models too"), true);
-  ed.append(...field(t("File"), pf), ...field(t("Passphrase"), pass), ...field("", agentsL, t("Providers with the same id are replaced; one that came without a key keeps the key it has here.")));
+  const [libL, lib] = tick(t("Bring in the library too: instructions, MCP servers and skills"), true);
+  const what = el("div", "stack");
+  what.append(agentsL, libL);
+  ed.append(...field(t("File"), pf), ...field(t("Passphrase"), pass), ...field("", what, t("Providers with the same id are replaced; one that came without a key keeps the key it has here. The library replaces the one here, which is kept with its backups.")));
   const go = el("button", "text primary", t("Import"));
   const cancel = el("button", "text", t("Cancel"));
   const say = syncBar(ed, "", el("span", "grow"), cancel, go);
@@ -4221,9 +4228,11 @@ function importForm() {
     if (!data) return say(t("Choose a file first"));
     go.classList.add("busy");
     try {
-      const r = await api("backup/import", { data, pass: pass.value, agents: agents.checked });
+      const r = await api("backup/import", { data, pass: pass.value, agents: agents.checked, library: lib.checked });
       const lines = [t("Providers: {added} added, {replaced} replaced; {profiles} profiles; {agents} agent settings changed", { added: r.Added, replaced: r.Replaced, profiles: r.Profiles, agents: r.Agents })];
       if (r.NeedKey?.length) lines.push(t("Needs a key: {names}", { names: r.NeedKey.join(", ") }));
+      if (r.Library) lines.push(t("Library brought in and written into the agents"));
+      for (const p of r.LibraryProblems || []) lines.push(t("{agent} couldn't get {what}: {error}", { agent: p.agent, what: p.what, error: p.error }));
       ed.replaceChildren(...lines.map((l) => el("div", "done", l)));
       refreshAfterSync();
     } catch (e) {

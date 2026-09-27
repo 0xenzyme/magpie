@@ -1,7 +1,8 @@
 // Package backup packs what the user set up in magpie into one file, sealed
 // with a passphrase, to carry to another machine: the providers (their keys
 // too, unless left out), the pictures picked for them, the settings, the
-// profiles and every agent's model. Subscriptions are not in it: each is
+// profiles, every agent's model and the library (the instructions, MCP
+// servers and skills magpie gives the agents). Subscriptions are not in it: each is
 // the sign-in of an agent on this machine, so each machine signs in on its
 // own.
 //
@@ -29,6 +30,7 @@ import (
 
 	"github.com/yetone/magpie/internal/agent"
 	"github.com/yetone/magpie/internal/edit"
+	"github.com/yetone/magpie/internal/library"
 	"github.com/yetone/magpie/internal/profile"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
@@ -53,7 +55,8 @@ type Bundle struct {
 	Groups    []provider.Group           `json:"groups,omitempty"` // the user's model groups
 	Settings  *settings.Settings         `json:"settings,omitempty"`
 	Profiles  map[string]profile.Profile `json:"profiles,omitempty"`
-	Agents    map[string]string          `json:"agents,omitempty"` // every agent's fields as they are now
+	Agents    map[string]string          `json:"agents,omitempty"`  // every agent's fields as they are now
+	Library   *library.Bundle            `json:"library,omitempty"` // nil from a magpie before it, or with none
 }
 
 type envelope struct {
@@ -70,7 +73,8 @@ type envelope struct {
 var ErrPassphrase = errors.New("wrong passphrase, or the file was changed")
 
 // Collect gathers the bundle; without keys, providers carry none, nor any
-// header that looks like one.
+// header that looks like one, and the library's servers no environment
+// variable or header that looks like one (their names stay).
 func Collect(keys bool, app string) (Bundle, error) {
 	b := Bundle{Version: 1, Created: time.Now().UTC(), App: app, Keys: keys}
 	for _, p := range provider.Stored() {
@@ -104,17 +108,27 @@ func Collect(keys bool, app string) (Bundle, error) {
 	if snap := profile.Fields(); len(snap) > 0 {
 		b.Agents = snap
 	}
+	if b.Library, err = library.Collect(); err != nil {
+		return b, err
+	}
+	if !keys && b.Library != nil {
+		b.Library.WithoutSecrets(Secret)
+	}
 	return b, nil
 }
 
 var secretHeader = regexp.MustCompile(`(?i)auth|key|token|secret|cookie|session|password`)
+
+// Secret reports whether a header or an environment variable by that name
+// looks like it holds a key: what a backup without keys leaves empty.
+func Secret(name string) bool { return secretHeader.MatchString(name) }
 
 func withoutKeys(p provider.Provider) provider.Provider {
 	p.Key, p.KeyName, p.Keys, p.KeyProtocol = "", "", nil, ""
 	if len(p.Headers) > 0 {
 		h := map[string]string{}
 		for k, v := range p.Headers {
-			if !secretHeader.MatchString(k) {
+			if !Secret(k) {
 				h[k] = v
 			}
 		}
@@ -191,11 +205,11 @@ func aead(pass string, e envelope) (cipher.AEAD, error) {
 
 // Parts picks what a restore puts back.
 type Parts struct {
-	Providers, Settings, Profiles, Agents bool
+	Providers, Settings, Profiles, Agents, Library bool
 }
 
 // All is every part.
-var All = Parts{true, true, true, true}
+var All = Parts{true, true, true, true, true}
 
 // Result says what a restore did.
 type Result struct {
@@ -203,8 +217,10 @@ type Result struct {
 	NeedKey         []string // providers that came without a key and have none here
 	Settings        bool
 	Profiles        int
-	Agents          int      // agent fields changed
-	Skipped         []string // agent fields left alone: the agent is not on this machine, or the value failed
+	Agents          int               // agent fields changed
+	Skipped         []string          // agent fields left alone: the agent is not on this machine, or the value failed
+	Library         bool              // the library was put in
+	LibraryProblems []library.Problem `json:",omitempty"` // what of it couldn't be given to an agent
 }
 
 // Restore puts the chosen parts of the bundle in. Providers come first, so
@@ -271,6 +287,21 @@ func Restore(b Bundle, parts Parts) (Result, error) {
 			}
 			r.Agents += n
 		}
+	}
+	if parts.Library && b.Library != nil {
+		lib := b.Library
+		if !b.Keys { // the servers' keys kept here stay
+			have, err := library.Collect()
+			if err != nil {
+				return r, err
+			}
+			lib = lib.WithSecrets(have, Secret)
+		}
+		res, err := library.Put(lib)
+		if err != nil {
+			return r, fmt.Errorf("the library: %w", err)
+		}
+		r.Library, r.LibraryProblems = true, res.Problems
 	}
 	return r, nil
 }

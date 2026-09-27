@@ -21,8 +21,9 @@ import (
 func backupRoutes(mux *http.ServeMux, w Windows) {
 	mux.HandleFunc("POST /api/backup/export", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct {
-			Pass string
-			Keys bool
+			Pass    string
+			Keys    bool
+			Library *bool // nil is yes
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			fail(rw, err)
@@ -32,6 +33,9 @@ func backupRoutes(mux *http.ServeMux, w Windows) {
 		if err != nil {
 			fail(rw, err)
 			return
+		}
+		if in.Library != nil && !*in.Library {
+			b.Library = nil
 		}
 		data, err := backup.Seal(b, in.Pass)
 		if err != nil {
@@ -52,13 +56,14 @@ func backupRoutes(mux *http.ServeMux, w Windows) {
 		}
 		os.Chmod(name, 0o600)
 		_ = w.OpenFolder(dir) // saved either way; the path is in the answer
-		writeJSON(rw, map[string]any{"path": tilde(name), "providers": len(b.Providers), "profiles": len(b.Profiles), "agents": len(b.Agents)})
+		writeJSON(rw, map[string]any{"path": tilde(name), "providers": len(b.Providers), "profiles": len(b.Profiles), "agents": len(b.Agents), "library": b.Library != nil})
 	})
 	mux.HandleFunc("POST /api/backup/import", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct {
-			Data   string
-			Pass   string
-			Agents bool
+			Data    string
+			Pass    string
+			Agents  bool
+			Library *bool // nil is yes
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			fail(rw, err)
@@ -76,6 +81,7 @@ func backupRoutes(mux *http.ServeMux, w Windows) {
 		}
 		parts := backup.All
 		parts.Agents = in.Agents
+		parts.Library = in.Library == nil || *in.Library
 		res, err := backup.Restore(b, parts)
 		if err != nil {
 			fail(rw, err)

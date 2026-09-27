@@ -403,10 +403,16 @@ magpie backup                   # writes magpie.magpie-backup, asks for a passph
 magpie backup --no-keys ~/b.magpie-backup   # the same with no API keys in it
 magpie restore magpie.magpie-backup         # on the other machine
 magpie restore --no-agents b.magpie-backup  # providers, settings, profiles; agents left as they are
+magpie restore --no-library b.magpie-backup # the library here left as it is
 ```
 
 A backup holds your providers (with their keys, unless `--no-keys`), the
-pictures picked for them, the settings, the profiles and every agent's model.
+pictures picked for them, the settings, the profiles, every agent's model and
+the library (unless `--no-library`): the instruction sets, the MCP servers and
+the skills with their files (a file over 2 MB is left out). Without keys, a
+server's environment variables and headers that look like a key go empty.
+Restoring the library replaces the one there — what it replaces is kept with
+the library's backups — and writes it into the agents on that machine.
 It is encrypted on your machine (AES-256-GCM, the key derived from the
 passphrase with PBKDF2-SHA256); nothing in it can be read without the
 passphrase. Restoring replaces providers with the same id and adds the rest;

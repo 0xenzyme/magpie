@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/backup"
+	"github.com/yetone/magpie/internal/library"
 	"github.com/yetone/magpie/internal/profile"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
@@ -85,6 +86,10 @@ func (c computer) use(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(string(c), ".cache"))
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(string(c), ".claude"))
 	t.Setenv("CODEX_HOME", filepath.Join(string(c), ".codex"))
+	t.Setenv("PATH", "")
+	for _, v := range []string{"DSH_HOME", "PI_CODING_AGENT_DIR", "COPILOT_HOME", "CLINE_DIR", "GROK_HOME", "HERMES_HOME", "APPDATA", "LOCALAPPDATA"} {
+		t.Setenv(v, "")
+	}
 }
 
 func ids() []string {
@@ -266,6 +271,106 @@ func TestSync(t *testing.T) {
 	}
 	if err := Off(); err != nil || Status().On {
 		t.Fatal("still on")
+	}
+}
+
+// The library goes as a part of its own: a's instructions, servers and
+// skills reach b and are written into b's agents, b pushes nothing back,
+// a change on either side reaches the other, and a computer that leaves
+// the library out neither sends nor takes it.
+func TestSyncLibrary(t *testing.T) {
+	fake := &fakeDAV{files: map[string][]byte{}, etags: map[string]string{}, dirs: map[string]bool{"/dav": true}}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+	ctx := context.Background()
+	// a setup from before the library could be left out: it goes
+	cfg := Config{URL: srv.URL + "/dav/", User: "me", Password: "pw", Passphrase: "correct horse", Keys: true, Agents: true}
+	now := func(t *testing.T) View {
+		t.Helper()
+		if err := Now(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return Status()
+	}
+	shared := func() string {
+		iv, _ := library.ReadInstructions()
+		return iv.Shared
+	}
+	say := func(t *testing.T, text string) {
+		t.Helper()
+		if _, err := library.SaveInstructions(library.InstructionsChange{Shared: &text, Agents: []string{"claude"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	a, b := newComputer(t), newComputer(t)
+	a.use(t)
+	os.MkdirAll(filepath.Join(string(a), ".claude"), 0o755)
+	say(t, "Be brief.")
+	dir := filepath.Join(string(a), "src", "notes")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: notes\ndescription: Notes\n---\n"), 0o644)
+	if _, err := library.InstallSkills(dir, []string{""}, []string{"claude"}); err != nil {
+		t.Fatal(err)
+	}
+	Configure(cfg)
+	if v := now(t); v.Error != "" || !v.Library {
+		t.Fatalf("a: %+v", v)
+	}
+
+	b.use(t)
+	os.MkdirAll(filepath.Join(string(b), ".claude"), 0o755)
+	Configure(cfg)
+	if v := now(t); v.Error != "" {
+		t.Fatalf("b: %+v", v)
+	}
+	if got := shared(); got != "Be brief." {
+		t.Fatalf("b's instructions: %q", got)
+	}
+	if s, _ := os.ReadFile(filepath.Join(string(b), ".claude", "CLAUDE.md")); !strings.Contains(string(s), "Be brief.") {
+		t.Fatalf("b's claude wasn't given them: %q", s)
+	}
+	if _, err := os.Stat(filepath.Join(string(b), ".claude", "skills", "notes", "SKILL.md")); err != nil {
+		t.Fatalf("b's claude has no notes: %v", err)
+	}
+	puts := fake.puts
+	now(t)
+	now(t)
+	if fake.puts != puts {
+		t.Fatalf("b pushed back the library it brought in (%d puts)", fake.puts-puts)
+	}
+
+	// b changes it: a gets it
+	say(t, "Be thorough.")
+	now(t)
+	a.use(t)
+	now(t)
+	if got := shared(); got != "Be thorough." {
+		t.Fatalf("a after b changed: %q", got)
+	}
+	puts = fake.puts
+	now(t)
+	if fake.puts != puts {
+		t.Fatal("a pushed again")
+	}
+
+	// a computer that leaves the library out keeps its own
+	c := newComputer(t)
+	c.use(t)
+	off := false
+	lc := cfg
+	lc.Library = &off
+	Configure(lc)
+	say(t, "Mine alone.")
+	if v := now(t); v.Library || v.Error != "" {
+		t.Fatalf("c: %+v", v)
+	}
+	if got := shared(); got != "Mine alone." {
+		t.Fatalf("c's library was synced: %q", got)
+	}
+	remote, _ := backup.Open(fake.files["/dav/magpie/magpie.magpie-backup"], "correct horse")
+	if remote.Library == nil || remote.Library.Texts["default"] != "Be thorough." {
+		t.Fatalf("the server's library: %+v", remote.Library)
 	}
 }
 
