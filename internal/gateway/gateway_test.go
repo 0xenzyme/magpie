@@ -323,6 +323,7 @@ func TestWrongEndpoint(t *testing.T) {
 		{400, `{"code":null,"message":"model \"gpt-6-sol\" is not accessible via the /chat/completions endpoint","type":"invalid_request_error"}`, true},
 		{400, `{"error":{"message":"model not accessible","code":"unsupported_api_for_model"}}`, true},
 		{400, `{"type":"error","error":{"type":"ModelError","message":"Model grok-4.7 is not supported for format anthropic"}}`, true},
+		{400, `{"type":"error","error":{"type":"invalid_request_error","message":"Model does not support this protocol."}}`, true},
 		{429, `rate limit`, false},
 		{500, `use v1/responses`, false},
 		{200, `use v1/responses`, false},

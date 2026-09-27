@@ -89,7 +89,12 @@ type mdModel struct {
 		Input  []string `json:"input"`
 		Output []string `json:"output"`
 	} `json:"modalities"`
-	Cost  *Price `json:"cost"`
+	Cost *Price `json:"cost"`
+	// Provider, on a model its vendor serves another way than the rest,
+	// names the SDK that talks to it ("@ai-sdk/openai": the Responses API)
+	Provider *struct {
+		NPM string `json:"npm"`
+	} `json:"provider"`
 	Limit struct {
 		Context int `json:"context"`
 		Input   int `json:"input"`
@@ -306,6 +311,24 @@ func PriceOf(providerID, modelID string) (Price, bool) {
 		}
 	}
 	return Price{}, false
+}
+
+// APIOf is the API a models.dev provider's model is served on, when the
+// catalog says it's one of its own: "responses" or "anthropic" for a model
+// OpenCode serves through OpenAI's or Anthropic's SDK, not the
+// OpenAI-compatible one the rest of its models go through.
+func APIOf(providerID, modelID string) string {
+	if p, ok := load()[providerID]; ok {
+		if m, ok := p.Models[modelID]; ok && m.Provider != nil {
+			switch m.Provider.NPM {
+			case "@ai-sdk/openai":
+				return "responses"
+			case "@ai-sdk/anthropic":
+				return "anthropic"
+			}
+		}
+	}
+	return ""
 }
 
 // Provider returns the text models of one models.dev provider, newest first.
