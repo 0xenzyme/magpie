@@ -141,9 +141,10 @@ func luhn(v string) bool {
 // ---- placeholders ---------------------------------------------------------------
 
 var (
-	mu     sync.RWMutex
-	values = map[string]string{} // placeholder → value
-	keyOf  []byte
+	mu      sync.RWMutex
+	values  = map[string]string{} // placeholder → value
+	keyOf   []byte
+	keyPath string // guarded by mu, as keyOf is
 )
 
 // maxValues bounds what is held; past it the oldest half is let go, and a
@@ -166,22 +167,29 @@ func key() []byte {
 	return keyOf
 }
 
-// KeyPath is where the key placeholders are made with is kept, so they
-// stay the same across restarts. Set by the gateway's owner; "" keeps it in
-// memory only.
-var KeyPath string
+// SetKeyPath chooses where the placeholder key is kept across restarts;
+// "" keeps it in memory only. The gateway's owner sets it before requests
+// arrive. Once the key is loaded, both it and its path stay fixed.
+func SetKeyPath(path string) {
+	mu.Lock()
+	defer mu.Unlock()
+	if keyOf == nil {
+		keyPath = path
+	}
+}
 
+// loadKey is called with mu held.
 func loadKey() []byte {
-	if KeyPath != "" {
-		if b, err := os.ReadFile(KeyPath); err == nil && len(b) >= 32 {
+	if keyPath != "" {
+		if b, err := os.ReadFile(keyPath); err == nil && len(b) >= 32 {
 			return b[:32]
 		}
 	}
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
-	if KeyPath != "" {
-		_ = os.MkdirAll(filepath.Dir(KeyPath), 0o700)
-		_ = os.WriteFile(KeyPath, b, 0o600)
+	if keyPath != "" {
+		_ = os.MkdirAll(filepath.Dir(keyPath), 0o700)
+		_ = os.WriteFile(keyPath, b, 0o600)
 	}
 	return b
 }

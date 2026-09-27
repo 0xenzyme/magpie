@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -23,6 +24,8 @@ import (
 
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/redact"
+	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/usage"
 )
 
@@ -118,6 +121,7 @@ type Server struct {
 
 // New makes a gateway.
 func New() *Server {
+	redact.SetKeyPath(filepath.Join(settings.Dir(), "redact.key"))
 	return &Server{
 		client: &http.Client{Transport: &http.Transport{
 			Proxy:                 netproxy.Func,
@@ -301,7 +305,8 @@ func (s *Server) model(w http.ResponseWriter, r *http.Request) {
 }
 
 // countTokens answers Anthropic's count_tokens: through the provider when
-// it speaks Anthropic, else a rough estimate.
+// it implements counting, else a rough estimate. A failed connection or
+// limited key yields to the next key; other failures reach the client.
 func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
 	if err != nil {
@@ -314,6 +319,9 @@ func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 		writeError(w, provider.Anthropic, 400, err.Error())
 		return
 	}
+	// Count the same masked prompt that generation sends to the vendor.
+	w, body, unmask := redacted(w, body)
+	defer unmask()
 	p, model, ok := provider.Resolve(model)
 	// Claude Subscription generations run through the Claude Code binary. Its
 	// OAuth token must not take a direct HTTP side path just for token counting.
@@ -326,29 +334,51 @@ func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"input_tokens": estimate(req)})
 		return
 	}
+	var counts []candidate
 	if ok {
-		// a relay's OpenAI-only key can't count Anthropic tokens
-		q := p
-		q.Anthropic = ""
-		for _, c := range perKey(p, model, provider.Anthropic) {
-			if c.p.Anthropic != "" {
-				q = c.p
+		// Keep the provider's key order and cooldowns, but never count a
+		// fallback model: it may use a different tokenizer.
+		p.Fallback = nil
+		for _, c := range s.candidates(p, model, provider.Anthropic) {
+			// A relay's OpenAI-only key can't count Anthropic tokens.
+			if c.p.Anthropic != "" && slices.Contains(s.usable(c.p, model), provider.Anthropic) {
+				counts = append(counts, c)
+			}
+		}
+	}
+	for i, c := range counts {
+		res, err := s.forward(r.Context(), c.p, provider.Anthropic, "/v1/messages/count_tokens", rewriteModel(body, model), r.Header)
+		if err != nil {
+			if r.Context().Err() == nil {
+				s.restAfter(c, http.StatusBadGateway, nil, []byte(err.Error()))
+				if i+1 < len(counts) {
+					continue
+				}
+			}
+			writeError(w, provider.Anthropic, 502, c.p.Name+": "+err.Error())
+			return
+		}
+		if res.StatusCode >= 400 {
+			b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+			res.Body.Close()
+			if unsupportedCount(res.StatusCode, b) {
 				break
 			}
-		}
-		p = q
-	}
-	if ok && p.Anthropic != "" && slices.Contains(s.usable(p, model), provider.Anthropic) {
-		res, err := s.forward(r.Context(), p, provider.Anthropic, "/v1/messages/count_tokens", rewriteModel(body, model), r.Header)
-		if err == nil {
-			defer res.Body.Close()
-			if res.StatusCode < 400 {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(res.StatusCode)
-				io.Copy(w, res.Body)
-				return
+			if res.StatusCode == http.StatusTooManyRequests {
+				s.restAfter(c, res.StatusCode, res.Header, b)
+				if i+1 < len(counts) {
+					continue
+				}
 			}
+			keepRetry(w.Header(), res.Header, b)
+			writeError(w, provider.Anthropic, res.StatusCode, c.p.Name+": "+provider.APIError(b, res.Status))
+			return
 		}
+		defer res.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(res.StatusCode)
+		io.Copy(w, res.Body)
+		return
 	}
 	req, err := parseAnthropic(body)
 	if err != nil {
@@ -356,6 +386,30 @@ func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"input_tokens": estimate(req)})
+}
+
+// Match the counting operation or the endpoint itself, not an unsupported
+// image, model, API key or tool parameter mentioned in the same error.
+var unsupportedCountWords = regexp.MustCompile(`(?i)` +
+	`^(unsupported|unimplemented|not (supported|implemented))$|` +
+	`\b(count_tokens|counttokens|token counting|counting tokens) ((is )?not (supported|implemented)|is (unsupported|unimplemented))\b|` +
+	`\b(unsupported|unimplemented|does not support|doesn't support) (count_tokens|counttokens|token counting|counting tokens)\b|` +
+	`^(this |the )?(unsupported|unimplemented) (endpoint|api|method|operation)(:|$)|` +
+	`^(this |the )?(endpoint|api|method|operation) ((is )?not (supported|implemented)|is (unsupported|unimplemented))\b|` +
+	`(不支持|未实现)\s*(count_tokens|counttokens|token\s*计数|令牌计数)\s*(接口|功能)?\s*($|[，。,:：;；])|` +
+	`(count_tokens|counttokens|token\s*计数|令牌计数)\s*(接口|功能)?\s*(暂|尚)?(不支持|未实现)\s*($|[，。,:：;；])|` +
+	`^(该|此|本)?(端点|接口)\s*(暂|尚)?(不支持|未实现)\s*($|[，。,:：;；])`)
+
+// unsupportedCount recognizes a missing optional endpoint. This says
+// nothing about support for /messages itself.
+func unsupportedCount(status int, body []byte) bool {
+	switch status {
+	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		return true
+	case http.StatusBadRequest:
+		return unsupportedCountWords.MatchString(strings.Trim(provider.APIError(body, ""), ": \t\r\n.。"))
+	}
+	return false
 }
 
 // handle is the request path of one client API.
@@ -415,7 +469,8 @@ func (s *Server) gemini(w http.ResponseWriter, r *http.Request) {
 	s.serve(w, r, provider.Gemini, withFields(body, map[string]any{"model": model, "stream": stream}))
 }
 
-// geminiCount answers countTokens with a rough estimate.
+// geminiCount unwraps generateContentRequest, if present, and estimates the
+// original prompt locally; nothing is sent upstream or needs masking.
 func (s *Server) geminiCount(w http.ResponseWriter, model string, body []byte) {
 	var wrap struct {
 		Inner json.RawMessage `json:"generateContentRequest"`
