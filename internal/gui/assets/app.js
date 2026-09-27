@@ -136,6 +136,9 @@ function status(msg, kind = "", ms = kind === "err" ? 8000 : 3500) {
   s.textContent = msg;
   s.title = msg;
   s.className = "status " + kind;
+  // with a dialog open the footer is under its scrim: the pill floats over both
+  const m = $("#modal");
+  s.classList.toggle("lift", !!msg && !m.hidden && !m.classList.contains("out"));
   clearTimeout(status.t);
   if (msg) status.t = setTimeout(() => { s.textContent = ""; s.className = "status"; }, ms);
 }
