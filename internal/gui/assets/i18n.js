@@ -406,6 +406,8 @@ const I18N = {
     "Names & levels": "名称与推理档位",
     "Rename the models agents see, or offer fewer of their reasoning levels": "重命名 Agent 看到的模型，或只提供部分推理档位",
     "Test models": "测试模型",
+    "Pick every model listed (those the filter shows)": "选中列出的所有模型（有筛选时只选筛出来的）",
+    "Unpick every model": "取消选中所有模型",
     "Send a tiny request to each model agents see, to find the ones that don't answer": "给 Agent 能看到的每个模型发一个极小的请求，找出不通的模型",
     "{n} of {all} models didn't answer": "{all} 个模型中有 {n} 个没有响应",
     "All {n} models answered": "{n} 个模型全部可用",
@@ -665,6 +667,7 @@ const I18N = {
     // Gateway: routing, live
     "live, as the gateway decides": "实时 · 网关正在做的决定",
     "Hide emails": "邮箱打码",
+    "Emails hidden": "邮箱已打码",
     "Add a model": "添加模型",
     "Add another model": "再添加一个模型",
     "{api} only · after the others": "仅 {api} · 排在其他之后",

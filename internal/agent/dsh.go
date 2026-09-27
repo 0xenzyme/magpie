@@ -31,11 +31,13 @@ const dshMark = "# magpie"
 // dshKeyRef is the credential dsh signs gateway requests with.
 const dshKeyRef = "MAGPIE_API_KEY"
 
-// dshModels are the models dsh reaches on its own, as it ships them.
+// dshModels are the models dsh reaches on its own, as it ships them — under
+// its own name, not DeepSeek: magpie's DeepSeek provider is a group of that
+// name too, and two would read as one listed twice (#115).
 var dshModels = []Option{
-	{Value: "deepseek-flash", Label: "DeepSeek-V41-Flash", Icon: "deepseek-color", Group: "DeepSeek"},
-	{Value: "deepseek-v4-pro", Label: "DeepSeek-V4-Pro", Icon: "deepseek-color", Group: "DeepSeek"},
-	{Value: "deepseek-v4-flash", Label: "DeepSeek-V4-Flash", Icon: "deepseek-color", Group: "DeepSeek"},
+	{Value: "deepseek-flash", Label: "DeepSeek-V41-Flash", Icon: "deepseek-color", Group: "DeepSeek Harness"},
+	{Value: "deepseek-v4-pro", Label: "DeepSeek-V4-Pro", Icon: "deepseek-color", Group: "DeepSeek Harness"},
+	{Value: "deepseek-v4-flash", Label: "DeepSeek-V4-Flash", Icon: "deepseek-color", Group: "DeepSeek Harness"},
 }
 
 func dsh(home string) *Agent {

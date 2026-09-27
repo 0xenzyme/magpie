@@ -413,6 +413,7 @@ body.window .field.solo { grid-column: auto; }
 .quota-labels > span { white-space: nowrap; }
 .quota-labels .quota-n { max-width: 100%; padding: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); font-size: inherit; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .quota-labels .quota-n:hover { color: var(--fg); }
+.quota-windows.stacked .quota-n { flex-basis: 100%; }
 .quota-track { height: 4px; border-radius: 2px; background: var(--pill); overflow: hidden; }
 .quota-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
 .subscription-error { font-size: 11px; color: var(--faint); }
@@ -1030,8 +1031,10 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 
 /* model chips: click to expose, click again to hide */
 .models { display: flex; flex-direction: column; gap: 6px; }
-.models > input { max-width: 260px; }
-.mchips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 132px; overflow-y: auto; padding: 1px; }
+.mbulk { display: flex; align-items: center; gap: 6px; }
+.mbulk > input { max-width: 260px; flex: 1; }
+/* a long list scrolls on its own, not the editor with it past its ends */
+.mchips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 132px; overflow-y: auto; overscroll-behavior: contain; padding: 1px; }
 .mchips::-webkit-scrollbar { width: 0; }
 .mchip {
   display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px;

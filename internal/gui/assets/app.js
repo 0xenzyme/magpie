@@ -2936,7 +2936,24 @@ function renderModels(p) {
       names.append(row);
     }
   };
-  if (q) { q.oninput = draw; box.append(q); }
+  // every model at once (those the filter shows, when there is one), or none
+  const bulk = el("div", "mbulk");
+  const allOn = el("button", "text action", t("Select all"));
+  allOn.title = t("Pick every model listed (those the filter shows)");
+  allOn.onclick = () => {
+    const f = (q?.value || "").trim().toLowerCase();
+    const ids = p.models.filter((m) => !f || m.id.toLowerCase().includes(f) || (m.name || "").toLowerCase().includes(f) || (m.default || "").toLowerCase().includes(f)).map((m) => m.id);
+    draft.chosen = [...draft.chosen, ...ids.filter((id) => !draft.chosen.includes(id))];
+    draw();
+  };
+  const allOff = el("button", "text action", t("Select none"));
+  allOff.title = t("Unpick every model");
+  allOff.onclick = () => { draft.chosen = []; draw(); };
+  bulk.append(allOn, allOff);
+  if (q || p.models.length > 1) {
+    if (q) { q.oninput = draw; bulk.prepend(q); }
+    box.append(bulk);
+  }
   box.append(chips, names);
   const foot = el("div", "mfoot");
   const add = input(draft.typed || "", t("add a model id…"));
@@ -3839,6 +3856,19 @@ function panelQuotaRow(q) {
   return row;
 }
 
+// quotaFit puts every window's count under its name once one's doesn't fit
+// beside it, so windows side by side read alike rather than one count up
+// by its name and the next a line below (#90)
+const quotaFit = new ResizeObserver((es) => {
+  for (const { target: g } of es) {
+    const wraps = [...g.querySelectorAll(".quota-labels")].some((l) => {
+      const [name, n] = l.children;
+      return name.scrollWidth + 6 + n.scrollWidth > l.clientWidth;
+    });
+    g.classList.toggle("stacked", wraps);
+  }
+});
+
 // quotaWindows: one account's allowance as meters, or why there are none.
 function quotaWindows(sub) {
   if (sub.balance) {
@@ -3868,6 +3898,7 @@ function quotaWindows(sub) {
     if (w.resetsAt) quota.title = t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() });
     windows.append(quota);
   }
+  quotaFit.observe(windows);
   return windows;
 }
 
@@ -4924,6 +4955,8 @@ setInterval(renderUpdateBadge, 15 * 60 * 1000); // a window left open still hear
 // a tooltip — is swapped for blurred stand-in letters while it's on, as the
 // page redraws too; the address itself is kept aside to put back.
 (() => {
+  const EYE = "M2 12s3.5-8 10-8 10 8 10 8-3.5 8-10 8-10-8-10-8zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z";
+  const EYE_OFF = "M9.9 4.2A10.4 10.4 0 0 1 12 4c6.5 0 10 8 10 8a17.6 17.6 0 0 1-2.2 3.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 8 10 8a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M2 2l20 20";
   const EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, IS_EMAIL = new RegExp(EMAIL.source);
   // stand-in letters of the address's shape, the same each time it's drawn:
   // blurred, they read as a name without being one
@@ -4982,6 +5015,12 @@ setInterval(renderUpdateBadge, 15 * 60 * 1000); // a window left open still hear
     };
     return (on) => {
       btn.setAttribute("aria-pressed", String(on));
+      // what it is now, in its icon and its words: an open eye while the
+      // addresses show, struck through once they're hidden
+      btn.querySelector("path").setAttribute("d", on ? EYE_OFF : EYE);
+      const label = btn.querySelector("[data-t]");
+      label.dataset.en = on ? "Emails hidden" : "Hide emails";
+      label.textContent = t(label.dataset.en);
       view.classList.toggle("masked", on);
       if (on) { mask(); watch.observe(view, OBS); }
       else { watch.disconnect(); unmask(); }
