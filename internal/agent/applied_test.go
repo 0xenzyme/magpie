@@ -237,3 +237,24 @@ func TestCodexDriftReached(t *testing.T) {
 		t.Fatalf("reached magpie: %+v", d)
 	}
 }
+
+// A magpie on a port of its own (magpie-dev) runs beside the installed one:
+// an agent that one wired to its gateway is not drift here, while one wired
+// to neither still is.
+func TestDriftInstalledMagpie(t *testing.T) {
+	t.Setenv("MAGPIE_ADDR", "127.0.0.1:3426")
+	home, _ := codexHome(t, "", "")
+	cx := codex(home)
+	if err := cx.Apply("model", "fake/m1"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(home, ".codex", "config.toml")
+	os.WriteFile(cfg, []byte("openai_base_url = \"http://"+gateway.DefaultAddr+gateway.CodexPath+"\"\nmodel = \"fake/m1\"\n"), 0o644)
+	if d := cx.Drift(); d != nil {
+		t.Fatalf("the installed magpie's wiring taken for drift: %+v", d)
+	}
+	os.WriteFile(cfg, []byte("openai_base_url = \"http://127.0.0.1:9999"+gateway.CodexPath+"\"\nmodel = \"fake/m1\"\n"), 0o644)
+	if d := cx.Drift(); d == nil || d.Kind != "unwired" {
+		t.Fatalf("wired to neither: %+v", d)
+	}
+}

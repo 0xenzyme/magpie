@@ -114,7 +114,7 @@ var started = time.Now()
 // A field moved from one magpie model to another (the agent's own picker)
 // isn't drift; one moved off magpie is.
 func (a *Agent) Drift() *Drift {
-	if len(a.Fields) == 0 {
+	if len(a.Fields) == 0 || a.theInstalled() {
 		return nil
 	}
 	vals := a.Values()
@@ -160,6 +160,28 @@ func (a *Agent) Drift() *Drift {
 		}
 	}
 	return nil
+}
+
+// installedURL is the gateway of the magpie people install, on its own
+// port; a magpie on another one (magpie-dev, a sandbox) is run beside it.
+var installedURL = "http://" + gateway.DefaultAddr
+
+// elsewhere: this magpie is not on the installed one's port.
+func elsewhere() bool { return !sameHost(gateway.URL(), installedURL) }
+
+// theInstalled: this magpie runs beside the installed one, and the agent is
+// wired to that one's gateway, not this one's — the installed magpie set it
+// up, so it is that one's to check, not drift here. Otherwise the two would
+// take turns flagging each other's wiring.
+func (a *Agent) theInstalled() bool {
+	if !elsewhere() || a.Path == "" {
+		return false
+	}
+	b, err := os.ReadFile(a.Path)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(b), gateway.DefaultAddr) && !strings.Contains(string(b), hostOf(gateway.URL()))
 }
 
 // bypassed: the agent was used — while this gateway was up and after magpie
