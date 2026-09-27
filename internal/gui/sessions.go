@@ -5,12 +5,12 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"os/exec"
 	"runtime"
 	"strconv"
 	"time"
 
 	"github.com/yetone/magpie/internal/agent"
+	"github.com/yetone/magpie/internal/proc"
 	"github.com/yetone/magpie/internal/sessions"
 )
 
@@ -93,7 +93,7 @@ func openTerminal(command string) error {
 		os.Remove(f.Name())
 		return err
 	}
-	if err := exec.Command("open", "-a", "Terminal", f.Name()).Run(); err != nil {
+	if err := proc.Command("open", "-a", "Terminal", f.Name()).Run(); err != nil {
 		os.Remove(f.Name())
 		return err
 	}
