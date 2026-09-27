@@ -124,7 +124,7 @@ func (b *subscriptionBridge) startCursor(ctx context.Context, req *Request, mode
 	b.runs[token] = run
 	b.mu.Unlock()
 
-	if err := cmd.Start(); err != nil {
+	if err := run.launch(); err != nil {
 		b.removeRun(run)
 		return nil, nil, err
 	}
@@ -132,10 +132,6 @@ func (b *subscriptionBridge) startCursor(ctx context.Context, req *Request, mode
 		_, _ = io.Copy(&lockedWriter{run: run}, io.LimitReader(stderr, 1<<20))
 	}()
 	go c.read(stdout)
-	go func() {
-		_ = cmd.Wait()
-		run.finish()
-	}()
 
 	prompt := renderCursorPrompt(req, len(tools) > 0)
 	if _, err := io.WriteString(stdin, prompt); err != nil {

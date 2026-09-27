@@ -108,7 +108,7 @@ func (b *subscriptionBridge) startGrok(ctx context.Context, req *Request, model,
 	b.runs[token] = run
 	b.mu.Unlock()
 
-	if err := cmd.Start(); err != nil {
+	if err := run.launch(); err != nil {
 		b.removeRun(run)
 		return nil, nil, err
 	}
@@ -116,10 +116,6 @@ func (b *subscriptionBridge) startGrok(ctx context.Context, req *Request, model,
 		_, _ = io.Copy(&lockedWriter{run: run}, io.LimitReader(stderr, 1<<20))
 	}()
 	go c.readGrok(stdout)
-	go func() {
-		_ = cmd.Wait()
-		run.finish()
-	}()
 	return run, segment, nil
 }
 

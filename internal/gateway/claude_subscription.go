@@ -59,11 +59,18 @@ const (
 	idleMost    = 6
 )
 
+// parkLongest is how long a run started anew for each turn (Cursor, Grok)
+// waits on its caller's tool results. A caller that quit, or was stopped,
+// sends none; one whose tool ran longer gets its answer all the same, from a
+// run started with the whole conversation, as its next turn would be.
+var parkLongest = 5 * time.Minute
+
 type subscriptionRun struct {
 	bridge *subscriptionBridge
 	token  string
 	model  string
 	cmd    *exec.Cmd
+	tree   *proc.Tree // cmd once started, with all it starts
 	tmp    string
 
 	// the tools it was started with: its agent is told them once
@@ -220,7 +227,7 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, oau
 	b.runs[token] = run
 	b.mu.Unlock()
 
-	if err := cmd.Start(); err != nil {
+	if err := run.launch(); err != nil {
 		b.removeRun(run)
 		return nil, nil, err
 	}
@@ -228,10 +235,6 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, oau
 		_, _ = io.Copy(&lockedWriter{run: run}, io.LimitReader(stderr, 1<<20))
 	}()
 	go run.readOutput(stdout)
-	go func() {
-		_ = cmd.Wait()
-		run.finish()
-	}()
 
 	prompt, err := renderClaudePrompt(req)
 	if err != nil {
@@ -296,10 +299,19 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 // asked for nothing more waits for the conversation's next turn; one that
 // failed, was cut short or went unheard is let go.
 func (r *subscriptionRun) ended(req *Request, said, stop string, ok bool) {
-	if r.stdin == nil || stop == "tool" && ok {
-		return // it ends by itself, or waits on its tool calls
-	}
-	if !ok || stop != "stop" {
+	switch {
+	case !ok:
+		// the caller has no whole reply, so no tool calls to answer
+		r.abort()
+		return
+	case stop == "tool":
+		if r.stdin == nil && r.timer != nil {
+			r.timer.Reset(parkLongest)
+		}
+		return // it waits on its tool calls
+	case r.stdin == nil:
+		return // it ends by itself
+	case stop != "stop":
 		r.abort()
 		return
 	}
@@ -954,11 +966,44 @@ func (r *subscriptionRun) finish() {
 	}
 }
 
+// launch starts the run's agent, to end with all it starts.
+func (r *subscriptionRun) launch() error {
+	t, err := proc.StartTree(r.cmd)
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.tree = t
+	r.mu.Unlock()
+	go func() {
+		_ = t.Wait()
+		r.finish()
+	}()
+	return nil
+}
+
 func (r *subscriptionRun) abort() {
-	if r.cmd != nil && r.cmd.Process != nil {
-		_ = r.cmd.Process.Kill()
+	r.mu.Lock()
+	t := r.tree
+	r.mu.Unlock()
+	if t != nil {
+		t.Kill()
 	}
 	r.finish()
+}
+
+// abortAll ends every run, as the gateway stops: they are no terminal's
+// to be interrupted with it.
+func (b *subscriptionBridge) abortAll() {
+	b.mu.Lock()
+	runs := make([]*subscriptionRun, 0, len(b.runs))
+	for _, run := range b.runs {
+		runs = append(runs, run)
+	}
+	b.mu.Unlock()
+	for _, run := range runs {
+		run.abort()
+	}
 }
 
 func (b *subscriptionBridge) removeRun(run *subscriptionRun) {
@@ -1020,8 +1065,13 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 	}
 	var events <-chan Event
 	if run != nil {
-		events, err = run.continueWith(results)
-	} else {
+		if events, err = run.continueWith(results); err != nil {
+			// it ended while it waited: a new one is told the whole
+			// conversation
+			run = nil
+		}
+	}
+	if run == nil {
 		run, events, err = start(r.Context(), req)
 		if err == nil {
 			run.tools = map[string]bool{}
@@ -1038,7 +1088,15 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 	if err != nil {
 		return writeError(w, from, 502, name+": "+err.Error()), err.Error()
 	}
-	return relay(w, r, from, name, req, events, usage, run.abort, func(said, stop string, ok bool) { run.ended(req, said, stop, ok) })
+	// a caller gone before the reply is whole won't carry it on: its agent
+	// is stopped at once, not left to answer no one and wait on tool calls
+	// it never handed over
+	gone := context.AfterFunc(r.Context(), run.abort)
+	defer gone()
+	return relay(w, r, from, name, req, events, usage, run.abort, func(said, stop string, ok bool) {
+		gone()
+		run.ended(req, said, stop, ok)
+	})
 }
 
 // relay answers the client with a reply's events: abort is called when

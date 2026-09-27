@@ -187,6 +187,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		c, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		srv.Shutdown(c)
+		s.subscription.abortAll()
 	}()
 	for {
 		err := srv.Serve(ln)
