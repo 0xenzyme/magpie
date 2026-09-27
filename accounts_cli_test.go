@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yetone/magpie/internal/provider"
 )
 
 func TestUntilShort(t *testing.T) {
@@ -22,7 +24,7 @@ func TestUntilShort(t *testing.T) {
 func TestQuotaCell(t *testing.T) {
 	at := time.Now().Add(2*time.Hour + 13*time.Minute + 30*time.Second)
 	got := quotaCell(quotaSpan{Name: "5 hours", Used: 42, ResetsAt: &at})
-	if !strings.HasPrefix(got, "5h 42%") || !strings.Contains(got, "↻2h13m") {
+	if !strings.HasPrefix(got, "5h 42%") || !strings.Contains(got, "↻2h13m "+provider.ResetClock(at, time.Now())) {
 		t.Fatalf("%q", got)
 	}
 }

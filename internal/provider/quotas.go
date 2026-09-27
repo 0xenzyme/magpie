@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"math"
 	"slices"
 	"time"
 )
@@ -110,6 +111,22 @@ func QuotaReport(ctx context.Context, now time.Time) []Quota {
 		}
 	}
 	return out
+}
+
+// ResetClock is when a window starts again, on the clock: "14:30" today,
+// "tomorrow 09:00", "Wed 14:30" within the week, else "Oct 3 14:30".
+func ResetClock(at, now time.Time) string {
+	at, now = at.Local(), now.Local()
+	day := func(t time.Time) time.Time { y, m, d := t.Date(); return time.Date(y, m, d, 0, 0, 0, 0, time.Local) }
+	switch days := int(math.Round(day(at).Sub(day(now)).Hours() / 24)); {
+	case days <= 0:
+		return at.Format("15:04")
+	case days == 1:
+		return "tomorrow " + at.Format("15:04")
+	case days < 7:
+		return at.Format("Mon 15:04")
+	}
+	return at.Format("Jan 2 15:04")
 }
 
 // PlanTerm says when a plan's paid time ends, "renews Oct 18", "expires

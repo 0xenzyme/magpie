@@ -219,7 +219,7 @@ func quotaCell(w quotaSpan) string {
 		cell += " (" + w.Display + ")"
 	}
 	if w.ResetsAt != nil {
-		cell += muted.Render(" ↻" + untilShort(time.Until(*w.ResetsAt)))
+		cell += muted.Render(" ↻" + untilShort(time.Until(*w.ResetsAt)) + " " + provider.ResetClock(*w.ResetsAt, time.Now()))
 	}
 	return cell
 }

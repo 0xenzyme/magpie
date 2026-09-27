@@ -641,7 +641,7 @@ func quotaLines(qs []provider.SubscriptionQuota, asked, left bool, width int, no
 }
 
 // quotaCell is one window: its name, a meter, how much is used or left,
-// and when it starts again once it is nearly used up.
+// and when it starts again: on the clock, and how long until then.
 func quotaCell(w provider.QuotaWindow, left bool, now time.Time) string {
 	used := int(math.Round(math.Max(0, math.Min(100, w.Used))))
 	n, word := used, "used"
@@ -662,16 +662,14 @@ func quotaCell(w provider.QuotaWindow, left bool, now time.Time) string {
 		pct = w.Display + " · " + pct
 	}
 	c := sMuted.Render(w.Name) + " " + fill.Render(strings.Repeat("█", on)) + sFaint.Render(strings.Repeat("░", cells-on)) + " " + sText.Render(pct)
-	if used >= 80 {
-		var at time.Time
-		if w.ResetsAt != nil {
-			at = *w.ResetsAt
-		} else if w.ResetSecs > 0 {
-			at = now.Add(time.Duration(w.ResetSecs) * time.Second)
-		}
-		if !at.IsZero() {
-			c += sFaint.Render(" ↻ " + until(at.Sub(now)))
-		}
+	var at time.Time
+	if w.ResetsAt != nil {
+		at = *w.ResetsAt
+	} else if w.ResetSecs > 0 {
+		at = now.Add(time.Duration(w.ResetSecs) * time.Second)
+	}
+	if !at.IsZero() {
+		c += sFaint.Render(" ↻ " + provider.ResetClock(at, now) + " (" + until(at.Sub(now)) + ")")
 	}
 	return c
 }

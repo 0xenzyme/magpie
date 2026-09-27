@@ -3409,6 +3409,19 @@ function setQuotaLeft(on) {
   renderQuotas();
 }
 
+// resetClock is when a window starts again, on the clock: "14:30" today,
+// "tomorrow 09:00", "Thu 14:30" within the week, else "Oct 12 08:05".
+function resetClock(at) {
+  const lang = locale === "zh" ? "zh-CN" : undefined;
+  const time = at.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", hour12: false });
+  const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const days = Math.round((day(at) - day(new Date())) / 864e5);
+  if (days <= 0) return time;
+  if (days === 1) return t("tomorrow {time}", { time });
+  if (days < 7) return at.toLocaleDateString(lang, { weekday: "short" }) + " " + time;
+  return at.toLocaleDateString(lang, { month: "short", day: "numeric" }) + " " + time;
+}
+
 function untilText(at) {
   const mins = Math.max(1, Math.round((at - Date.now()) / 60000));
   if (mins < 60) return t("in {n}m", { n: mins });
@@ -3885,8 +3898,11 @@ function panelQuotaRow(q) {
       const fill = el("i");
       fill.style.width = quotaFill(w) + "%";
       track.append(fill);
-      m.append(el("span", "pq-n", t(w.name)), track, el("b", "", quotaFill(w) + "%"));
-      m.title = t(w.name) + " · " + quotaText(w) + (w.resetsAt ? "\n" + t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() }) : "");
+      const line = el("span", "pq-line");
+      line.append(el("span", "pq-n", t(w.name)), track, el("b", "", quotaFill(w) + "%"));
+      m.append(line);
+      if (w.resetsAt) m.append(el("span", "pq-r", "↻ " + resetClock(new Date(w.resetsAt))));
+      m.title = t(w.name) + " · " + quotaText(w) + (w.resetsAt ? "\n" + t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() }) + " · " + untilText(new Date(w.resetsAt)) : "");
       ws.append(m);
     }
   }
@@ -3941,7 +3957,14 @@ function quotaWindows(sub) {
     fill.style.width = `${quotaFill(w)}%`;
     track.append(fill);
     quota.append(labels, track);
-    if (w.resetsAt) quota.title = t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() });
+    // when it starts again, on the clock and how long until then
+    if (w.resetsAt) {
+      const at = new Date(w.resetsAt);
+      const r = el("div", "quota-reset");
+      r.append(el("span", "", t("Resets {when}", { when: resetClock(at) }) + " ·"), " ", el("span", "", untilText(at)));
+      quota.append(r);
+      quota.title = t("Resets {when}", { when: at.toLocaleString() });
+    }
     windows.append(quota);
   }
   quotaFit.observe(windows);
