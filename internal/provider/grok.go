@@ -8,6 +8,7 @@ package provider
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -106,6 +107,7 @@ func grokAccount() (Provider, bool) {
 		acct.Home = "" // the CLI's own, wherever it is
 	}
 	grokSigned(acct, home)
+	acct.body = grokBody
 	acct.models = func() []catalog.Model { return []catalog.Model{{ID: "grok-4.7", Name: "Grok 4.7"}} }
 	acct.fetch = func(ctx context.Context) ([]catalog.Model, error) {
 		ms, err := grokModels(ctx, acct.sign)
@@ -136,6 +138,74 @@ func grokSigned(acct *Account, home string) {
 		}
 		return nil
 	}
+}
+
+// grokTools are the tool types Grok's backend takes; it turns the whole
+// request away over another, as over Codex's freeform apply_patch (custom)
+// or its sub-agent tools, grouped in a namespace.
+var grokTools = map[string]bool{"function": true, "web_search": true, "x_search": true, "image_generation": true,
+	"collections_search": true, "file_search": true, "code_execution": true, "code_interpreter": true,
+	"mcp": true, "shell": true, "tool_search": true}
+
+// grokBody leaves out the tools Grok's backend doesn't take, as a backend
+// magpie translates for goes without them: Codex, without apply_patch,
+// edits files through its shell. Codex's web_search says whether it may
+// reach the live web, which Grok's doesn't take either; it searches live.
+// And Codex hands reasoning back with "content": null, which the backend
+// can't read the encrypted reasoning beside ("Could not decode the
+// compaction blob"), so a null content goes.
+func grokBody(body []byte) []byte {
+	if !bytes.Contains(body, []byte(`"tools"`)) && !bytes.Contains(body, []byte(`"reasoning"`)) {
+		return body
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+	var m map[string]any
+	if dec.Decode(&m) != nil || m == nil {
+		return body
+	}
+	dirty := false
+	if tools, ok := m["tools"].([]any); ok {
+		kept := tools[:0:0]
+		for _, t := range tools {
+			if tm, ok := t.(map[string]any); ok {
+				ty, _ := tm["type"].(string)
+				if !grokTools[ty] {
+					dirty = true
+					continue
+				}
+				if _, ok := tm["external_web_access"]; ok {
+					delete(tm, "external_web_access")
+					dirty = true
+				}
+			}
+			kept = append(kept, t)
+		}
+		m["tools"] = kept
+		if tc, ok := m["tool_choice"].(map[string]any); ok {
+			if ty, _ := tc["type"].(string); !grokTools[ty] {
+				delete(m, "tool_choice")
+				dirty = true
+			}
+		}
+	}
+	input, _ := m["input"].([]any)
+	for _, it := range input {
+		if im, ok := it.(map[string]any); ok && im["type"] == "reasoning" {
+			if c, ok := im["content"]; ok && c == nil {
+				delete(im, "content")
+				dirty = true
+			}
+		}
+	}
+	if !dirty {
+		return body
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return b
 }
 
 // grokHeaders say a request comes from the Grok CLI, which the backend

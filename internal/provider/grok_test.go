@@ -76,3 +76,37 @@ func TestGrokTokenReadsTheCLIsSignIn(t *testing.T) {
 		t.Fatal("no sign-in, yet a token")
 	}
 }
+
+// Codex's freeform apply_patch is left out: Grok's backend turns away a
+// request with a tool type it doesn't know.
+func TestGrokBodyLeavesOutCustomTools(t *testing.T) {
+	in := []byte(`{"model":"grok-4.7","tools":[{"type":"function","name":"shell"},{"type":"custom","name":"apply_patch","format":{"type":"grammar"}},{"type":"namespace","name":"multi_agent_v1","tools":[]},{"type":"web_search","external_web_access":false}],"tool_choice":{"type":"custom","name":"apply_patch"},"max_output_tokens":100}`)
+	var got struct {
+		Tools  []map[string]any `json:"tools"`
+		Choice any              `json:"tool_choice"`
+		Max    int              `json:"max_output_tokens"`
+	}
+	if err := json.Unmarshal(grokBody(in), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Tools) != 2 || got.Tools[0]["type"] != "function" || len(got.Tools[1]) != 1 || got.Tools[1]["type"] != "web_search" || got.Choice != nil || got.Max != 100 {
+		t.Fatalf("%+v", got)
+	}
+	same := []byte(`{"tools":[{"type":"function","name":"x"}],"tool_choice":"auto"}`)
+	if string(grokBody(same)) != string(same) {
+		t.Fatal("a body Grok takes was changed")
+	}
+}
+
+// Codex's reasoning, handed back with a null content, is sent without it.
+func TestGrokBodyDropsNullReasoningContent(t *testing.T) {
+	in := []byte(`{"input":[{"type":"reasoning","id":"rs_1","summary":[],"content":null,"encrypted_content":"a+b/c="},{"type":"message","role":"user","content":"hi"}]}`)
+	want := `{"input":[{"encrypted_content":"a+b/c=","id":"rs_1","summary":[],"type":"reasoning"},{"content":"hi","role":"user","type":"message"}]}`
+	if got := string(grokBody(in)); got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+	same := []byte(`{"input":[{"type":"reasoning","content":[],"encrypted_content":"x"}]}`)
+	if string(grokBody(same)) != string(same) {
+		t.Fatal("reasoning with content was changed")
+	}
+}
