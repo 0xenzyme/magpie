@@ -124,3 +124,28 @@ func TestClaudeLogins(t *testing.T) {
 		t.Fatalf("active after switch: %q", active)
 	}
 }
+
+func TestRemovedAccountIsNotRemembered(t *testing.T) {
+	home := signIn(t)
+	if err := Delete("codex"); err != nil {
+		t.Fatal(err)
+	}
+	codexSignIn(t, home, "work@example.com", "r-work")
+	rememberLogins(true)
+	for _, l := range readLogins() {
+		if l.Agent == "codex" && l.User == "work@example.com" {
+			t.Fatal("a sign-in of a removed account was saved")
+		}
+	}
+	if err := ShowAccount("codex"); err != nil {
+		t.Fatal(err)
+	}
+	rememberLogins(true)
+	saved := false
+	for _, l := range readLogins() {
+		saved = saved || l.Agent == "codex" && l.User == "work@example.com"
+	}
+	if !saved {
+		t.Fatal("bringing the account back should save its sign-in again")
+	}
+}

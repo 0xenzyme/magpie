@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -343,6 +344,12 @@ func liveLogin(agent string) (savedLogin, bool) {
 // rememberLogins saves the accounts the agents are signed in to now. The
 // copy of an active account is only a bookmark: the agent keeps refreshing
 // its own, and a switch saves that fresher one first.
+// accountRemoved: the user removed the agent's account from magpie, which
+// then neither saves its sign-ins nor keeps them renewed.
+func accountRemoved(agent string) bool {
+	return slices.ContainsFunc(load().Providers, func(p Provider) bool { return p.ID == agent && p.Hidden })
+}
+
 func rememberLogins(force bool) {
 	loginsMu.Lock()
 	defer loginsMu.Unlock()
@@ -353,6 +360,9 @@ func rememberLogins(force bool) {
 	ls := readLogins()
 	changed := false
 	for _, agent := range loginAgents {
+		if accountRemoved(agent) {
+			continue
+		}
 		l, ok := liveLogin(agent)
 		if !ok {
 			continue
