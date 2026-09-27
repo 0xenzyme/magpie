@@ -1201,14 +1201,25 @@ $("#save").onclick = () => {
 // the local gateway in whichever API the agent speaks.
 
 async function loadProviders() {
-  if (view === "gateway") renderGatewayLoading();
-  else if (!providers) renderProvidersLoading();
+  // the skeletons only while there is nothing yet: a reload keeps what is
+  // drawn, and where the reader is in it, until the new one is in
+  if (!providers) { if (view === "gateway") renderGatewayLoading(); else renderProvidersLoading(); }
+  const was = providers;
   providers = await api("providers");
   // a reload's provider may be gone since
   if (typeof editing === "string" && !providers.providers.some((p) => p.id === editing)) editing = null;
   if (!providers.providers.length && editing === null) adding = true;
-  if (view === "gateway") renderGatewayView();
-  else renderProviders();
+  if (view === "gateway") {
+    // the gateway page is looked at and left open: coming back to the window
+    // redraws it only when something on it changed, and when only the calls
+    // did, only them (an account's last sign-in check isn't on it)
+    const json = (a) => JSON.stringify(a, (k, v) => (k === "seen" ? undefined : v));
+    const same = (a, b) => json(a) === json(b);
+    if (was && !$("#view-gateway").classList.contains("loading") && same({ ...was, gateway: { ...was.gateway, calls: 0 } }, { ...providers, gateway: { ...providers.gateway, calls: 0 } })) {
+      if (!same(was.gateway.calls, providers.gateway.calls)) renderActivity();
+    } else renderGatewayView();
+    backToReader($("#view-gateway"));
+  } else renderProviders();
 }
 
 // Rows in the shape of the list while it is first asked for; a reload keeps
@@ -1645,10 +1656,27 @@ function highlight(code, lang) {
 }
 
 let modelQuery = "";
+// The model list can be folded away, so Recent calls sits under Connect;
+// the fold is remembered.
+let modelsFolded = false;
+try { modelsFolded = localStorage.getItem("magpie.gwModelsFolded") === "1"; } catch {}
+$("#foldModels").prepend(svg(CHEV_R, 11, 1.6));
+$("#foldModels").onclick = () => {
+  modelsFolded = !modelsFolded;
+  try { localStorage.setItem("magpie.gwModelsFolded", modelsFolded ? "1" : "0"); } catch {}
+  renderGatewayModels();
+  backToReader($("#view-gateway"));
+};
+
 function renderGatewayModels() {
   const list = $("#gwModels");
   list.replaceChildren();
   const all = gatewayModels();
+  const fold = $("#foldModels");
+  fold.setAttribute("aria-expanded", String(!modelsFolded));
+  fold.title = t(modelsFolded ? "Show the models" : "Fold the models away");
+  $("#modelsCount").textContent = all.length ? String(all.length) : "";
+  list.hidden = modelsFolded && all.length > 0;
   // the search sits in the section head, beside Copy all ids; typing
   // redraws only the list, so it keeps its focus
   let q = $("#findModel");
@@ -1660,13 +1688,13 @@ function renderGatewayModels() {
     q.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape" && q.value) { q.value = modelQuery = ""; renderGatewayModels(); } };
     $("#copyModels").before(q);
   }
-  q.hidden = all.length < 8;
+  q.hidden = all.length < 8 || list.hidden;
   const words = modelQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const models = q.hidden ? all : all.filter((m) => {
     const hay = `${m.id} ${m.name || ""} ${m.provider.name}`.toLowerCase();
     return words.every((w) => hay.includes(w));
   });
-  $("#copyModels").hidden = !models.length;
+  $("#copyModels").hidden = !models.length || list.hidden;
   $("#copyModels").onclick = () => copy(models.map((m) => m.id).join("\n"), t("Model ids"));
   if (!all.length) {
     const empty = el("div", "empty-state", "");

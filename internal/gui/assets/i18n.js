@@ -521,6 +521,8 @@ const I18N = {
     "Add a provider, or sign in to Codex or Copilot; their models show up here for every agent.": "添加一个供应商，或登录 Codex / Copilot；它们的模型会出现在这里，供所有 Agent 使用。",
     "Use this model in the snippets": "在示例中使用此模型",
     "Recent calls": "最近调用",
+    "Show the models": "展开模型列表",
+    "Fold the models away": "收起模型列表",
     "shown by the magpie that serves the gateway": "由提供网关的那个 magpie 显示",
     "No requests yet. Point an agent at a model, or run the example above; every call shows up here as it happens.": "还没有请求。让某个 Agent 使用一个模型，或运行上面的示例；每次调用都会实时显示在这里。",
     "Show request and response bodies": "查看请求体和响应体",
