@@ -173,10 +173,16 @@ func (b *subscriptionBridge) startDevin(ctx context.Context, req *Request, model
 		return fail(err)
 	}
 	go func() {
-		res, err := conn.await(context.Background(), reply)
-		if err != nil {
-			run.emit(Event{Kind: KError, Text: "devin: " + err.Error()})
-		} else {
+		defer func() {
+			run.endSegment()
+			time.AfterFunc(2*time.Second, run.abort)
+		}()
+		for nudges := 0; ; nudges++ {
+			res, err := conn.await(context.Background(), reply)
+			if err != nil {
+				run.emit(Event{Kind: KError, Text: "devin: " + err.Error()})
+				return
+			}
 			var done struct {
 				StopReason string `json:"stopReason"`
 				Usage      struct {
@@ -187,13 +193,30 @@ func (b *subscriptionBridge) startDevin(ctx context.Context, req *Request, model
 			}
 			_ = json.Unmarshal(res, &done)
 			run.emit(Event{Kind: KUsage, Usage: Usage{Input: done.Usage.Input, Output: done.Usage.Output, CacheRead: done.Usage.CacheRead}})
+			// Devin ends its turn as soon as one of its own tools is
+			// refused (agent_stopped, tool_rejected) — reaching for its grep
+			// or shell midway would leave the caller with half an answer
+			// and no error, so the model is told to go on with the magpie
+			// tools instead, a few times at most.
+			if conn.rejected.Swap(false) && done.StopReason == "end_turn" && nudges < devinNudges {
+				_, reply, err = conn.send("session/prompt", map[string]any{"sessionId": sess.SessionID,
+					"prompt": []map[string]any{{"type": "text", "text": devinNudge}}})
+				if err == nil {
+					continue
+				}
+			}
 			run.emit(Event{Kind: KStop, Stop: stopFromACP(done.StopReason)})
+			return
 		}
-		run.endSegment()
-		time.AfterFunc(2*time.Second, run.abort)
 	}()
 	return run, segment, nil
 }
+
+// devinNudge is what a turn Devin ended on a refused tool of its own goes
+// on with, at most devinNudges times.
+const devinNudge = "<external_system_instructions>\nThat tool is one of Devin's own, which are turned off here, so it could not run. Carry on with the task where you left off, using only the magpie tools — call them directly by name, without listing them or reading any file to look them up.\n</external_system_instructions>"
+
+const devinNudges = 3
 
 // errACPEnded is what waits on an ACP agent get when its process ends or
 // its stream breaks before answering.
@@ -220,6 +243,9 @@ type devinConn struct {
 	seq     atomic.Int64
 	mu      sync.Mutex
 	pending map[int64]chan devinReply
+	// rejected is set when devin stops a turn because one of its own
+	// tools was refused
+	rejected atomic.Bool
 }
 
 type devinReply struct {
@@ -323,6 +349,13 @@ func (c *devinConn) read(rd io.Reader) {
 				c.answer(msg.ID, map[string]any{"outcome": map[string]any{"outcome": "cancelled"}})
 			} else {
 				c.refuse(msg.ID, -32601, "magpie does not implement "+msg.Method)
+			}
+		case msg.Method == "_cognition.ai/agent_stopped":
+			var p struct {
+				Cause string `json:"cause"`
+			}
+			if json.Unmarshal(msg.Params, &p) == nil && p.Cause == "tool_rejected" {
+				c.rejected.Store(true)
 			}
 		case msg.Method == "session/update":
 			var p struct {
@@ -505,7 +538,7 @@ func renderDevinPrompt(req *Request, tools bool) ([]map[string]any, error) {
 	}
 	out := make([]map[string]any, 0, len(blocks)+1)
 	if tools {
-		out = append(out, map[string]any{"type": "text", "text": "<external_system_instructions>\nThe only tools in this session are those of the magpie MCP server; Devin's own tools (shell, reading, editing and searching files, the web) are turned off, and this workspace is empty. Call a magpie tool whenever the conversation needs one.\n</external_system_instructions>"})
+		out = append(out, map[string]any{"type": "text", "text": "<external_system_instructions>\nThe only tools in this session are those of the magpie MCP server; Devin's own tools (shell, reading, editing and searching files, the web) are turned off, and this workspace is empty. They are already yours to call directly by name, so there is no need to list them, and never try to read a file to look one up. Call a magpie tool whenever the conversation needs one.\n</external_system_instructions>"})
 	}
 	for _, b := range blocks {
 		switch b["type"] {

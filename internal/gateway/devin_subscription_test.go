@@ -127,6 +127,17 @@ func TestDevinConnCallsAndAnswers(t *testing.T) {
 	if kinds[0] != KText || kinds[1] != KThink {
 		t.Fatalf("events: %v", kinds)
 	}
+	// a turn stopped on a refused tool of devin's own is noted, once
+	p.write(t, `{"jsonrpc":"2.0","method":"_cognition.ai/agent_stopped","params":{"cause":"completed"}}`)
+	p.write(t, `{"jsonrpc":"2.0","method":"_cognition.ai/agent_stopped","params":{"cause":"tool_rejected"}}`)
+	for deadline := time.Now().Add(2 * time.Second); !p.conn.rejected.Load(); time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("tool_rejected went unnoticed")
+		}
+	}
+	if !p.conn.rejected.Swap(false) || p.conn.rejected.Load() {
+		t.Fatal("rejected is not taken once")
+	}
 	// the stream ending fails a call still open
 	_, reply2, _ := p.conn.send("session/prompt", map[string]any{})
 	p.toConn.Close()
