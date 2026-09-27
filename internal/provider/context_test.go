@@ -48,3 +48,25 @@ func TestContextSetByUser(t *testing.T) {
 		t.Errorf("set: %d", got)
 	}
 }
+
+// #120: a subscription's models take the window the user sets on it, over
+// the one its backend says (Codex: 272K) — kept through the account's save.
+func TestContextSetOnAccount(t *testing.T) {
+	signIn(t)
+	of := func() int {
+		for _, e := range Served() {
+			if e.ID == "codex/gpt-5.5" {
+				return e.Context
+			}
+		}
+		t.Fatal("no codex/gpt-5.5")
+		return 0
+	}
+	before := of()
+	if err := Save(Provider{ID: "codex", Contexts: map[string]int{"*": 872000}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := of(); got != 872000 {
+		t.Errorf("set: %d, was %d", got, before)
+	}
+}
