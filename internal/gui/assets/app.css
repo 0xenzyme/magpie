@@ -401,6 +401,10 @@ body.window .field.solo { grid-column: auto; }
 .subscription-account .plan { margin-left: auto; flex: none; font-size: 10.5px; color: var(--muted); text-transform: capitalize; }
 .subscription-head .plan { margin-left: auto; font-size: 10.5px; color: var(--muted); text-transform: capitalize; }
 .quota-windows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 14px; }
+/* each window takes two of the grid's rows, its names and its bar, so
+   when one's count wraps under its name the bars beside it still line up */
+.quota-windows .quota { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 0; }
+.quota-windows .quota-track { align-self: start; }
 /* a narrow card puts the count under the window's name rather than
    squeezing the name a character a line and the count past the edge;
    side by side they are at either end, and a count on a line of its own
