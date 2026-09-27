@@ -29,6 +29,9 @@ type fakeDAV struct {
 	dirs  map[string]bool
 	n     int
 	puts  int
+	// nutstore: a file read in a folder that isn't there is a 409, as
+	// 坚果云 (Nutstore) answers, not a 404
+	nutstore bool
 }
 
 func (f *fakeDAV) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +44,10 @@ func (f *fakeDAV) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		b, ok := f.files[r.URL.Path]
+		if !ok && f.nutstore && !f.dirs[filepath.Dir(r.URL.Path)] {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -278,6 +285,25 @@ func TestSync(t *testing.T) {
 // skills reach b and are written into b's agents, b pushes nothing back,
 // a change on either side reaches the other, and a computer that leaves
 // the library out neither sends nor takes it.
+// A server that answers a read in a folder not made yet with a 409 (坚果云,
+// #114): no backup there yet, so the first sync makes the folder and puts it.
+func TestSyncNutstore(t *testing.T) {
+	fake := &fakeDAV{files: map[string][]byte{}, etags: map[string]string{}, dirs: map[string]bool{"/dav": true}, nutstore: true}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+	newComputer(t).use(t)
+	provider.Save(provider.Provider{ID: "deepseek", Name: "DeepSeek", Chat: "https://api.deepseek.com/v1", Key: "k1"})
+	if err := Configure(Config{URL: srv.URL + "/dav/", User: "me", Password: "pw", Passphrase: "correct horse", Keys: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Now(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if v := Status(); v.Error != "" || len(fake.files["/dav/magpie/magpie.magpie-backup"]) == 0 || !fake.dirs["/dav/magpie"] {
+		t.Fatalf("first sync: %+v", v)
+	}
+}
+
 func TestSyncLibrary(t *testing.T) {
 	fake := &fakeDAV{files: map[string][]byte{}, etags: map[string]string{}, dirs: map[string]bool{"/dav": true}}
 	srv := httptest.NewServer(fake)

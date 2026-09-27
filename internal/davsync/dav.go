@@ -76,7 +76,9 @@ func (d *dav) get(ctx context.Context) (data []byte, etag string, err error) {
 	}
 	defer res.Body.Close()
 	switch {
-	case res.StatusCode == http.StatusNotFound || res.StatusCode == http.StatusGone:
+	// 409: the folder isn't there yet — how 坚果云 (Nutstore) answers a
+	// read in it, where others say 404; put makes it
+	case res.StatusCode == http.StatusNotFound || res.StatusCode == http.StatusGone || res.StatusCode == http.StatusConflict:
 		return nil, "", nil
 	case res.StatusCode != http.StatusOK:
 		return nil, "", fmt.Errorf("reading %s from the WebDAV server: HTTP %d", file, res.StatusCode)
