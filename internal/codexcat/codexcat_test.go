@@ -64,3 +64,43 @@ func TestCodexCatalogImages(t *testing.T) {
 		t.Errorf("%+v", got.Models)
 	}
 }
+
+// Fast mode is offered for a ChatGPT account's GPT models, with Codex's own
+// tiers when it lists the model, and for no one else's.
+func TestCodexCatalogServiceTiers(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".codex"), 0o755)
+	os.WriteFile(filepath.Join(home, ".codex", "models_cache.json"), []byte(`{"models":[
+		{"slug":"gpt-6-astra","display_name":"GPT-6 Astra","service_tiers":[{"id":"priority","name":"Fast","description":"2x speed, increased usage"}]}]}`), 0o644)
+
+	var got struct {
+		Models []struct {
+			Slug  string `json:"slug"`
+			Tiers []struct {
+				ID          string `json:"id"`
+				Description string `json:"description"`
+			} `json:"service_tiers"`
+		} `json:"models"`
+	}
+	json.Unmarshal(Catalog([]catalog.Model{
+		{ID: "codex/gpt-6-astra", Name: "GPT-6 Astra · Codex"},
+		{ID: "codex/gpt-6-sol", Name: "GPT-6 Sol · Codex"},
+		{ID: "copilot/gpt-6-sol", Name: "GPT-6 Sol · Copilot"},
+		{ID: "openrouter/openai/gpt-6-sol", Name: "GPT-6 Sol · OpenRouter"},
+	}), &got)
+	if len(got.Models) != 4 {
+		t.Fatalf("%+v", got.Models)
+	}
+	if ts := got.Models[0].Tiers; len(ts) != 1 || ts[0].ID != "priority" || ts[0].Description != "2x speed, increased usage" {
+		t.Errorf("own entry tiers: %+v", ts)
+	}
+	if ts := got.Models[1].Tiers; len(ts) != 1 || ts[0].ID != "priority" {
+		t.Errorf("uncached account model tiers: %+v", ts)
+	}
+	for _, m := range got.Models[2:] {
+		if m.Tiers == nil || len(m.Tiers) != 0 {
+			t.Errorf("%s offers tiers: %+v", m.Slug, m.Tiers)
+		}
+	}
+}

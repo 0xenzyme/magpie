@@ -54,6 +54,11 @@ func Entries(ms []catalog.Model, after int) []any {
 		Effort      string `json:"effort"`
 		Description string `json:"description"`
 	}
+	type tier struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
 	type model struct {
 		Slug          string  `json:"slug"`
 		DisplayName   string  `json:"display_name"`
@@ -75,6 +80,7 @@ func Entries(ms []catalog.Model, after int) []any {
 		Tools      []string `json:"experimental_supported_tools"`
 		Modalities []string `json:"input_modalities"`
 		Context    *int     `json:"context_window,omitempty"`
+		Tiers      []tier   `json:"service_tiers"`
 	}
 	own := CacheEntries()
 	var entries []any
@@ -88,6 +94,12 @@ func Entries(ms []catalog.Model, after int) []any {
 			Instructions: Prompt, Efforts: []level{},
 			Shell: "unified_exec", Visibility: "list", InAPI: true, Priority: after + i + 1,
 			ApplyPatch: "freeform", Tools: []string{}, Modalities: []string{"text"},
+			Tiers: []tier{},
+		}
+		// Fast mode: a ChatGPT account's GPT model Codex has no entry for
+		// gets the tier Codex's own catalog gives its GPT models
+		if slug, ok := strings.CutPrefix(m.ID, "codex/"); ok && strings.HasPrefix(slug, "gpt-") {
+			e.Tiers = append(e.Tiers, tier{ID: "priority", Name: "Fast", Description: "1.5x speed, increased usage"})
 		}
 		if m.Images {
 			e.Modalities = append(e.Modalities, "image")

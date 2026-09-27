@@ -180,3 +180,27 @@ func TestCodexPromptsSameMtime(t *testing.T) {
 		t.Fatal("a second account's list replaced the first's")
 	}
 }
+
+// Codex's Fast mode reaches the ChatGPT backend as service_tier "priority";
+// any other tier is dropped as before.
+func TestCodexBodyServiceTier(t *testing.T) {
+	t.Setenv("CODEX_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	tier := func(body string) (any, bool) {
+		var m map[string]any
+		json.Unmarshal(codexBody([]byte(body)), &m)
+		v, ok := m["service_tier"]
+		return v, ok
+	}
+	if v, _ := tier(`{"model":"gpt-6-sol","service_tier":"priority","input":"hi"}`); v != "priority" {
+		t.Errorf("priority: %v", v)
+	}
+	for _, s := range []string{`"flex"`, `"auto"`, `"default"`, `"fast"`, `null`} {
+		if v, ok := tier(`{"model":"gpt-6-sol","service_tier":` + s + `,"input":"hi"}`); ok {
+			t.Errorf("%s kept as %v", s, v)
+		}
+	}
+	if v, ok := tier(`{"model":"gpt-6-sol","input":"hi"}`); ok {
+		t.Errorf("none became %v", v)
+	}
+}
