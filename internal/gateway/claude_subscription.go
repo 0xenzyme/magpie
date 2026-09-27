@@ -59,7 +59,7 @@ const (
 	idleMost    = 6
 )
 
-// parkLongest is how long a run started anew for each turn (Cursor, Grok)
+// parkLongest is how long a run started anew for each turn (Cursor)
 // waits on its caller's tool results. A caller that quit, or was stopped,
 // sends none; one whose tool ran longer gets its answer all the same, from a
 // run started with the whole conversation, as its next turn would be.

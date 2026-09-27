@@ -44,7 +44,7 @@ func searching(ctx context.Context) bool {
 // asked on this API.
 func searchesItself(p provider.Provider, proto provider.Protocol) bool {
 	if p.Account != nil {
-		return p.Account.Agent == "codex" && proto == provider.Responses
+		return (p.Account.Agent == "codex" || p.Account.Agent == "grok") && proto == provider.Responses
 	}
 	return slices.Contains(searchHosts[proto], provider.HostOf(p.Base(proto)))
 }

@@ -1,19 +1,57 @@
 package provider
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestParseGrokModels(t *testing.T) {
-	out := "You are logged in with grok.com.\n\nDefault model: grok-4.7\n\nAvailable models:\n  * grok-4.7 (default)\n  - grok-4.7-build-fast\n  - grok-4.6\n"
-	ms := parseGrokModels(out)
-	if len(ms) != 3 || ms[0].ID != "grok-4.7" || ms[1].ID != "grok-4.7-build-fast" || ms[2].ID != "grok-4.6" {
+	b := []byte(`{"object":"list","data":[
+		{"id":"grok-4.7","name":"Grok 4.7","context_window":500000,"api_backend":"responses","reasoning_efforts":[{"value":"xhigh"},{"value":"high"},{"value":"medium"},{"value":"low"}]},
+		{"id":"grok-4.7-build-fast","context_window":256000,"api_backend":"responses"},
+		{"id":"grok-old","api_backend":"chat_completions"}]}`)
+	ms := parseGrokModels(b)
+	if len(ms) != 2 || ms[0].ID != "grok-4.7" || ms[0].Name != "Grok 4.7" || ms[0].Context != 500000 ||
+		strings.Join(ms[0].Efforts, ",") != "low,medium,high,xhigh" || ms[1].Name != "grok-4.7-build-fast" || ms[1].Efforts != nil {
 		t.Fatalf("models = %+v", ms)
+	}
+}
+
+// A request is signed with the sign-in of its account's home, as the CLI
+// signs its own.
+func TestGrokSigns(t *testing.T) {
+	var got http.Header
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+		w.Write([]byte(`{"data":[{"id":"grok-4.7","api_backend":"responses"}]}`))
+	}))
+	defer up.Close()
+	base := grokBase
+	grokBase = up.URL
+	defer func() { grokBase = base }()
+	home := t.TempDir()
+	grokSignedIn(t, home, "me@x.ai")
+	acct := &Account{Agent: "grok"}
+	grokSigned(acct, home)
+	req, _ := http.NewRequest("POST", up.URL+"/responses", nil)
+	if err := acct.sign(context.Background(), req, []byte(`{"model":"grok-4.7","prompt_cache_key":"c1"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if req.Header.Get("Authorization") != "Bearer k-me@x.ai" || req.Header.Get("x-grok-client-version") == "" ||
+		req.Header.Get("x-grok-model-override") != "grok-4.7" || req.Header.Get("x-grok-conv-id") != "c1" ||
+		!strings.HasPrefix(req.Header.Get("User-Agent"), "grok-shell/") {
+		t.Fatalf("headers = %v", req.Header)
+	}
+	ms, err := grokModels(context.Background(), acct.sign)
+	if err != nil || len(ms) != 1 || got.Get("Authorization") != "Bearer k-me@x.ai" {
+		t.Fatalf("%v %+v %v", err, ms, got)
 	}
 }
 
@@ -30,23 +68,11 @@ func TestGrokTokenReadsTheCLIsSignIn(t *testing.T) {
 	if u, ok := GrokUser(home); !ok || u != "me@example.com" {
 		t.Fatalf("user = %q %v", u, ok)
 	}
-	var out bytes.Buffer
-	if err := GrokToken(&out, home, "", false); err != nil {
-		t.Fatal(err)
+	c, err := grokAccessToken(home, "", false)
+	if err != nil || c.Key != "tok" {
+		t.Fatalf("%+v %v", c, err)
 	}
-	var got struct {
-		Token   string `json:"access_token"`
-		Expires int    `json:"expires_in"`
-		Issuer  string `json:"issuer"`
-		Refresh string `json:"refresh_token"`
-	}
-	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Token != "tok" || got.Issuer != "https://auth.x.ai" || got.Refresh != "" || got.Expires < 7000 || got.Expires > 7200 {
-		t.Fatalf("token answer = %+v", got)
-	}
-	if err := GrokToken(&out, t.TempDir(), "", false); err == nil {
+	if _, err := grokAccessToken(t.TempDir(), "", false); err == nil {
 		t.Fatal("no sign-in, yet a token")
 	}
 }

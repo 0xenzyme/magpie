@@ -857,14 +857,6 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 		}
 		return s.serveSubscription(w, r, from, "Cursor", model, body, &call.Usage, start)
 	}
-	// and so does Grok's
-	if p.Account != nil && p.Account.Agent == "grok" {
-		call.To = from
-		start := func(ctx context.Context, req *Request) (*subscriptionRun, <-chan Event, error) {
-			return s.subscription.startGrok(ctx, req, model, p.Account.Home)
-		}
-		return s.serveSubscription(w, r, from, "Grok", model, body, &call.Usage, start)
-	}
 	// Devin's through the API its CLI talks to, with the CLI's sign-in
 	if p.Account != nil && p.Account.Agent == "devin" {
 		call.To = from

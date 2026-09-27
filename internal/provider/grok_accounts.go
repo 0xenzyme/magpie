@@ -107,6 +107,7 @@ func grokAlsoOn(p Provider) []Provider {
 		}
 		a := *p.Account
 		a.User, a.Plan, a.Home = g.User, g.Plan, g.Home
+		grokSigned(&a, g.Home)
 		q := p
 		q.Account = &a
 		out = append(out, q)

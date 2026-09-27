@@ -1,10 +1,10 @@
 package provider
 
-// A Grok subscription (SuperGrok, X Premium+) is used the way a Cursor one
-// is: through xAI's own Grok Build CLI, which magpie runs behind the gateway
-// (see gateway/grok_subscription.go). Here is who the CLI is signed in to,
-// the models it offers, the sign-in, which is the CLI's own `login`, and the
-// token the gateway's runs borrow from it.
+// A Grok subscription (SuperGrok, X Premium+) is served straight from the
+// backend xAI's Grok Build CLI talks to, OpenAI's Responses API at
+// cli-chat-proxy.grok.com, with the CLI's sign-in. Here is who the CLI is
+// signed in to, the models it offers, the sign-in, which is the CLI's own
+// `login`, and the requests' signing.
 
 import (
 	"bufio"
@@ -12,10 +12,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -103,45 +105,150 @@ func grokAccount() (Provider, bool) {
 	if home == GrokHome() {
 		acct.Home = "" // the CLI's own, wherever it is
 	}
-	acct.models = func() []catalog.Model { return []catalog.Model{{ID: "grok-4.7", Name: "grok-4.7"}} }
+	grokSigned(acct, home)
+	acct.models = func() []catalog.Model { return []catalog.Model{{ID: "grok-4.7", Name: "Grok 4.7"}} }
 	acct.fetch = func(ctx context.Context) ([]catalog.Model, error) {
-		ms, err := grokModels(ctx, home)
+		ms, err := grokModels(ctx, acct.sign)
 		if err != nil {
 			return nil, err
 		}
-		return ms, catalog.SaveLive("grok", "", ms)
+		return ms, catalog.SaveLive("grok", grokBase, ms)
 	}
-	return Provider{ID: "grok", Name: "Grok (SuperGrok)", Icon: "xai", Website: "https://x.ai/cli", Account: acct}, true
+	return Provider{ID: "grok", Name: "Grok (SuperGrok)", Icon: "xai", Website: "https://x.ai/cli", Responses: grokBase, Account: acct}, true
 }
 
-var grokModelL = regexp.MustCompile(`^[*-]\s+([A-Za-z0-9][\w.:-]*)`)
-
-// grokModels lists what the account signed in in home can use, as `grok
-// models` prints it.
-func grokModels(ctx context.Context, home string) ([]catalog.Model, error) {
-	path := GrokExecutable()
-	if path == "" {
-		return nil, errorf("Grok Build is not installed")
-	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	cmd := proc.CommandContext(ctx, path, "models")
-	cmd.Dir, _ = os.UserHomeDir()
-	cmd.Env = netproxy.Env(grokOwnEnv(os.Environ(), home))
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, errorf("grok models: %v", err)
-	}
-	return parseGrokModels(string(out)), nil
-}
-
-func parseGrokModels(out string) []catalog.Model {
-	var ms []catalog.Model
-	s := bufio.NewScanner(strings.NewReader(ansi.ReplaceAllString(out, "")))
-	for s.Scan() {
-		if m := grokModelL.FindStringSubmatch(strings.TrimSpace(s.Text())); m != nil {
-			ms = append(ms, catalog.Model{ID: m[1], Name: m[1]})
+// grokSigned has the account's requests signed with the sign-in in home.
+func grokSigned(acct *Account, home string) {
+	acct.sign = func(ctx context.Context, req *http.Request, body []byte) error {
+		c, err := grokAccessToken(home, GrokExecutable(), false)
+		if err != nil {
+			return err
 		}
+		grokHeaders(req, c.Key)
+		if m := bodyModel(body); m != "" {
+			req.Header.Set("x-grok-model-override", m)
+		}
+		var v struct {
+			Key string `json:"prompt_cache_key"`
+		}
+		if json.Unmarshal(body, &v) == nil && v.Key != "" {
+			req.Header.Set("x-grok-conv-id", v.Key)
+		}
+		return nil
+	}
+}
+
+// grokHeaders say a request comes from the Grok CLI, which the backend
+// wants to know the version of: without it the CLI is "outdated".
+func grokHeaders(req *http.Request, token string) {
+	v := grokVersion()
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("x-grok-client-version", v)
+	req.Header.Set("x-xai-token-auth", "xai-grok-cli")
+	req.Header.Set("x-grok-client-identifier", "grok-shell")
+	req.Header.Set("x-grok-client-mode", "headless")
+	goos, arch := runtime.GOOS, runtime.GOARCH
+	if goos == "darwin" {
+		goos = "macos"
+	}
+	switch arch {
+	case "arm64":
+		arch = "aarch64"
+	case "amd64":
+		arch = "x86_64"
+	}
+	req.Header.Set("User-Agent", "grok-shell/"+v+" ("+goos+"; "+arch+")")
+}
+
+// grokClientVersion is the Grok CLI version magpie says it is, unless the
+// installed one is newer.
+const grokClientVersion = "1.0.41"
+
+var grokVersionCache struct {
+	sync.Mutex
+	v  string
+	at time.Time
+}
+
+var grokSemver = regexp.MustCompile(`\d+\.\d+\.\d+`)
+
+func grokVersion() string {
+	grokVersionCache.Lock()
+	defer grokVersionCache.Unlock()
+	if time.Since(grokVersionCache.at) < 10*time.Minute {
+		return grokVersionCache.v
+	}
+	v := grokClientVersion
+	if exe := GrokExecutable(); exe != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if out, err := proc.CommandContext(ctx, exe, "--version").Output(); err == nil { // "grok 1.0.41 (4220f3b224a6)"
+			if c := grokSemver.FindString(string(out)); c != "" && compareClaudeVersion(c, v) > 0 {
+				v = c
+			}
+		}
+		cancel()
+	}
+	grokVersionCache.v, grokVersionCache.at = v, time.Now()
+	return v
+}
+
+// grokModels lists what the account can use, with each model's context
+// window and efforts, as the CLI's backend lists them.
+func grokModels(ctx context.Context, sign func(context.Context, *http.Request, []byte) error) ([]catalog.Model, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, grokBase+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := sign(ctx, req, nil); err != nil {
+		return nil, err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 4<<20))
+	if res.StatusCode != http.StatusOK {
+		return nil, errorf("Grok models: %s", APIError(b, res.Status))
+	}
+	ms := parseGrokModels(b)
+	if len(ms) == 0 {
+		return nil, errorf("Grok listed no models")
+	}
+	return ms, nil
+}
+
+func parseGrokModels(b []byte) []catalog.Model {
+	var v struct {
+		Data []struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			Context int    `json:"context_window"`
+			Backend string `json:"api_backend"`
+			Efforts []struct {
+				Value string `json:"value"`
+			} `json:"reasoning_efforts"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(b, &v) != nil {
+		return nil
+	}
+	var ms []catalog.Model
+	for _, d := range v.Data {
+		if d.ID == "" || (d.Backend != "" && d.Backend != "responses") {
+			continue
+		}
+		m := catalog.Model{ID: d.ID, Name: d.Name, Context: d.Context, Images: true, APIs: []string{"responses"}}
+		if m.Name == "" {
+			m.Name = d.ID
+		}
+		// listed hardest first; kept easiest first, as the others are
+		for i := len(d.Efforts) - 1; i >= 0; i-- {
+			if e := d.Efforts[i].Value; e != "" {
+				m.Efforts = append(m.Efforts, e)
+			}
+		}
+		ms = append(ms, m)
 	}
 	return ms
 }
@@ -151,20 +258,6 @@ func parseGrokModels(out string) []catalog.Model {
 const grokRefreshMargin = 5 * time.Minute
 
 var grokRefresh sync.Mutex
-
-// GrokToken writes the CLI's access token for a Grok run in magpie's home,
-// as an external auth provider answers (GROK_AUTH_PROVIDER_COMMAND).
-func GrokToken(w io.Writer, home, binary string, expired bool) error {
-	c, err := grokAccessToken(home, binary, expired)
-	if err != nil {
-		return err
-	}
-	left := int(time.Until(c.ExpiresAt).Seconds())
-	if c.ExpiresAt.IsZero() {
-		left = 3600
-	}
-	return json.NewEncoder(w).Encode(map[string]any{"access_token": c.Key, "expires_in": left, "issuer": c.Issuer})
-}
 
 // grokAccessToken is the CLI's sign-in, with a token still good. One about
 // to expire is first refreshed by the CLI in its own home: a `grok models`
