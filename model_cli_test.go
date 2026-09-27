@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/yetone/magpie/internal/catalog"
@@ -34,9 +35,12 @@ func TestModelNameCmd(t *testing.T) {
 	if err := modelCmd([]string{"name", "m", "x"}); err == nil {
 		t.Fatal("named a model without its provider")
 	}
-	// a model without reasoning levels has none to keep
-	if err := modelCmd([]string{"efforts", "a/m", "low"}); err == nil {
-		t.Fatal("kept a level of a model without any")
+	// a model whose reasoning levels aren't known can be given some
+	if err := modelCmd([]string{"efforts", "a/m", "low,high"}); err != nil {
+		t.Fatal(err)
+	}
+	if es := settings.Load().ModelEfforts["a/m"]; !slices.Equal(es, []string{"low", "high"}) {
+		t.Fatal(settings.Load().ModelEfforts)
 	}
 	if err := modelCmd([]string{"efforts", "a/m", "--reset"}); err != nil {
 		t.Fatal(err)
