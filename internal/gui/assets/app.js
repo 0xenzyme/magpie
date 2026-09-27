@@ -131,7 +131,7 @@ function icon(name) {
   return e;
 }
 
-function status(msg, kind = "", ms = 3500) {
+function status(msg, kind = "", ms = kind === "err" ? 8000 : 3500) {
   const s = $("#status");
   s.textContent = msg;
   s.title = msg;

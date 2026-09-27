@@ -566,6 +566,9 @@ body.window .foot { padding-left: 18px; }
 .status.ok { color: var(--green); }
 .status.err { color: var(--red); }
 .status.warn { color: var(--amber); }
+/* an outcome (Refresh, Test models…) stands out from the corner it is in:
+   a solid pill in its colour, over a window the desktop shows through */
+.status.ok, .status.err, .status.warn { font-size: 12.5px; font-weight: 500; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, currentColor 16%, var(--bg)); box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 30%, transparent); }
 
 /* ---- picker popover ------------------------------------------------------- */
 .pop {
