@@ -3963,6 +3963,9 @@ function renderSettings() {
   // the Dock is the Mac's
   $("#dockRow").hidden = !document.body.classList.contains("mac");
   $("#dockSegs").replaceChildren(segs([["off", t("Hide")], ["on", t("Show")]], s.dock ? "on" : "off", (v) => savePrefs({ ...keep, dock: v === "on" })));
+  // the system's record, set on its own, not with the other choices
+  $("#loginSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.login ? "on" : "off", (v) =>
+    api("settings/login", { on: v === "on" }).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
   renderProxy(s, keep);
   renderRedact(s, keep);
   renderSync();

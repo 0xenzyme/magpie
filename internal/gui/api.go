@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/agent"
+	"github.com/yetone/magpie/internal/autostart"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/library"
@@ -109,11 +110,14 @@ type settingsJSON struct {
 	// settings, environment, system, off or none
 	ProxyNow    string `json:"proxyNow"`
 	ProxySource string `json:"proxySource"`
+	// whether magpie opens at login: the system's record, not a setting
+	Login bool `json:"login"`
 }
 
 func settingsState() settingsJSON {
 	s := settingsJSON{Settings: settings.Load(), Version: Version, Dir: tilde(settings.Dir()), Gateway: gateway.URL()}
 	s.ProxyNow, s.ProxySource = netproxy.Describe()
+	s.Login = autostart.Enabled()
 	return s
 }
 
@@ -314,6 +318,18 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		s := settings.Load()
 		s.AgentOrder, s.AgentsHidden, s.AgentsShown = in.Order, in.Hidden, in.Shown
 		if err := settings.Save(s); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, settingsState())
+	})
+	mux.HandleFunc("POST /api/settings/login", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ On bool }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		if err := autostart.Set(in.On); err != nil {
 			fail(rw, err)
 			return
 		}

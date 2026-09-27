@@ -29,6 +29,7 @@ const usage = `magpie — one place to pick every agent's model
 
   magpie                          open the app: a window plus a menu bar icon
   magpie tray                     start in the menu bar only
+  magpie autostart [on|off]       open magpie (in the menu bar) when you log in, or say whether it does
   magpie tui                      the same thing, in the terminal
   magpie ls                       list detected agents and their settings
   magpie <agent>                  show one agent
@@ -128,6 +129,8 @@ func run(args []string) error {
 		return runGUI(true, "")
 	case "tray":
 		return runGUI(false, "")
+	case "autostart":
+		return autostartCmd(args[1:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return nil
