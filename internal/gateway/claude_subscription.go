@@ -50,6 +50,7 @@ type subscriptionBridge struct {
 	calls   map[string]*subscriptionRun // tool_use id → run
 	idle    map[string]*subscriptionRun // conversation so far (turnKey) → run
 	baseURL string
+	sweep   sync.Once
 }
 
 // A run left for its conversation's next turn waits idleLongest at most,
@@ -132,6 +133,57 @@ type bridgeTool struct {
 	InputSchema json.RawMessage `json:"inputSchema"`
 }
 
+func claudeConfigDir() string {
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+		return d
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".claude")
+}
+
+// claudeProjectName is the folder Claude Code keeps a working directory's
+// sessions under: the path with everything but letters and digits made "-".
+func claudeProjectName(path string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 128 && (r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9') {
+			return r
+		}
+		return '-'
+	}, path)
+}
+
+// sweepBridgeProjects removes the projects that runs from before
+// --no-session-persistence left in Claude Code's folder: only those named
+// after a magpie-claude- folder in the temp directory, which no one but the
+// bridge works in.
+func sweepBridgeProjects(claudeDir, tempDir string) {
+	var prefixes []string
+	for _, d := range []string{tempDir, evalSymlinks(tempDir)} {
+		prefix := claudeProjectName(filepath.Join(d, "magpie-claude-"))
+		if !slices.Contains(prefixes, prefix) {
+			prefixes = append(prefixes, prefix)
+		}
+	}
+	root := filepath.Join(claudeDir, "projects")
+	entries, _ := os.ReadDir(root)
+	for _, e := range entries {
+		for _, prefix := range prefixes {
+			rest, ok := strings.CutPrefix(e.Name(), prefix)
+			if ok && e.IsDir() && rest != "" && strings.Trim(rest, "0123456789") == "" {
+				_ = os.RemoveAll(filepath.Join(root, e.Name()))
+				break
+			}
+		}
+	}
+}
+
+func evalSymlinks(path string) string {
+	if p, err := filepath.EvalSymlinks(path); err == nil {
+		return p
+	}
+	return path
+}
+
 func newSubscriptionBridge() *subscriptionBridge {
 	return &subscriptionBridge{runs: map[string]*subscriptionRun{}, calls: map[string]*subscriptionRun{}, idle: map[string]*subscriptionRun{}}
 }
@@ -178,6 +230,7 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, oau
 	if err != nil {
 		return nil, nil, err
 	}
+	b.sweep.Do(func() { go sweepBridgeProjects(claudeConfigDir(), os.TempDir()) })
 	tmp, err := os.MkdirTemp("", "magpie-claude-")
 	if err != nil {
 		return nil, nil, err
@@ -451,6 +504,9 @@ func claudeCLIArgs(model, mcpConfig, effort string, web bool) []string {
 		"--include-partial-messages", "--verbose", "--model", model,
 		"--tools", own, "--strict-mcp-config", "--mcp-config", mcpConfig,
 		"--setting-sources", "", "--dangerously-skip-permissions",
+		// the run's history lives in the process; on disk it would only list a
+		// throwaway folder among the user's projects
+		"--no-session-persistence",
 	}
 	if effort != "" {
 		if effort == "xhigh" {

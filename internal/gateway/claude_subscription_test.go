@@ -348,3 +348,52 @@ func TestClaudeRunLetGoWhenTheConversationMovedOn(t *testing.T) {
 		t.Fatalf("two conversations: %v waiting", w)
 	}
 }
+
+func TestClaudeBridgeKeepsNoSessionsOnDisk(t *testing.T) {
+	args := claudeCLIArgs("m", `{}`, "", false)
+	if !slices.Contains(args, "--no-session-persistence") || !slices.Contains(args, "-p") {
+		t.Fatalf("bridge runs must not persist sessions: %q", args)
+	}
+}
+
+func TestSweepBridgeProjectsTakesOnlyTheBridgesFolders(t *testing.T) {
+	base := t.TempDir()
+	real := filepath.Join(base, "real", "T")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	real = evalSymlinks(real) // what Claude Code names a folder after
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(filepath.Join(base, "real"), link); err != nil {
+		t.Fatal(err)
+	}
+	claudeDir := filepath.Join(base, "claude")
+	projects := filepath.Join(claudeDir, "projects")
+	gone := []string{
+		claudeProjectName(filepath.Join(real, "magpie-claude-1097091858")),
+		claudeProjectName(filepath.Join(link, "T", "magpie-claude-42")),
+	}
+	kept := []string{
+		claudeProjectName(filepath.Join(real, "magpie-claude-")),
+		claudeProjectName(filepath.Join(real, "magpie-claude-12-x")),
+		claudeProjectName(filepath.Join(real, "other")),
+		claudeProjectName("/Users/me/code/magpie-claude-7"),
+	}
+	for _, d := range append(append([]string{}, gone...), kept...) {
+		if err := os.MkdirAll(filepath.Join(projects, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sweepBridgeProjects(claudeDir, filepath.Join(link, "T"))
+	for _, d := range gone {
+		if _, err := os.Stat(filepath.Join(projects, d)); !os.IsNotExist(err) {
+			t.Fatalf("%s should be swept", d)
+		}
+	}
+	for _, d := range kept {
+		if _, err := os.Stat(filepath.Join(projects, d)); err != nil {
+			t.Fatalf("%s should be kept: %v", d, err)
+		}
+	}
+	sweepBridgeProjects(filepath.Join(base, "missing"), real) // no projects folder: nothing to do
+}
