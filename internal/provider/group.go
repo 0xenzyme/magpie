@@ -62,10 +62,10 @@ type Group struct {
 	// of the rules' intents a user's message is. Rules with an intent need
 	// one; a small, fast model without reasoning does.
 	Classifier string `json:"classifier,omitempty"`
-	// Effort "auto" has the classifier — a decision provider's model, as
-	// Jev — judge how hard each turn is to think about as it begins, and
-	// the turn asks its model for that much reasoning, where the agent
-	// asked for some (see EffortAuto).
+	// Effort "auto" has the classifier — Jev, from TypeSafe's decision API,
+	// or any model, asked in words — judge how hard each turn is to think
+	// about as it begins, and the turn asks its model for that much
+	// reasoning, where the agent asked for some (see EffortAuto).
 	Effort string `json:"effort,omitempty"`
 	// Context is how long a request the user says the group takes, in
 	// tokens: agents are told it rather than its shortest member's.
@@ -400,17 +400,13 @@ func SaveGroup(g Group) error {
 	case intents && g.Classifier == "":
 		return errors.New("a rule with an intent needs the group's classifier: the model that tells which intent a message is")
 	case g.Effort == EffortAuto && g.Classifier == "":
-		return errors.New("effort picked per turn needs the group's classifier to be Jev (a TypeSafe provider's model)")
+		return errors.New("effort picked per turn needs the group's classifier: the model that rates how hard a turn is")
 	case !intents && g.Effort == "":
 		g.Classifier = "" // nothing to ask it
 	}
 	if g.Classifier != "" {
-		p, _, ok := Resolve(g.Classifier)
-		if !ok {
+		if _, _, ok := Resolve(g.Classifier); !ok {
 			return fmt.Errorf("magpie knows no model %q to classify with", g.Classifier)
-		}
-		if g.Effort == EffortAuto && !p.Decides() {
-			return fmt.Errorf("effort picked per turn needs the group's classifier to be Jev (a TypeSafe provider's model), not %s", g.Classifier)
 		}
 	}
 	g.Auto, g.Hidden = false, false

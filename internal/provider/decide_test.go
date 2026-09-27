@@ -41,7 +41,8 @@ func TestDecider(t *testing.T) {
 		effort, classifier, err string
 	}{
 		{"auto", "", "needs the group's classifier"},
-		{"auto", "a/m", "Jev"},
+		{"auto", "b/m", "knows no model"},
+		{"auto", "a/m", ""}, // any model, asked in words
 		{"high", "typesafe/jev-latest", "not \"high\""},
 		{"auto", "typesafe/jev-latest", ""},
 	} {

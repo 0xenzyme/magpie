@@ -341,3 +341,43 @@ func TestUserText(t *testing.T) {
 		}
 	}
 }
+
+// A group whose effort is auto with a classifier that isn't Jev (a chat
+// model, Jev Router on OpenRouter as much as any) has it rate each turn in
+// words: the level's number, the turn's requests at that reasoning. With
+// an intent too, it is asked each in a call of its own.
+func TestChatClassifierPicksTheEffort(t *testing.T) {
+	s, a, _, c := intented(t)
+	g, _, _ := provider.FindGroup("group/r")
+	g.Effort, g.Classifier = provider.EffortAuto, "c/cls"
+	if err := provider.SaveGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	c.set("3", 0) // high
+	_, r := postOK(t, s, "s1", chat("find why the cache races", nil, 0, `,"reasoning_effort":"low"`))
+	if r.Rule == nil || r.Rule.Pick != "high" || r.Rule.Classified == nil || r.Rule.Classified.Effort != "high" || r.Rule.Classified.Error != "" || c.n() != 1 {
+		t.Fatalf("%+v %d", r.Rule, c.n())
+	}
+	if asked := c.last(); !strings.Contains(asked, "3. high") || !strings.Contains(asked, "find why the cache races") {
+		t.Fatalf("asked %s", asked)
+	}
+	if !strings.Contains(a.last, `"reasoning_effort":"high"`) {
+		t.Fatalf("sent %s", a.last)
+	}
+	// the next turn is told what the one before needed
+	c.set("9", 0)
+	_, r = postOK(t, s, "s1", chat("find why the cache races", []string{"go on"}, 0, `,"reasoning_effort":"low"`))
+	if r.Rule.Classified.AfterEffort != "high" || !strings.Contains(c.last(), "needed level 3") || !strings.Contains(r.Rule.Classified.Error, "not a level from 1 to 4") || r.Rule.Pick != "" {
+		t.Fatalf("turn 2: %+v %s", r.Rule.Classified, c.last())
+	}
+	// an intent as well: two calls, one for each
+	g.Rules = []provider.Rule{{Use: "b/big", Intent: "debugging"}}
+	if err := provider.SaveGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	c.set("1", 0)
+	_, r = postOK(t, s, "s2", chat("the parser drops a token", nil, 0, `,"reasoning_effort":"medium"`))
+	if r.Rule.N != 1 || r.Rule.Classified.Intent != "debugging" || r.Rule.Pick != "low" || c.n() != 4 {
+		t.Fatalf("both: %+v %+v %d", r.Rule, r.Rule.Classified, c.n())
+	}
+}

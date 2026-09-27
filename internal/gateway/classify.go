@@ -38,8 +38,7 @@ var (
 )
 
 // classifier asks a model which of intents text is — the intent, or ""
-// for none of them — and, when effort, how much reasoning the turn wants
-// (only a decision provider's model says; see decide.go). prev is what
+// for none of them — and, when effort, how much reasoning the turn wants. prev is what
 // the conversation's turn before was said to be: a message that only
 // carries on from it is the same.
 type classifier func(model string, intents []string, prev before, effort bool, text string) (verdict, error)
@@ -54,7 +53,7 @@ type before struct {
 type verdict struct {
 	Intent string  // "" for none
 	Effort string  // the reasoning the turn wants; "" when not asked
-	Score  float64 // how hard Jev took the turn to be, from 0 (low) to 3 (xhigh)
+	Score  float64 // how hard the classifier took the turn to be, from 0 (low) to 3 (xhigh)
 	Sure   float64 // how confident Jev was of the intent, from 0 to 1
 }
 
@@ -222,21 +221,100 @@ func classifyEffort(model string) string {
 }
 
 // askClassifier asks a decision provider's model through its own API, and
-// any other model through the gateway itself, as a client would. Only the
-// former says what effort a turn wants.
+// any other model through the gateway itself, as a client would: which of
+// intents the message is and, when effort, how hard the turn is, each in a
+// call of its own, at once.
 func (s *Server) askClassifier(model string, intents []string, prev before, effort bool, text string) (verdict, error) {
 	if p, m, ok := provider.Resolve(model); ok && p.Decides() {
 		return s.askJev(p, m, intents, prev, effort, text)
 	}
-	if len(intents) == 0 {
-		return verdict{}, nil
+	var v verdict
+	var ierr, eerr error
+	var wg sync.WaitGroup
+	if len(intents) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var a string
+			if a, ierr = s.askChat(model, classifyBody(model, classifyEffort(model), intents, prev.Intent, text)); ierr == nil {
+				v.Intent, ierr = readIntent(a, intents)
+			}
+		}()
 	}
-	intent, err := s.askChat(model, intents, prev.Intent, text)
-	return verdict{Intent: intent}, err
+	if effort {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var a string
+			if a, eerr = s.askChat(model, effortBody(model, classifyEffort(model), prev.Effort, text)); eerr == nil {
+				v.Effort, v.Score, eerr = readEffort(a)
+			}
+		}()
+	}
+	wg.Wait()
+	if ierr != nil {
+		return verdict{}, ierr
+	}
+	return v, eerr
 }
 
-// askChat asks a chat model which of intents text is.
-func (s *Server) askChat(model string, intents []string, prev, text string) (string, error) {
+const effortPrompt = "You judge how much reasoning a coding assistant needs to handle a user's message well. " +
+	"Given numbered levels and the user's message, answer with the number of the level it needs. Answer with the number only."
+
+// effortBody is the Chat request asking model how hard text is to think
+// about, one of jevLevels by number. When the turn before was given a
+// level (prev), a message that only carries on from it needs that one.
+func effortBody(model, effort, prev, text string) []byte {
+	var b strings.Builder
+	b.WriteString("Levels:\n")
+	was := 0
+	for i, l := range jevLevels {
+		fmt.Fprintf(&b, "%d. %s: %s\n", i+1, l.effort, l.what)
+		if l.effort == prev {
+			was = i + 1
+		}
+	}
+	if was > 0 {
+		fmt.Fprintf(&b, "\nThe user's message before this one, in the same conversation, needed level %d. "+
+			"A message that only carries on from it — go on, yes, do it — needs level %d too.\n", was, was)
+	}
+	b.WriteString("\nThe user's message:\n<message>\n")
+	b.WriteString(text)
+	b.WriteString("\n</message>\n\nThe number of the level it needs:")
+	req := map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": effortPrompt},
+			{"role": "user", "content": b.String()},
+		},
+		"stream":      false,
+		"temperature": 0,
+		"max_tokens":  2048,
+	}
+	if effort != "" {
+		req["reasoning_effort"] = effort
+	}
+	body, _ := json.Marshal(req)
+	return body
+}
+
+// readEffort is the level a classifier's answer names by number, and its
+// score as Jev gives one (0 for low to 3 for xhigh).
+func readEffort(answer string) (string, float64, error) {
+	n, err := strconv.Atoi(firstNumber.FindString(answer))
+	if err != nil || n < 1 || n > len(jevLevels) {
+		a := []rune(strings.TrimSpace(answer))
+		if len(a) > 80 {
+			a = append(a[:80], '…')
+		}
+		return "", 0, answerError{fmt.Errorf("it answered %q, not a level from 1 to %d", string(a), len(jevLevels))}
+	}
+	return jevLevels[n-1].effort, float64(n - 1), nil
+}
+
+// askChat sends a chat model body through the gateway and returns its
+// answer's text.
+func (s *Server) askChat(model string, body []byte) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), classifyTimeout)
 	defer cancel()
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://magpie/v1/chat/completions", nil)
@@ -246,7 +324,7 @@ func (s *Server) askChat(model string, intents []string, prev, text string) (str
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("User-Agent", RouterAgent)
 	w := httptest.NewRecorder()
-	s.serve(w, r, provider.Chat, classifyBody(model, classifyEffort(model), intents, prev, text))
+	s.serve(w, r, provider.Chat, body)
 	if ctx.Err() != nil {
 		return "", fmt.Errorf("%s gave no answer in %s", model, classifyTimeout)
 	}
@@ -273,5 +351,5 @@ func (s *Server) askChat(model string, intents []string, prev, text string) (str
 	if len(out.Choices) == 0 {
 		return "", answerError{fmt.Errorf("%s gave no answer", model)}
 	}
-	return readIntent(out.Choices[0].Message.Content, intents)
+	return out.Choices[0].Message.Content, nil
 }

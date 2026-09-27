@@ -27,7 +27,7 @@ const groupUsage = `usage:
                                           families, not each group),
                                           id (what agents pick it as: id=gpt-6-astra drops auto-; the groups
                                           it is in follow; an agent set to the old id needs setting again),
-                                          effort=auto (Jev picks each turn's reasoning; needs classifier=),
+                                          effort=auto (the classifier picks each turn's reasoning; needs classifier=),
                                           effort=agent (the agent's again), classifier=<provider/model>
   magpie group rm <id>                    remove a group (one magpie found is hidden instead)
   magpie group restore <id>               bring back a group magpie found that you removed
@@ -51,7 +51,8 @@ const groupUsage = `usage:
            off     every request routed afresh
   effort   agent   (default) each request reasons as much as the agent asked
            auto    as a turn begins, the group's classifier — Jev, from a TypeSafe provider
-                   (magpie provider add typesafe key=…) — rates how hard it is, and the turn's requests
+                   (magpie provider add typesafe key=…), or any model, as Jev Router on OpenRouter,
+                   asked in words — rates how hard it is, and the turn's requests
                    reason at low, medium, high or xhigh; only those the agent asked to reason
 
   e.g. magpie group add "Opus anywhere" models=claude/claude-opus-5-5,copilot/claude-opus-5.5 routing=order
@@ -307,7 +308,7 @@ func applyGroupPairs(g *provider.Group, pairs []string, resolve func(string) (st
 			case "", "agent", "off":
 				g.Effort = ""
 			default:
-				err = fmt.Errorf("effort=auto (Jev picks each turn's) or effort=agent (the agent's), not %q", v)
+				err = fmt.Errorf("effort=auto (the classifier picks each turn's) or effort=agent (the agent's), not %q", v)
 			}
 		case "classifier", "classify":
 			g.Classifier = strings.TrimPrefix(strings.TrimSpace(v), "magpie/")
