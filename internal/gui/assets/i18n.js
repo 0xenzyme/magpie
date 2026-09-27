@@ -835,6 +835,8 @@ const I18N = {
     "{who} is at {n} — all but used up, it answers only when nothing else can.": "{who} 已用 {n}——几乎用尽，只在别的都不行时才用它。",
     "{who} is at {n} — kept for when the others can't.": "{who} 已用 {n}——留给其他账号都不行的时候。",
     "{who}: what it has left isn't known yet, so it goes after those known.": "{who}：还不知道它剩多少，所以排在已知的之后。",
+    "{who}: what it has left isn't known yet, and its answer tells, so it goes before those known.": "{who}：还不知道它剩多少，它一回答就知道了，所以排在已知的之前。",
+    "{who} goes first: what it has left isn't known yet, and its answer tells — kept behind those known, it would never answer and never be known.": "{who} 先上：还不知道它剩多少，它一回答就知道了——排在已知的后面，它就永远轮不到、也永远不会知道。",
     "{who} is left out: its plan doesn't list {model}.": "{who} 不参与：它的套餐不包含 {model}。",
     "{who} is left out: {name} lists {model} to its other keys, not this one.": "{who} 不参与：{name} 只在它其他 key 的模型列表里列出了 {model}，这个 key 的列表里没有。",
     "{who} is answering…": "{who} 正在回答…",

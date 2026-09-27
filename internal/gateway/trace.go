@@ -113,6 +113,7 @@ type Weighed struct {
 	Fallback bool              `json:"fallback,omitempty"`
 	Shared   bool              `json:"shared,omitempty"` // its provider has more than one on
 	Known    bool              `json:"known,omitempty"`  // the vendor said what the account has left
+	Learns   bool              `json:"learns,omitempty"` // not known, but its answer will tell
 	Used     float64           `json:"used"`             // share of the allowance counting the model, used
 	Renews   []time.Time       `json:"renews,omitempty"` // when those windows renew, the biggest first
 	Tokens   float64           `json:"tokens,omitempty"` // least used: tokens it served lately
@@ -165,6 +166,8 @@ func weighed(c candidate, p provider.Provider, wg weighing, fallback bool, from 
 	}
 	if l, ok := wg.lefts[c.rest]; ok {
 		w.Known, w.Used, w.Renews = true, l.used, l.renews
+	} else if wg.lefts != nil {
+		w.Learns = learns(c, wg.lefts)
 	}
 	if wg.tokens != nil {
 		w.Tokens = wg.tokens[c.rest]

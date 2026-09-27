@@ -305,6 +305,7 @@ var claudeUsage struct {
 type claudeUsageEntry struct {
 	at, retry time.Time
 	ws        []QuotaWindow
+	heard     time.Time // when Claude Code last told it, answering
 }
 
 const claudeUsageTTL = 3 * time.Minute
@@ -344,13 +345,16 @@ func claudeWindows(ctx context.Context, user, token string) ([]QuotaWindow, erro
 		return []QuotaWindow{}, claudeLimited(wait)
 	}
 	if err != nil {
+		if e.ws != nil && now.Sub(e.heard) < claudeHeard {
+			return elapsed(e.ws, now), nil // what Claude Code said stands
+		}
 		return ws, err
 	}
 	c.Lock()
 	if c.m == nil {
 		c.m = map[string]claudeUsageEntry{}
 	}
-	c.m[key] = claudeUsageEntry{at: now, ws: ws}
+	c.m[key] = claudeUsageEntry{at: now, ws: ws, heard: e.heard}
 	c.Unlock()
 	return ws, nil
 }

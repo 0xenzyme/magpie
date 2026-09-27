@@ -490,6 +490,8 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			// what Claude Code's WebSearch found, on the message that
 			// answers its call
 			ToolUseResult json.RawMessage `json:"tool_use_result"`
+			// what the account has left, as Anthropic told Claude Code
+			RateLimitInfo json.RawMessage `json:"rate_limit_info"`
 			Event         struct {
 				Type    string `json:"type"`
 				Index   int    `json:"index"`
@@ -516,6 +518,12 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			} `json:"event"`
 		}
 		if json.Unmarshal(s.Bytes(), &envelope) != nil {
+			continue
+		}
+		if envelope.Type == "rate_limit_event" {
+			if _, user, ok := strings.Cut(r.owner, "\x00"); ok {
+				provider.NoteClaudeLimits(user, claudeLimits(envelope.RateLimitInfo))
+			}
 			continue
 		}
 		if envelope.Type == "result" {
@@ -619,6 +627,39 @@ type cliUsage struct {
 
 // plus adds v's counts to u's; only to those u has, when it only updates
 // what the client was told.
+// claudeLimits are the allowance windows a rate_limit_event's info tells:
+// each of its unifiedWindows, and the one it is about, when that says how
+// much is used or that it turned the request away.
+func claudeLimits(raw json.RawMessage) []provider.ClaudeLimit {
+	type window struct {
+		Utilization float64 `json:"utilization"`
+		ResetsAt    int64   `json:"resetsAt"`
+	}
+	var info struct {
+		Status         string            `json:"status"`
+		RateLimitType  string            `json:"rateLimitType"`
+		Utilization    *float64          `json:"utilization"`
+		ResetsAt       int64             `json:"resetsAt"`
+		UnifiedWindows map[string]window `json:"unifiedWindows"`
+	}
+	if json.Unmarshal(raw, &info) != nil {
+		return nil
+	}
+	var out []provider.ClaudeLimit
+	for kind, w := range info.UnifiedWindows {
+		out = append(out, provider.ClaudeLimit{Kind: kind, Used: w.Utilization, ResetsAt: w.ResetsAt})
+	}
+	if _, told := info.UnifiedWindows[info.RateLimitType]; !told && info.RateLimitType != "" {
+		switch {
+		case info.Utilization != nil:
+			out = append(out, provider.ClaudeLimit{Kind: info.RateLimitType, Used: *info.Utilization, ResetsAt: info.ResetsAt})
+		case info.Status == "rejected":
+			out = append(out, provider.ClaudeLimit{Kind: info.RateLimitType, Used: 1, ResetsAt: info.ResetsAt})
+		}
+	}
+	return out
+}
+
 func (u Usage) plus(v Usage, only bool) Usage {
 	for _, f := range []struct{ a, b *int }{{&u.Input, &v.Input}, {&u.Output, &v.Output}, {&u.CacheRead, &v.CacheRead}, {&u.CacheWrite, &v.CacheWrite}, {&u.Reasoning, &v.Reasoning}} {
 		if *f.a > 0 || !only {

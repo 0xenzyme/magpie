@@ -276,6 +276,13 @@ type left struct {
 	renews []time.Time
 }
 
+// learns: c is a subscription whose allowance isn't known yet, of an agent
+// that tells it as it answers (Claude Code's rate_limit_event).
+func learns(c candidate, lefts map[string]left) bool {
+	_, known := lefts[c.rest]
+	return !known && c.p.Account != nil && c.p.Account.Agent == "claude"
+}
+
 // weigh orders one provider's candidates as its routing says, and tells
 // what it went by.
 func weigh(p provider.Provider, cs []candidate, model string, from provider.Protocol) ([]candidate, weighing) {
@@ -324,7 +331,14 @@ func weigh(p provider.Provider, cs []candidate, model string, from provider.Prot
 				fine = append(fine, c)
 			}
 		}
+		// one not known that tells what it has left as it answers goes
+		// first, once: else, kept after those known, it would never answer
+		// and never be known (Anthropic's usage endpoint can turn
+		// magpie away for hours)
 		sort.SliceStable(fine, func(i, j int) bool {
+			if li, lj := learns(fine[i], lefts), learns(fine[j], lefts); li != lj {
+				return li
+			}
 			ri, rj := lefts[fine[i].rest].renews, lefts[fine[j].rest].renews
 			for k := 0; k < len(ri) || k < len(rj); k++ {
 				var a, b time.Time // to the hour, so a few minutes don't reorder

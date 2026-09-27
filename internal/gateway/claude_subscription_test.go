@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -215,5 +216,25 @@ func TestClaudeOwnWebSearchStaysInside(t *testing.T) {
 	}
 	if usage.Input != 40 || usage.Output != 12 {
 		t.Fatalf("usage: %+v", usage)
+	}
+}
+
+func TestClaudeLimits(t *testing.T) {
+	got := claudeLimits(json.RawMessage(`{"status":"allowed","resetsAt":1800000000,"rateLimitType":"five_hour","utilization":0.42,
+		"unifiedWindows":{"five_hour":{"utilization":0.42,"resetsAt":1800000000},"seven_day":{"utilization":0.1,"resetsAt":1800500000}}}`))
+	slices.SortFunc(got, func(a, b provider.ClaudeLimit) int { return strings.Compare(a.Kind, b.Kind) })
+	want := []provider.ClaudeLimit{{Kind: "five_hour", Used: 0.42, ResetsAt: 1800000000}, {Kind: "seven_day", Used: 0.1, ResetsAt: 1800500000}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("windows: %+v", got)
+	}
+	// without the windows: the one it is about, and one turned away is full
+	if got := claudeLimits(json.RawMessage(`{"status":"allowed_warning","rateLimitType":"seven_day","utilization":0.9,"resetsAt":5}`)); !slices.Equal(got, []provider.ClaudeLimit{{Kind: "seven_day", Used: 0.9, ResetsAt: 5}}) {
+		t.Fatalf("top level: %+v", got)
+	}
+	if got := claudeLimits(json.RawMessage(`{"status":"rejected","rateLimitType":"five_hour","resetsAt":7}`)); !slices.Equal(got, []provider.ClaudeLimit{{Kind: "five_hour", Used: 1, ResetsAt: 7}}) {
+		t.Fatalf("rejected: %+v", got)
+	}
+	if got := claudeLimits(json.RawMessage(`{"status":"allowed"}`)); len(got) != 0 {
+		t.Fatalf("nothing said: %+v", got)
 	}
 }

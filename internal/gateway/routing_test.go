@@ -196,3 +196,32 @@ func TestSmartRouting(t *testing.T) {
 		t.Fatalf("reset header: %v", d)
 	}
 }
+
+// A Claude account whose allowance isn't known goes before those known,
+// as its answer tells what it has left; one of another agent, after.
+func TestUnknownClaudeGoesFirst(t *testing.T) {
+	old := allowances
+	defer func() { allowances = old }()
+	now := time.Now()
+	allowances = func(agent string) map[string]provider.Allowance {
+		if agent == "codex" {
+			return map[string]provider.Allowance{"k": {{Used: 10, Resets: now.Add(24 * time.Hour)}}}
+		}
+		return nil
+	}
+	acct := func(agent, user string) candidate {
+		return candidate{p: provider.Provider{Account: &provider.Account{Agent: agent, User: user}}, model: "m", rest: "g#" + user}
+	}
+	p := provider.Provider{ID: "g"}
+	cs := []candidate{acct("codex", "k"), acct("x", "u"), acct("claude", "c")}
+	got, wg := weigh(p, cs, "m", provider.Anthropic)
+	if s := restsOf(got); s != "g#c g#k g#u " {
+		t.Fatalf("order: %s", s)
+	}
+	if w := weighed(got[0], p, wg, false, provider.Anthropic); !w.Learns || w.Known {
+		t.Fatalf("claude: %+v", w)
+	}
+	if w := weighed(got[2], p, wg, false, provider.Anthropic); w.Learns {
+		t.Fatalf("other agent: %+v", w)
+	}
+}
