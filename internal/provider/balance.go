@@ -1,7 +1,7 @@
 package provider
 
 // What is left on an API key, as the vendor's own balance endpoint tells
-// it: DeepSeek, Kimi, OpenRouter, SiliconFlow and AiHubMix are known by their hosts
+// it: DeepSeek, Kimi, OpenRouter, SiliconFlow, Command Code and AiHubMix are known by their hosts
 // (AiHubMix tells the whole account's to its access token, BalanceToken);
 // any other provider can name an endpoint and where the amount sits in its
 // reply (BalanceURL, BalancePath), the way a relay's own usage query does.
@@ -55,6 +55,8 @@ func balanceSourceOf(p Provider) (balanceSource, bool) {
 			return balanceSource{"https://api.siliconflow.cn/v1/user/info", readSiliconFlow("¥"), ""}, true
 		case "api.siliconflow.com":
 			return balanceSource{"https://api.siliconflow.com/v1/user/info", readSiliconFlow("$"), ""}, true
+		case "api.commandcode.ai":
+			return balanceSource{"https://api.commandcode.ai/alpha/billing/credits", readCommandCode, ""}, true
 		case "aihubmix.com":
 			if p.BalanceToken != "" {
 				return balanceSource{"https://aihubmix.com/api/user/self", readAiHubMixAccount, p.BalanceToken}, true
@@ -210,6 +212,50 @@ func readAiHubMix(b []byte) (string, error) {
 		return "", errors.New("this key has no limit, and AiHubMix tells a key only what is left on it: give magpie the account's access token (AiHubMix → Settings → Generate System Access Token) in this provider's settings to see the account's balance, or give the key a limit in AiHubMix's console")
 	}
 	return money("$", v), nil
+}
+
+// readCommandCode: {"credits":{"monthlyCredits":12.3,…},"windowLimits":
+// {"fiveHour":{"used":4.2,"cap":10},"weekly":{"used":9,"cap":50}}} — how
+// much of each window of the plan is used, then the dollars left on it. A
+// window the account has none of is left out.
+func readCommandCode(b []byte) (string, error) {
+	type window struct {
+		Used any `json:"used"`
+		Cap  any `json:"cap"`
+	}
+	var r struct {
+		Credits struct {
+			Monthly any `json:"monthlyCredits"`
+		} `json:"credits"`
+		Windows struct {
+			FiveHour *window `json:"fiveHour"`
+			Weekly   *window `json:"weekly"`
+		} `json:"windowLimits"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return "", err
+	}
+	var parts []string
+	for _, w := range []struct {
+		label string
+		w     *window
+	}{{"5h", r.Windows.FiveHour}, {"week", r.Windows.Weekly}} {
+		if w.w == nil {
+			continue
+		}
+		used, ok1 := number(w.w.Used)
+		limit, ok2 := number(w.w.Cap)
+		if ok1 && ok2 && limit > 0 {
+			parts = append(parts, w.label+" "+balanceAmount("", used/limit, true))
+		}
+	}
+	if v, ok := number(r.Credits.Monthly); ok {
+		parts = append(parts, money("$", v))
+	}
+	if len(parts) == 0 {
+		return "", errors.New("no balance in the reply")
+	}
+	return strings.Join(parts, " · "), nil
 }
 
 // readAiHubMixAccount: {"success":true,"data":{"quota":2500000,…}}, the

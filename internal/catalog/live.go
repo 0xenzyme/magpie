@@ -203,6 +203,9 @@ func fetchOne(ctx context.Context, url, key string, anthropic bool, headers map[
 		}
 		input := imageInput(r.Modalities.Input)
 		m := Model{ID: id, Name: name, ImageInput: input, APIs: EndpointAPIs(r.Endpoints)}
+		if n, ok := r.ContextLength.(float64); ok && n > 0 {
+			m.Context = int(n)
+		}
 		if input != nil {
 			m.Images = *input
 		}
@@ -222,6 +225,9 @@ type liveModel struct {
 	// Code's Claude models on /messages alone, its open ones on
 	// /chat/completions and /responses
 	Endpoints []string `json:"supported_endpoints"`
+	// the context window, where the list tells it (OpenRouter, Command
+	// Code); any, as a vendor's odd value mustn't lose the whole list
+	ContextLength any `json:"context_length"`
 }
 
 // EndpointAPIs names the APIs of a model list's supported_endpoints —

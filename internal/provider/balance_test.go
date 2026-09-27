@@ -20,6 +20,8 @@ func TestBalanceReaders(t *testing.T) {
 		{"deepseek two", readDeepSeek, `{"balance_infos":[{"currency":"CNY","total_balance":"1"},{"currency":"USD","total_balance":"2.5"}]}`, "¥1.00 · $2.50"},
 		{"kimi", readMoonshot("¥"), `{"code":0,"data":{"available_balance":49.58894,"voucher_balance":46.5,"cash_balance":3.0},"status":true}`, "¥49.59"},
 		{"openrouter", readOpenRouter, `{"data":{"total_credits":20,"total_usage":3.5}}`, "$16.50"},
+		{"commandcode", readCommandCode, `{"credits":{"monthlyCredits":12.3},"windowLimits":{"fiveHour":{"used":4.2,"cap":10},"weekly":{"used":9,"cap":50}}}`, "5h 42% · week 18% · $12.30"},
+		{"commandcode credits only", readCommandCode, `{"credits":{"monthlyCredits":"70"},"windowLimits":null}`, "$70.00"},
 		{"siliconflow", readSiliconFlow("¥"), `{"code":20000,"data":{"balance":"0.88","totalBalance":"88.88"}}`, "¥88.88"},
 	} {
 		got, err := c.read([]byte(c.body))
@@ -74,12 +76,13 @@ func TestReadBalancePath(t *testing.T) {
 
 func TestBalanceSourceByHost(t *testing.T) {
 	for base, want := range map[string]string{
-		"https://api.deepseek.com/v1":    "https://api.deepseek.com/user/balance",
-		"https://api.moonshot.cn/v1":     "https://api.moonshot.cn/v1/users/me/balance",
-		"https://openrouter.ai/api/v1":   "https://openrouter.ai/api/v1/credits",
-		"https://api.siliconflow.cn/v1":  "https://api.siliconflow.cn/v1/user/info",
-		"https://relay.example.com/v1":   "",
-		"https://api.deepseek.com.evil/": "",
+		"https://api.deepseek.com/v1":            "https://api.deepseek.com/user/balance",
+		"https://api.moonshot.cn/v1":             "https://api.moonshot.cn/v1/users/me/balance",
+		"https://openrouter.ai/api/v1":           "https://openrouter.ai/api/v1/credits",
+		"https://api.siliconflow.cn/v1":          "https://api.siliconflow.cn/v1/user/info",
+		"https://api.commandcode.ai/provider/v1": "https://api.commandcode.ai/alpha/billing/credits",
+		"https://relay.example.com/v1":           "",
+		"https://api.deepseek.com.evil/":         "",
 	} {
 		src, ok := balanceSourceOf(Provider{Chat: base})
 		if ok != (want != "") || src.url != want {
