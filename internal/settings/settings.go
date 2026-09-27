@@ -51,6 +51,9 @@ type Settings struct {
 	// Codex window starts at its first use): "" off, "week" the weekly
 	// window, "all" the 5-hour one too.
 	CodexWarmup string `json:"codexWarmup,omitempty"`
+	// TrayUsage is the subscription or plan whose windows are shown beside
+	// the tray icon, by its provider and account ("claude|a@b.c"); "" none.
+	TrayUsage string `json:"trayUsage,omitempty"`
 	// How the agents are listed, by agent id. AgentOrder comes first, as
 	// ordered; an agent it doesn't name (one installed since) follows in
 	// magpie's own order. A hidden agent is folded away at the bottom of the

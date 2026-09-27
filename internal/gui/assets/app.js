@@ -3513,11 +3513,11 @@ function closeProtoMenu() {
   removeEventListener("resize", closeProtoMenu);
   protoMenu = null;
 }
-function openProtoMenu(anchor, opts, value, choose) {
+function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key speaks") {
   closeProtoMenu();
   const box = el("div", "pop proto-menu");
   box.setAttribute("role", "menu");
-  box.append(el("div", "pm-head", t("Protocol this key speaks")));
+  box.append(el("div", "pm-head", t(head)));
   const items = opts.map((o) => {
     const b = el("button", "pm-item" + (o.v === value ? " on" : ""));
     b.type = "button";
@@ -4251,7 +4251,8 @@ const DISCORD_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="curre
 function renderSettings() {
   const s = prefs;
   const keep = { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, proxy: s.proxy || "",
-    redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "" };
+    redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
+    trayUsage: s.trayUsage || "" };
   $("#themeSegs").replaceChildren(segs(THEMES.map(([id, name]) => [id, t(name)]), s.theme, (theme) => savePrefs({ ...keep, theme })));
   $("#langSegs").replaceChildren(segs(LOCALES.map(([id, name]) => [id, t(name)]), s.lang, (lang) => savePrefs({ ...keep, lang })));
   $("#traySegs").replaceChildren(segs(TRAYS.map(([id, name]) => [id, t(name)]), s.tray || "panel", (tray) => savePrefs({ ...keep, tray })));
@@ -4268,6 +4269,7 @@ function renderSettings() {
     s.codexWarmup || "off", (v) => savePrefs({ ...keep, codexWarmup: v === "off" ? "" : v })));
   $("#warmSub").textContent = t("When a ChatGPT account's window resets, send it one tiny request so the next one starts counting at once")
     + (s.codexWarmed ? " · " + t("last started {when}", { when: syncWhen(s.codexWarmed) }) : "");
+  renderTrayUsage(s, keep);
   renderProxy(s, keep);
   renderRedact(s, keep);
   renderLAN(s);
@@ -4509,6 +4511,40 @@ function importForm() {
     }
   };
   return ed;
+}
+
+// trayCardID names a Usage page card as settings.TrayUsage does: its
+// provider, and the account when there is one.
+const trayCardID = (q) => q.user ? q.provider + "|" + q.user : q.provider;
+
+// renderTrayUsage: the subscription or plan whose windows show beside the
+// tray icon. The cards are the Usage page's, asked for when the menu opens.
+function renderTrayUsage(s, keep) {
+  $("#trayUsageRow").hidden = web;
+  if (web) return;
+  const mac = document.body.classList.contains("mac");
+  $("#trayUsageSub").textContent = mac ? t("Show a subscription's use beside magpie's icon in the menu bar, refreshed every few minutes")
+    : t("Show a subscription's use when pointing at magpie's tray icon, refreshed every few minutes");
+  const id = s.trayUsage || "";
+  const pill = el("button", "proto pick" + (id ? " set" : ""));
+  pill.type = "button";
+  const paint = () => {
+    const card = (quotas || []).find((q) => trayCardID(q) === id);
+    pill.replaceChildren(el("span", "", !id ? t("Off") : card ? card.name : id.split("|")[0]), svg(CHEV, 11, 1.6));
+  };
+  paint();
+  if (id && !quotas) loadQuotas().then(paint);
+  pill.onclick = async (e) => {
+    e.stopPropagation();
+    if (pill.classList.contains("open")) return closeProtoMenu();
+    if (!quotas) { pill.classList.add("busy"); await loadQuotas(); pill.classList.remove("busy"); paint(); }
+    const cards = (quotas || []).filter((q) => !q.error && (q.windows?.length || q.balance));
+    const opts = [{ v: "", name: "Off", note: "" },
+      ...cards.map((q) => ({ v: trayCardID(q), name: q.name, note: [q.plan, q.user].filter(Boolean).join(" · ") }))];
+    if (!cards.length) opts.push({ v: "\x00", name: "No subscriptions yet", note: "Sign in to one, or add a plan's key, and it shows on the Usage page" });
+    openProtoMenu(pill, opts, id, (v) => { if (v !== id && v !== "\x00") savePrefs({ ...keep, trayUsage: v }); }, "Shown beside the icon");
+  };
+  $("#trayUsagePick").replaceChildren(pill);
 }
 
 // renderProxy: magpie's own requests to vendors follow the system proxy on

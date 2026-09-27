@@ -323,6 +323,9 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		if (in.Dock != cur.Dock || in.DockWindow != cur.DockWindow) && onDock != nil {
 			onDock(in)
 		}
+		if in.TrayUsage != cur.TrayUsage && onTrayUsage != nil {
+			onTrayUsage()
+		}
 		writeJSON(rw, settingsState())
 	})
 	// the Agents page's order and what it folds away, in magpie's settings

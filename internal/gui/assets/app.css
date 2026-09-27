@@ -840,6 +840,12 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .acc .proto:hover, .acc .proto.open { color: var(--fg); background: var(--pill-hover); }
 .acc .n, .acc .rename { flex: 0 1 auto; }
 .acc .plan { flex: none; }
+/* the Settings row's picker: the key row's badge, always shown */
+.row.pref .proto.pick { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 6px 0 9px; font: inherit; font-size: 12px; color: var(--fg-2); border: 0; border-radius: 7px; background: var(--pill); white-space: nowrap; cursor: default; transition: background .12s, color .12s; }
+.row.pref .proto.pick svg { opacity: .7; transition: transform .15s var(--ease); }
+.row.pref .proto.pick.open svg { transform: rotate(180deg); }
+.row.pref .proto.pick:hover, .row.pref .proto.pick.open { color: var(--fg); background: var(--pill-hover); }
+.row.pref .proto.pick.busy { opacity: .6; }
 .pop.proto-menu { width: 262px; max-height: none; padding: 4px; border: 1px solid var(--line); display: grid; gap: 1px; }
 .proto-menu .pm-head { padding: 6px 8px 5px; font-size: 11px; color: var(--muted); }
 .proto-menu .pm-item { display: flex; align-items: flex-start; gap: 7px; width: 100%; padding: 6px 8px 7px; border: 0; border-radius: 7px; background: none; color: var(--fg); font: inherit; text-align: left; cursor: default; outline: none; }

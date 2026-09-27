@@ -278,6 +278,7 @@ func Run(version string, showMain bool, link string) error {
 	}
 	h.tray.SetMenu(menu)
 	h.tray.AttachWindow(h.panel).WindowOffset(6)
+	h.watchTrayUsage()
 	// the quick panel by the icon, or the main window if the user would
 	// rather (Settings → Tray icon)
 	h.tray.OnClick(func() {
