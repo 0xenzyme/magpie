@@ -794,13 +794,10 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 		}
 		return s.serveSubscription(w, r, from, "Grok", model, body, &call.Usage, start)
 	}
-	// and Devin's, which the CLI serves over ACP
+	// Devin's through the API its CLI talks to, with the CLI's sign-in
 	if p.Account != nil && p.Account.Agent == "devin" {
 		call.To = from
-		start := func(ctx context.Context, req *Request) (*subscriptionRun, <-chan Event, error) {
-			return s.subscription.startDevin(ctx, req, model)
-		}
-		return s.serveSubscription(w, r, from, "Devin", model, body, &call.Usage, start)
+		return s.serveDevin(w, r, from, model, body, &call.Usage)
 	}
 	// Kiro's is served through its own API, with kiro-cli's or the Kiro
 	// IDE's sign-in, or a Kiro API key saved on the provider

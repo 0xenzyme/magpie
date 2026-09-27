@@ -1,10 +1,9 @@
 package provider
 
-// A Devin subscription is used the way a Cursor one is: through the vendor's
-// own agent. Devin has no endpoint a key can be sent to, so magpie runs the
-// genuine devin CLI (gateway/devin_subscription.go drives `devin acp`) with
-// the account it is signed in to; here is only who that account is, the
-// models it offers, and the sign-in, which is `devin auth login`.
+// A Devin subscription is served through the API the devin CLI talks to
+// (gateway/devin.go), with the key the CLI signed in with; here is who that
+// account is, the models it offers, and the sign-in, which is `devin auth
+// login`'s.
 
 import (
 	"context"
@@ -15,9 +14,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	toml "github.com/pelletier/go-toml/v2"
 
 	"github.com/yetone/magpie/internal/catalog"
 )
@@ -171,10 +173,14 @@ type DevinFamily struct {
 }
 
 // devinModelsFlatten is the family list as a flat catalog: the family's
-// follow-newest id, then each of its variants.
+// follow-newest id, then each of its variants. Adaptive and Fusion, which
+// route between models inside Devin's own agent, aren't served by the API.
 func devinModelsFlatten(families []DevinFamily) []catalog.Model {
 	var out []catalog.Model
 	for _, f := range families {
+		if id := strings.ToLower(f.UID); id == "adaptive" || id == "fusion" {
+			continue
+		}
 		out = append(out, catalog.Model{ID: f.UID, Name: f.Label, Provider: "devin"})
 		out = append(out, f.Models...)
 	}
@@ -345,4 +351,59 @@ func devinCredentials(key, server, webapp, api string) []byte {
 // and URLs, so only the string's own delimiters need escaping.
 func tomlString(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+}
+
+// DevinAuth is the key the CLI signed in with and the server its API is
+// on, read from credentials.toml; WINDSURF_API_SERVER_URL moves the server,
+// as it does the CLI's.
+func DevinAuth() (key, server string, err error) {
+	b, err := os.ReadFile(DevinCredentialsPath())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", "", errors.New("Devin isn't signed in; sign in from magpie's Providers page or run `devin auth login`")
+		}
+		return "", "", err
+	}
+	var c struct {
+		Key    string `toml:"windsurf_api_key"`
+		Server string `toml:"api_server_url"`
+	}
+	if err := toml.Unmarshal(b, &c); err != nil {
+		return "", "", fmt.Errorf("%s: %w", DevinCredentialsPath(), err)
+	}
+	if c.Key == "" {
+		return "", "", errors.New("Devin isn't signed in: " + DevinCredentialsPath() + " has no key")
+	}
+	server = strings.TrimRight(c.Server, "/")
+	if v := os.Getenv("WINDSURF_API_SERVER_URL"); v != "" {
+		server = strings.TrimRight(v, "/")
+	}
+	if server == "" {
+		server = devinAPIServer
+	}
+	return c.Key, server, nil
+}
+
+// DevinVariant is the model to ask Devin's API for: a family's name
+// follows its newest model, which the API takes only as one of its
+// variants — the one at the effort asked for, else the family's default.
+func DevinVariant(ctx context.Context, model, effort string) string {
+	families, err := DevinFamilies(ctx)
+	if err != nil {
+		return model
+	}
+	for _, f := range families {
+		if f.UID != model && !slices.Contains(f.Aliases, model) || len(f.Models) == 0 {
+			continue
+		}
+		if effort != "" {
+			for _, m := range f.Models {
+				if strings.HasSuffix(strings.ToLower(m.ID), "-"+effort) || strings.HasSuffix(m.ID, "_"+strings.ToUpper(effort)) {
+					return m.ID
+				}
+			}
+		}
+		return f.Models[0].ID
+	}
+	return model
 }
