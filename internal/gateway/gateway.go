@@ -1012,6 +1012,7 @@ func wrongEndpoint(status int, body []byte) bool {
 		"use /v1/chat/completions",
 		"not accessible via the", // Copilot
 		"unsupported_api_for_model",
+		"is not supported for format", // OpenCode: "Model grok-4.7 is not supported for format anthropic"
 	} {
 		if strings.Contains(msg, phrase) {
 			return true

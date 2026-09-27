@@ -268,6 +268,50 @@ func TestResponsesClientFallsBackToChat(t *testing.T) {
 	}
 }
 
+// OpenCode Go serves its Grok models on /responses only, and says so on
+// /messages and /chat/completions alike: Claude Code's request goes on
+// past both, and the next is sent straight to /responses.
+func TestAnthropicClientFallsBackPastOpenCodeFormats(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	calls := map[string]int{}
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.ReadAll(r.Body)
+		calls[r.URL.Path]++
+		switch r.URL.Path {
+		case "/v1/messages", "/v1/chat/completions":
+			format := map[string]string{"/v1/messages": "anthropic", "/v1/chat/completions": "oa-compat"}[r.URL.Path]
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, `{"type":"error","error":{"type":"ModelError","message":"Model grok-x is not supported for format `+format+`"}}`)
+		case "/v1/responses":
+			w.Header().Set("Content-Type", "text/event-stream")
+			io.WriteString(w, sse(
+				`event: response.output_text.delta`+"\n"+`data: {"type":"response.output_text.delta","delta":"grok ok"}`,
+				`event: response.completed`+"\n"+`data: {"type":"response.completed","response":{"id":"r1","model":"grok-x","status":"completed","usage":{"input_tokens":4,"output_tokens":2}}}`,
+			))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(up.Close)
+	if err := provider.Save(provider.Provider{ID: "fake", Name: "Fake", Key: "k", Models: []string{"grok-x"},
+		Chat: up.URL + "/v1", Responses: up.URL + "/v1", Anthropic: up.URL}); err != nil {
+		t.Fatal(err)
+	}
+	handler := New().Handler()
+	for i, want := range []int{1, 2} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"grok-x","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`)))
+		if rec.Code != 200 || !strings.Contains(rec.Body.String(), "grok ok") {
+			t.Fatalf("call %d: status %d: %s", i, rec.Code, rec.Body.String())
+		}
+		if calls["/v1/messages"] != 1 || calls["/v1/chat/completions"] != 1 || calls["/v1/responses"] != want {
+			t.Fatalf("call %d: %v", i, calls)
+		}
+	}
+}
+
 func TestWrongEndpoint(t *testing.T) {
 	for _, tc := range []struct {
 		status int
@@ -278,6 +322,7 @@ func TestWrongEndpoint(t *testing.T) {
 		{404, `use v1/completions`, true},
 		{400, `{"code":null,"message":"model \"gpt-6-sol\" is not accessible via the /chat/completions endpoint","type":"invalid_request_error"}`, true},
 		{400, `{"error":{"message":"model not accessible","code":"unsupported_api_for_model"}}`, true},
+		{400, `{"type":"error","error":{"type":"ModelError","message":"Model grok-4.7 is not supported for format anthropic"}}`, true},
 		{429, `rate limit`, false},
 		{500, `use v1/responses`, false},
 		{200, `use v1/responses`, false},
