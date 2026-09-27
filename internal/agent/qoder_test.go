@@ -9,8 +9,10 @@ import (
 
 	"github.com/tidwall/jsonc"
 
+	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/usage"
 )
 
 func TestQoder(t *testing.T) {
@@ -66,7 +68,7 @@ func testQoder(t *testing.T, mk func(string) *Agent, rel string) {
 	}
 	c, raw := read()
 	p := c.Providers[magpieID]
-	if !strings.Contains(raw, "// the user's") || c.Model["name"] != "magpie/deepseek/pro" || p["baseUrl"] != gatewayV1() || p["apiKey"] != gateway.Token ||
+	if !strings.Contains(raw, "// the user's") || c.Model["name"] != "magpie/deepseek/pro" || p["baseUrl"] != gatewayV1() || p["apiKey"] != gateway.TokenFor(a.ID) ||
 		p["protocol"] != "openai" || p["model"] != "deepseek/pro" || c.Providers["mine"]["apiKey"] != "sk-m" || c.Theme != "dark" {
 		t.Fatalf("magpie:\n%s", raw)
 	}
@@ -106,6 +108,20 @@ func testQoder(t *testing.T, mk func(string) *Agent, rel string) {
 	c, raw = read()
 	if _, ok := c.Providers[magpieID]; ok || c.Model["name"] != "ultimate" {
 		t.Fatalf("own:\n%s", raw)
+	}
+
+	// wired before Qoder had a key of its own: still magpie's, and a sync
+	// gives it Qoder's key, which the gateway knows it by (not Bun's UA)
+	f.Set("magpie/deepseek/pro")
+	edit.SetJSON(path, edit.KV{Path: "providers." + magpieID + ".apiKey", Value: gateway.Token})
+	if a.Check() != "" {
+		t.Fatalf("old key: %q", a.Check())
+	}
+	if err := a.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if c, raw = read(); c.Providers[magpieID]["apiKey"] != gateway.TokenFor(a.ID) || usage.AgentOf(a.ID) != a.ID {
+		t.Fatalf("synced key:\n%s", raw)
 	}
 
 	// no settings before: a new file with magpie's provider

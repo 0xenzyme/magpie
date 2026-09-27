@@ -61,7 +61,7 @@ func qoderSite(home string, b qoderBuild) *Agent {
 	get := func(k string) string { v, _ := edit.GetJSON(path, k); return v }
 	onMagpie := func() bool {
 		_, ok := cutMagpie(get("model.name"))
-		return ok && get(slot+".apiKey") == gateway.Token
+		return ok && qoderKeyed(get(slot+".apiKey"), b.id)
 	}
 	return &Agent{
 		ID: b.id, Name: b.name, Icon: "qoder", Aliases: b.aliases,
@@ -100,7 +100,7 @@ func qoderSite(home string, b qoderBuild) *Agent {
 				}
 				// out of magpie: its provider goes, and the model the user
 				// had comes back when none is asked for
-				if onMagpie() || get(slot+".apiKey") == gateway.Token {
+				if onMagpie() || qoderKeyed(get(slot+".apiKey"), b.id) {
 					if err := edit.DelJSON(path, slot); err != nil {
 						return err
 					}
@@ -163,5 +163,13 @@ func qoderProvider(agent, model string) map[string]any {
 		ms = append(ms, e)
 	}
 	return map[string]any{"displayName": "magpie", "protocol": "openai", "baseUrl": gatewayV1(),
-		"apiKey": gateway.Token, "model": model, "models": ms}
+		"apiKey": gateway.TokenFor(agent), "model": model, "models": ms}
+}
+
+// qoderKeyed: key is one magpie gives Qoder's provider — its own,
+// gateway.TokenFor, since Qoder's requests carry Bun's User-Agent and
+// nothing of Qoder's, or gateway.Token, which it was given before; a sync
+// gives it the new one.
+func qoderKeyed(key, agent string) bool {
+	return key == gateway.TokenFor(agent) || key == gateway.Token
 }
