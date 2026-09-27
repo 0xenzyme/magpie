@@ -151,6 +151,11 @@ var presets = []PresetDef{
 	{ID: "opencode-zen", Name: "OpenCode Zen", Icon: "opencode", Kind: KindRelay, Catalog: "opencode",
 		Chat: "https://opencode.ai/zen/v1", Responses: "https://opencode.ai/zen/v1", Anthropic: "https://opencode.ai/zen",
 		Website: "https://opencode.ai/docs/zen", KeysURL: "https://opencode.ai/auth"},
+	// Command Code's Provider API: its Claude models on /messages alone, the
+	// rest on chat and Responses, as its model list says (#93)
+	{ID: "commandcode", Name: "Command Code", Icon: "commandcode", Kind: KindRelay,
+		Chat: "https://api.commandcode.ai/provider/v1", Responses: "https://api.commandcode.ai/provider/v1", Anthropic: "https://api.commandcode.ai/provider",
+		Website: "https://commandcode.ai/docs/provider", KeysURL: "https://commandcode.ai/settings/keys"},
 	{ID: "together", Name: "Together AI", Icon: "together-color", Kind: KindRelay, Catalog: "togetherai",
 		Chat:    "https://api.together.xyz/v1",
 		Website: "https://api.together.ai", KeysURL: "https://api.together.ai/settings/api-keys"},
