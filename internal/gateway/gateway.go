@@ -932,9 +932,27 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	case provider.Anthropic:
 		body = thinkingOffUnlessAsked(body)
 	}
+	// the effort as the agent sent it, fitted to the model's levels: Qoder's
+	// permission check asks "none", which Command Code turns away
+	asked := bodyEffort(proto, body)
+	if e := fitEffort(asked, p.Efforts(model)); asked != "" && e != asked {
+		body = withBodyEffort(proto, body, e)
+	}
 	res, err := s.forward(r.Context(), p, proto, pathOf(proto), p.Prepare(body), r.Header)
 	if err != nil {
 		return writeError(w, proto, 502, p.Name+": "+err.Error()), err.Error(), true
+	}
+	if e := bodyEffort(proto, body); (e == "none" || e == "minimal") && res.StatusCode == http.StatusBadRequest {
+		// a model whose levels magpie doesn't know, refusing no reasoning
+		// with the levels it takes: asked again at the lowest of them
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		res.Body.Close()
+		res.Body = io.NopCloser(bytes.NewReader(b))
+		if effortLevelsNamed.Match(b) {
+			if res, err = s.forward(r.Context(), p, proto, pathOf(proto), p.Prepare(withBodyEffort(proto, body, "low")), r.Header); err != nil {
+				return writeError(w, proto, 502, p.Name+": "+err.Error()), err.Error(), true
+			}
+		}
 	}
 	if proto == provider.Anthropic && res.StatusCode == http.StatusBadRequest {
 		// a model that always thinks refuses thinking turned off: asked
@@ -1466,6 +1484,50 @@ func conversationID(in http.Header, body []byte) string {
 	}
 	sum := sha256.Sum256(first)
 	return "magpie-" + hex.EncodeToString(sum[:12])
+}
+
+// effortLevelsNamed is an error that lists the reasoning levels a model
+// takes, as one refusing "none" does: Command Code's `expected one of
+// "low"|"medium"|"high"|"xhigh"|"max"`.
+var effortLevelsNamed = regexp.MustCompile(`(?i)\blow\b\W+(?:medium|high)\b`)
+
+// bodyEffort is the reasoning effort a Chat or Responses request asks for.
+func bodyEffort(proto provider.Protocol, body []byte) string {
+	var v struct {
+		ReasoningEffort string `json:"reasoning_effort"`
+		Reasoning       *struct {
+			Effort string `json:"effort"`
+		} `json:"reasoning"`
+	}
+	if json.Unmarshal(body, &v) != nil {
+		return ""
+	}
+	switch {
+	case proto == provider.Chat:
+		return v.ReasoningEffort
+	case proto == provider.Responses && v.Reasoning != nil:
+		return v.Reasoning.Effort
+	}
+	return ""
+}
+
+// withBodyEffort asks a Chat or Responses request for effort instead,
+// keeping the rest of its reasoning settings.
+func withBodyEffort(proto provider.Protocol, body []byte, effort string) []byte {
+	switch proto {
+	case provider.Chat:
+		return withFields(body, map[string]any{"reasoning_effort": effort})
+	case provider.Responses:
+		var v struct {
+			Reasoning map[string]any `json:"reasoning"`
+		}
+		if json.Unmarshal(body, &v) != nil || v.Reasoning == nil {
+			return body
+		}
+		v.Reasoning["effort"] = effort
+		return withFields(body, map[string]any{"reasoning": v.Reasoning})
+	}
+	return body
 }
 
 // withFields sets top-level fields, keeping every other field as it was.

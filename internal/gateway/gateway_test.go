@@ -561,6 +561,29 @@ func TestAnthropicPassthroughModelThatAlwaysThinks(t *testing.T) {
 	}
 }
 
+// Qoder asks "none" for its permission checks, which Command Code turns
+// away with the levels it takes: asked again at the lowest, once
+func TestPassthroughEffortNoneRefused(t *testing.T) {
+	f := &fake{t: t, ctype: "application/json", reply: `{"id":"c1","choices":[]}`}
+	f.refuse = func(b []byte) (int, string) {
+		if bytes.Contains(b, []byte(`"reasoning_effort":"none"`)) {
+			return 400, `{"error":{"message":"Command Code: Invalid option: expected one of \"low\"|\"medium\"|\"high\"|\"xhigh\"|\"max\""}}`
+		}
+		return 0, ""
+	}
+	setup(t, provider.Chat, f)
+	code, body := post(t, "/v1/chat/completions", `{"model":"m1","messages":[{"role":"user","content":"ok?"}],"reasoning_effort":"none"}`)
+	if code != 200 || f.calls != 2 || !bytes.Contains(f.got, []byte(`"reasoning_effort":"low"`)) || !bytes.Contains(f.got, []byte(`"ok?"`)) {
+		t.Fatalf("%d %s after %d calls, last sent %s", code, body, f.calls, f.got)
+	}
+	// another 400 is the agent's to see
+	f.calls = 0
+	f.refuse = func([]byte) (int, string) { return 400, `{"error":{"message":"bad request"}}` }
+	if code, _ := post(t, "/v1/chat/completions", `{"model":"m1","messages":[],"reasoning_effort":"none"}`); code != 400 || f.calls != 1 {
+		t.Errorf("%d after %d calls", code, f.calls)
+	}
+}
+
 // effort without thinking asks for no reasoning on a Chat upstream
 func TestAnthropicEffortWithoutThinking(t *testing.T) {
 	f := &fake{t: t, reply: sse(`data: {"id":"c1","choices":[{"delta":{"content":"T"},"finish_reason":"stop"}]}`, `data: [DONE]`)}
