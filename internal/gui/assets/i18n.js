@@ -383,6 +383,7 @@ const I18N = {
     "{id} is called {name}": "{id} 已改名为 {name}",
     "{id} has its own name again": "{id} 已恢复默认名称",
     "Reasoning levels agents are offered": "提供给 Agent 的推理档位",
+    "Its reasoning levels aren't known: tick the ones it takes": "未知这个模型的推理档位：勾选它支持的档位",
     "Keep at least one level": "至少保留一个档位",
     "{id}: {levels}": "{id}：{levels}",
     "Restore default": "恢复默认",

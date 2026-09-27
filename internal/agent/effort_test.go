@@ -67,10 +67,9 @@ func TestEffortFields(t *testing.T) {
 	writeFile(t, filepath.Join(home, ".claude", "settings.json"), `{"theme":"dark","model":"opus"}`)
 	c := claude(home)
 	setEffort(t, c, "xhigh", `"theme"`)
-	// max lasts a session in Claude Code; settings.json drops it
-	if err := c.Field("effort").Set("max"); err == nil {
-		t.Fatal("claude took max")
-	}
+	// max lasts a session in Claude Code's /effort; magpie keeps it as its
+	// env (TestClaudeEffortMax)
+	setEffort(t, c, "max", `"theme"`)
 
 	writeFile(t, filepath.Join(home, ".hermes", "config.yaml"), "model:\n  default: x\nagent:\n  max_turns: 9\n")
 	h := hermes(home)

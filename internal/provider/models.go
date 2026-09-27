@@ -274,8 +274,17 @@ func (p Provider) RejectsTemperature(model string) bool {
 	return false
 }
 
-// Efforts are the reasoning levels the model takes, when known.
+// Efforts are the reasoning levels the model takes, when known: its own,
+// or those the user gave it when it has none known.
 func (p Provider) Efforts(model string) []string {
+	if all := p.Known(model); len(all) > 0 {
+		return all
+	}
+	return effortsKept(nil, settings.Load().ModelEfforts[p.ID+"/"+model])
+}
+
+// Known are the model's own reasoning levels, when known.
+func (p Provider) Known(model string) []string {
 	for _, m := range p.Available() {
 		if m.ID == model {
 			return effortsOf(m)

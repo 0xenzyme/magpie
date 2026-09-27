@@ -22,7 +22,9 @@ import (
 // (low, medium and high of its six): settings' ModelEfforts, kept the same
 // way. The lists magpie hands out — the gateway's, and those it writes into
 // the agents' files — offer only those, in the vendor's order; a request
-// for another still reaches the vendor as it did.
+// for another still reaches the vendor as it did. A model whose levels
+// aren't known (one models.dev doesn't list, a custom provider's) can be
+// given some of Levels the same way, which it is then taken to have.
 
 // ModelName is the name the user gave a provider's model, if any.
 func ModelName(pid, model string) (string, bool) {
@@ -88,25 +90,31 @@ func SetModelName(ref, name string) error {
 	return nil
 }
 
+// Levels are the reasoning levels a model whose own aren't known can be
+// given.
+var Levels = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+
 // SetModelEfforts keeps only these of a provider's model's reasoning
 // levels in the lists magpie hands out; none, or all it has, offers them
-// all again. They must be levels the model has.
+// all again. They must be levels the model has — or, for a model whose
+// levels aren't known, any of Levels, which it is given; none takes them
+// away.
 func SetModelEfforts(ref string, efforts []string) error {
 	p, model, err := splitRef(ref)
 	if err != nil {
 		return err
 	}
-	all := p.Efforts(model)
+	all := p.Known(model)
 	var keep []string
 	for _, e := range efforts {
 		e = strings.ToLower(strings.TrimSpace(e))
 		if e == "" {
 			continue
 		}
-		if !slices.Contains(all, e) {
-			if len(all) == 0 {
-				return fmt.Errorf("%s/%s has no reasoning levels to choose from", p.ID, model)
-			}
+		if len(all) == 0 && !slices.Contains(Levels, e) {
+			return fmt.Errorf("%q is not a reasoning level (they are %s)", e, strings.Join(Levels, ", "))
+		}
+		if len(all) > 0 && !slices.Contains(all, e) {
 			return fmt.Errorf("%s/%s has no reasoning level %q (it has %s)", p.ID, model, e, strings.Join(all, ", "))
 		}
 		if !slices.Contains(keep, e) {
@@ -151,10 +159,14 @@ func (p Provider) ModelEfforts() map[string][]string {
 
 // effortsKept is all without the levels the user didn't keep, in its own
 // order; all of them when none of those kept is among them any more (the
-// vendor's list changed).
+// vendor's list changed). A model with none known has those the user gave
+// it.
 func effortsKept(all, kept []string) []string {
 	if len(kept) == 0 {
 		return all
+	}
+	if len(all) == 0 {
+		return slices.DeleteFunc(slices.Clone(Levels), func(e string) bool { return !slices.Contains(kept, e) })
 	}
 	out := slices.DeleteFunc(slices.Clone(all), func(e string) bool { return !slices.Contains(kept, e) })
 	if len(out) == 0 {

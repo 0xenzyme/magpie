@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"cmp"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -30,8 +31,13 @@ var claudeEnv = []string{
 // A tier that has none follows the main model.
 var claudeTiers = []string{"opus", "sonnet", "haiku", "fable"}
 
-// claudeEfforts are the levels settings.json's effortLevel takes.
-var claudeEfforts = []string{"low", "medium", "high", "xhigh"}
+// claudeEfforts are the levels Claude Code starts with: settings.json's
+// effortLevel takes the first four, max is claudeEffortEnv.
+var claudeEfforts = []string{"low", "medium", "high", "xhigh", "max"}
+
+// claudeEffortEnv is the effort every Claude Code session asks for, max
+// among them.
+const claudeEffortEnv = "CLAUDE_CODE_EFFORT_LEVEL"
 
 func tierEnv(tier string) string { return "ANTHROPIC_DEFAULT_" + strings.ToUpper(tier) + "_MODEL" }
 
@@ -153,12 +159,22 @@ func claude(home string) *Agent {
 		},
 	}, {
 		// the effort Claude Code starts with, as its /effort saves it;
-		// settings.json keeps low to xhigh (max lasts a session only)
+		// settings.json keeps low to xhigh (/effort max lasts a session
+		// only), so max is CLAUDE_CODE_EFFORT_LEVEL in its env, which every
+		// session starts with and asks for
 		Key: "effort", Label: "effort",
-		Get: jsonGet(path, "effortLevel"),
+		Get: func() string { return cmp.Or(env(claudeEffortEnv), jsonGet(path, "effortLevel")()) },
 		Set: func(v string) error {
 			if v != "" && !contains(claudeEfforts, v) {
 				return fmt.Errorf("Claude Code keeps an effort of %s, not %q", strings.Join(claudeEfforts, ", "), v)
+			}
+			if v == "max" {
+				return edit.SetJSON(path, edit.KV{Path: "env." + claudeEffortEnv, Value: v})
+			}
+			if env(claudeEffortEnv) != "" {
+				if err := edit.DelJSON(path, "env."+claudeEffortEnv); err != nil {
+					return err
+				}
 			}
 			return jsonSet(path, "effortLevel")(v)
 		},

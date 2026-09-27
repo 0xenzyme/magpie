@@ -115,9 +115,14 @@ func modelEfforts(args []string) error {
 	id := p.ID + "/" + model
 	all := p.Efforts(model)
 	rest := args[1:]
+	given := len(p.Known(model)) == 0 // levels aren't known: those it has are the user's
 	if len(rest) == 0 {
 		if len(all) == 0 {
-			fmt.Println(muted.Render(id + " has no reasoning levels"))
+			fmt.Println(muted.Render(id+" has no reasoning levels known"), faint.Render("· give it some of "+strings.Join(provider.Levels, ", ")))
+			return nil
+		}
+		if given {
+			fmt.Println(bold.Render(strings.Join(all, " ")), muted.Render("· given it · --reset takes them away"))
 			return nil
 		}
 		kept, narrowed := p.ModelEfforts()[model]
@@ -145,6 +150,14 @@ func modelEfforts(args []string) error {
 	}
 	if err := provider.SetModelEfforts(id, levels); err != nil {
 		return err
+	}
+	if given {
+		if all = p.Efforts(model); len(all) > 0 {
+			fmt.Println(green.Render("✓"), id, muted.Render("offers"), bold.Render(strings.Join(all, ", ")))
+		} else {
+			fmt.Println(green.Render("✓"), id, muted.Render("has no reasoning levels again"))
+		}
+		return nil
 	}
 	if kept, ok := p.ModelEfforts()[model]; ok {
 		fmt.Println(green.Render("✓"), id, muted.Render("offers"), bold.Render(strings.Join(kept, ", ")))

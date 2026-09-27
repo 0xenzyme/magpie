@@ -179,3 +179,36 @@ func TestModelEfforts(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// A model whose levels aren't known can be given some, which the catalog,
+// the lists agents get and the gateway then take it to have; none takes
+// them away, and a model with levels of its own takes no others.
+func TestModelEffortsGiven(t *testing.T) {
+	prefsHome(t)
+	if err := Save(Provider{ID: "c", Name: "C", Key: "k", Chat: "http://127.0.0.1:1/v1", Models: []string{"mystery-7"}}); err != nil {
+		t.Fatal(err)
+	}
+	p, _, _ := Resolve("c/mystery-7")
+	if e := entry(t, "c/mystery-7"); len(e.Efforts) != 0 || len(p.Efforts("mystery-7")) != 0 {
+		t.Fatalf("unknown model has levels %v", e.Efforts)
+	}
+	if err := SetModelEfforts("c/mystery-7", []string{"max", "low", "high"}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"low", "high", "max"}
+	if e := entry(t, "c/mystery-7"); !slices.Equal(e.Efforts, want) || !slices.Equal(p.Efforts("mystery-7"), want) {
+		t.Fatalf("given: %v %v", e.Efforts, p.Efforts("mystery-7"))
+	}
+	if err := SetModelEfforts("c/mystery-7", []string{"turbo"}); err == nil {
+		t.Fatal("turbo taken")
+	}
+	if err := SetModelEfforts("c/mystery-7", nil); err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(t, "c/mystery-7"); len(e.Efforts) != 0 || settings.Load().ModelEfforts["c/mystery-7"] != nil {
+		t.Fatalf("taken away: %v", e.Efforts)
+	}
+	if err := SetModelEfforts("a/sol", []string{"xhigh"}); err == nil {
+		t.Fatal("sol took xhigh")
+	}
+}

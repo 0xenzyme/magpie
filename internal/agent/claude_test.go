@@ -72,3 +72,41 @@ func TestClaudeTiers(t *testing.T) {
 		t.Fatal("theme lost")
 	}
 }
+
+// Claude Code's settings keep an effort up to xhigh; max is its
+// CLAUDE_CODE_EFFORT_LEVEL, which another level takes away again.
+func TestClaudeEffortMax(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	path := filepath.Join(home, ".claude", "settings.json")
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	os.WriteFile(path, []byte(`{"effortLevel": "high", "env": {"FOO": "1"}}`), 0o644)
+	e := claude(home).Field("effort")
+	get := func(k string) string { v, _ := edit.GetJSON(path, k); return v }
+	if e.Get() != "high" {
+		t.Fatalf("get %q", e.Get())
+	}
+	if err := e.Set("max"); err != nil {
+		t.Fatal(err)
+	}
+	if e.Get() != "max" || get("env.CLAUDE_CODE_EFFORT_LEVEL") != "max" || get("env.FOO") != "1" {
+		b, _ := os.ReadFile(path)
+		t.Fatalf("max:\n%s", b)
+	}
+	if err := e.Set("xhigh"); err != nil {
+		t.Fatal(err)
+	}
+	if e.Get() != "xhigh" || get("env.CLAUDE_CODE_EFFORT_LEVEL") != "" || get("effortLevel") != "xhigh" || get("env.FOO") != "1" {
+		b, _ := os.ReadFile(path)
+		t.Fatalf("xhigh:\n%s", b)
+	}
+	e.Set("max")
+	if err := e.Set(""); err != nil || e.Get() != "" {
+		t.Fatalf("reset: %v %q", err, e.Get())
+	}
+	if e.Set("ultra") == nil {
+		t.Fatal("ultra taken")
+	}
+}

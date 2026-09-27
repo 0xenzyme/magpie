@@ -2833,16 +2833,19 @@ function renderModels(p) {
       who.append(name, el("code", "", m.id));
       row.append(who);
       const levels = m.efforts || [];
+      // a model whose levels aren't known (m.given) can be given any
+      // of them, and none again
       if (levels.length > 1) {
         const lv = el("div", "mlevels");
-        lv.title = t("Reasoning levels agents are offered");
-        const kept = m.kept?.length ? m.kept : levels;
+        lv.title = t(m.given ? "Its reasoning levels aren't known: tick the ones it takes" : "Reasoning levels agents are offered");
+        const kept = m.kept?.length || m.given ? m.kept || [] : levels;
         for (const l of levels) {
           const [tk, cb] = tick(t(l), kept.includes(l));
           cb.onchange = () => {
             const next = levels.filter((x) => x === l ? cb.checked : kept.includes(x));
-            if (!next.length) { cb.checked = true; status(t("Keep at least one level"), "err"); return; }
-            accountAction("provider/efforts", { id: p.id, model: m.id, efforts: next.length === levels.length ? [] : next }, t("{id}: {levels}", { id: m.id, levels: next.map((x) => t(x)).join(", ") }));
+            if (!next.length && !m.given) { cb.checked = true; status(t("Keep at least one level"), "err"); return; }
+            accountAction("provider/efforts", { id: p.id, model: m.id, efforts: next.length === levels.length && !m.given ? [] : next },
+              next.length ? t("{id}: {levels}", { id: m.id, levels: next.map((x) => t(x)).join(", ") }) : t("{id} is as its provider has it again", { id: m.id }));
           };
           lv.append(tk);
         }
