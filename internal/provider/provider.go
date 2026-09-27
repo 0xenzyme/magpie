@@ -438,6 +438,16 @@ func normalize(p Provider) Provider {
 			*u = "https://" + *u
 		}
 	}
+	// the Anthropic base is the root /v1/messages is asked at: one given as
+	// .../v1 or .../v1/messages, as vendors' docs often show it, would have
+	// the version sent twice and every message turned away (404) while the
+	// model list, asked at both, still answers
+	for _, suf := range []string{"/v1/messages", "/v1"} {
+		if b, ok := strings.CutSuffix(p.Anthropic, suf); ok && strings.Contains(b, "://") && len(b) > len("https://") {
+			p.Anthropic = b
+			break
+		}
+	}
 	p.Models = cleanList(p.Models)
 	p.Fallback = cleanList(p.Fallback)
 	if p.Routing != Ordered && p.Routing != Rotate && p.Routing != LeastUsed {
