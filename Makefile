@@ -35,6 +35,7 @@ app: build
 	@mkdir -p magpie.app/Contents/MacOS magpie.app/Contents/Resources
 	@cp magpie magpie.app/Contents/MacOS/magpie
 	@cp build/darwin/magpie.icns magpie.app/Contents/Resources/magpie.icns
+	@cp build/darwin/Assets.car magpie.app/Contents/Resources/Assets.car
 	@sed 's/@VERSION@/$(VERSION)/' build/darwin/Info.plist > magpie.app/Contents/Info.plist
 	@echo "  magpie.app"
 
@@ -48,6 +49,13 @@ icons:
 		go run build/icon/gen.go app $$((s*2)) build/darwin/magpie.iconset/icon_$${s}x$${s}@2x.png; \
 	done
 	@iconutil -c icns build/darwin/magpie.iconset -o build/darwin/magpie.icns && rm -rf build/darwin/magpie.iconset
+	@# macOS 26 draws the Dock icon from AppIcon.icon, light and dark (Xcode 26's actool);
+	@# the compiled Assets.car is kept in the tree so a release needn't have it
+	@go run build/icon/gen.go glyph 1024 build/darwin/AppIcon.icon/Assets/magpie.png
+	@rm -rf build/darwin/actool && mkdir -p build/darwin/actool
+	@xcrun actool build/darwin/AppIcon.icon --compile build/darwin/actool --platform macosx \
+		--minimum-deployment-target 11.0 --app-icon AppIcon --output-partial-info-plist build/darwin/actool/partial.plist >/dev/null
+	@mv build/darwin/actool/Assets.car build/darwin/Assets.car && rm -rf build/darwin/actool
 
 release: clean build
 	@mkdir -p dist

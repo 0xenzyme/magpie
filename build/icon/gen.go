@@ -38,11 +38,14 @@ func main() {
 	switch {
 	case len(os.Args) == 3 && os.Args[1] == "tray":
 		img = tray()
-	case len(os.Args) == 4 && os.Args[1] == "app":
+	case len(os.Args) == 4 && os.Args[1] == "glyph":
 		n, _ := strconv.Atoi(os.Args[2])
-		img = app(n)
+		img = glyph(n)
+	case len(os.Args) == 4 && (os.Args[1] == "app" || os.Args[1] == "app-dark"):
+		n, _ := strconv.Atoi(os.Args[2])
+		img = app(n, os.Args[1] == "app-dark")
 	default:
-		fmt.Fprintln(os.Stderr, "usage: gen.go tray <out.png> | gen.go app <size> <out.png>")
+		fmt.Fprintln(os.Stderr, "usage: gen.go tray <out.png> | gen.go app|app-dark <size> <out.png>")
 		os.Exit(2)
 	}
 	f, err := os.Create(os.Args[len(os.Args)-1])
@@ -68,9 +71,24 @@ func tray() image.Image {
 	return img
 }
 
+// glyph is the bird alone, black on clear, as big on an n-pixel canvas as
+// app draws it on its tile: the layer of build/darwin/AppIcon.icon, which
+// macOS 26 lays on a tile of its own, light or dark (#117).
+func glyph(n int) image.Image {
+	S := float64(n)
+	k := S * 0.8 / 44
+	o := S/2 - 22*k
+	cov := coverage(parse(fullSVG), n, 4, k, o, o)
+	img := image.NewNRGBA(image.Rect(0, 0, n, n))
+	for i, a := range cov {
+		img.SetNRGBA(i%n, i/n, color.NRGBA{0, 0, 0, uint8(a*255 + 0.5)})
+	}
+	return img
+}
+
 // app draws a rounded square, white shading to the palest grey, with the
 // bird on it in ink.
-func app(n int) image.Image {
+func app(n int, dark bool) image.Image {
 	S := float64(n)
 	// macOS icon grid: the squircle occupies ~80% of the canvas
 	inset := S * 0.1
@@ -89,7 +107,13 @@ func app(n int) image.Image {
 	}
 	bird := coverage(parse(shape), n, ss, k, o, o)
 	bg1, bg2 := 0xff, 0xec // top, bottom
-	const ink = 0x16
+	ink := 0x16
+	if dark {
+		// the Dock's dark appearance (macOS 26): the bird in white on a
+		// dark tile, as macOS would otherwise darken the tile under a black
+		// bird and lose it (#117)
+		bg1, bg2, ink = 0x3a, 0x22, 0xf4
+	}
 	img := image.NewNRGBA(image.Rect(0, 0, n, n))
 	for y := 0; y < n; y++ {
 		for x := 0; x < n; x++ {
@@ -109,7 +133,7 @@ func app(n int) image.Image {
 			t := float64(y) / S
 			bg := float64(bg1)*(1-t) + float64(bg2)*t
 			a := bird[y*n+x]
-			g := uint8(bg*(1-a) + ink*a + 0.5)
+			g := uint8(bg*(1-a) + float64(ink)*a + 0.5)
 			img.SetNRGBA(x, y, color.NRGBA{g, g, g, uint8(tile / float64(ss*ss) * 255)})
 		}
 	}

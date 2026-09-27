@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -34,6 +35,21 @@ var appIcon []byte // coloured, for other trays
 //
 //go:embed icon-1024.png
 var appIconLarge []byte
+
+// appIconFor is the icon the app hands the system: none on a Mac whose
+// bundle has AppIcon.icon compiled in (Assets.car), whose Dock then draws
+// it light or dark as macOS 26 has it, where a picture set at run time
+// stays light, a white tile in a dark Dock (#117).
+func appIconFor() []byte {
+	if runtime.GOOS == "darwin" {
+		if exe, err := os.Executable(); err == nil {
+			if _, err := os.Stat(filepath.Join(filepath.Dir(exe), "..", "Resources", "Assets.car")); err == nil {
+				return nil
+			}
+		}
+	}
+	return appIconLarge
+}
 
 type host struct {
 	app   *application.App
@@ -147,7 +163,7 @@ func Run(version string, showMain bool, link string) error {
 		SingleInstance: singleInstance(h),
 		Name:           "magpie",
 		Description:    "one place to pick every agent's model",
-		Icon:           appIconLarge,
+		Icon:           appIconFor(),
 		Assets:         application.AssetOptions{Handler: handler},
 		Mac:            application.MacOptions{ActivationPolicy: dockPolicy(settings.Load().Dock)},
 		Windows:        application.WindowsOptions{DisableQuitOnLastWindowClosed: true},
