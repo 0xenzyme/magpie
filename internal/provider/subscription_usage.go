@@ -3,12 +3,14 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -257,12 +259,19 @@ func accountJSON(ctx context.Context, url, token string, headers map[string]stri
 	defer res.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return &accountStatusError{status: res.StatusCode}
+		e := &accountStatusError{status: res.StatusCode}
+		if secs, err := strconv.Atoi(res.Header.Get("Retry-After")); err == nil && secs > 0 {
+			e.retryAfter = time.Duration(secs) * time.Second
+		}
+		return e
 	}
 	return json.Unmarshal(b, dst)
 }
 
-type accountStatusError struct{ status int }
+type accountStatusError struct {
+	status     int
+	retryAfter time.Duration // what the vendor asked to wait, when it said
+}
 
 func (e *accountStatusError) Error() string { return http.StatusText(e.status) }
 
@@ -273,17 +282,100 @@ func claudeSubscriptionUsage(ctx context.Context) SubscriptionQuota {
 		q.Error = err.Error()
 		return q
 	}
-	_, plan, _ := claudeIdentity()
+	user, plan, _ := claudeIdentity()
 	q.Plan = plan
-	q.Windows, err = claudeWindows(ctx, token)
+	q.Windows, err = claudeWindows(ctx, user, token)
 	if err != nil {
 		q.Error = err.Error()
 	}
 	return q
 }
 
-// claudeWindows is the allowance of the Claude account token signs in to.
-func claudeWindows(ctx context.Context, token string) ([]QuotaWindow, error) {
+// claudeUsage keeps each Claude account's allowance as last read, by user.
+// Anthropic's usage endpoint turns away an account asked more than a few
+// times in a while (429, rate_limit_error), and the Usage page, the switch
+// list and routing all ask for it: they share what was read in the last
+// few minutes, and one turned away waits as long as it is told, or five
+// minutes, showing what was known until then.
+var claudeUsage struct {
+	sync.Mutex
+	m map[string]claudeUsageEntry
+}
+
+type claudeUsageEntry struct {
+	at, retry time.Time
+	ws        []QuotaWindow
+}
+
+const claudeUsageTTL = 3 * time.Minute
+
+// claudeWindows is the allowance of the Claude account user, token signs
+// in to.
+func claudeWindows(ctx context.Context, user, token string) ([]QuotaWindow, error) {
+	key := strings.ToLower(user)
+	c := &claudeUsage
+	c.Lock()
+	e, ok := c.m[key]
+	c.Unlock()
+	now := time.Now()
+	if ok && e.ws != nil && (now.Sub(e.at) < claudeUsageTTL || now.Before(e.retry)) {
+		return elapsed(e.ws, now), nil
+	}
+	if ok && now.Before(e.retry) {
+		return []QuotaWindow{}, claudeLimited(e.retry.Sub(now))
+	}
+	ws, err := readClaudeWindows(ctx, token)
+	var st *accountStatusError
+	if errors.As(err, &st) && st.status == http.StatusTooManyRequests {
+		wait := st.retryAfter
+		if wait <= 0 {
+			wait = 5 * time.Minute
+		}
+		c.Lock()
+		if c.m == nil {
+			c.m = map[string]claudeUsageEntry{}
+		}
+		e.retry = now.Add(wait)
+		c.m[key] = e
+		c.Unlock()
+		if e.ws != nil {
+			return elapsed(e.ws, now), nil
+		}
+		return []QuotaWindow{}, claudeLimited(wait)
+	}
+	if err != nil {
+		return ws, err
+	}
+	c.Lock()
+	if c.m == nil {
+		c.m = map[string]claudeUsageEntry{}
+	}
+	c.m[key] = claudeUsageEntry{at: now, ws: ws}
+	c.Unlock()
+	return ws, nil
+}
+
+// claudeLimited is Anthropic turning the usage endpoint away for wait.
+func claudeLimited(wait time.Duration) error {
+	return fmt.Errorf("Anthropic is rate limiting its usage endpoint; magpie asks again in %s", wait.Round(time.Minute).String())
+}
+
+// elapsed is ws as of now: a window that has reset since it was read
+// starts again from nothing.
+func elapsed(ws []QuotaWindow, now time.Time) []QuotaWindow {
+	out := make([]QuotaWindow, len(ws))
+	for i, w := range ws {
+		if w.ResetsAt != nil && !now.Before(*w.ResetsAt) {
+			w.Used, w.ResetsAt = 0, nil
+		}
+		out[i] = w
+	}
+	return out
+}
+
+// readClaudeWindows asks Anthropic for the allowance of the account token
+// signs in to.
+func readClaudeWindows(ctx context.Context, token string) ([]QuotaWindow, error) {
 	var data struct {
 		FiveHour       *quotaWire `json:"five_hour"`
 		SevenDay       *quotaWire `json:"seven_day"`
