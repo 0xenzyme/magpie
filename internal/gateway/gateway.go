@@ -832,7 +832,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	if call.To != "" {
 		usage.Append(usage.Record{Time: start, Agent: call.Agent, Provider: call.Provider, Host: where, Model: model,
 			Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
-			CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Millis: call.Millis, Status: call.Status})
+			CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Millis: call.Millis, Status: call.Status,
+			Session: sessionOf(r.Header)})
 	}
 }
 
@@ -1407,6 +1408,24 @@ func developerAsSystem(body []byte) []byte {
 var sessionHeaders = []string{
 	"x-opencode-session", "x-session-affinity", "x-session-id",
 	"session_id", "session-id", "x-claude-code-session-id",
+}
+
+// SessionHeader names the session a call is part of, for the usage log to
+// tell several sessions on one model apart; without it, the session an
+// agent names itself in sessionHeaders is taken.
+const SessionHeader = "X-Magpie-Session"
+
+// sessionOf is the session a request names, "" when it names none.
+func sessionOf(in http.Header) string {
+	for _, h := range append([]string{SessionHeader}, sessionHeaders...) {
+		if v := strings.TrimSpace(in.Get(h)); v != "" {
+			if len(v) > 128 {
+				v = v[:128]
+			}
+			return v
+		}
+	}
+	return ""
 }
 
 // conversationID is a stable id for the conversation a request belongs to.

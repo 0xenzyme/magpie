@@ -84,3 +84,20 @@ func TestSummarizeTellsPlacesApart(t *testing.T) {
 		t.Fatalf("%v", got)
 	}
 }
+
+// Calls that name their session are summed per agent's session.
+func TestSummarizeSessions(t *testing.T) {
+	now := time.Date(2026, 9, 23, 15, 30, 0, 0, time.UTC)
+	recs := []Record{
+		{Time: now.Add(-3 * time.Hour), Agent: "claude", Provider: "p", Model: "m", Input: 10, Session: "a"},
+		{Time: now.Add(-2 * time.Hour), Agent: "claude", Provider: "p", Model: "m2", Input: 30, Session: "a"},
+		{Time: now.Add(-2 * time.Hour), Agent: "claude", Provider: "p", Model: "m", Input: 5, Session: "b"},
+		{Time: now.Add(-1 * time.Hour), Agent: "codex", Provider: "p", Model: "m", Input: 7, Session: "a"},
+		{Time: now.Add(-1 * time.Hour), Agent: "codex", Provider: "p", Model: "m", Input: 100},
+	}
+	ss := summarize(Today, now, recs).Sessions
+	if len(ss) != 3 || ss[0].ID != "a" || ss[0].Agent != "claude" || ss[0].Input != 40 || ss[0].Calls != 2 ||
+		ss[1].Agent != "codex" || ss[1].Input != 7 || ss[2].ID != "b" {
+		t.Fatalf("%+v", ss)
+	}
+}

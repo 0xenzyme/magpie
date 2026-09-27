@@ -907,6 +907,25 @@ func TestConversationID(t *testing.T) {
 	}
 }
 
+func TestSessionOf(t *testing.T) {
+	h := http.Header{}
+	if got := sessionOf(h); got != "" {
+		t.Errorf("none: %q", got)
+	}
+	h.Set("X-Claude-Code-Session-Id", "cc-1")
+	if got := sessionOf(h); got != "cc-1" {
+		t.Errorf("claude code's: %q", got)
+	}
+	h.Set(SessionHeader, " mine ")
+	if got := sessionOf(h); got != "mine" {
+		t.Errorf("named: %q", got)
+	}
+	h.Set(SessionHeader, strings.Repeat("x", 300))
+	if got := sessionOf(h); len(got) != 128 {
+		t.Errorf("long: %d", len(got))
+	}
+}
+
 func TestOpenCodeGetsConversationSession(t *testing.T) {
 	f := &fake{t: t, ctype: "application/json", reply: `{"id":"c1","choices":[]}`}
 	up := setup(t, provider.Chat, f)

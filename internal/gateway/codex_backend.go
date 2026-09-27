@@ -290,7 +290,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 	s.record(call)
 	usage.Append(usage.Record{Time: start, Agent: call.Agent, Provider: call.Provider, Host: provider.HostOf(base), Model: call.Model,
 		Input: uu.Input, Output: uu.Output, CacheRead: uu.CacheRead, CacheWrite: uu.CacheWrite,
-		Reasoning: uu.Reasoning, Millis: call.Millis, Status: call.Status})
+		Reasoning: uu.Reasoning, Millis: call.Millis, Status: call.Status, Session: sessionOf(r.Header)})
 }
 
 // unreadableItem is the item OpenAI's refusal names: sealed content it

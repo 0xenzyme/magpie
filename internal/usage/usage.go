@@ -34,6 +34,10 @@ type Record struct {
 	Reasoning  int       `json:"reasoning,omitempty"`
 	Millis     int64     `json:"ms"`
 	Status     int       `json:"status"`
+	// Session is the conversation the call was part of, as its agent names
+	// it (X-Magpie-Session, or the session header Claude Code, Codex or
+	// OpenCode sends): several sessions on one model told apart
+	Session string `json:"session,omitempty"`
 }
 
 // Path is the log file: ~/.config/magpie/usage.jsonl (XDG-aware).
@@ -189,6 +193,8 @@ type Group struct {
 	// more than one place, or elsewhere than the provider goes now: its
 	// calls are then told apart by it, not summed under the id.
 	Host string `json:"host,omitempty"`
+	// Agent is the agent a session is of (sessions only).
+	Agent string `json:"agent,omitempty"`
 	Totals
 }
 
@@ -208,6 +214,8 @@ type Summary struct {
 	Series []Point `json:"series"`
 	Agents []Group `json:"agents"`
 	Models []Group `json:"models"`
+	// Sessions are the calls that named their session, by session.
+	Sessions []Group `json:"sessions"`
 }
 
 // Summarize sums the log over a period, as of now.
@@ -226,7 +234,7 @@ func summarize(p Period, now time.Time, recs []Record) Summary {
 		}
 	}
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	s := Summary{Period: p, Bucket: "day", Agents: []Group{}, Models: []Group{}, Series: []Point{}}
+	s := Summary{Period: p, Bucket: "day", Agents: []Group{}, Models: []Group{}, Sessions: []Group{}, Series: []Point{}}
 	var n int
 	switch p {
 	case Today:
@@ -307,6 +315,7 @@ func summarize(p Period, now time.Time, recs []Record) Summary {
 	}
 	agents := map[string]*Group{}
 	models := map[string]*Group{}
+	sessions := map[string]*Group{}
 	for _, r := range recs {
 		t := r.Time.In(now.Location())
 		if t.Before(s.Since) {
@@ -343,6 +352,14 @@ func summarize(p Period, now time.Time, recs []Record) Summary {
 			models[k] = m
 		}
 		m.add(r, pr)
+		if r.Session != "" {
+			g := sessions[id+"|"+r.Session]
+			if g == nil {
+				g = &Group{ID: r.Session, Agent: id}
+				sessions[id+"|"+r.Session] = g
+			}
+			g.add(r, pr)
+		}
 	}
 	for _, g := range agents {
 		s.Agents = append(s.Agents, *g)
@@ -363,6 +380,10 @@ func summarize(p Period, now time.Time, recs []Record) Summary {
 	}
 	byTokens(s.Agents)
 	byTokens(s.Models)
+	for _, g := range sessions {
+		s.Sessions = append(s.Sessions, *g)
+	}
+	byTokens(s.Sessions)
 	return s
 }
 

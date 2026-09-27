@@ -8,7 +8,8 @@ import (
 	stats "github.com/yetone/magpie/internal/usage"
 )
 
-// usageCmd: `magpie usage [today|7d|30d|all]` — tokens and cost per agent and model
+// usageCmd: `magpie usage [today|7d|30d|all]` — tokens and cost per agent,
+// model and session
 func usageCmd(args []string) error {
 	period := stats.Month
 	if len(args) > 1 {
@@ -67,6 +68,20 @@ func usageCmd(args []string) error {
 		return g.ID
 	})
 	table("models", s.Models, func(g stats.Group) string { return g.ID })
+	if len(s.Sessions) > 0 {
+		top := s.Sessions[:min(len(s.Sessions), 10)]
+		head := "sessions"
+		if len(s.Sessions) > len(top) {
+			head = fmt.Sprintf("sessions · top %d of %d", len(top), len(s.Sessions))
+		}
+		table(head, top, func(g stats.Group) string {
+			n := names[g.Agent]
+			if n == "" {
+				n = g.Agent
+			}
+			return n + "  " + g.ID
+		})
+	}
 	fmt.Println(faint.Render("  " + stats.Path()))
 	return nil
 }
