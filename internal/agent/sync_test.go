@@ -26,6 +26,7 @@ func syncHome(t *testing.T) string {
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 	t.Setenv("HERMES_HOME", "")
+	t.Setenv("HANA_HOME", "")
 	t.Setenv("DSH_HOME", "")
 	noKeychain(t)
 	os.MkdirAll(filepath.Dir(catalog.CachePath()), 0o755)

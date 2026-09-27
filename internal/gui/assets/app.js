@@ -107,9 +107,9 @@ function icon(name) {
     return e;
   }
   if (name) {
-    if (name.endsWith("-color") || name === "crush" || name === "zcode" || name === "alma" || name === "typesafe") {
+    if (name.endsWith("-color") || name === "crush" || name === "zcode" || name === "alma" || name === "hanako" || name === "typesafe") {
       const img = el("img");
-      img.src = `icons/${name}.${name === "crush" || name === "zcode" || name === "alma" || name === "typesafe" ? "png" : "svg"}`;
+      img.src = `icons/${name}.${name === "crush" || name === "zcode" || name === "alma" || name === "hanako" || name === "typesafe" ? "png" : "svg"}`;
       img.alt = "";
       img.draggable = false;
       e.append(img);

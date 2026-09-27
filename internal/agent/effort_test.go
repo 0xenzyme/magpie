@@ -18,6 +18,7 @@ func effortHome(t *testing.T) string {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 	t.Setenv("HERMES_HOME", "")
+	t.Setenv("HANA_HOME", "")
 	t.Setenv("DSH_HOME", "")
 	if err := provider.Save(provider.Provider{ID: "deepseek", Name: "DeepSeek", Chat: "https://api.deepseek.com/v1", Key: "k", Models: []string{"pro", "flash"}}); err != nil {
 		t.Fatal(err)

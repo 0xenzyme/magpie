@@ -85,6 +85,7 @@ and there is a terminal version (`magpie tui`) and a plain CLI.
 | Qoder CN (CLI) | `~/.qoder-cn/settings.json` (`$QODERCN_CONFIG_DIR`) | model, effort (as Qoder; its own accounts, a Qoder CN plan with BYOK) |
 | Grok Build   | `~/.grok/config.toml` (`$GROK_HOME`) | model, effort |
 | ZCode        | `~/.zcode/v2/config.json`         | provider (magpie's models in ZCode's picker) |
+| OpenHanako   | `~/.hanako/provider-catalog.json` + `agents/<id>/config.yaml` (`$HANA_HOME`; its local API while it runs) | model (the primary agent's; magpie's models as a provider) |
 | Alma         | Alma's local API (`localhost:23001`, while Alma runs) | model (Alma's default; magpie's models as a provider) |
 
 Provider-scoped agents (OpenCode, MiMo Code, Pi, Goose, Crush, omp, Hermes Agent) take `provider/model`.

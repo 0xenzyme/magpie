@@ -126,6 +126,9 @@ func TestDriftUnwiredEveryAgent(t *testing.T) {
 	claudeManaged = func() string { return filepath.Join(home, "managed-settings.json") }
 	t.Cleanup(func() { claudeManaged = managed })
 	almaApp := startAlma(t) // Alma keeps its providers in the app
+	// OpenHanako gives the model to an agent of its own
+	os.MkdirAll(filepath.Join(home, ".hanako", "agents", "hana"), 0o755)
+	os.WriteFile(filepath.Join(home, ".hanako", "agents", "hana", "config.yaml"), []byte("agent:\n  name: Hana\n"), 0o644)
 	for _, a := range All() {
 		if a.Check == nil {
 			continue
