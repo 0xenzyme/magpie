@@ -73,7 +73,8 @@ type CodexWarm struct {
 	Err     string   `json:"error,omitempty"`
 }
 
-// codexWarmer is the warm-up with what it reads and sends given, for tests.
+// codexWarmer is the warm-up with what it reads and sends given, for tests;
+// Claude's (claude_warmup.go) is one too.
 type codexWarmer struct {
 	path  string
 	now   func() time.Time
@@ -334,6 +335,12 @@ func codexWarmedIn(path string) map[string]time.Time {
 // codexWarmEvery after that, until ctx ends.
 func KeepCodexWindowsWarm(ctx context.Context) {
 	w := codexWarmer{path: codexWarmPath(), now: time.Now, usage: codexWarmUsage, send: warmCodexLogin}
+	keepWarm(ctx, "codex", w, func() string { return settings.Load().CodexWarmup })
+}
+
+// keepWarm runs w while which (the setting) says to: two minutes after it
+// starts and every codexWarmEvery after that, until ctx ends.
+func keepWarm(ctx context.Context, name string, w codexWarmer, which func() string) {
 	t := time.NewTimer(2 * time.Minute)
 	defer t.Stop()
 	for {
@@ -342,13 +349,13 @@ func KeepCodexWindowsWarm(ctx context.Context) {
 			return
 		case <-t.C:
 		}
-		if which := settings.Load().CodexWarmup; which != "" {
+		if which := which(); which != "" {
 			c, cancel := context.WithTimeout(ctx, 2*time.Minute)
 			for _, r := range w.warmNow(c, which) {
 				if r.Err != "" {
-					log.Printf("codex warm-up: %s's %s window: %s", r.User, strings.Join(r.Windows, ", "), r.Err)
+					log.Printf("%s warm-up: %s's %s window: %s", name, r.User, strings.Join(r.Windows, ", "), r.Err)
 				} else {
-					log.Printf("codex warm-up: started %s's %s window", r.User, strings.Join(r.Windows, ", "))
+					log.Printf("%s warm-up: started %s's %s window", name, r.User, strings.Join(r.Windows, ", "))
 				}
 			}
 			cancel()

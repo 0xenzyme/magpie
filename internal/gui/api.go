@@ -116,6 +116,8 @@ type settingsJSON struct {
 	LANURLs []string `json:"lanURLs,omitempty"`
 	// when the Codex warm-up last started an account's window
 	CodexWarmed *time.Time `json:"codexWarmed,omitempty"`
+	// and the Claude warm-up
+	ClaudeWarmed *time.Time `json:"claudeWarmed,omitempty"`
 }
 
 func settingsState() settingsJSON {
@@ -125,12 +127,19 @@ func settingsState() settingsJSON {
 	if s.LAN {
 		s.LANURLs = gateway.LANURLs()
 	}
-	for _, t := range provider.CodexWarmed() {
-		if s.CodexWarmed == nil || t.After(*s.CodexWarmed) {
-			s.CodexWarmed = &t
+	s.CodexWarmed, s.ClaudeWarmed = latest(provider.CodexWarmed()), latest(provider.ClaudeWarmed())
+	return s
+}
+
+// latest is the latest of ts, nil when there is none.
+func latest(ts map[string]time.Time) *time.Time {
+	var out *time.Time
+	for _, t := range ts {
+		if out == nil || t.After(*out) {
+			out = &t
 		}
 	}
-	return s
+	return out
 }
 
 // onDock puts the app in the Mac's Dock or takes it out as the settings say,

@@ -196,6 +196,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	go provider.KeepCodexOnAnAccountWithRoom(ctx)
 	// and, when settings say to, starts its accounts' next windows as the last reset
 	go provider.KeepCodexWindowsWarm(ctx)
+	go provider.KeepClaudeWindowsWarm(ctx, warmClaude)
 	for _, f := range WhileServing {
 		go f(ctx)
 	}

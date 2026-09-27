@@ -36,6 +36,12 @@ func TestRoundTrip(t *testing.T) {
 	if Save(Settings{CodexWarmup: "daily"}) == nil {
 		t.Fatal("bad codex warm-up accepted")
 	}
+	if Save(Settings{ClaudeWarmup: "all"}) != nil || Load().ClaudeWarmup != "all" {
+		t.Fatal("claude warm-up not kept")
+	}
+	if Save(Settings{ClaudeWarmup: "hourly"}) == nil {
+		t.Fatal("bad claude warm-up accepted")
+	}
 }
 
 func TestMigrate(t *testing.T) {

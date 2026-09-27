@@ -51,6 +51,9 @@ type Settings struct {
 	// Codex window starts at its first use): "" off, "week" the weekly
 	// window, "all" the 5-hour one too.
 	CodexWarmup string `json:"codexWarmup,omitempty"`
+	// ClaudeWarmup is CodexWarmup for the Claude accounts, the request
+	// sent through Claude Code.
+	ClaudeWarmup string `json:"claudeWarmup,omitempty"`
 	// TrayUsage is the subscription or plan whose windows are shown beside
 	// the tray icon, by its provider and account ("claude|a@b.c"); "" none.
 	TrayUsage string `json:"trayUsage,omitempty"`
@@ -118,7 +121,7 @@ var (
 	Themes = []string{"system", "light", "dark"}
 	Langs  = []string{"system", "en", "zh"}
 	Trays  = []string{"panel", "window"}
-	// Warmups are CodexWarmup's values, off as "".
+	// Warmups are CodexWarmup's and ClaudeWarmup's values, off as "".
 	Warmups = []string{"", "week", "all"}
 )
 
@@ -158,6 +161,9 @@ func Save(s Settings) error {
 	if !slices.Contains(Warmups, s.CodexWarmup) {
 		return fmt.Errorf("codex warm-up must be off, week or all, not %q", s.CodexWarmup)
 	}
+	if !slices.Contains(Warmups, s.ClaudeWarmup) {
+		return fmt.Errorf("claude warm-up must be off, week or all, not %q", s.ClaudeWarmup)
+	}
 	s.Proxy = strings.TrimSpace(s.Proxy)
 	if s.Proxy != "" && s.Proxy != "direct" {
 		raw := s.Proxy
@@ -192,6 +198,9 @@ func (s Settings) normal() Settings {
 	}
 	if s.CodexWarmup == "off" {
 		s.CodexWarmup = ""
+	}
+	if s.ClaudeWarmup == "off" {
+		s.ClaudeWarmup = ""
 	}
 	return s
 }
