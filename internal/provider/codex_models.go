@@ -190,10 +190,14 @@ func codexFetchSaved(ctx context.Context) {
 // which the backend lists already. A group answers for its first member
 // but is not that provider's.
 func CodexListed() []catalog.Model {
-	var ms []catalog.Model
 	shown, _ := CatalogFor("codex")
+	return codexListed(shown)
+}
+
+func codexListed(shown []Entry) []catalog.Model {
+	var ms []catalog.Model
 	for _, e := range shown {
-		if e.Provider.Account != nil && e.Provider.Account.Agent == "codex" {
+		if e.Group == "" && e.Provider.Account != nil && e.Provider.Account.Agent == "codex" {
 			continue
 		}
 		ms = append(ms, catalog.Model{ID: e.ID, Name: e.Label(), Efforts: e.Efforts, Images: e.Images, Context: e.Context})
