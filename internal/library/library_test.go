@@ -803,3 +803,50 @@ command = "gh-mcp"
 		t.Errorf("own: %v, want %v", own, want)
 	}
 }
+
+// TestInstructionSets: several sets are kept, one is on, and the agents
+// read that one; switching rewrites their files (#106).
+func TestInstructionSets(t *testing.T) {
+	h := sandbox(t)
+	cx := filepath.Join(h, ".codex/AGENTS.md")
+	first := "Use tabs."
+	ok(t)(SaveInstructions(InstructionsChange{Shared: &first, Agents: []string{"codex"}}))
+	work := "Company rules."
+	ok(t)(SaveInstructions(InstructionsChange{Create: &InstrSet{ID: "work", Name: "Work"}, Texts: map[string]*string{"work": &work}}))
+	if s := read(t, cx); !strings.Contains(s, "Use tabs.") || strings.Contains(s, "Company") {
+		t.Errorf("a new set was written before it was switched to:\n%s", s)
+	}
+	ok(t)(SaveInstructions(InstructionsChange{Activate: "work"}))
+	if s := read(t, cx); !strings.Contains(s, "Company rules.") || strings.Contains(s, "tabs") {
+		t.Errorf("after switching:\n%s", s)
+	}
+	iv, _ := ReadInstructions()
+	if iv.Shared != work || len(iv.Sets) != 2 || iv.Sets[0].Text != first || !iv.Sets[1].Active || iv.Sets[1].Name != "Work" {
+		t.Errorf("view: %+v", iv)
+	}
+	if _, err := SaveInstructions(InstructionsChange{Remove: "work"}); err == nil {
+		t.Error("the set on was removed")
+	}
+	// the page's text is the set on's; a profile taken now switches back to it
+	snap, _ := Snapshot()
+	ok(t)(SaveInstructions(InstructionsChange{Activate: "default", Rename: &InstrSet{ID: "default", Name: "Home"}}))
+	if s := read(t, cx); !strings.Contains(s, "Use tabs.") {
+		t.Errorf("back to the first:\n%s", s)
+	}
+	ok(t)(Restore(snap))
+	if s := read(t, cx); !strings.Contains(s, "Company rules.") {
+		t.Errorf("a profile's set wasn't put back:\n%s", s)
+	}
+	ok(t)(SaveInstructions(InstructionsChange{Activate: "default"}))
+	ok(t)(SaveInstructions(InstructionsChange{Remove: "work"}))
+	iv, _ = ReadInstructions()
+	if len(iv.Sets) != 1 || iv.Sets[0].Name != "Home" || !iv.Sets[0].Active {
+		t.Errorf("after removing: %+v", iv.Sets)
+	}
+	if _, err := os.Stat(setPath("work")); !os.IsNotExist(err) {
+		t.Error("a removed set's file stayed")
+	}
+	if _, err := SaveInstructions(InstructionsChange{Remove: "default"}); err == nil {
+		t.Error("the first set was removed")
+	}
+}

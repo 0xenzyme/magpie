@@ -711,7 +711,9 @@ async function load() {
     // must not rebuild it under them
     if ((view === "providers" || view === "gateway") && !(editing || adding)) await loadProviders();
     if (view === "usage") await loadUsage();
-    if (view === "settings") await loadSettings();
+    // so is an open sync form (WebDAV, export, import): its passwords are
+    // never sent back, so a rebuild would empty it
+    if (view === "settings" && !syncOpen) await loadSettings();
   } catch (e) {
     status(e.message, "err");
   }
@@ -2203,9 +2205,17 @@ function renderEditor(p, presetID) {
       b.title = t(hint);
       b.onclick = () => {
         if (draft.api === v) return;
-        draft[apiField[draft.api]] = "";
+        // each protocol keeps its own URL (#105). One typed here and not
+        // saved moves to a protocol without one, spelled as that protocol
+        // wants it: the kind was picked after the URL (#73). A saved URL
+        // stays where it is, and one not given yet stays empty.
+        const from = apiField[draft.api], to = apiField[v];
+        if (!draft[to] && draft[from] && draft[from] !== (p?.[from] || "")) {
+          draft[to] = respellURL(draft[from], v);
+          draft[from] = p?.[from] || "";
+        }
         draft.api = v;
-        draft[apiField[v]] = url.value;
+        url.value = draft[to] || "";
         for (const x of seg.querySelectorAll(".opt")) x.classList.toggle("on", x === b);
         slide(seg, "api");
         url.placeholder = v === "anthropic" ? "https://…" : "https://…/v1";
@@ -3548,6 +3558,14 @@ async function keyFingerprint(key) {
 // apiField is the draft's URL a custom provider's base URL fills, by the
 // protocol chosen for it.
 const apiField = { openai: "chat", responses: "responses", anthropic: "anthropic" };
+
+// respellURL turns a base URL into the one protocol api is asked at: the
+// root for Anthropic, which adds /v1 itself, …/v1 for OpenAI's two.
+function respellURL(u, api) {
+  u = u.trim().replace(/\/+$/, "");
+  if (api === "anthropic") return u.replace(/\/v1$/, "");
+  return /\/v\d+[a-z]*$/.test(u) || !/^https?:\/\/[^/]+$/.test(u) ? u : u + "/v1";
+}
 
 async function providerAction(action, body, okMsg, base = "provider/") {
   try {

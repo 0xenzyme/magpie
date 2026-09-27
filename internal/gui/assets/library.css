@@ -95,6 +95,20 @@ body.window .lib-head { top: -2px; margin: -2px -16px 0; padding: 8px 16px 4px; 
 :root[data-theme="dark"] .lib-switch.on i { background: var(--bg); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lib-switch.on i { background: var(--bg); } }
 
+/* the sets of shared instructions: a radio picks the one the agents read */
+.lib-sets .lib-cardhead { padding-bottom: 8px; }
+.lib-radio { flex: none; width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid var(--faint); display: grid; place-items: center; transition: border-color .14s; }
+.lib-radio:hover { border-color: var(--fg-2); }
+.lib-radio.on { border-color: var(--fg); }
+.lib-radio.on::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--fg); }
+.lib-set.on .name { font-weight: 600; }
+.lib-sets .lib-detail { padding-left: 40px; }
+.lib-sets > .lib-cardhead + .row, .lib-sets .lib-detail + .row, .lib-sets .lib-detail + .lib-setadd, .lib-sets .row + .lib-setadd { border-top: 1px solid var(--line-2); }
+.lib-setadd { padding: 8px 10px 10px; }
+input.lib-setname { height: 28px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); font-size: 12.5px; outline: none; max-width: 280px; transition: border-color .12s, box-shadow .12s; }
+input.lib-setname.grow { flex: 1 1 auto; max-width: none; }
+input.lib-setname:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+
 /* an agent's instructions, opened */
 .lib-detail { padding: 4px 14px 14px 50px; background: var(--card-2); display: flex; flex-direction: column; gap: 8px; border-top: 0 !important; animation: content-in .2s var(--ease); }
 .lib-lab { font-size: 11.5px; color: var(--muted); }

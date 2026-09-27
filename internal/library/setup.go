@@ -21,6 +21,7 @@ type Setup struct {
 // SetupInstructions is the shared text, the agents it is written to, and
 // what each agent gets besides.
 type SetupInstructions struct {
+	Set    string            `json:"set,omitempty"` // the set it is the text of
 	Shared string            `json:"shared,omitempty"`
 	Agents []string          `json:"agents"`
 	Extra  map[string]string `json:"extra,omitempty"`
@@ -119,7 +120,7 @@ func Snapshot() (*Setup, error) {
 		return nil, err
 	}
 	s := &Setup{
-		Instructions: SetupInstructions{Shared: readText(sharedPath()), Agents: slices.Clone(l.Instructions.Agents), Extra: extras()},
+		Instructions: SetupInstructions{Set: l.active(), Shared: readText(l.sharedPath()), Agents: slices.Clone(l.Instructions.Agents), Extra: extras()},
 		MCP:          map[string][]string{},
 		Skills:       map[string][]string{},
 	}
@@ -152,7 +153,11 @@ func Restore(s *Setup) (*Result, error) {
 		b := newBackups()
 		l.kept = b
 		// the text as it is, then as s has it: a file that changes is kept first
-		texts := map[string]string{sharedPath(): s.Instructions.Shared}
+		// the set s was taken on, if it is still kept, gets its text back
+		if l.hasSet(s.Instructions.Set) {
+			l.Instructions.Active = s.Instructions.Set
+		}
+		texts := map[string]string{l.sharedPath(): s.Instructions.Shared}
 		for id := range extras() {
 			texts[extraPath(id)] = ""
 		}

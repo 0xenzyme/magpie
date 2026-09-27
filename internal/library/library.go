@@ -35,9 +35,20 @@ type Library struct {
 }
 
 // Instructions are one shared text, and for each agent whether it gets it
-// and what it gets besides (kept in files beside library.json).
+// and what it gets besides (kept in files beside library.json). The shared
+// text is one of several sets kept to switch between (#106), the one on.
 type Instructions struct {
 	Agents []string `json:"agents"` // the agents the shared text is written to
+	// Sets are the named texts to pick the shared one from; with none kept
+	// there is the one magpie always had, "default"
+	Sets   []InstrSet `json:"sets,omitempty"`
+	Active string     `json:"active,omitempty"` // the set agents get; "" is "default"
+}
+
+// InstrSet is one set of shared instructions: its text is in its own file.
+type InstrSet struct {
+	ID   string `json:"id"`
+	Name string `json:"name"` // "" for the first, which the page calls Default
 }
 
 // Applied is what magpie last wrote into one agent.

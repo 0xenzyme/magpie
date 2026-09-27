@@ -12,7 +12,10 @@
   let shown = "";        // the tab the page last drew, which fades in only when it changes
   let fits = [];         // textareas to fit before the page is painted
   try { tab = localStorage.getItem("magpie.libTab") || tab; } catch {}
-  let shared = null;     // the shared instructions as typed, while not saved
+  const texts = {};      // set → its shared instructions as typed, while not saved
+  let openSet = null;    // the set of instructions opened to edit
+  let addingSet = false; // a new set being named
+  let removingSet = null; // a set whose Remove was clicked once
   const extras = {};     // agent → its own additions as typed, while not saved
   const open = new Set(); // agents whose instructions row is open
   let probe = null;      // skills found at a source: { source, candidates, pick:Set, agents:Set }
@@ -394,26 +397,34 @@
   }
 
   function iv() { return lib.instructions; }
+  const setOf = (id) => lib.instructions.sets.find((x) => x.id === id);
+  const setName = (x) => x.name || t("Default");
+  function unsavedTexts() {
+    const out = {};
+    for (const [id, v] of Object.entries(texts)) if (setOf(id) && v !== setOf(id).text) out[id] = v;
+    return out;
+  }
   function dirty() {
-    if (shared !== null && shared !== lib.instructions.shared) return true;
+    if (Object.keys(unsavedTexts()).length) return true;
     return Object.entries(extras).some(([id, v]) => v !== (lib.instructions.agents.find((a) => a.agent === id)?.extra || ""));
   }
 
   async function saveInstructions() {
     const c = {};
-    if (shared !== null && shared !== lib.instructions.shared) c.shared = shared;
+    const tx = unsavedTexts();
+    if (Object.keys(tx).length) c.texts = tx;
     const ex = {};
     for (const [id, v] of Object.entries(extras)) if (v !== (lib.instructions.agents.find((a) => a.agent === id)?.extra || "")) ex[id] = v;
     if (Object.keys(ex).length) c.extra = ex;
     if (!Object.keys(c).length) return;
     if (await change("instructions/save", c)) {
-      shared = null;
+      for (const k of Object.keys(texts)) delete texts[k];
       for (const k of Object.keys(extras)) delete extras[k];
       render();
     }
   }
   function discard() {
-    shared = null;
+    for (const k of Object.keys(texts)) delete texts[k];
     for (const k of Object.keys(extras)) delete extras[k];
     render();
   }
@@ -421,21 +432,22 @@
   function renderInstructions(body) {
     const iv = lib.instructions;
     body.append(intro(t("Write it once: every agent switched on below reads it before each conversation, in its own instructions file.")));
-    const card = el("div", "list lib-card");
-    const ta = el("textarea", "lib-text");
-    ta.dataset.lib = "shared";
-    ta.spellcheck = false;
-    ta.value = shared ?? iv.shared;
-    ta.placeholder = t("What every agent should know — how you like code written, the stack you work in, the commands that run your tests…");
-    ta.oninput = () => { shared = ta.value; bar.hidden = !dirty(); };
-    ta.onkeydown = (e) => { e.stopPropagation(); if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveInstructions(); } };
-    autosize(ta, 150);
+    // the sets of shared instructions: one is on, the one the agents read;
+    // a set opens to be edited (#106)
+    const card = el("div", "list lib-list lib-sets");
+    const ttl = el("div", "lib-cardhead");
+    ttl.append(glyph(GLYPH.doc), el("b", "", t("Shared instructions")), el("span", "grow"), el("span", "note", "Markdown · " + (/^Mac/.test(navigator.platform) ? "⌘S" : "Ctrl+S")));
+    card.append(ttl);
+    for (const x of iv.sets) card.append(...setRow(x));
+    if (addingSet) card.append(newSetRow());
+    else {
+      const add = el("div", "lib-acts lib-setadd");
+      add.append(button("+ " + t("New set"), "action", () => { addingSet = true; render(); }));
+      card.append(add);
+    }
     const bar = el("div", "lib-savebar");
     bar.append(el("span", "note", t("Not saved yet")), el("span", "grow"), button(t("Discard"), "", discard), button(t("Save"), "primary", saveInstructions));
     bar.hidden = !dirty();
-    const ttl = el("div", "lib-cardhead");
-    ttl.append(glyph(GLYPH.doc), el("b", "", t("Shared instructions")), el("span", "grow"), el("span", "note", "Markdown · " + (/^Mac/.test(navigator.platform) ? "⌘S" : "Ctrl+S")));
-    card.append(ttl, ta);
     body.append(card);
 
     const rh = el("div", "row-head");
@@ -449,6 +461,97 @@
     const skip = shownAgents().filter((a) => !a.instructions);
     if (skip.length) body.append(el("p", "lib-aside", t(skip.length > 1 ? "{agents} keep no user-wide instructions file." : "{agents} keeps no user-wide instructions file.", { agents: skip.map((a) => a.name).join(", ") })));
     body.append(bar);
+  }
+
+  function setRow(x) {
+    const isOpen = openSet === x.id;
+    const text = texts[x.id] ?? x.text;
+    const row = el("div", "row lib-row click lib-set" + (isOpen ? " open" : "") + (x.active ? " on" : ""));
+    const pick = el("button", "lib-radio" + (x.active ? " on" : ""));
+    pick.setAttribute("role", "radio");
+    pick.setAttribute("aria-checked", x.active ? "true" : "false");
+    pick.title = x.active ? t("The agents switched on below read this set") : t("Switch the agents to this set");
+    pick.onclick = (e) => {
+      e.stopPropagation();
+      if (x.active) return;
+      const c = { activate: x.id };
+      const tx = unsavedTexts();
+      if (Object.keys(tx).length) c.texts = tx;
+      change("instructions/save", c, t("The agents read {name} now", { name: setName(x) })).then((ok) => { if (ok) for (const k of Object.keys(tx)) delete texts[k]; });
+    };
+    const who = el("div", "who");
+    who.append(el("div", "name", setName(x)));
+    const first = text.split("\n").find((l) => l.trim()) || "";
+    who.append(el("div", "sub", first ? first.replace(/^#+\s*/, "") : t("Empty")));
+    const tags = el("div", "lib-tags");
+    if (x.active) tags.append(tag(t("In use"), "", t("The agents switched on below read this set")));
+    if (text !== x.text) tags.append(tag(t("Not saved yet"), "warn"));
+    const chev = el("span", "chev");
+    chev.append(svg(CHEV_R, 11, 1.7));
+    row.append(pick, who, tags, chev);
+    row.onclick = () => { openSet = isOpen ? null : x.id; removingSet = null; render(); };
+    if (!isOpen) return [row];
+
+    const det = el("div", "lib-detail");
+    const nm = input(setName(x), t("Name"));
+    nm.dataset.lib = "setname:" + x.id;
+    nm.className = "lib-setname";
+    const rename = () => {
+      const v = nm.value.trim();
+      if (!v || v === setName(x)) { nm.value = setName(x); return; }
+      change("instructions/save", { rename: { id: x.id, name: v } }, t("Renamed to {name}", { name: v }));
+    };
+    nm.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") nm.blur(); else if (e.key === "Escape") { nm.value = setName(x); nm.blur(); } };
+    nm.onblur = rename;
+    const ta = el("textarea", "lib-text small");
+    ta.dataset.lib = "set:" + x.id;
+    ta.spellcheck = false;
+    ta.value = text;
+    ta.placeholder = t("What every agent should know — how you like code written, the stack you work in, the commands that run your tests…");
+    ta.oninput = () => { texts[x.id] = ta.value; renderSaveBars(); };
+    ta.onkeydown = (e) => { e.stopPropagation(); if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveInstructions(); } };
+    autosize(ta, 150);
+    det.append(nm, ta);
+    if (x.id !== "default") {
+      const acts = el("div", "lib-acts");
+      // its text goes with it, so a second click says so and does it
+      const sure = removingSet === x.id;
+      const rm = button(sure ? t("Remove {name} and its text", { name: setName(x) }) : t("Remove"), sure ? "primary danger-fill" : "action danger", () => {
+        if (!sure) { removingSet = x.id; render(); return; }
+        removingSet = null;
+        delete texts[x.id];
+        openSet = null;
+        change("instructions/save", { remove: x.id }, t("{name} removed", { name: setName(x) }));
+      });
+      if (x.active) { rm.disabled = true; rm.title = t("Switch the agents to another set before removing this one"); }
+      acts.append(rm);
+      if (sure) acts.append(button(t("Cancel"), "", () => { removingSet = null; render(); }));
+      det.append(acts);
+    }
+    det.onclick = (e) => e.stopPropagation();
+    return [row, det];
+  }
+
+  function newSetRow() {
+    const row = el("div", "row lib-row lib-set");
+    const nm = input("", t("Name, e.g. Work"));
+    nm.dataset.lib = "newset";
+    nm.className = "lib-setname grow";
+    const create = async () => {
+      const name = nm.value.trim();
+      if (!name) return;
+      const id = "s" + Date.now().toString(36);
+      if (await change("instructions/save", { create: { id, name } }, t("{name} added — switch the agents to it when it's ready", { name }))) {
+        addingSet = false;
+        openSet = id;
+        render();
+      }
+    };
+    const cancel = () => { addingSet = false; render(); };
+    nm.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") create(); else if (e.key === "Escape") cancel(); };
+    queueMicrotask(() => nm.focus());
+    row.append(nm, button(t("Cancel"), "", cancel), button(t("Add"), "primary", create));
+    return row;
   }
 
   function instructionsRow(a) {
