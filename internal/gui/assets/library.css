@@ -29,6 +29,7 @@ body.window .lib-head { top: -2px; margin: -2px -16px 0; padding: 8px 16px 4px; 
 /* the glyph at the front of a row: drawn, in the text colour */
 .lib-glyph { flex: none; width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: var(--fg-2); background: var(--pill); }
 .lib-glyph svg { width: 15px; height: 15px; }
+.lib-rtk-logo .mask { width: 20px; height: 20px; background: currentColor; -webkit-mask: var(--i) center / contain no-repeat; mask: var(--i) center / contain no-repeat; }
 .mk-icon.lib-logo { flex: none; width: 26px; height: 26px; border-radius: 7px; }
 .lib-editor .ehead .mk-icon.lib-logo { width: 24px; height: 24px; }
 

@@ -301,7 +301,12 @@
     }
     const card = el("div", "list lib-card");
     const ttl = el("div", "lib-cardhead");
-    ttl.append(glyph(GLYPH.cmd), el("b", "", "RTK"), el("span", "grow"));
+    // RTK's own mark (rtk-ai.app), drawn in the text's colour
+    const logo = el("span", "lib-glyph lib-rtk-logo");
+    const m = el("span", "mask");
+    m.style.setProperty("--i", "url(icons/rtk.png)");
+    logo.append(m);
+    ttl.append(logo, el("b", "", "RTK"), el("span", "grow"));
     if (rtk.path) {
       ttl.append(el("span", "note mono", rtk.version ? "v" + rtk.version : tilde(rtk.path)));
       card.append(ttl);
