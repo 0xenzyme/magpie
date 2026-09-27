@@ -2338,8 +2338,7 @@ function renderEditor(p, presetID) {
     // a subscription's window too: Codex's backend says 272K for models
     // that take 872K (#120)
     const cx = input(draft.contexts || "", t("e.g. 128k · or gpt-6=1m, comma separated"));
-    cx.oninput = () => { draft.contexts = cx.value; };
-    ed.append(...field(t("Context window"), cx, t("How long a request the models take, told to the agents; empty leaves it to the vendor and models.dev")));
+    ed.append(...field(t("Context window"), contextPicks(p, cx), t("How long a request the models take, told to the agents; empty leaves it to the vendor and models.dev")));
     ed.append(...field(t("Fallback"), renderFallback(p), fallbackHint(p)));
     if (p.chat || p.responses || p.anthropic) ed.append(...field(t("Endpoints"), renderEndpoints(p, p)));
     const bar = el("div", "bar");
@@ -2443,8 +2442,7 @@ function renderEditor(p, presetID) {
     // the window agents are told a model has, over what the vendor or
     // models.dev says: one for all of them, and model=size for one
     const cx = input(draft.contexts || "", t("e.g. 128k · or gpt-6=1m, comma separated"));
-    cx.oninput = () => { draft.contexts = cx.value; };
-    if (!decides) ed.append(...field(t("Context window"), cx, t("How long a request the models take, told to the agents; empty leaves it to the vendor and models.dev")));
+    if (!decides) ed.append(...field(t("Context window"), contextPicks(p, cx), t("How long a request the models take, told to the agents; empty leaves it to the vendor and models.dev")));
   }
   if (p && !decides) ed.append(...field(t("Fallback"), renderFallback(p), fallbackHint(p)));
   else if (custom) {
@@ -2549,6 +2547,51 @@ function contextsText(cx) {
   const out = cx["*"] ? [size(cx["*"])] : [];
   for (const [id, n] of Object.entries(cx).sort()) if (id !== "*") out.push(id + "=" + size(n));
   return out.join(", ");
+}
+
+// contextPicks puts the usual windows under the context field, one click
+// each, and, when some models take more than they are said to (Codex's
+// GPT-6: 272K said, 872K taken), their own most: sizes nobody remembers
+// (#120). The pick matching what is typed is lit.
+function contextPicks(p, cx) {
+  const size = (n) => contextsText({ "*": n });
+  const picks = [128e3, 200e3, 256e3, 1e6].map((n) => ({ label: size(n).toUpperCase(), value: size(n) }));
+  const big = (p?.models || []).filter((m) => m.max > (m.context || 0));
+  if (big.length) {
+    const tops = [...new Set(big.map((m) => m.max))];
+    const value = () => {
+      const on = big.filter((m) => draft.chosen?.includes(m.id));
+      return contextsText(Object.fromEntries((on.length ? on : big).map((m) => [m.id, m.max])));
+    };
+    picks.push({
+      label: tops.length === 1 ? t("Each model's most · {n}", { n: size(tops[0]).toUpperCase() }) : t("Each model's most"),
+      title: big.map((m) => `${m.id}: ${size(m.max).toUpperCase()}`).join("\n"), value, most: true,
+    });
+  }
+  const row = el("div", "cxpicks");
+  const same = (a, b) => JSON.stringify(parseContexts(a).map || {}) === JSON.stringify(parseContexts(b).map || {});
+  const light = () => {
+    for (const [i, b] of [...row.children].entries()) {
+      const v = picks[i].value;
+      b.classList.toggle("on", !!cx.value.trim() && same(cx.value, typeof v === "function" ? v() : v));
+    }
+  };
+  for (const pk of picks) {
+    const b = el("button", "cxpick" + (pk.most ? " most" : ""), pk.label);
+    b.type = "button";
+    if (pk.title) b.title = pk.title;
+    b.onclick = () => {
+      cx.value = typeof pk.value === "function" ? pk.value() : pk.value;
+      draft.contexts = cx.value;
+      light();
+    };
+    row.append(b);
+  }
+  cx.oninput = () => { draft.contexts = cx.value; light(); };
+  light();
+  const wrap = el("div", "cxfield");
+  wrap.append(cx, row);
+  return wrap;
 }
 
 // parseContexts reads "128k, gpt-6=1m" back: sizes by model id, "*" for

@@ -42,6 +42,9 @@ type Model struct {
 	// Context is how many tokens a prompt may hold, when known: models.dev's
 	// input limit, else its context window.
 	Context int `json:",omitempty"`
+	// MaxContext is the most a prompt may hold when asked for, above
+	// Context: Codex's max_context_window (872k on GPT-6, 272k by default).
+	MaxContext int `json:",omitempty"`
 	// Output is the most tokens a reply may hold, when known.
 	Output int `json:",omitempty"`
 	// Fast is set on a model Codex may ask for priority processing (its
@@ -522,6 +525,8 @@ func parseCodex(b []byte) ([]Model, error) {
 			Levels      []struct {
 				Effort string `json:"effort"`
 			} `json:"supported_reasoning_levels"`
+			Context int `json:"context_window"`
+			Max     int `json:"max_context_window"`
 		} `json:"models"`
 	}
 	if err := json.Unmarshal(b, &cache); err != nil || len(cache.Models) == 0 {
@@ -534,6 +539,9 @@ func parseCodex(b []byte) ([]Model, error) {
 			continue
 		}
 		mm := Model{ID: m.Slug, Name: m.DisplayName, Provider: "openai", ImageInput: imageInput(m.Input)}
+		if m.Max > m.Context && m.Context > 0 {
+			mm.MaxContext = m.Max
+		}
 		if mm.ImageInput != nil {
 			mm.Images = *mm.ImageInput
 		}

@@ -29,6 +29,8 @@ type modelJSON struct {
 	Efforts []string `json:"efforts,omitempty"`
 	Given   bool     `json:"given,omitempty"` // its levels aren't known: Efforts are those it can be given, Kept those it was
 	On      bool     `json:"on"`              // exposed to agents
+	Context int      `json:"context,omitempty"`
+	Max     int      `json:"max,omitempty"` // the most its context may be set to, above Context
 }
 
 type providerJSON struct {
@@ -216,8 +218,17 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 	}
 	seen := map[string]bool{}
 	names, kept := p.ModelNames(), p.ModelEfforts()
+	// a list fetched before magpie kept each model's most: the one Codex
+	// CLI keeps says it
+	var most []catalog.Model
+	if p.Account != nil && p.Account.Agent == "codex" {
+		most = catalog.Codex()
+	}
 	named := func(m catalog.Model, on bool) modelJSON {
-		j := modelJSON{ID: m.ID, Name: m.Name, Efforts: provider.EffortsOf(m), On: on}
+		j := modelJSON{ID: m.ID, Name: m.Name, Efforts: provider.EffortsOf(m), On: on, Context: m.Context, Max: m.MaxContext}
+		if i := slices.IndexFunc(most, func(c catalog.Model) bool { return c.ID == m.ID }); j.Max == 0 && i >= 0 {
+			j.Max = most[i].MaxContext
+		}
 		if n, ok := names[m.ID]; ok {
 			j.Default = cmp.Or(m.Name, m.ID)
 			j.Name = n

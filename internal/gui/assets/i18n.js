@@ -212,6 +212,8 @@ const I18N = {
     "Context window": "上下文窗口",
     "e.g. 128k · or gpt-6=1m, comma separated": "如 128k · 或 gpt-6=1m，逗号分隔",
     "How long a request the models take, told to the agents; empty leaves it to the vendor and models.dev": "模型能接受的上下文长度，会告诉各个 Agent；留空则按厂商和 models.dev 的",
+    "Each model's most · {n}": "各模型最大 · {n}",
+    "Each model's most": "各模型最大",
     "Context window: {v} is not a length like 128k or 1m": "上下文窗口：{v} 不是 128k、1m 这样的长度",
     "add a model: filter, or type provider/model…": "添加模型：筛选，或输入 provider/model…",
     "No provider serves {id} now; it is skipped": "现在没有供应商提供 {id}，会跳过它",

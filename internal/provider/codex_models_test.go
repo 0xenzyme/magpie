@@ -65,3 +65,14 @@ func TestCodexVersion(t *testing.T) {
 		}
 	}
 }
+
+// A model that takes more than its window when asked keeps that most, so
+// the context field can offer it: GPT-6's 872K over the 272K said.
+func TestCodexModelsMaxContext(t *testing.T) {
+	ms := parseCodexModels([]byte(`{"models":[
+		{"slug":"gpt-6","context_window":272000,"max_context_window":872000},
+		{"slug":"gpt-5.5","context_window":272000,"max_context_window":272000}]}`))
+	if len(ms) != 2 || ms[0].Context != 272000 || ms[0].MaxContext != 872000 || ms[1].MaxContext != 0 {
+		t.Fatalf("%+v", ms)
+	}
+}

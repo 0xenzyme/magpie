@@ -126,6 +126,7 @@ func parseCodexModels(b []byte) []catalog.Model {
 				Effort string `json:"effort"`
 			} `json:"supported_reasoning_levels"`
 			Context int `json:"context_window"`
+			Max     int `json:"max_context_window"`
 		} `json:"models"`
 	}
 	if json.Unmarshal(b, &list) != nil {
@@ -138,6 +139,9 @@ func parseCodexModels(b []byte) []catalog.Model {
 			continue
 		}
 		mm := catalog.Model{ID: m.Slug, Name: m.DisplayName, Provider: "openai", Context: m.Context}
+		if m.Max > m.Context {
+			mm.MaxContext = m.Max
+		}
 		if m.Input != nil {
 			yes := slices.Contains(m.Input, "image")
 			mm.ImageInput, mm.Images = &yes, yes
