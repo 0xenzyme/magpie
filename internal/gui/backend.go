@@ -22,6 +22,7 @@ var served atomic.Pointer[gateway.Server]
 // running from before an update, a magpie serve in a terminal), and the
 // model lists kept warm.
 func startBackend() (gw *gateway.Server) {
+	gateway.Window = true // the routing this process serves is shown on its page
 	gw = serveGateway()
 	go watchGateway()
 	// Model lists are fetched, never compiled in: whatever the agents can see

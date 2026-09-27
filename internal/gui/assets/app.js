@@ -741,6 +741,7 @@ async function renderUpdateBadge() {
     // an answer means it didn't: the password prompt dismissed, the swap
     // failed, or a newer version is out and downloading first
     const a = await api("update/install", {}).catch(() => ({}));
+    if (!a) return backAsNew(u.current);
     if (a) {
       if (["checking", "downloading"].includes(a.state)) b.dataset.pulling = "1";
       else b.classList.remove("busy");
@@ -772,8 +773,20 @@ async function renderUpdateBadge() {
       label.textContent = t("Downloading…");
       return api("update/install", {}).then(renderUpdateBadge, renderUpdateBadge);
     }
+    if (web && u.url) return window.open(u.url, "_blank", "noopener");
     api("update/install", {}).catch(() => {});
   };
+}
+
+// backAsNew waits, in magpie web, for the version the page restarted into
+// to answer in its place, and reloads the page from it (#111).
+async function backAsNew(was) {
+  if (!web) return;
+  for (let i = 0; i < 180; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const u = await fetch("/api/update").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (u && u.current !== was) return location.reload();
+  }
 }
 
 // updateStuck says why this magpie can't replace itself where it is.
@@ -4668,12 +4681,17 @@ async function renderUpdate(r, u) {
     case "ready":
       sub.textContent = t("{v} is downloaded", { v: u.latest }) + (u.error ? " · " + u.error : "");
       // back with an answer only when it didn't restart
-      btn(t("Restart to update"), async () => renderUpdate(r, await api("update/install", {}).catch(() => null) || undefined));
+      btn(t("Restart to update"), async () => {
+        const a = await api("update/install", {}).catch(() => ({ state: "error" }));
+        if (a) return renderUpdate(r, a.current ? a : undefined);
+        sub.textContent = t("Restarting…");
+        backAsNew(u.current);
+      });
       break;
     case "available":
       sub.textContent = t("{v} is out", { v: u.latest });
       if (u.stuck) sub.textContent += " · " + updateStuck(u);
-      btn(t("Download"), () => api("update/install", {}));
+      btn(t("Download"), () => (web && u.url ? window.open(u.url, "_blank", "noopener") : api("update/install", {})));
       break;
     case "downloading":
       sub.textContent = t("Downloading {v}…", { v: u.latest });

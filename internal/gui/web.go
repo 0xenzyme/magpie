@@ -12,7 +12,10 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/yetone/magpie/internal/update"
 )
 
 // `magpie web` serves the window's page to a browser, for a computer that
@@ -38,15 +41,26 @@ func (webHost) OpenFolder(path string) error {
 // browser in.
 type Web struct {
 	Addr, Link string
+	key        string
 	srv        *http.Server
 	quit       chan struct{}
 }
 
-// StartWeb serves the page on addr (host:port). Every request needs the
+// webReexec is set when the page's restart to update has put the new
+// version in: Wait then runs it in this one's place.
+var webReexec atomic.Bool
+
+// webRunKey hands a run's own key to the version it restarts into, so the
+// browser's cookie still opens the page (#111).
+const webRunKey = "MAGPIE_WEB_RUNKEY"
+
+// StartWeb serves the page on addr (host:port), as the given version of
+// magpie, which keeps itself up to date as the app does. Every request needs the
 // key the link carries, taken once into a cookie other sites' pages can't
 // send with a POST (every change is one), so neither a page elsewhere nor
 // anyone else on the network reaches the settings and keys behind it.
-func StartWeb(addr string) (*Web, error) {
+func StartWeb(addr, version string) (*Web, error) {
+	Version = version
 	key, fixed, err := webKey()
 	if err != nil {
 		return nil, err
@@ -59,7 +73,7 @@ func StartWeb(addr string) (*Web, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &Web{Addr: ln.Addr().String(), quit: make(chan struct{})}
+	w := &Web{Addr: ln.Addr().String(), key: key, quit: make(chan struct{})}
 	host, port, _ := net.SplitHostPort(w.Addr)
 	if ip := net.ParseIP(host); ip == nil || ip.IsUnspecified() {
 		host = "127.0.0.1"
@@ -72,14 +86,25 @@ func StartWeb(addr string) (*Web, error) {
 		ReadHeaderTimeout: 30 * time.Second,
 	}
 	go w.srv.Serve(ln)
+	updates.start()
 	return w, nil
 }
 
-// Wait returns once the page's Quit is used.
-func (w *Web) Wait() {
+// Wait returns once the page's Quit is used. After a restart to update it
+// runs the new version in this one's place, with the same arguments and
+// key, so the page open in the browser finds it where it was.
+func (w *Web) Wait() error {
 	<-w.quit
 	time.Sleep(200 * time.Millisecond) // the answer to the Quit gets out
 	w.srv.Close()
+	if !webReexec.Load() {
+		return nil
+	}
+	exe, err := update.Executable()
+	if err != nil {
+		return err
+	}
+	return update.Reexec(exe, os.Args[1:], append(os.Environ(), webRunKey+"="+w.key))
 }
 
 // webKeyMin is the shortest MAGPIE_WEB_KEY taken: it is all that stands
@@ -95,6 +120,12 @@ const webCookieAge = 400 * 24 * time.Hour
 // MAGPIE_WEB_KEY names one — for a page kept running as a service, which
 // browsers then stay signed in to across restarts. fixed says which.
 func webKey() (key string, fixed bool, err error) {
+	if k := os.Getenv(webRunKey); k != "" {
+		os.Unsetenv(webRunKey) // the run's alone, not its children's
+		if len(k) == 32 && strings.Trim(k, "0123456789abcdef") == "" && os.Getenv("MAGPIE_WEB_KEY") == "" {
+			return k, false, nil
+		}
+	}
 	if k := os.Getenv("MAGPIE_WEB_KEY"); k != "" {
 		if len(k) < webKeyMin {
 			return "", false, fmt.Errorf("MAGPIE_WEB_KEY is %d characters; it needs at least %d", len(k), webKeyMin)

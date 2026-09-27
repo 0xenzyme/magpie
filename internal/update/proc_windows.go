@@ -1,8 +1,11 @@
 package update
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
+
+	"github.com/yetone/magpie/internal/proc"
 )
 
 const (
@@ -31,4 +34,17 @@ func detach(cmd *exec.Cmd) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	cmd.SysProcAttr.CreationFlags |= detachedProc | newProcGroup
+}
+
+// Reexec starts exe with args and env in this console and returns, for
+// the caller to exit: Windows can't run another program in a process's
+// place, so the new version goes on printing where this one did.
+func Reexec(exe string, args, env []string) error {
+	cmd := proc.Command(exe, args...)
+	cmd.Env = env
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
 }

@@ -102,7 +102,8 @@ type presetJSON struct {
 type gatewayJSON struct {
 	URL     string         `json:"url"`
 	Running bool           `json:"running"`
-	Mine    bool           `json:"mine"` // this process serves it
+	Mine    bool           `json:"mine"`   // this process serves it
+	Window  bool           `json:"window"` // the magpie serving it shows its routing
 	Models  int            `json:"models"`
 	Calls   []gateway.Call `json:"calls"`
 	Groups  []gwGroupJSON  `json:"groups"` // the catalog's routing groups, listed before the models
@@ -295,10 +296,10 @@ func providersState() providersJSON {
 		s.Gateway.Groups = append(s.Gateway.Groups, g)
 	}
 	if gw := served.Load(); gw != nil {
-		s.Gateway.Running, s.Gateway.Mine = true, true
+		s.Gateway.Running, s.Gateway.Mine, s.Gateway.Window = true, true, true
 		s.Gateway.Calls = gw.Recent()
 	} else {
-		s.Gateway.Running = gateway.Running()
+		s.Gateway.Running, s.Gateway.Window = gateway.Serving()
 	}
 	return s
 }

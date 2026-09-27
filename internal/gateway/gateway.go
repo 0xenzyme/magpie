@@ -71,16 +71,29 @@ func URL() string {
 	return "http://" + a
 }
 
+// Window says this process shows the routing of the gateway it serves:
+// the app's window (a tray's too, when opened) or magpie web's page, and
+// not magpie serve, which has none. Set by the gui.
+var Window bool
+
 // Running reports whether a gateway answers at the address.
 func Running() bool {
+	running, _ := Serving()
+	return running
+}
+
+// Serving asks the address what answers there: whether a magpie gateway
+// does, and whether the magpie serving it has a window its routing can be
+// watched in (#110).
+func Serving() (running, window bool) {
 	c := &http.Client{Timeout: 700 * time.Millisecond}
 	res, err := c.Get(URL() + "/")
 	if err != nil {
-		return false
+		return false, false
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
-	return bytes.Contains(b, []byte(`"magpie"`))
+	return bytes.Contains(b, []byte(`"magpie"`)), bytes.Contains(b, []byte(`"window":true`))
 }
 
 // Call is one request the gateway handled, for the status views.
@@ -235,7 +248,7 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) info(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]any{"name": "magpie", "version": Version, "models": len(provider.Catalog()),
+	writeJSON(w, 200, map[string]any{"name": "magpie", "version": Version, "models": len(provider.Catalog()), "window": Window,
 		"apis": []string{"/v1/chat/completions", "/v1/responses", "/v1/messages", "/v1beta/models/{model}:generateContent", "/v1/magpie/quotas"}})
 }
 

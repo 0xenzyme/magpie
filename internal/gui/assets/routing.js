@@ -1200,7 +1200,11 @@
         statB[1].textContent = d.totals.rerouted;
         statB[2].textContent = d.totals.errors;
         if (!mine) {
-          offline(t(providers?.gateway?.running ? "Another magpie serves the gateway; its routing plays live in that magpie's window." : "The gateway isn't running, so nothing is routed."));
+          const gw = providers?.gateway;
+          offline(t(!gw?.running ? "The gateway isn't running, so nothing is routed."
+            : gw.window ? "Another magpie serves the gateway; its routing plays live in that magpie's window."
+            // magpie serve: its routing isn't shown anywhere
+            : "The gateway is served by a magpie without a window (magpie serve), so its routing can't be watched. Stop it and let this magpie serve the gateway to see routing live."));
           loaded = false;
           await new Promise((r) => setTimeout(r, 5000));
           continue;

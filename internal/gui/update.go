@@ -257,7 +257,7 @@ func updateRoutes(mux *http.ServeMux, w Windows) {
 		}
 		switch j := updates.json(); {
 		case j.State == "ready":
-			if restartToUpdate() {
+			if restartToUpdate(isWeb(w)) {
 				rw.WriteHeader(http.StatusNoContent)
 				go w.Quit()
 				return
@@ -274,11 +274,16 @@ func updateRoutes(mux *http.ServeMux, w Windows) {
 }
 
 // restartToUpdate installs the staged version and arranges for it to open
-// once this process is gone; the caller then quits.
-func restartToUpdate() bool {
+// once this process is gone; the caller then quits. magpie web runs on as
+// the new version in its own place (Web.Wait) instead of opening the app.
+func restartToUpdate(web bool) bool {
 	bundle, exe := updates.bundle, updates.exe
 	if !updates.install(true) {
 		return false
+	}
+	if web {
+		webReexec.Store(true)
+		return true
 	}
 	var err error
 	if bundle != "" {

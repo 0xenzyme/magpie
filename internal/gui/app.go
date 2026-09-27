@@ -245,7 +245,7 @@ func Run(version string, showMain bool, link string) error {
 	menu.Add("Version " + version).SetEnabled(false)
 	restart := menu.Add("Restart to Update").SetHidden(true)
 	restart.OnClick(func(*application.Context) {
-		if restartToUpdate() {
+		if restartToUpdate(false) {
 			h.app.Quit()
 		}
 	})

@@ -26,3 +26,10 @@ func detach(cmd *exec.Cmd) {
 	}
 	cmd.SysProcAttr.Setsid = true
 }
+
+// Reexec runs exe in this process's place with args and env: the same
+// process, in the same terminal or under the same service manager, now
+// running the new version (magpie web's restart to update).
+func Reexec(exe string, args, env []string) error {
+	return syscall.Exec(exe, append([]string{exe}, args...), env)
+}

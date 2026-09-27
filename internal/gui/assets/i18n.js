@@ -801,6 +801,7 @@ const I18N = {
     "Every request an agent sends to magpie shows up here, routed for real.": "Agent 发给 magpie 的每个请求都会出现在这里——真实的路由。",
     "Another magpie serves the gateway; its routing plays live in that magpie's window.": "网关由另一个 magpie 提供，它的路由在那个 magpie 的窗口里实时播放。",
     "The gateway isn't running, so nothing is routed.": "网关没有运行，因此没有任何路由。",
+    "The gateway is served by a magpie without a window (magpie serve), so its routing can't be watched. Stop it and let this magpie serve the gateway to see routing live.": "网关由一个没有窗口的 magpie（magpie serve）提供，它的路由没法在这里看到。停掉它、让这个 magpie 来提供网关，就能实时看到路由。",
     "Smart: of the accounts with quota to spare, the one whose allowance renews soonest goes first — what it has left would be lost at the reset. One at 90% or more waits until the others can't answer; one resting after a failure goes last.": "智能：在还有余量的账号里，额度最先重置的排第一——它剩下的额度到重置时就作废了。用到 90% 以上的账号等其他账号都答不了时才用；失败后正在休息的排最后。",
     "Smart: keys that suit the request go first — one made for the model's own API — then in their order. One resting after a failure goes last.": "智能：适合这个请求的 Key 排前面——专为该模型原生 API 的 Key 优先——其余按顺序。失败后正在休息的排最后。",
     "In order: the first answers everything until it can't; then the next.": "按顺序：第一个处理所有请求，直到它不行了，再换下一个。",

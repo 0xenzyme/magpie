@@ -36,7 +36,7 @@ func webCmd(args []string) error {
 		_, port, _ := net.SplitHostPort(webAddr)
 		addr = "0.0.0.0:" + port
 	}
-	w, err := gui.StartWeb(addr)
+	w, err := gui.StartWeb(addr, version)
 	if err != nil {
 		return err
 	}
@@ -58,6 +58,5 @@ func webCmd(args []string) error {
 	if open {
 		openInBrowser(w.Link)
 	}
-	w.Wait()
-	return nil
+	return w.Wait()
 }
