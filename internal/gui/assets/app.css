@@ -985,8 +985,15 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .mchip.on { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); font-weight: 500; }
 .mchip.on::before { content: "✓"; font-size: 10px; }
 .mchip.own.on::before { content: "＋"; }
+/* how a model answered Test models: a dot after its name */
+.mchip .tdot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--faint); }
+.mchip .tdot.ok { background: var(--green); }
+.mchip .tdot.bad { background: var(--red); }
+.mchip .tdot.wait { animation: tdot 1s ease-in-out infinite alternate; }
+@keyframes tdot { to { opacity: .25; } }
 .mchips .hint, .mfoot .hint { font-size: 11px; color: var(--faint); align-self: center; line-height: 27px; }
-.mfoot { display: flex; align-items: center; gap: 8px; min-height: 27px; }
+.mfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 27px; }
+.mfoot .hint { white-space: nowrap; }
 .mfoot > input { height: 27px; }
 .mfoot .text.action { flex: none; }
 .mfoot input { max-width: 200px; height: 27px !important; }

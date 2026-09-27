@@ -2774,7 +2774,19 @@ function renderEndpoints(p, src) {
   return eps;
 }
 
+// modelTests: what each provider's models answered Test models, by id; a
+// model still being asked is null
+const modelTests = {};
+
 function renderModels(p) {
+  // a chip's dot: how its model answered, when it has been asked
+  const tested = (c, id) => {
+    const got = modelTests[p.id];
+    if (!got || !(id in got)) return;
+    const x = got[id];
+    c.append(el("span", "tdot " + (!x ? "wait" : x.ok ? "ok" : "bad")));
+    c.title = !x ? t("Testing…") : x.ok ? t("Answered in {ms} ms", { ms: x.ms }) : (x.status ? x.status + " · " : "") + x.error;
+  };
   const box = el("div", "models");
   const chips = el("div", "mchips");
   const names = el("div", "mnames");
@@ -2790,6 +2802,7 @@ function renderModels(p) {
       c.append(el("span", "", m.name && m.name !== m.id ? m.name : m.id));
       if (m.default) c.title = `${m.id} · ${m.default}`;
       else if (m.name && m.name !== m.id) c.title = m.id;
+      tested(c, m.id);
       c.onclick = () => { draft.chosen = on ? draft.chosen.filter((x) => x !== m.id) : [...draft.chosen, m.id]; draw(); };
       chips.append(c);
       if (++shown >= 80 && !f) { chips.append(el("span", "hint", t("… {n} more, filter to find them", { n: p.models.length - shown }))); break; }
@@ -2799,6 +2812,7 @@ function renderModels(p) {
       const c = el("button", "mchip on own");
       c.append(el("span", "", id));
       c.title = t("Added by hand");
+      tested(c, id);
       c.onclick = () => { draft.chosen = draft.chosen.filter((x) => x !== id); draw(); };
       chips.append(c);
     }
@@ -2888,10 +2902,32 @@ function renderModels(p) {
       renderProviders();
     } catch (e) { status(e.message, "err"); refresh.classList.remove("busy"); }
   };
+  // each model the agents see gets a tiny request of its own: a vendor
+  // that answers can still have a model that doesn't
+  const testAll = el("button", "text action", t("Test models"));
+  testAll.title = t("Send a tiny request to each model agents see, to find the ones that don't answer");
+  testAll.onclick = async () => {
+    const ids = draft.chosen.length ? draft.chosen : p.models.filter((m) => m.on).map((m) => m.id);
+    if (!ids.length) { status(t("Pick a model first."), "err"); return; }
+    testAll.classList.add("busy");
+    const got = modelTests[p.id] = {};
+    for (const id of ids) got[id] = null;
+    draw();
+    try {
+      const r = await api("provider/test", { id: p.id, test: ids });
+      r.results.forEach((x, i) => { got[ids[i]] = x; });
+      const bad = r.results.filter((x) => !x.ok).length;
+      status(bad ? t("{n} of {all} models didn't answer", { n: bad, all: ids.length }) : t("All {n} models answered", { n: ids.length }), bad ? "err" : "ok");
+    } catch (e) { delete modelTests[p.id]; status(e.message, "err"); }
+    testAll.classList.remove("busy");
+    draw();
+  };
   const rename = el("button", "text action" + (naming === p.id ? " on" : ""), t("Names & levels"));
   rename.title = t("Rename the models agents see, or offer fewer of their reasoning levels");
   rename.onclick = () => { naming = naming === p.id ? null : p.id; rename.classList.toggle("on", naming === p.id); drawNames(); };
-  foot.append(add, refresh, rename);
+  foot.append(add, refresh);
+  if (!p.decide && !p.account) foot.append(testAll);
+  foot.append(rename);
   if (p.fetched) foot.append(el("span", "hint", t("vendor list · {when}", { when: p.fetched })));
   // a signed-in account's list, until the vendor gives one, is magpie's own
   else if (p.models.length) foot.append(el("span", "hint", t(p.account ? "magpie's list · Refresh asks the vendor" : p.decide ? "Jev's names · Refresh asks the vendor" : "from models.dev · Refresh asks the vendor")));
@@ -4460,6 +4496,83 @@ setInterval(async () => {
 }, 15000);
 window.addEventListener("focus", load);
 setInterval(renderUpdateBadge, 15 * 60 * 1000); // a window left open still hears of a new version
+// ---------- hiding emails, for a screenshot to share ----------
+// Routing and Usage each have a Hide emails button, one setting for both.
+// Each email address on the page — an account's, in a row, a sentence,
+// a tooltip — is swapped for blurred stand-in letters while it's on, as the
+// page redraws too; the address itself is kept aside to put back.
+(() => {
+  const EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, IS_EMAIL = new RegExp(EMAIL.source);
+  // stand-in letters of the address's shape, the same each time it's drawn:
+  // blurred, they read as a name without being one
+  const dots = (s) => { let h = 7; return s.replace(/[^@.]/g, (c) => (h = (h * 31 + c.charCodeAt(0)) >>> 0, "aeiounrstlcmdh"[h % 14])); };
+  // what a page redraws is masked before it's painted; masking isn't
+  // itself watched, so it can't set itself off again
+  const OBS = { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["title"] };
+  let masked = false;
+  try { masked = localStorage.getItem("magpie.maskEmails") === "1"; } catch {}
+  const pages = [["#view-routing", "#rtMask"], ["#view-usage", "#usageMask"]].map(([v, b]) => {
+    const view = $(v), btn = $(b);
+    function mask() {
+      const walk = document.createTreeWalker(view, NodeFilter.SHOW_TEXT), found = [];
+      for (let n; (n = walk.nextNode());) if (n.data.includes("@") && IS_EMAIL.test(n.data) && !n.parentElement?.closest(".pii")) found.push(n);
+      for (const n of found) {
+        const bits = [];
+        let last = 0;
+        for (const m of n.data.matchAll(EMAIL)) {
+          if (m.index > last) bits.push(n.data.slice(last, m.index));
+          const s = el("span", "pii", dots(m[0]));
+          s.dataset.raw = m[0];
+          bits.push(s);
+          last = m.index + m[0].length;
+        }
+        if (!last) continue;
+        if (last < n.data.length) bits.push(n.data.slice(last));
+        // one piece still, where the text was: in a flex row each would
+        // otherwise stand as an item of its own
+        if (bits.length > 1) { const run = el("span", "pii-run"); run.append(...bits); n.replaceWith(run); }
+        else n.replaceWith(...bits);
+      }
+      for (const e of view.querySelectorAll("[title]")) {
+        if (!e.title.includes("@") || !IS_EMAIL.test(e.title)) continue;
+        e.dataset.piiTitle = e.title;
+        e.title = e.title.replace(EMAIL, (m) => m.replace(/[^@.]/g, "•")); // a tooltip can't blur
+      }
+    }
+    function unmask() {
+      for (const s of view.querySelectorAll(".pii")) s.replaceWith(s.dataset.raw);
+      for (const r of view.querySelectorAll(".pii-run")) r.replaceWith(r.textContent);
+      view.normalize();
+      for (const e of view.querySelectorAll("[data-pii-title]")) { e.title = e.dataset.piiTitle; delete e.dataset.piiTitle; }
+    }
+    const watch = new MutationObserver(() => {
+      if (!masked) return;
+      watch.disconnect();
+      mask();
+      watch.observe(view, OBS);
+    });
+    btn.onclick = () => {
+      setMasked(!masked);
+      // pixelated in when asked for, not again each time the page redraws
+      view.classList.add("masking");
+      clearTimeout(btn._t);
+      btn._t = setTimeout(() => view.classList.remove("masking"), 450);
+    };
+    return (on) => {
+      btn.setAttribute("aria-pressed", String(on));
+      view.classList.toggle("masked", on);
+      if (on) { mask(); watch.observe(view, OBS); }
+      else { watch.disconnect(); unmask(); }
+    };
+  });
+  function setMasked(on) {
+    masked = on;
+    try { localStorage.setItem("magpie.maskEmails", on ? "1" : "0"); } catch {}
+    for (const set of pages) set(on);
+  }
+  setMasked(masked);
+})();
+
 // Opened on a magpie://import link: fetch what it describes (once — the
 // id is spent) and ask before adding it.
 if (mode === "window" && params.get("import")) {

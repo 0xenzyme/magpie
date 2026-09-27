@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yetone/magpie/internal/catalog"
@@ -40,21 +41,84 @@ func (p Provider) Test(ctx context.Context) []Result {
 			out = append(out, Result{Protocol: proto, Model: model, Error: "no key is on for this endpoint"})
 			continue
 		}
-		var url, body string
-		switch proto {
-		case Chat:
-			url = q.Chat + "/chat/completions"
-			body = fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hi"}],"max_tokens":16}`, model)
-		case Responses:
-			url = q.Responses + "/responses"
-			body = fmt.Sprintf(`{"model":%q,"input":"hi","max_output_tokens":16}`, model)
-		case Anthropic:
-			url = q.Anthropic + "/v1/messages"
-			body = fmt.Sprintf(`{"model":%q,"max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`, model)
-		}
+		url, body := tiny(q, proto, model)
 		out = append(out, probe(ctx, q, proto, url, q.Prepare([]byte(body)), model))
 	}
 	return out
+}
+
+// tiny is the smallest request for model on proto's endpoint.
+func tiny(q Provider, proto Protocol, model string) (url, body string) {
+	switch proto {
+	case Chat:
+		return q.Chat + "/chat/completions", fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hi"}],"max_tokens":16}`, model)
+	case Responses:
+		return q.Responses + "/responses", fmt.Sprintf(`{"model":%q,"input":"hi","max_output_tokens":16}`, model)
+	case Anthropic:
+		return q.Anthropic + "/v1/messages", fmt.Sprintf(`{"model":%q,"max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`, model)
+	}
+	return "", ""
+}
+
+// TestModels sends each of models the smallest request, a few at a time,
+// on the endpoint it's served on and with a key that sees it: whether each
+// answers, not only whether the vendor does. Results are in models' order.
+func (p Provider) TestModels(ctx context.Context, models []string) []Result {
+	out := make([]Result, len(models))
+	sem := make(chan struct{}, 4)
+	var wg sync.WaitGroup
+	for i, model := range models {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			out[i] = p.testOne(ctx, model)
+		}()
+	}
+	wg.Wait()
+	return out
+}
+
+func (p Provider) testOne(ctx context.Context, model string) Result {
+	var protos []Protocol
+	for _, pr := range p.Speaks() {
+		if pr == Chat || pr == Responses || pr == Anthropic {
+			protos = append(protos, pr)
+		}
+	}
+	if len(protos) == 0 {
+		return Result{Model: model, Error: "this provider can't be sent a test request"}
+	}
+	// the endpoint the vendor's list says serves it, else Anthropic's for a
+	// Claude model, else the one it prefers
+	proto := protos[0]
+	if apis := p.APIs(model); apis != nil {
+		if i := slices.IndexFunc(protos, func(pr Protocol) bool { return slices.Contains(apis, pr) }); i >= 0 {
+			proto = protos[i]
+		}
+	} else if isClaude(model) && slices.Contains(protos, Anthropic) {
+		proto = Anthropic
+	}
+	// a key made for that endpoint, else one made for any, that sees it
+	q, ok := p, true
+	if keys := p.KeysOn(); len(keys) > 0 {
+		ok = false
+	pick:
+		for _, want := range []Protocol{proto, ""} {
+			for _, k := range keys {
+				if k.Protocol == want && p.Serves(k, model) {
+					q, ok = p.WithKey(k), true
+					break pick
+				}
+			}
+		}
+	}
+	if !ok {
+		return Result{Protocol: proto, Model: model, Error: "no key that's on sees this model"}
+	}
+	url, body := tiny(q, proto, model)
+	return probe(ctx, q, proto, url, q.Prepare([]byte(body)), model)
 }
 
 // keyFor is p using the first key on that works with proto: one made for

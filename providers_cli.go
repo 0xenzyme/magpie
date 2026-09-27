@@ -32,7 +32,7 @@ const providerUsage = `usage:
   magpie provider fallback <id> <provider/model>…   where requests go when it's out of quota or down (none clears)
   magpie provider models <id> [ids…]      fetch the vendor's model list, or choose which models to expose
   magpie provider listed <id> yes|no      no: its models serve only through routing groups, not in the list
-  magpie provider test <id>               send a tiny request through each endpoint
+  magpie provider test <id> [model…]      send a tiny request through each endpoint, or to each model
   magpie provider rm <id>                 remove a provider
 
   e.g. magpie provider add "My Relay" url=https://relay.example.com/v1 key=sk-…
@@ -345,17 +345,22 @@ func providerCmd(args []string) error {
 		fmt.Println(green.Render("✓"), "removed", p.Name)
 		return nil
 	case "test":
-		if len(rest) != 1 {
-			return fmt.Errorf("magpie provider test <id>")
+		// with models named, a request to each of them; else one per endpoint
+		if len(rest) < 1 {
+			return fmt.Errorf("magpie provider test <id> [model…]")
 		}
 		p, err := provider.Find(rest[0])
 		if err != nil {
 			return err
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		res, wait := p.Test, 30*time.Second
+		if models := rest[1:]; len(models) > 0 {
+			res, wait = func(ctx context.Context) []provider.Result { return p.TestModels(ctx, models) }, 90*time.Second
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), wait)
 		defer cancel()
 		ok := true
-		for _, r := range p.Test(ctx) {
+		for _, r := range res(ctx) {
 			if r.OK {
 				fmt.Printf("  %s %-10s %s\n", green.Render("✓"), r.Protocol, muted.Render(fmt.Sprintf("%d ms · %s", r.Millis, r.Model)))
 			} else {
@@ -363,6 +368,9 @@ func providerCmd(args []string) error {
 				msg := r.Error
 				if r.Status != 0 {
 					msg = fmt.Sprintf("%d · %s", r.Status, r.Error)
+				}
+				if len(rest) > 1 {
+					msg = r.Model + " · " + msg
 				}
 				fmt.Printf("  %s %-10s %s\n", amber.Render("✗"), r.Protocol, msg)
 			}

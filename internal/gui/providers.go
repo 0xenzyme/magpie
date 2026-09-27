@@ -382,6 +382,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// Efforts, for efforts: the reasoning levels it offers, none
 			// for all it has
 			Efforts []string `json:"efforts"`
+			// Test, for test: models to send a request each, in place of
+			// one per endpoint
+			Test []string `json:"test"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			fail(rw, err)
@@ -509,6 +512,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			p, err := provider.Find(in.ID)
 			if err != nil {
 				fail(rw, err)
+				return
+			}
+			if len(req.Test) > 0 {
+				ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+				defer cancel()
+				writeJSON(rw, map[string]any{"results": p.TestModels(ctx, req.Test)})
 				return
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)

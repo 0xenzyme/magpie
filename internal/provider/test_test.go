@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -56,5 +57,52 @@ func TestTestUsesEachEndpointsKey(t *testing.T) {
 	}
 	if !p.Serves(anth, "some-unlisted-model") {
 		t.Error("a model no list has is anyone's")
+	}
+}
+
+// Each model is asked on its own, with a key that sees it: one the vendor
+// doesn't serve fails while the others answer.
+func TestTestModels(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	var mu sync.Mutex
+	seen := map[string]string{} // model → path and key it came with
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			if r.Header.Get("Authorization") == "Bearer sk-anthropic" {
+				_, _ = rw.Write([]byte(`{"data":[{"id":"claude-opus-5"}]}`))
+			} else {
+				_, _ = rw.Write([]byte(`{"data":[{"id":"gpt-6-sol"},{"id":"gone"}]}`))
+			}
+			return
+		}
+		var in struct{ Model string }
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		mu.Lock()
+		seen[in.Model] = r.URL.Path + " " + r.Header.Get("Authorization")
+		mu.Unlock()
+		if in.Model == "gone" {
+			rw.WriteHeader(http.StatusNotFound)
+			_, _ = rw.Write([]byte(`{"error":{"message":"no channel for model gone"}}`))
+			return
+		}
+		_, _ = rw.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	p := Provider{ID: "relay", Name: "Relay", Chat: srv.URL + "/v1", Anthropic: srv.URL,
+		Key: "sk-chat", KeyProtocol: Chat,
+		Keys: []KeyAccount{{Key: "sk-anthropic", Protocol: Anthropic}}}
+	p.Fetch(context.Background())
+	rs := p.TestModels(context.Background(), []string{"gpt-6-sol", "claude-opus-5", "gone"})
+	if len(rs) != 3 || !rs[0].OK || !rs[1].OK || rs[2].OK || rs[2].Status != 404 || rs[2].Error != "no channel for model gone" {
+		t.Fatalf("results %+v", rs)
+	}
+	if rs[0].Model != "gpt-6-sol" || rs[1].Protocol != Anthropic || rs[2].Model != "gone" {
+		t.Fatalf("order %+v", rs)
+	}
+	if seen["gpt-6-sol"] != "/v1/chat/completions Bearer sk-chat" || seen["claude-opus-5"] != "/v1/messages Bearer sk-anthropic" {
+		t.Fatalf("seen %v", seen)
 	}
 }
