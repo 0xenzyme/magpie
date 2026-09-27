@@ -2307,6 +2307,11 @@ function renderEditor(p, presetID) {
       ed.append(...field(t("Account"), acct, t("{agent}'s sign-in, read from its own files. Sign out there and this provider goes away.", { agent: a.agentName })));
     }
     ed.append(...field(t("Models"), renderModels(p), ""));
+    // a subscription's window too: Codex's backend says 272K for models
+    // that take 872K (#120)
+    const cx = input(draft.contexts || "", t("e.g. 128k · or gpt-6=1m, comma separated"));
+    cx.oninput = () => { draft.contexts = cx.value; };
+    ed.append(...field(t("Context window"), cx, t("How long a request the models take, told to the agents; empty leaves it to the vendor and models.dev")));
     ed.append(...field(t("Fallback"), renderFallback(p), fallbackHint(p)));
     if (p.chat || p.responses || p.anthropic) ed.append(...field(t("Endpoints"), renderEndpoints(p, p)));
     const bar = el("div", "bar");
@@ -2318,7 +2323,10 @@ function renderEditor(p, presetID) {
     const cancel = el("button", "text", t("Cancel"));
     cancel.onclick = cancelEdit;
     const saveBtn = el("button", "text primary", t("Save"));
-    saveBtn.onclick = () => { saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback }, t("{name} saved", { name: p.name })); };
+    saveBtn.onclick = () => {
+      const cx = parseContexts(draft.contexts || "");
+      if (cx.error) return editorError(t("Context window: {v} is not a length like 128k or 1m", { v: cx.error }), "warn");
+      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map }, t("{name} saved", { name: p.name })); };
     bar.append(cancel, saveBtn);
     ed.append(bar);
     return ed;
