@@ -67,3 +67,27 @@ func TestURLOfWildcard(t *testing.T) {
 		t.Fatal(u)
 	}
 }
+
+// An agent whose User-Agent is only the AI SDK's (Alma) is known by the
+// token it was given; the others still by their User-Agent.
+func TestAgentOf(t *testing.T) {
+	for _, c := range []struct{ auth, key, ua, want string }{
+		{"Bearer " + TokenFor("alma"), "", "ai-sdk/openai/2.0.52 ai-sdk/provider-utils/3.0.12 runtime/node.js/v22", "alma"},
+		{"", TokenFor("alma"), "ai-sdk/anthropic/2.0.1", "alma"},
+		{"Bearer " + Token, "", "claude-cli/2.1.0 (external, cli)", "claude-cli"},
+		{"Bearer " + Token, "", "ai-sdk/openai/2.0.52", "ai-sdk"},
+		{"Bearer " + Token + "-", "", "codex_cli_rs/0.40.0", "codex_cli_rs"},
+	} {
+		r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+		if c.auth != "" {
+			r.Header.Set("Authorization", c.auth)
+		}
+		if c.key != "" {
+			r.Header.Set("x-api-key", c.key)
+		}
+		r.Header.Set("User-Agent", c.ua)
+		if got := agentOf(r); got != c.want {
+			t.Errorf("%q %q %q: %q, want %q", c.auth, c.key, c.ua, got, c.want)
+		}
+	}
+}

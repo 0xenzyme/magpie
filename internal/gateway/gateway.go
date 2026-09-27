@@ -33,6 +33,20 @@ const DefaultAddr = "127.0.0.1:3425"
 // listens on loopback and accepts anything, but agents insist on one.
 const Token = "magpie"
 
+// TokenFor is the token an agent that says nothing of itself in its
+// User-Agent is told to use, so the gateway still knows it: Alma's requests
+// go out as the AI SDK's ("ai-sdk/openai/…"), with nothing of Alma's own.
+func TokenFor(agent string) string { return Token + "-" + agent }
+
+// agentOf is the agent a request came from: the one its token names
+// (TokenFor), else the one its User-Agent does.
+func agentOf(r *http.Request) string {
+	if id, ok := strings.CutPrefix(callerKey(r), Token+"-"); ok && id != "" {
+		return usage.AgentOf(id)
+	}
+	return usage.AgentOf(r.Header.Get("User-Agent"))
+}
+
 // Version is set by main.
 var Version = "dev"
 
@@ -256,7 +270,7 @@ func modelObject(e provider.Entry) map[string]any {
 
 // catalogFor is the catalog as the agent asking is shown it.
 func catalogFor(r *http.Request) []provider.Entry {
-	shown, _ := provider.CatalogFor(usage.AgentOf(r.Header.Get("User-Agent")))
+	shown, _ := provider.CatalogFor(agentOf(r))
 	return shown
 }
 
@@ -446,7 +460,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	requestBody, requestTruncated := captureRequestBody(body)
 	capture := &captureResponseWriter{ResponseWriter: w}
 	w = capture
-	call := Call{Time: start, From: from, Model: modelOf(body), Agent: usage.AgentOf(r.Header.Get("User-Agent")),
+	call := Call{Time: start, From: from, Model: modelOf(body), Agent: agentOf(r),
 		RequestBody: requestBody, RequestTruncated: requestTruncated}
 	usage.Saw(call.Agent)
 	finishCapture := func() {

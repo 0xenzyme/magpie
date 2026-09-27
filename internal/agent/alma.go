@@ -55,6 +55,7 @@ type almaProvider struct {
 	Name    string           `json:"name"`
 	Type    string           `json:"type"`
 	BaseURL string           `json:"baseURL"`
+	APIKey  string           `json:"apiKey"`
 	Enabled bool             `json:"enabled"`
 	Models  []string         `json:"models"`
 	Known   []map[string]any `json:"availableModels"`
@@ -238,7 +239,7 @@ func almaWire() (string, error) {
 	if p == nil {
 		var made almaProvider
 		if err := almaDo("POST", "/api/providers", map[string]any{"name": magpieID, "type": "openai",
-			"apiKey": gateway.Token, "baseURL": gatewayV1(), "enabled": true}, &made); err != nil {
+			"apiKey": almaKey(), "baseURL": gatewayV1(), "enabled": true}, &made); err != nil {
 			return "", err
 		}
 		if made.ID == "" {
@@ -254,11 +255,29 @@ func almaWire() (string, error) {
 		p = &made
 	} else if p.BaseURL != gatewayV1() || !p.Enabled {
 		if err := almaDo("PUT", "/api/providers/"+p.ID, map[string]any{"baseURL": gatewayV1(),
-			"apiKey": gateway.Token, "enabled": true}, nil); err != nil {
+			"apiKey": almaKey(), "enabled": true}, nil); err != nil {
 			return "", err
 		}
+	} else if err := almaKeyed(p); err != nil {
+		return "", err
 	}
 	return p.ID, almaSyncModels(p)
+}
+
+// almaKey is the key magpie's provider in Alma is given. Alma's requests
+// carry the AI SDK's User-Agent and nothing of Alma's, so the key is how
+// the gateway knows them for Alma's.
+func almaKey() string { return gateway.TokenFor("alma") }
+
+// almaKeyed gives magpie's provider the key almaKey in place of the one it
+// was given before there was one, gateway.Token; a key Alma gives back
+// some other way (encrypted) is left be. The key alone is sent: a baseURL,
+// even the same one, would have Alma drop its models.
+func almaKeyed(p *almaProvider) error {
+	if p.APIKey != gateway.Token {
+		return nil
+	}
+	return almaDo("PUT", "/api/providers/"+p.ID, map[string]any{"apiKey": almaKey()}, nil)
 }
 
 // almaSettings reads Alma's whole settings, every key kept as it is;
@@ -436,6 +455,9 @@ func alma() *Agent {
 			p := almaMagpie(ps)
 			if p == nil {
 				return nil
+			}
+			if err := almaKeyed(p); err != nil {
+				return err
 			}
 			return almaSyncModels(p)
 		},

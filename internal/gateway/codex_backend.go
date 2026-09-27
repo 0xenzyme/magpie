@@ -160,7 +160,7 @@ func withModel(body []byte, model string) []byte {
 // Codex would have sent it.
 func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest string, body []byte) {
 	start := time.Now()
-	usage.Saw(usage.AgentOf(r.Header.Get("User-Agent")))
+	usage.Saw(agentOf(r))
 	if r.Method == http.MethodPost {
 		var unmask func()
 		w, body, unmask = redacted(w, body)
@@ -185,7 +185,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 		}
 		model := modelOf(body)
 		seat := Weighed{ID: "codex", Provider: "openai", Name: "OpenAI", Icon: "openai", Who: who, Kind: "account", Agent: "codex", Model: model}
-		tr = s.trace.begin(Route{Time: start, Agent: usage.AgentOf(r.Header.Get("User-Agent")), Model: model, Provider: "openai",
+		tr = s.trace.begin(Route{Time: start, Agent: agentOf(r), Model: model, Provider: "openai",
 			Order: []Weighed{seat}, Tries: []Try{{ID: seat.ID, Model: model, Start: start}}})
 		end = func(status int, msg string, tokens int) {
 			ms := time.Since(start).Milliseconds()
@@ -235,7 +235,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 		writeError(w, provider.Responses, res.StatusCode, codexKeyRefused(msg))
 		s.record(Call{Time: start, From: provider.Responses, To: provider.Responses, Model: modelOf(body),
-			Provider: "openai", Agent: usage.AgentOf(r.Header.Get("User-Agent")), Status: res.StatusCode,
+			Provider: "openai", Agent: agentOf(r), Status: res.StatusCode,
 			Millis: time.Since(start).Milliseconds(), Error: res.Status})
 		end(res.StatusCode, res.Status, 0)
 		return
@@ -278,7 +278,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 		return
 	}
 	call := Call{Time: start, From: provider.Responses, To: provider.Responses, Model: modelOf(body),
-		Provider: "openai", Agent: usage.AgentOf(r.Header.Get("User-Agent")), Status: res.StatusCode,
+		Provider: "openai", Agent: agentOf(r), Status: res.StatusCode,
 		Millis: time.Since(start).Milliseconds()}
 	var uu Usage
 	uu.add(sniff.usage())

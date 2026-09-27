@@ -19,7 +19,7 @@ type fakeAlma struct {
 	providers []map[string]any
 	settings  map[string]any
 	writes    []string
-	keys      []string // the API keys sent, which Alma doesn't give back
+	keys      []string // the API keys sent
 	n         int
 }
 
@@ -70,14 +70,12 @@ func (f *fakeAlma) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.keys = append(f.keys, fmt.Sprint(body["apiKey"]))
 		body["id"] = fmt.Sprintf("p%d", f.n)
 		body["models"], body["availableModels"] = []any{}, []any{}
-		body["apiKey"] = "encrypted"
 		f.providers = append(f.providers, body)
 		reply(201, body)
 	case len(parts) == 3 && r.Method == "PUT":
 		p := f.provider(parts[2])
 		if k, ok := body["apiKey"]; ok {
 			f.keys = append(f.keys, fmt.Sprint(k))
-			delete(body, "apiKey")
 		}
 		for k, v := range body {
 			p[k] = v
@@ -199,7 +197,7 @@ func TestAlma(t *testing.T) {
 	}
 	p := mine[0]
 	ms, _ := p["models"].([]any)
-	if p["type"] != "openai" || p["baseURL"] != gatewayV1() || len(f.keys) != 1 || f.keys[0] != "magpie" || p["enabled"] != true || len(ms) == 0 {
+	if p["type"] != "openai" || p["baseURL"] != gatewayV1() || len(f.keys) != 1 || f.keys[0] != "magpie-alma" || p["enabled"] != true || len(ms) == 0 {
 		t.Fatalf("magpie provider: %v", p)
 	}
 	av, _ := p["availableModels"].([]any)
@@ -346,5 +344,44 @@ func TestAlmaLook(t *testing.T) {
 	almaSettingsSeen()
 	if gets != 3 {
 		t.Fatalf("a look after a change must ask Alma again: %d", gets)
+	}
+}
+
+// Alma's requests say nothing of Alma (they go out as the AI SDK's), so its
+// provider carries a key of Alma's: one wired before there was one gets it
+// on the next Sync, with nothing else sent, and only once.
+func TestAlmaKey(t *testing.T) {
+	syncHome(t)
+	f := startAlma(t)
+	a := alma()
+	if err := os.MkdirAll(a.Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.providers = append(f.providers, map[string]any{"id": "mg", "name": "magpie", "type": "openai", "baseURL": gatewayV1(),
+		"enabled": true, "apiKey": "magpie", "models": []any{}, "availableModels": []any{}})
+	if err := a.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if p := f.provider("mg"); p["apiKey"] != "magpie-alma" || p["baseURL"] != gatewayV1() {
+		t.Fatalf("provider after Sync: %v", p)
+	}
+	if len(f.keys) != 1 || f.keys[0] != "magpie-alma" {
+		t.Fatalf("keys sent: %v", f.keys)
+	}
+	f.takeWrites()
+	f.keys = nil
+	if err := a.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.keys) != 0 {
+		t.Fatalf("key sent again: %v", f.keys)
+	}
+	// a key Alma keeps some other way is left be
+	f.provider("mg")["apiKey"] = "encrypted"
+	if err := a.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.keys) != 0 {
+		t.Fatalf("encrypted key replaced: %v", f.keys)
 	}
 }
