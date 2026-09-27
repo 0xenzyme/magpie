@@ -44,8 +44,15 @@ func Addr() string {
 	return DefaultAddr
 }
 
-// URL is the base URL agents use, e.g. http://127.0.0.1:3425.
-func URL() string { return "http://" + Addr() }
+// URL is the base URL agents use, e.g. http://127.0.0.1:3425: a gateway
+// listening on every interface is reached here on loopback.
+func URL() string {
+	a := Addr()
+	if h, p, err := net.SplitHostPort(a); err == nil && (h == "" || net.ParseIP(h) != nil && net.ParseIP(h).IsUnspecified()) {
+		a = net.JoinHostPort("127.0.0.1", p)
+	}
+	return "http://" + a
+}
 
 // Running reports whether a gateway answers at the address.
 func Running() bool {
@@ -89,6 +96,10 @@ type Server struct {
 	subscription *subscriptionBridge
 	debug        bool
 	trace        trace // what routing did with each request, for the Gateway view
+	// the listener, swapped when the gateway is shared on the network or
+	// taken off it (see Relisten)
+	lnMu sync.Mutex
+	ln   net.Listener
 }
 
 // New makes a gateway.
@@ -138,11 +149,15 @@ var WhileServing []func(context.Context)
 // ListenAndServe runs the gateway until ctx ends. A bind error means
 // another magpie is already serving, which is fine for the caller to ignore.
 func (s *Server) ListenAndServe(ctx context.Context) error {
-	ln, err := net.Listen("tcp", Addr())
+	loadLANKey()
+	ln, err := net.Listen("tcp", listenAddr())
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 30 * time.Second, IdleTimeout: 5 * time.Minute}
+	s.lnMu.Lock()
+	s.ln = ln
+	s.lnMu.Unlock()
+	srv := &http.Server{Handler: lanGuard(s.Handler()), ReadHeaderTimeout: 30 * time.Second, IdleTimeout: 5 * time.Minute}
 	// the magpie serving the gateway, and only it, keeps the saved accounts
 	// signed in, so two never refresh one sign-in at once
 	go provider.KeepLoginsAlive(ctx)
@@ -157,10 +172,20 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		defer cancel()
 		srv.Shutdown(c)
 	}()
-	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+	for {
+		err := srv.Serve(ln)
+		if err == nil || errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		// Relisten closed it to move the gateway: serve the one it opened
+		s.lnMu.Lock()
+		next := s.ln
+		s.lnMu.Unlock()
+		if next == ln {
+			return err
+		}
+		ln = next
 	}
-	return nil
 }
 
 // Handler routes the client APIs.

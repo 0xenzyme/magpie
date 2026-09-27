@@ -3968,6 +3968,7 @@ function renderSettings() {
     api("settings/login", { on: v === "on" }).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
   renderProxy(s, keep);
   renderRedact(s, keep);
+  renderLAN(s);
   renderSync();
 
   const about = $("#about");
@@ -4269,6 +4270,36 @@ function renderRedact(s, keep) {
   i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") save(); else if (e.key === "Escape") { i.value = words; i.blur(); } };
   i.onblur = save;
   row(t("Masked words"), t("Your own words to keep from vendors, separated by commas"), i);
+}
+
+// renderLAN: the gateway shared on the local network, for agents on other
+// machines — the addresses they use it at and the key they must send.
+function renderLAN(s) {
+  const box = $("#lanList");
+  box.replaceChildren();
+  const row = (name, sub, value, ...tools) => {
+    const r = el("div", "row pref");
+    const who = el("div", "who");
+    who.append(el("div", "name", name));
+    if (sub) who.append(el("div", "sub", sub));
+    const val = el("div", "val");
+    if (value) val.append(el("code", "", value));
+    val.append(...tools);
+    r.append(who, val);
+    box.append(r);
+  };
+  const set = (body) => api("settings/lan", body).then((ns) => { prefs = ns; renderSettings(); })
+    .catch((e) => { status(t(e.message), "err"); renderSettings(); });
+  row(t("Share on local network"), t("Agents on other computers on this network can use magpie’s models, with the API key below"), "",
+    segs([["off", t("Off")], ["on", t("On")]], s.lan ? "on" : "off", (v) => set({ on: v === "on" })));
+  if (!s.lan) return;
+  const urls = s.lanURLs || [];
+  if (!urls.length) row(t("Address"), t("This computer has no local network address right now"), "");
+  for (const u of urls) row(t("Address"), t("OpenAI: {u}/v1 · Anthropic: {u}", { u }), u, copyBtn(u, t("Address")));
+  const again = el("button", "text", t("New key"));
+  again.onclick = () => set({ on: true, newKey: true });
+  row(t("API key"), t("Other computers send it as their API key; a new one stops the old from working"),
+    s.lanKey.slice(0, 14) + "…", copyBtn(s.lanKey, t("API key")), again);
 }
 
 // renderUpdate fills in the version row: whether a newer magpie is out.

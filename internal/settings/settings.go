@@ -37,6 +37,11 @@ type Settings struct {
 	Redact         bool     `json:"redact,omitempty"`
 	RedactPersonal bool     `json:"redactPersonal,omitempty"`
 	RedactWords    []string `json:"redactWords,omitempty"`
+	// LAN shares the gateway on the local network, for agents on other
+	// machines; a request from one must carry LANKey as its API key, a
+	// key magpie makes when LAN is first turned on.
+	LAN    bool   `json:"lan,omitempty"`
+	LANKey string `json:"lanKey,omitempty"`
 	// How the agents are listed, by agent id. AgentOrder comes first, as
 	// ordered; an agent it doesn't name (one installed since) follows in
 	// magpie's own order. A hidden agent is folded away at the bottom of the
