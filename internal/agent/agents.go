@@ -65,6 +65,7 @@ func All() []*Agent {
 		hermes(home),
 		cline(home),
 		qoder(home),
+		qoderCN(home),
 		grok(home),
 		zcode(home),
 		alma(),

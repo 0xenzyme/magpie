@@ -15,6 +15,10 @@ package agent
 // reasoning_effort when the model says it takes one. Qoder offers custom
 // providers only to a signed-in account whose plan has BYOK. Its requests
 // say only undici, so they are not told apart from other clients'.
+//
+// Qoder CN (qoderclicn, @qodercn-ai/qoderclicn) is the same CLI for the
+// China site, its own accounts and settings in $QODERCN_CONFIG_DIR,
+// ~/.qoder-cn by default.
 
 import (
 	"os"
@@ -26,12 +30,33 @@ import (
 )
 
 func qoder(home string) *Agent {
-	dir := os.Getenv("QODER_CONFIG_DIR")
+	return qoderSite(home, qoderGlobal)
+}
+
+func qoderCN(home string) *Agent {
+	return qoderSite(home, qoderChina)
+}
+
+// qoderBuild is what tells Qoder's two builds apart.
+type qoderBuild struct {
+	id, name, env, dir, bin string
+	aliases, procs          []string
+}
+
+var (
+	qoderGlobal = qoderBuild{id: "qoder", name: "Qoder", env: "QODER_CONFIG_DIR", dir: ".qoder", bin: "qodercli",
+		aliases: []string{"qodercli", "qoder-cli"}, procs: []string{`(^|/)qodercli( |$)`, `(^|/)qoder( |$)`}}
+	qoderChina = qoderBuild{id: "qoder-cn", name: "Qoder CN", env: "QODERCN_CONFIG_DIR", dir: ".qoder-cn", bin: "qoderclicn",
+		aliases: []string{"qoderclicn", "qodercn", "qodercn-cli"}, procs: []string{`(^|/)qoderclicn( |$)`, `(^|/)qodercn( |$)`}}
+)
+
+func qoderSite(home string, b qoderBuild) *Agent {
+	dir := os.Getenv(b.env)
 	if dir == "" {
-		dir = filepath.Join(home, ".qoder")
+		dir = filepath.Join(home, b.dir)
 	}
 	path := filepath.Join(dir, "settings.json")
-	key := "qoder:" + path + ":"
+	key := b.id + ":" + path + ":"
 	slot := "providers." + magpieID
 	get := func(k string) string { v, _ := edit.GetJSON(path, k); return v }
 	onMagpie := func() bool {
@@ -39,18 +64,18 @@ func qoder(home string) *Agent {
 		return ok && get(slot+".apiKey") == gateway.Token
 	}
 	return &Agent{
-		ID: "qoder", Name: "Qoder", Icon: "qoder", Aliases: []string{"qodercli", "qoder-cli"},
-		Bin: "qodercli", Dir: dir, Path: path,
+		ID: b.id, Name: b.name, Icon: "qoder", Aliases: b.aliases,
+		Bin: b.bin, Dir: dir, Path: path,
 		Sync: func() error {
 			ref, ok := cutMagpie(get("model.name"))
 			if !ok {
 				return nil
 			}
-			return syncJSON(path, slot, func() any { return qoderProvider(ref) })
+			return syncJSON(path, slot, func() any { return qoderProvider(b.id, ref) })
 		},
 		Notice: func() string {
-			if Running(`(^|/)qodercli( |$)`, `(^|/)qoder( |$)`) {
-				return "Qoder reads its settings as a session starts — open sessions keep the model they have; new ones use this."
+			if Running(b.procs...) {
+				return b.name + " reads its settings as a session starts — open sessions keep the model they have; new ones use this."
 			}
 			return ""
 		},
@@ -58,7 +83,7 @@ func qoder(home string) *Agent {
 			if !onMagpie() {
 				return ""
 			}
-			return wiringOff("Qoder", path, func(k string) (string, bool) { return edit.GetJSON(path, slot+"."+k) },
+			return wiringOff(b.name, path, func(k string) (string, bool) { return edit.GetJSON(path, slot+"."+k) },
 				"baseUrl", gatewayV1())
 		},
 		Fields: []Field{{
@@ -70,7 +95,7 @@ func qoder(home string) *Agent {
 						stash(map[string]string{key + "model": get("model.name")})
 					}
 					return edit.SetJSON(path,
-						edit.KV{Path: slot, Value: qoderProvider(ref)},
+						edit.KV{Path: slot, Value: qoderProvider(b.id, ref)},
 						edit.KV{Path: "model.name", Value: v})
 				}
 				// out of magpie: its provider goes, and the model the user
@@ -89,7 +114,7 @@ func qoder(home string) *Agent {
 				return edit.SetJSON(path, edit.KV{Path: "model.name", Value: v})
 			},
 			Options: func(cur map[string]string) []Option {
-				return append(ownOptions("", cur["model"]), viaMagpie("qoder", magpieID+"/")...)
+				return append(ownOptions("", cur["model"]), viaMagpie(b.id, magpieID+"/")...)
 			},
 		}, {
 			// what Qoder asks a model for when it has no effort of its own
@@ -114,9 +139,9 @@ var qoderLevels = []string{"low", "medium", "high", "xhigh", "max"}
 
 // qoderProvider is magpie's entry in Qoder's providers, every magpie model
 // in it, model the one it starts on.
-func qoderProvider(model string) map[string]any {
+func qoderProvider(agent, model string) map[string]any {
 	var ms []map[string]any
-	for _, m := range magpieModels("qoder") {
+	for _, m := range magpieModels(agent) {
 		caps := map[string]any{"tools": true, "vision": m.Images}
 		var levels []string
 		for _, e := range m.Efforts {

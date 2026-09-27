@@ -14,15 +14,29 @@ import (
 )
 
 func TestQoder(t *testing.T) {
+	t.Run("global", func(t *testing.T) { testQoder(t, qoder, filepath.Join(".qoder", "settings.json")) })
+	t.Run("cn", func(t *testing.T) { testQoder(t, qoderCN, filepath.Join(".qoder-cn", "settings.json")) })
+	// Qoder CN's own config dir, apart from Qoder's
+	home := t.TempDir()
+	t.Setenv("QODER_CONFIG_DIR", filepath.Join(home, "g"))
+	t.Setenv("QODERCN_CONFIG_DIR", filepath.Join(home, "c"))
+	if g, c := qoder(home), qoderCN(home); g.Path != filepath.Join(home, "g", "settings.json") ||
+		c.Path != filepath.Join(home, "c", "settings.json") || c.ID != "qoder-cn" || c.Bin != "qoderclicn" {
+		t.Fatalf("paths %q %q", g.Path, c.Path)
+	}
+}
+
+func testQoder(t *testing.T, mk func(string) *Agent, rel string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("QODER_CONFIG_DIR", "")
+	t.Setenv("QODERCN_CONFIG_DIR", "")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 	if err := provider.Save(provider.Provider{ID: "deepseek", Name: "DeepSeek", Chat: "https://api.deepseek.com/v1", Key: "k", Models: []string{"pro", "flash"}}); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(home, ".qoder", "settings.json")
+	path := filepath.Join(home, rel)
 	type file struct {
 		Providers map[string]map[string]any `json:"providers"`
 		Model     map[string]any            `json:"model"`
@@ -42,7 +56,7 @@ func TestQoder(t *testing.T) {
   "model": {"name": "performance", "reasoningEffort": "high"}
 }`), 0o644)
 
-	a := qoder(home)
+	a := mk(home)
 	f, e := a.Field("model"), a.Field("effort")
 	if f.Get() != "performance" || e.Get() != "high" {
 		t.Fatalf("get: %q %q", f.Get(), e.Get())
