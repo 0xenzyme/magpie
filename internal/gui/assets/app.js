@@ -2040,9 +2040,28 @@ function iconPicker(ed) {
     };
     const choose = el("button", "text", t("Choose a picture…"));
     choose.onclick = () => file.click();
+    // the site's own icon, looked for from the base URL typed above
+    const site = el("button", "text", t("From the website"));
+    site.title = t("Look for the icon of the site the base URL is on");
+    site.onclick = async () => {
+      const base = draft[apiField[draft.api]] || draft.chat || draft.responses || draft.anthropic || "";
+      site.disabled = true;
+      site.textContent = t("Looking…");
+      try {
+        const data = await api("icons/favicon", { url: base });
+        draft.icon = data.icon;
+        editorError("");
+        draw();
+        syncHead();
+      } catch (e) {
+        editorError(e.message);
+        site.disabled = false;
+        site.textContent = t("From the website");
+      }
+    };
     const builtin = el("button", "text", t("Built-in icons"));
     builtin.onclick = () => { open = !open; draw(); };
-    box.append(file, choose, builtin);
+    box.append(file, choose, site, builtin);
     if (draft.icon && draft.icon !== "generic") {
       const reset = el("button", "text", t("Default"));
       reset.onclick = () => { draft.icon = ""; draw(); syncHead(); };

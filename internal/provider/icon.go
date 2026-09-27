@@ -173,6 +173,7 @@ func fetchIcon(ctx context.Context, c *http.Client, u string) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Accept", "image/*")
+	req.Header.Set("User-Agent", iconUA)
 	res, err := c.Do(req)
 	if err != nil {
 		return "", errorf("could not fetch the icon: %v", err)
