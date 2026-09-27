@@ -1,8 +1,12 @@
 package provider
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -12,6 +16,74 @@ func grokSignedIn(t *testing.T, home, email string) {
 	writeFile(t, filepath.Join(home, "auth.json"), map[string]any{
 		"https://auth.x.ai": map[string]any{"key": "k-" + email, "email": email, "expires_at": time.Now().Add(time.Hour)},
 	})
+}
+
+// Grok has its own allowance cache, reached through the same public entry
+// point. A cache hit after a fetch starts must share its result lock.
+func TestLoginUsageGrokMixedCache(t *testing.T) {
+	home := signIn(t)
+	t.Setenv("GROK_HOME", filepath.Join(home, ".grok"))
+	grokSignedIn(t, GrokHome(), "me@x.ai")
+	extra, err := newGrokHome()
+	if err != nil {
+		t.Fatal(err)
+	}
+	grokSignedIn(t, extra, "two@x.ai")
+	if _, err := addGrokLogin(extra); err != nil {
+		t.Fatal(err)
+	}
+	ls := grokLogins()
+	if len(ls) != 2 {
+		t.Fatalf("logins: %+v", ls)
+	}
+	// Keep the cached account last regardless of how logins are ordered,
+	// so its map write follows the uncached account's go statement.
+	fetched, cached := ls[0], ls[len(ls)-1]
+	grokHomeUsage.Lock()
+	oldCache := grokHomeUsage.m
+	grokHomeUsage.m = map[string]loginUsageEntry{
+		cached.Home: {at: time.Now(), q: SubscriptionQuota{Provider: "grok",
+			Windows: []QuotaWindow{{Name: "7 days", Used: 97}}}},
+	}
+	grokHomeUsage.Unlock()
+	t.Cleanup(func() {
+		grokHomeUsage.Lock()
+		grokHomeUsage.m = oldCache
+		grokHomeUsage.Unlock()
+	})
+
+	var hits atomic.Int32
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Path != "/billing" || r.URL.Query().Get("format") != "credits" ||
+			r.Header.Get("Authorization") != "Bearer k-"+fetched.User {
+			t.Errorf("unexpected usage request: %s", r.URL)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"config":{"creditUsagePercent":12,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY"}}}`))
+	}))
+	defer fake.Close()
+	old := grokBase
+	grokBase = fake.URL
+	t.Cleanup(func() { grokBase = old })
+
+	for i := range 2 { // the fetched account is cached on the second read
+		u := LoginUsage(context.Background(), "grok")
+		if len(u) != 2 {
+			t.Fatalf("read %d: usage for %d accounts, want 2", i, len(u))
+		}
+		for user, want := range map[string]float64{fetched.User: 12, cached.User: 97} {
+			q := u[user]
+			if q.Error != "" || len(q.Windows) != 1 || q.Windows[0].Used != want {
+				t.Fatalf("read %d: %s usage %+v, want %v%%", i, user, q, want)
+			}
+		}
+		if got := hits.Load(); got != 1 {
+			t.Fatalf("read %d: %d requests, want only the uncached account fetched once", i, got)
+		}
+	}
 }
 
 // A further Grok account signs in in a home of magpie's: the CLI's own

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -128,6 +129,68 @@ func TestLoginUsageEachAccount(t *testing.T) {
 	}
 	if len(LoginUsage(context.Background(), "opencode")) != 0 {
 		t.Fatal("usage for an agent without accounts")
+	}
+}
+
+// An uncached account is fetched in a goroutine while the next account
+// comes from the cache. Both results must be added to the same map safely.
+func TestLoginUsageMixedCache(t *testing.T) {
+	home := signIn(t)
+	rememberLogins(true)
+	codexSignIn(t, home, "work@example.com", "r-work")
+	rememberLogins(true)
+	ls := Logins("codex")
+	if len(ls) != 2 {
+		t.Fatalf("logins: %+v", ls)
+	}
+	// Cache the last account in the order LoginUsage reads them: its map
+	// write must follow the go statement for the uncached account.
+	fetched, cached := ls[0].User, ls[len(ls)-1].User
+	accountIDs := map[string]string{"me@example.com": "acct-1", "work@example.com": "acct-work@example.com"}
+
+	loginUsageCache.Lock()
+	oldCache := loginUsageCache.m
+	loginUsageCache.m = map[string]loginUsageEntry{
+		"codex/" + strings.ToLower(cached): {at: time.Now(), q: SubscriptionQuota{Provider: "codex",
+			Windows: []QuotaWindow{{Name: "5 hours", Used: 97}}}},
+	}
+	loginUsageCache.Unlock()
+	t.Cleanup(func() {
+		loginUsageCache.Lock()
+		loginUsageCache.m = oldCache
+		loginUsageCache.Unlock()
+	})
+
+	var hits atomic.Int32
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Path != "/backend-api/wham/usage" || r.Header.Get("chatgpt-account-id") != accountIDs[fetched] {
+			t.Errorf("unexpected usage request: %s, account %q", r.URL.Path, r.Header.Get("chatgpt-account-id"))
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"plan_type": "pro", "rate_limit": map[string]any{
+			"primary_window": map[string]any{"used_percent": 12, "limit_window_seconds": 18000}}})
+	}))
+	defer fake.Close()
+	old := CodexBase
+	CodexBase = fake.URL + "/backend-api/codex"
+	t.Cleanup(func() { CodexBase = old })
+
+	for i := range 2 { // the fetched account is cached on the second read
+		u := LoginUsage(context.Background(), "codex")
+		if len(u) != 2 {
+			t.Fatalf("read %d: usage for %d accounts, want 2", i, len(u))
+		}
+		for user, want := range map[string]float64{fetched: 12, cached: 97} {
+			q := u[user]
+			if q.Error != "" || len(q.Windows) != 1 || q.Windows[0].Used != want {
+				t.Fatalf("read %d: %s usage %+v, want %v%%", i, user, q, want)
+			}
+		}
+		if got := hits.Load(); got != 1 {
+			t.Fatalf("read %d: %d requests, want only the uncached account fetched once", i, got)
+		}
 	}
 }
 

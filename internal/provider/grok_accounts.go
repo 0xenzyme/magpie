@@ -132,7 +132,9 @@ func grokLoginUsage(ctx context.Context) map[string]SubscriptionQuota {
 		e, ok := u.m[g.Home]
 		u.Unlock()
 		if ok && time.Since(e.at) < time.Minute {
+			mu.Lock()
 			out[g.User] = e.q
+			mu.Unlock()
 			continue
 		}
 		wg.Add(1)

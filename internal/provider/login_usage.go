@@ -56,7 +56,9 @@ func LoginUsage(ctx context.Context, agent string) map[string]SubscriptionQuota 
 		e, ok := c.m[key]
 		c.Unlock()
 		if ok && time.Since(e.at) < time.Minute {
+			mu.Lock()
 			out[l.User] = e.q
+			mu.Unlock()
 			continue
 		}
 		wg.Add(1)
