@@ -297,7 +297,7 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 
 // ended is told how a turn's reply went. A run whose reply was whole and
 // asked for nothing more waits for the conversation's next turn; one that
-// failed, was cut short or went unheard is let go.
+// failed, was cut short or went unheard is let go, as is a one-off ask.
 func (r *subscriptionRun) ended(req *Request, said, stop string, ok bool) {
 	switch {
 	case !ok:
@@ -312,6 +312,12 @@ func (r *subscriptionRun) ended(req *Request, said, stop string, ok bool) {
 	case r.stdin == nil:
 		return // it ends by itself
 	case stop != "stop":
+		r.abort()
+		return
+	case len(req.Tools) == 0 && len(req.Messages) < 2:
+		// a one-off ask — an agent's title or topic, the router's
+		// classifier — has no next turn: kept, it would be a Claude Code
+		// process idle for idleLongest, several at once
 		r.abort()
 		return
 	}

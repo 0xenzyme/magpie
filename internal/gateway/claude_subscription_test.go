@@ -93,7 +93,7 @@ func TestClaudeRunKeptForTheNextTurn(t *testing.T) {
 	p := provider.Provider{ID: "claude", Account: &provider.Account{Agent: "claude", User: "u"}}
 	ask := func(msgs string) string {
 		t.Helper()
-		body := `{"model":"claude-sonnet-5","max_tokens":100,"system":"be brief","messages":` + msgs + `}`
+		body := `{"model":"claude-sonnet-5","max_tokens":100,"system":"be brief","tools":[{"name":"read","input_schema":{"type":"object"}}],"messages":` + msgs + `}`
 		rec := httptest.NewRecorder()
 		var u Usage
 		if code, msg := s.serveClaudeSubscription(rec, httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body)), provider.Anthropic, p, "claude-sonnet-5", []byte(body), &u); code != 200 {
@@ -125,6 +125,51 @@ func TestClaudeRunKeptForTheNextTurn(t *testing.T) {
 	third := ask(`[` + msg("user", "hi") + `,` + msg("assistant", first) + `,` + msg("user", "and?") + `,` + msg("assistant", "edited") + `,` + msg("user", "so?") + `]`)
 	if strings.Contains(third, "pid "+pid) {
 		t.Fatalf("an edited reply: %q", third)
+	}
+}
+
+// A one-off ask — a lone message and no tools, as an agent's title or the
+// router's classifier sends — leaves no Claude Code waiting for a next
+// turn that won't come; a conversation already going on keeps its run.
+func TestClaudeOneOffAskNotKept(t *testing.T) {
+	fakeClaude(t)
+	s := New()
+	p := provider.Provider{ID: "claude", Account: &provider.Account{Agent: "claude", User: "u"}}
+	ask := func(msgs string) string {
+		t.Helper()
+		body := `{"model":"claude-sonnet-5","max_tokens":100,"messages":` + msgs + `}`
+		rec := httptest.NewRecorder()
+		var u Usage
+		if code, msg := s.serveClaudeSubscription(rec, httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body)), provider.Anthropic, p, "claude-sonnet-5", []byte(body), &u); code != 200 {
+			t.Fatalf("%d %s", code, msg)
+		}
+		var res struct {
+			Content []struct{ Text string } `json:"content"`
+		}
+		json.Unmarshal(rec.Body.Bytes(), &res)
+		if len(res.Content) == 0 {
+			t.Fatalf("no answer: %s", rec.Body)
+		}
+		return res.Content[0].Text
+	}
+	msg := func(role, text string) string { return `{"role":"` + role + `","content":` + strconv.Quote(text) + `}` }
+	idle := func() int {
+		s.subscription.mu.Lock()
+		defer s.subscription.mu.Unlock()
+		return len(s.subscription.idle)
+	}
+
+	first := ask(`[` + msg("user", "a title for this") + `]`)
+	if n := idle(); n != 0 {
+		t.Fatalf("a one-off ask left %d runs waiting", n)
+	}
+	second := ask(`[` + msg("user", "a title for this") + `,` + msg("assistant", first) + `,` + msg("user", "and?") + `]`)
+	if n := idle(); n != 1 {
+		t.Fatalf("a conversation going on: %d runs waiting, want 1", n)
+	}
+	pid, _, _ := strings.Cut(strings.TrimPrefix(second, "pid "), " ")
+	if third := ask(`[` + msg("user", "a title for this") + `,` + msg("assistant", first) + `,` + msg("user", "and?") + `,` + msg("assistant", second) + `,` + msg("user", "so?") + `]`); third != "pid "+pid+" turn 2" {
+		t.Fatalf("third: %q, second %q", third, second)
 	}
 }
 
