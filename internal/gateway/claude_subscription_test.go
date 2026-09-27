@@ -283,3 +283,68 @@ func TestClaudeLimits(t *testing.T) {
 		t.Fatalf("nothing said: %+v", got)
 	}
 }
+
+// A conversation switched to another model and back (KevinXC on Discord)
+// has a new run carry it on: the one left waiting before the switch is
+// let go then, not kept idleLongest for a turn that can't come back to it —
+// a Claude Code process more with every switch.
+func TestClaudeRunLetGoWhenTheConversationMovedOn(t *testing.T) {
+	fakeClaude(t)
+	s := New()
+	p := provider.Provider{ID: "claude", Account: &provider.Account{Agent: "claude", User: "u"}}
+	ask := func(model, msgs string) string {
+		t.Helper()
+		body := `{"model":"` + model + `","max_tokens":100,"tools":[{"name":"read","input_schema":{"type":"object"}}],"messages":` + msgs + `}`
+		rec := httptest.NewRecorder()
+		var u Usage
+		if code, msg := s.serveClaudeSubscription(rec, httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body)), provider.Anthropic, p, model, []byte(body), &u); code != 200 {
+			t.Fatalf("%d %s", code, msg)
+		}
+		var res struct {
+			Content []struct{ Text string } `json:"content"`
+		}
+		json.Unmarshal(rec.Body.Bytes(), &res)
+		if len(res.Content) == 0 {
+			t.Fatalf("no answer: %s", rec.Body)
+		}
+		return res.Content[0].Text
+	}
+	msg := func(role, text string) string { return `{"role":"` + role + `","content":` + strconv.Quote(text) + `}` }
+	waiting := func() []string {
+		s.subscription.mu.Lock()
+		defer s.subscription.mu.Unlock()
+		var pids []string
+		for _, run := range s.subscription.idle {
+			pids = append(pids, strconv.Itoa(run.cmd.Process.Pid))
+		}
+		return pids
+	}
+	pidOf := func(said string) string { pid, _, _ := strings.Cut(strings.TrimPrefix(said, "pid "), " "); return pid }
+
+	conv := msg("user", "one")
+	first := ask("claude-sonnet-5", `[`+conv+`]`)
+	conv += `,` + msg("assistant", first) + `,` + msg("user", "two")
+	if w := waiting(); len(w) != 1 || w[0] != pidOf(first) {
+		t.Fatalf("after the first turn: %v, ran %q", w, first)
+	}
+	// a turn answered elsewhere, then back on the subscription
+	conv += `,` + msg("assistant", "an answer from another provider") + `,` + msg("user", "three")
+	back := ask("claude-sonnet-5", `[`+conv+`]`)
+	if pidOf(back) == pidOf(first) {
+		t.Fatalf("the run before the switch answered after it: %q", back)
+	}
+	if w := waiting(); len(w) != 1 || w[0] != pidOf(back) {
+		t.Fatalf("after switching back: %v waiting, want only %s", w, pidOf(back))
+	}
+	// and another Claude model of the same account, for the next turn
+	conv += `,` + msg("assistant", back) + `,` + msg("user", "four")
+	other := ask("claude-opus-5-5", `[`+conv+`]`)
+	if w := waiting(); len(w) != 1 || w[0] != pidOf(other) {
+		t.Fatalf("after another Claude model: %v waiting, want only %s", w, pidOf(other))
+	}
+	// a conversation of its own keeps its run beside it
+	ask("claude-sonnet-5", `[`+msg("user", "elsewhere")+`,`+msg("assistant", "x")+`,`+msg("user", "y")+`]`)
+	if w := waiting(); len(w) != 2 {
+		t.Fatalf("two conversations: %v waiting", w)
+	}
+}

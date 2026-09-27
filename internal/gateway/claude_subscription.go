@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"os"
@@ -84,11 +85,13 @@ type subscriptionRun struct {
 	timer   *time.Timer
 
 	// Claude Code's input, kept open for the next turn; owner is the account
-	// it runs as, and idleKey and idleAt say it is waiting for one.
+	// it runs as, and idleKey and idleAt say it is waiting for one. convKey
+	// is the conversation it has had, whatever the model (conversationKeys).
 	stdin   io.WriteCloser
 	owner   string
 	idleKey string
 	idleAt  time.Time
+	convKey string
 
 	// An agent whose stream does not carry its tool calls in full (Cursor)
 	// learns of them here, as the MCP helper hands each one over, and opens
@@ -295,6 +298,27 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 	return run, ch
 }
 
+// retire lets go of the runs left waiting at an earlier point of this
+// conversation, which a new run now carries on: its turns since went to
+// another model (switched to and back), so none of them comes back to
+// those runs, each a Claude Code process kept idleLongest for nothing.
+func (b *subscriptionBridge) retire(owner string, msgs []Message) {
+	keys := conversationKeys(owner, msgs)
+	var drop []*subscriptionRun
+	b.mu.Lock()
+	for key, run := range b.idle {
+		if run.owner == owner && run.convKey != "" && slices.Contains(keys, run.convKey) {
+			delete(b.idle, key)
+			run.idleKey = ""
+			drop = append(drop, run)
+		}
+	}
+	b.mu.Unlock()
+	for _, run := range drop {
+		run.abort()
+	}
+}
+
 // ended is told how a turn's reply went. A run whose reply was whole and
 // asked for nothing more waits for the conversation's next turn; one that
 // failed, was cut short or went unheard is let go, as is a one-off ask.
@@ -331,6 +355,9 @@ func (r *subscriptionRun) ended(req *Request, said, stop string, ok bool) {
 	}
 	b.idle[key] = r
 	r.idleKey, r.idleAt = key, time.Now()
+	if keys := conversationKeys(r.owner, append(req.Messages[:len(req.Messages):len(req.Messages)], reply)); len(keys) > 0 {
+		r.convKey = keys[len(keys)-1]
+	}
 	for len(b.idle) > idleMost {
 		var oldest *subscriptionRun
 		for _, run := range b.idle {
@@ -358,8 +385,31 @@ func turnKey(owner string, req *Request, msgs []Message) string {
 	h := sha256.New()
 	tools, _ := json.Marshal(req.Tools)
 	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%t", owner, req.Model, req.Effort, req.ToolChoice, req.System, tools, req.WebSearch)
+	hashMessages(h, msgs, nil)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// conversationKeys is the conversation so far as it stood after each of
+// its replies, for the account alone — not the model, its effort or the
+// tools — so a run left waiting at one of them is known whatever the model
+// that turn was asked of.
+func conversationKeys(owner string, msgs []Message) []string {
+	h := sha256.New()
+	fmt.Fprintf(h, "%s\x00", owner)
+	var keys []string
+	hashMessages(h, msgs, func(i int) {
+		if msgs[i].Role == "assistant" {
+			keys = append(keys, hex.EncodeToString(h.Sum(nil)))
+		}
+	})
+	return keys
+}
+
+// hashMessages writes the messages' words, tool calls and results to h,
+// calling after, when set, once each message is in.
+func hashMessages(h hash.Hash, msgs []Message, after func(i int)) {
 	role := ""
-	for _, m := range msgs {
+	for i, m := range msgs {
 		var b strings.Builder
 		for _, p := range m.Parts {
 			switch p.Kind {
@@ -375,17 +425,17 @@ func turnKey(owner string, req *Request, msgs []Message) string {
 				fmt.Fprintf(&b, "\x01image %d %s ", len(p.Data), p.URL)
 			}
 		}
-		words := strings.Join(strings.Fields(b.String()), " ")
-		if words == "" {
-			continue
+		if words := strings.Join(strings.Fields(b.String()), " "); words != "" {
+			if m.Role != role {
+				role = m.Role
+				fmt.Fprintf(h, "\x00%s:", role)
+			}
+			h.Write([]byte(words + " "))
 		}
-		if m.Role != role {
-			role = m.Role
-			fmt.Fprintf(h, "\x00%s:", role)
+		if after != nil {
+			after(i)
 		}
-		h.Write([]byte(words + " "))
 	}
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 // claudeCLIArgs runs Claude Code with none of its own tools but, when the
@@ -1074,6 +1124,7 @@ func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request,
 		if run, events := s.subscription.resume(req, owner); run != nil {
 			return run, events, nil
 		}
+		s.subscription.retire(owner, req.Messages)
 		token, _, err := p.Account.Token(ctx)
 		if err != nil {
 			return nil, nil, err
