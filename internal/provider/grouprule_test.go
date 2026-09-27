@@ -284,3 +284,19 @@ func TestSaveGroupClassifier(t *testing.T) {
 		t.Fatalf("kept %q without an intent", g.Classifier)
 	}
 }
+
+func TestThenUses(t *testing.T) {
+	rules := []Rule{
+		{Use: "codex/gpt", Images: true},
+		{Use: "ai/long", Tokens: 100000},
+		{Use: "codex/gpt", Images: true, Tokens: 10},
+		{Use: "ai/flash", Images: true},
+	}
+	q := RuleRequest{Images: true, Tokens: 50}
+	if got := ThenUses(rules, q, 1, "codex/gpt"); !slices.Equal(got, []string{"ai/flash"}) {
+		t.Fatal(got)
+	}
+	if got := ThenUses(rules, q, 4, "ai/flash"); len(got) != 0 {
+		t.Fatal(got)
+	}
+}

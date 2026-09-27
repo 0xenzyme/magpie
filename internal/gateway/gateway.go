@@ -659,11 +659,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		// begins; within it, whoever answered last stays — the rule's
 		// member, or who took over when it failed
 		was := cands[0]
-		ok := false
-		if len(ruled) > 0 {
-			cands, pl, ok = ruleFirst(ruled, cands, pl)
-		}
-		hit.Unready = !ok
+		var ok bool
+		cands, pl, ok = applyRule(hit, ms, cands, pl)
 		if ok && aff.Kept && cands[0].rest != was.rest {
 			aff.Kept, aff.Why = false, "rule"
 		}

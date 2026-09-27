@@ -157,6 +157,19 @@ func MatchRule(rules []Rule, q RuleRequest) int {
 	return slices.IndexFunc(rules, func(r Rule) bool { return r.Matches(q) })
 }
 
+// ThenUses are the members the rules after the n-th (from 1) that also
+// match q send to, each once and in the rules' order, leaving out use: who
+// a request a rule sent to use fails over to before the group's others (#112).
+func ThenUses(rules []Rule, q RuleRequest, n int, use string) []string {
+	var out []string
+	for i := n; i < len(rules); i++ {
+		if u := rules[i].Use; u != use && !slices.Contains(out, u) && rules[i].Matches(q) {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
 // Intents are the intents the classifier is to choose among for q: those
 // of the rules that match it but for their intent, up to the first that
 // matches outright (a rule after it could never be the first to match).

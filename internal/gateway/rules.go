@@ -38,6 +38,11 @@ type RuleHit struct {
 	// Unready: the member the rule names has nobody to take it now, and
 	// the group routes the request as it would without the rule.
 	Unready bool `json:"unready,omitempty"`
+	// Then: the members the rules after it that match too send to, which
+	// the request fails over to, in turn, before the group's others (#112)
+	Then []string `json:"then,omitempty"`
+	// Instead: the one of Then that went first, Use having nobody ready
+	Instead string `json:"instead,omitempty"`
 	// Classified: the group's classifier was asked which intent the
 	// turn's first message is
 	Classified *Classified `json:"classified,omitempty"`
@@ -139,6 +144,13 @@ func ruleFor(key string, g provider.Group, ms []provider.Member, req *Request, a
 		q.Tokens = tr.input // what the vendor counted last, a floor: the conversation only grew since
 	}
 	hit := &RuleHit{Turn: turn, Tokens: q.Tokens, Images: q.Images, Effort: q.Effort, Bare: len(g.Rules) == 0}
+	defer func() {
+		// whatever put a member first, the rules after it that match too
+		// say who comes next
+		if hit != nil && hit.Use != "" && hit.N >= 1 {
+			hit.Then = provider.ThenUses(g.Rules, q, hit.N, hit.Use)
+		}
+	}()
 	if hit.Effort == "" && q.Thinking {
 		hit.Effort = "on"
 	}
@@ -330,11 +342,8 @@ func (s *Server) nestedRules(at string, req *Request, agent string, ms []provide
 			continue
 		}
 		was := cands[0]
-		ok := false
-		if ruled := ruleMembers(h, subMs); len(ruled) > 0 {
-			cands, pl, ok = ruleFirst(ruled, cands, pl)
-		}
-		h.Unready = !ok
+		var ok bool
+		cands, pl, ok = applyRule(h, subMs, cands, pl)
 		if ok && aff != nil && aff.Kept && cands[0].rest != was.rest {
 			aff.Kept, aff.Why = false, "rule"
 		}
@@ -357,24 +366,76 @@ func ruleMembers(hit *RuleHit, ms []provider.Member) []provider.Member {
 	return out
 }
 
-// ruleFirst puts first the member's keys or accounts that aren't resting,
-// in the order they had; everyone else follows as they were, to fail over
-// to. It reports false when the member has none ready.
-func ruleFirst(ms []provider.Member, cs []candidate, pl planned) ([]candidate, planned, bool) {
-	var first, rest []candidate
-	var wFirst, wRest []Weighed
-	for i, c := range cs {
-		if slices.ContainsFunc(ms, func(m provider.Member) bool { return ofMember(c, m) }) && pl.order[i].Rest == nil {
-			first, wFirst = append(first, c), append(wFirst, pl.order[i])
-		} else {
-			rest, wRest = append(rest, c), append(wRest, pl.order[i])
+// ruleOrder is who a rule's request goes to before the group's others:
+// the member it names, then those the rules after it that match too name.
+func ruleOrder(hit *RuleHit, ms []provider.Member) []provider.Member {
+	out := ruleMembers(hit, ms)
+	if hit == nil || hit.Use == "" {
+		return out
+	}
+	for _, id := range hit.Then {
+		for _, m := range ms {
+			if m.ID == id {
+				out = append(out, m)
+			}
 		}
 	}
-	if len(first) == 0 {
-		return cs, pl, false
+	return out
+}
+
+// ruleFirst puts first the keys or accounts of the members in ms that
+// aren't resting, a member's before the next's and each's in the order
+// they had; everyone else follows as they were, to fail over to. lead is
+// the one in ms whose goes first, -1 when none is ready.
+func ruleFirst(ms []provider.Member, cs []candidate, pl planned) (out []candidate, _ planned, lead int) {
+	rank := func(i int) int {
+		if pl.order[i].Rest != nil {
+			return -1
+		}
+		return slices.IndexFunc(ms, func(m provider.Member) bool { return ofMember(cs[i], m) })
 	}
-	pl.order = append(wFirst, wRest...)
-	return append(first, rest...), pl, true
+	idx := make([]int, len(cs))
+	for i := range idx {
+		idx[i] = i
+	}
+	slices.SortStableFunc(idx, func(a, b int) int {
+		ra, rb := rank(a), rank(b)
+		switch {
+		case ra == rb:
+			return 0
+		case ra < 0:
+			return 1
+		case rb < 0:
+			return -1
+		}
+		return ra - rb
+	})
+	lead = rank(idx[0])
+	if lead < 0 {
+		return cs, pl, -1
+	}
+	order := make([]Weighed, len(cs))
+	out = make([]candidate, len(cs))
+	for j, i := range idx {
+		out[j], order[j] = cs[i], pl.order[i]
+	}
+	pl.order = order
+	return out, pl, lead
+}
+
+// applyRule puts a rule's members first (ruleOrder) and says in the hit
+// whether the one it names leads; it reports whether any of them was ready.
+func applyRule(hit *RuleHit, ms []provider.Member, cs []candidate, pl planned) ([]candidate, planned, bool) {
+	ordered := ruleOrder(hit, ms)
+	lead := -1
+	if len(ordered) > 0 && len(cs) > 0 {
+		cs, pl, lead = ruleFirst(ordered, cs, pl)
+	}
+	hit.Unready = lead < 0 || ordered[lead].ID != hit.Use
+	if lead >= 0 && hit.Unready {
+		hit.Instead = ordered[lead].ID
+	}
+	return cs, pl, lead >= 0
 }
 
 // ofMember reports whether a candidate is one of the member's keys or

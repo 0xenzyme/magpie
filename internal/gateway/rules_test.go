@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -440,7 +441,8 @@ func TestRuleFirstAndOfMember(t *testing.T) {
 		pl.order = append(pl.order, Weighed{ID: c.rest, Model: c.model})
 	}
 	pl.order[3].Rest = &Rest{}
-	got, gp, ok := ruleFirst([]provider.Member{{Provider: b, Model: "m"}}, cs, pl)
+	got, gp, lead := ruleFirst([]provider.Member{{Provider: b, Model: "m"}}, cs, pl)
+	ok := lead == 0
 	var ids []string
 	for i, c := range got {
 		ids = append(ids, c.rest+"/"+c.model)
@@ -451,7 +453,16 @@ func TestRuleFirstAndOfMember(t *testing.T) {
 	if !ok || strings.Join(ids, " ") != "ab/m ab@me/m a/m ab#k2/x ab#k2/m" {
 		t.Fatalf("%v %v", ok, ids)
 	}
-	if _, _, ok := ruleFirst([]provider.Member{{Provider: provider.Provider{ID: "c"}, Model: "m"}}, cs, pl); ok {
+	// a later rule's member follows the first's, before everyone else (#112)
+	got, _, lead = ruleFirst([]provider.Member{{Provider: provider.Provider{ID: "c"}, Model: "m"}, {Provider: a, Model: "m"}, {Provider: b, Model: "m"}}, cs, pl)
+	ids = nil
+	for _, c := range got {
+		ids = append(ids, c.rest+"/"+c.model)
+	}
+	if lead != 1 || strings.Join(ids, " ") != "a/m ab/m ab@me/m ab#k2/x ab#k2/m" {
+		t.Fatalf("%d %v", lead, ids)
+	}
+	if _, _, lead := ruleFirst([]provider.Member{{Provider: provider.Provider{ID: "c"}, Model: "m"}}, cs, pl); lead >= 0 {
 		t.Fatal("no candidates of c")
 	}
 	// "a" is not "ab"'s
@@ -603,5 +614,47 @@ func TestRuleTurnHoldsItsModelOnASharedAccount(t *testing.T) {
 	}
 	if strings.Join(got, ",") != "small,big,big,big" {
 		t.Fatalf("asked %v", got)
+	}
+}
+
+// #112: two rules for images, the first's member out of quota. The
+// request fails over to the second rule's member, not to the group's
+// text-only first; and once the first rests, the second's goes first.
+func TestRuleFailsOverToTheNextRule(t *testing.T) {
+	_, a, b := ruled(t)
+	c := &ruleUp{key: "kc"}
+	srv := httptest.NewServer(c)
+	t.Cleanup(srv.Close)
+	yes := true
+	if err := provider.Save(provider.Provider{ID: "c", Name: "C", Key: "kc", Models: []string{"flash"}, Chat: srv.URL + "/v1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.SaveLive("c", srv.URL+"/v1", []catalog.Model{{ID: "flash", Context: 128000, Images: true, ImageInput: &yes}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.SaveGroup(provider.Group{ID: "r", Name: "R", Members: []string{"a/small", "b/big", "c/flash"}, Routing: provider.Ordered,
+		Rules: []provider.Rule{{Use: "b/big", Images: true}, {Use: "c/flash", Images: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	s := New()
+	b.mu.Lock()
+	b.fail = 429
+	b.mu.Unlock()
+	// the image is an earlier message's, as in a turn's tool rounds: the
+	// text-only member could take the request, the image left out
+	img := `{"model":"group/r","messages":[{"role":"user","content":[{"type":"text","text":"look"},{"type":"image_url","image_url":{"url":"data:image/png;base64,aGVsbG8="}}]},` +
+		`{"role":"assistant","content":"a cat"},{"role":"user","content":"and its name?"}]}`
+	code, out := postAs(t, s, "one", img)
+	r := lastRoute(s)
+	if code != 200 || !strings.Contains(out, "from kc") || r.Rule.N != 1 || !slices.Equal(r.Rule.Then, []string{"c/flash"}) {
+		t.Fatalf("%d %s %+v", code, out, r.Rule)
+	}
+	code, out = postAs(t, s, "two", strings.Replace(img, "look", "again", 1))
+	r = lastRoute(s)
+	if code != 200 || !strings.Contains(out, "from kc") || !r.Rule.Unready || r.Rule.Instead != "c/flash" {
+		t.Fatalf("resting: %d %s %+v", code, out, r.Rule)
+	}
+	if a.n() != 0 || b.n() != 1 || c.n() != 2 {
+		t.Fatalf("a %d b %d c %d", a.n(), b.n(), c.n())
 	}
 }
