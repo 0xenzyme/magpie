@@ -53,6 +53,10 @@ func TestWebKey(t *testing.T) {
 	if _, _, err := webKey(); err == nil {
 		t.Fatal("a short MAGPIE_WEB_KEY was taken")
 	}
+	t.Setenv("MAGPIE_WEB_KEY", "0123456789abcdef x;y")
+	if _, _, err := webKey(); err == nil {
+		t.Fatal("a MAGPIE_WEB_KEY a cookie can't hold was taken")
+	}
 	t.Setenv("MAGPIE_WEB_KEY", "0123456789abcdef-kept")
 	if k, fixed, err := webKey(); err != nil || !fixed || k != "0123456789abcdef-kept" {
 		t.Fatalf("MAGPIE_WEB_KEY: %q %v %v", k, fixed, err)

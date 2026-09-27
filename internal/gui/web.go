@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -97,6 +98,11 @@ func webKey() (key string, fixed bool, err error) {
 	if k := os.Getenv("MAGPIE_WEB_KEY"); k != "" {
 		if len(k) < webKeyMin {
 			return "", false, fmt.Errorf("MAGPIE_WEB_KEY is %d characters; it needs at least %d", len(k), webKeyMin)
+		}
+		// a cookie can't hold a space, ; " \ or a comma: the browser would
+		// be sent one that isn't the key, and turned away
+		if strings.Trim(k, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~") != "" {
+			return "", false, errors.New("MAGPIE_WEB_KEY takes letters, digits and - . _ ~ only (openssl rand -hex 16 makes one)")
 		}
 		return k, true, nil
 	}
