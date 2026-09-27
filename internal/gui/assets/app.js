@@ -4562,6 +4562,20 @@ setInterval(async () => {
   }
   if (changed) renderAgents();
 }, 15000);
+// the usage page counts on while it is looked at: a request through the
+// gateway shows within seconds, the subscriptions' windows each minute (the
+// vendors' answers are cached behind them) — redrawn only on a change
+let usageTicks = 0;
+setInterval(async () => {
+  if (view !== "usage" || document.hidden || !usage || document.querySelector(".pop:not([hidden])")) return;
+  if (++usageTicks % 12 === 0) loadQuotas();
+  const p = period;
+  let u;
+  try { u = await api("usage?period=" + p); } catch { return; }
+  if (view !== "usage" || p !== period || JSON.stringify(u) === JSON.stringify(usage)) return;
+  usage = u;
+  renderUsage();
+}, 5000);
 window.addEventListener("focus", load);
 setInterval(renderUpdateBadge, 15 * 60 * 1000); // a window left open still hears of a new version
 // ---------- hiding emails, for a screenshot to share ----------
