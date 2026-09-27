@@ -846,13 +846,10 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 		call.To = provider.Anthropic
 		return s.serveClaudeSubscription(w, r, from, p, model, body, &call.Usage)
 	}
-	// Cursor's API belongs to its own clients: its CLI does the talking
+	// Cursor's through the API its CLI talks to, with the CLI's sign-in
 	if p.Account != nil && p.Account.Agent == "cursor" {
 		call.To = from
-		start := func(ctx context.Context, req *Request) (*subscriptionRun, <-chan Event, error) {
-			return s.subscription.startCursor(ctx, req, model)
-		}
-		return s.serveSubscription(w, r, from, "Cursor", model, body, &call.Usage, start)
+		return s.serveCursor(w, r, from, model, body, &call.Usage)
 	}
 	// Devin's through the API its CLI talks to, with the CLI's sign-in
 	if p.Account != nil && p.Account.Agent == "devin" {

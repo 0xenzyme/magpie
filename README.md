@@ -181,11 +181,11 @@ Code process; Pi, OpenCode and every other agent use this path automatically.
 The generated harness stays out of Anthropic's system-prompt classifier while
 its instructions remain part of the user context. This requires Claude Code
 to be installed and signed in.
-Cursor subscriptions likewise run through Cursor's own CLI. A Grok
-subscription (SuperGrok, signed in with Grok Build) talks straight to the
-Responses API the grok CLI uses, and a Devin subscription to the API the
-devin CLI uses, each with the CLI's sign-in, the caller's tools passed
-through as they are.
+A Grok subscription (SuperGrok, signed in with Grok Build) talks straight
+to the Responses API the grok CLI uses, a Devin subscription to the API the
+devin CLI uses, and a Cursor subscription to the agent API cursor-agent
+uses, each with the CLI's sign-in and the caller's tools passed through
+(Cursor's model calls them as MCP tools; none of Cursor's own tools run).
 Google sign-ins — Gemini CLI's and Antigravity's — talk to Google's Code
 Assist API directly: magpie reads Gemini CLI's own login from `~/.gemini` or
 signs one in itself, and refreshes the token in memory. Google no longer

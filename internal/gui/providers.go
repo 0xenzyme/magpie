@@ -199,7 +199,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		if ag, err := agent.Find(a.Agent); err == nil {
 			out.Account.Name, out.Account.Icon = ag.Name, ag.Icon
 		} else if a.Agent == "cursor" {
-			// cursor-agent runs behind the gateway, not as an agent magpie configures
+			// a Cursor subscription is served by the gateway, not an agent magpie configures
 			out.Account.Name, out.Account.Icon = "Cursor CLI", "cursor"
 		} else if a.Agent == "kiro" {
 			// Kiro's sign-in is kiro-cli's or the Kiro IDE's

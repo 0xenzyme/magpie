@@ -1,19 +1,21 @@
 package provider
 
-// A Cursor subscription is used the way a Claude one is: through the vendor's
-// own agent. Cursor's API is private and bound to its clients, so magpie runs
-// the genuine cursor-agent CLI (see gateway/cursor_subscription.go) with the
-// account it is signed in to; here is only who that account is, the models it
-// offers, and the sign-in, which is cursor-agent's own `login`.
+// A Cursor subscription is served through the API cursor-agent talks to
+// (gateway/cursor.go), with the account it is signed in to; here is who that
+// account is, the models it offers, the sign-in, which is cursor-agent's own
+// `login`, and the token that sign-in keeps.
 
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -21,6 +23,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/proc"
 )
 
 // CursorExecutable finds the cursor-agent CLI; a var so tests can fake it.
@@ -215,4 +218,130 @@ func startCursorSignIn(s *signInFlow) error {
 		forgetCursorStatus()
 		return askCursorIdentity()
 	}, path, "login")
+}
+
+// cursorVersionFallback is the CLI version said when no install names one.
+const cursorVersionFallback = "2026.09.23-86fc751"
+
+var cursorVersionRe = regexp.MustCompile(`^\d{4}\.\d{2}\.\d{2}-[0-9a-f]+$`)
+
+// CursorClientVersion is the cursor-agent the API is told it is talking
+// to, "cli-<version>": the installed one, as the API turns away a version
+// it no longer supports.
+func CursorClientVersion() string {
+	v := ""
+	if p := CursorExecutable(); p != "" {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			if d := filepath.Base(filepath.Dir(real)); cursorVersionRe.MatchString(d) {
+				v = d
+			}
+		}
+	}
+	if v == "" {
+		home, _ := os.UserHomeDir()
+		dirs := []string{filepath.Join(home, ".local", "share", "cursor-agent", "versions")}
+		if runtime.GOOS == "windows" {
+			dirs = append(dirs, filepath.Join(os.Getenv("LOCALAPPDATA"), "cursor-agent", "versions"))
+		}
+		for _, dir := range dirs {
+			es, _ := os.ReadDir(dir)
+			for _, e := range es {
+				if n := e.Name(); e.IsDir() && cursorVersionRe.MatchString(n) && n > v {
+					v = n
+				}
+			}
+		}
+	}
+	if v == "" {
+		v = cursorVersionFallback
+	}
+	return "cli-" + v
+}
+
+// cursorAuthFile is where cursor-agent keeps its sign-in off a Mac's keychain.
+func cursorAuthFile() string {
+	home, _ := os.UserHomeDir()
+	switch runtime.GOOS {
+	case "windows":
+		dir := os.Getenv("APPDATA")
+		if dir == "" {
+			dir = filepath.Join(home, "AppData", "Roaming")
+		}
+		return filepath.Join(dir, "Cursor", "auth.json")
+	case "darwin":
+		return filepath.Join(home, ".cursor", "auth.json")
+	}
+	dir := os.Getenv("XDG_CONFIG_HOME")
+	if dir == "" {
+		dir = filepath.Join(home, ".config")
+	}
+	return filepath.Join(dir, "cursor", "auth.json")
+}
+
+// readCursorToken is the access token cursor-agent signed in with.
+func readCursorToken() string {
+	if runtime.GOOS == "darwin" {
+		out, err := proc.Command("security", "find-generic-password", "-s", "cursor-access-token", "-a", "cursor-user", "-w").Output()
+		if t := strings.TrimSpace(string(out)); err == nil && t != "" {
+			return t
+		}
+	}
+	b, err := os.ReadFile(cursorAuthFile())
+	if err != nil {
+		return ""
+	}
+	var a struct {
+		AccessToken string `json:"accessToken"`
+	}
+	json.Unmarshal(b, &a)
+	return a.AccessToken
+}
+
+// tokenExpiry is when a JWT runs out, zero when it doesn't say.
+func tokenExpiry(tok string) time.Time {
+	parts := strings.Split(tok, ".")
+	if len(parts) != 3 {
+		return time.Time{}
+	}
+	b, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		return time.Time{}
+	}
+	var c struct {
+		Exp int64 `json:"exp"`
+	}
+	if json.Unmarshal(b, &c) != nil || c.Exp == 0 {
+		return time.Time{}
+	}
+	return time.Unix(c.Exp, 0)
+}
+
+var cursorRefresh sync.Mutex
+
+// CursorToken is the token to call Cursor's API with. One about to run
+// out is renewed by cursor-agent, which does that whenever it runs.
+func CursorToken() (string, error) {
+	tok := readCursorToken()
+	if exp := tokenExpiry(tok); tok != "" && (exp.IsZero() || time.Until(exp) > 5*time.Minute) {
+		return tok, nil
+	}
+	if path := CursorExecutable(); path != "" {
+		cursorRefresh.Lock()
+		if t := readCursorToken(); t != tok && t != "" {
+			tok = t // renewed while this waited
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_ = agentCommand(ctx, path, "status").Run()
+			cancel()
+			tok = readCursorToken()
+		}
+		cursorRefresh.Unlock()
+	}
+	if tok == "" {
+		return "", errors.New("Cursor isn't signed in; sign in from magpie's Providers page or run `cursor-agent login`")
+	}
+	if exp := tokenExpiry(tok); !exp.IsZero() && time.Until(exp) <= 0 {
+		return "", errors.New("Cursor's sign-in has run out; sign in again from magpie's Providers page or run `cursor-agent login`")
+	}
+	return tok, nil
 }

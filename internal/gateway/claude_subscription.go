@@ -1179,3 +1179,20 @@ func relay(w http.ResponseWriter, r *http.Request, from provider.Protocol, name 
 	_, _ = w.Write(render(from, res, req.Model))
 	return 200, col.err
 }
+
+// bridgeTools are the caller's tools as the MCP helper offers them, less
+// those tool_choice rules out.
+func bridgeTools(req *Request) []bridgeTool {
+	tools := make([]bridgeTool, 0, len(req.Tools))
+	for _, t := range req.Tools {
+		if req.ToolChoice == "none" || (strings.HasPrefix(req.ToolChoice, "name:") && t.Name != strings.TrimPrefix(req.ToolChoice, "name:")) {
+			continue
+		}
+		schema := t.Schema
+		if len(schema) == 0 {
+			schema = json.RawMessage(`{"type":"object","properties":{}}`)
+		}
+		tools = append(tools, bridgeTool{Name: t.Name, Description: t.Description, InputSchema: schema})
+	}
+	return tools
+}
