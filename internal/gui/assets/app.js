@@ -3550,7 +3550,8 @@ const SUBS = [
   { agent: "devin", name: "Devin", icon: "devin", plans: "Pro · Enterprise", single: true },
   // Google's sign-ins; Gemini CLI's own account is read too
   { agent: "gemini", name: "Gemini CLI", icon: "geminicli-color", plans: "Code Assist Standard · Enterprise", own: true },
-  { agent: "antigravity", name: "Antigravity", icon: "antigravity-color", plans: "Google AI Pro · Ultra · free", risk: true },
+  // accounts can also come from another tool's export (Antigravity Cockpit, Antigravity Manager, CLIProxyAPI)
+  { agent: "antigravity", name: "Antigravity", icon: "antigravity-color", plans: "Google AI Pro · Ultra · free", risk: true, importable: true },
 ];
 const subOf = (agent) => SUBS.find((x) => x.agent === agent);
 let signing = null; // the sign-in under way: { id, agent, url, state, installing, error }
@@ -3631,9 +3632,15 @@ function renderSigning(sub) {
     go.onclick = () => startSignIn(sub.agent, true);
     const close = el("button", "text", t("Cancel"));
     close.onclick = cancelSignIn;
-    box.append(close, go);
+    if (sub.importable) {
+      const imp = el("button", "text", t("Import instead…"));
+      imp.title = t("Bring in accounts exported from Antigravity Cockpit, Antigravity Manager or CLIProxyAPI");
+      imp.onclick = () => startImport(sub.agent);
+      box.append(close, imp, go);
+    } else box.append(close, go);
     return box;
   }
+  if (signing.state === "import" || signing.state === "importing" || signing.state === "imported") return renderImport(sub);
   if (signing.state === "failed") {
     box.append(el("span", "mark", "!"));
     tt.append(el("span", "n", t("Sign-in didn't finish")), el("span", "s", signing.error || ""));
@@ -3725,8 +3732,132 @@ function renderAccounts(a) {
     add.append(ic, el("span", "n", t(sub.single ? "Sign in to another {name} account" : "Add another {name} account", { name: sub.name })));
     add.onclick = () => startSignIn(a.agent);
     list.append(add);
+    if (sub.importable) {
+      const imp = el("button", "acc add");
+      const ic2 = el("span", "dot");
+      ic2.append(svg(PLUS, 10, 1.8));
+      imp.append(ic2, el("span", "n", t("Import accounts from a file…")));
+      imp.title = t("Bring in accounts exported from Antigravity Cockpit, Antigravity Manager or CLIProxyAPI");
+      imp.onclick = () => startImport(a.agent);
+      list.append(imp);
+    }
   }
   return list;
+}
+
+// Accounts brought in from another tool's export instead of signing in
+// again: the files' text (or what is pasted) goes to magpie, which checks
+// each account with the vendor before keeping it, and says what became of
+// each. What is read stays here only until it is sent; the box masks it.
+function startImport(agent) {
+  if (signingOpen()) api("signin/" + signing.id + "/cancel", {}).catch(() => {});
+  signing = { agent, state: "import", text: "", files: [] };
+  renderProviders();
+  document.querySelector(".signing.import textarea")?.focus();
+}
+
+async function runImport(agent) {
+  const files = signing.files.map((f) => f.text);
+  if (signing.text.trim()) files.push(signing.text);
+  if (!files.length) return;
+  signing = { agent, state: "importing" };
+  renderProviders();
+  try {
+    const r = await api("signin/import", { agent, files });
+    if (signing?.agent !== agent) return;
+    providers = r.providers;
+    const added = r.results.filter((x) => x.status === "added" || x.status === "updated");
+    signing = { agent, state: "imported", results: r.results };
+    delete loginUsage[agent];
+    const p = providers.providers.find((x) => x.account?.agent === agent);
+    if (p && added.length) {
+      editing = p.id; draft = null; adding = false; presetQuery = "";
+      justAdded = added[0].user;
+      setTimeout(() => { justAdded = ""; }, 2000);
+    }
+    renderProviders();
+    const failed = r.results.filter((x) => x.status === "failed").length;
+    status(t("{n} added, {m} not added", { n: added.length, m: failed }), added.length || !failed ? "ok" : "err");
+    state = await api("state");
+    renderAgents();
+  } catch (e) {
+    if (signing?.agent !== agent) return;
+    signing = { agent, state: "import", text: "", files: [], error: e.message };
+    renderProviders();
+  }
+}
+
+const importStatus = { added: "Added", updated: "Updated with this sign-in", exists: "Already in magpie", failed: "Not added" };
+
+function renderImport(sub) {
+  const box = el("div", "signing import");
+  const tt = el("span", "tt");
+  if (signing.state === "importing") {
+    box.append(el("span", "spinner"));
+    tt.append(el("span", "n", t("Checking the accounts with Google…")),
+      el("span", "s", t("Each account's sign-in is refreshed and its project looked up, as signing in does.")));
+    box.append(tt);
+    return box;
+  }
+  if (signing.state === "imported") {
+    box.append(el("span", "mark", "✓"));
+    tt.append(el("span", "n", t("Import finished")));
+    const rs = el("span", "results");
+    for (const r of signing.results || []) {
+      const row = el("span", "res " + r.status);
+      row.append(el("span", "u", r.user), el("span", "st", t(importStatus[r.status] || r.status)));
+      if (r.error) { row.title = r.error; row.append(el("span", "why", r.error)); }
+      rs.append(row);
+    }
+    tt.append(rs);
+    box.append(tt);
+    const done = el("button", "text", t("Done"));
+    done.onclick = cancelSignIn;
+    box.append(done);
+    return box;
+  }
+  box.append(el("span", "mark", "↑"));
+  tt.append(el("span", "n", t("Import {name} accounts", { name: sub.name })),
+    el("span", "s", t("Choose or paste an export from Antigravity Cockpit, Antigravity Manager or CLIProxyAPI — JSON, or refresh tokens one a line. Each account is checked with Google before it is added.")));
+  if (sub.risk) tt.append(el("span", "s", t("Google may suspend an Antigravity account it sees used outside Antigravity. Use one you can afford to lose.")));
+  const area = el("textarea");
+  area.rows = 3;
+  area.spellcheck = false;
+  area.autocomplete = "off";
+  area.placeholder = t("…or paste it here");
+  area.value = signing.text || "";
+  const file = el("input");
+  file.type = "file";
+  file.multiple = true;
+  file.accept = ".json,.txt,application/json,text/plain";
+  file.hidden = true;
+  const names = el("span", "fname", signing.files.map((f) => f.name).join(", "));
+  const go = el("button", "text primary", t("Import"));
+  const ready = () => { go.disabled = !(signing.files.length || signing.text.trim()); };
+  area.oninput = () => { signing.text = area.value; ready(); };
+  file.onchange = async () => {
+    const picked = [];
+    for (const f of file.files) {
+      if (f.size > 4 << 20) { status(t("{name} is too big to be an export", { name: f.name }), "err"); continue; }
+      picked.push({ name: f.name, text: await f.text() });
+    }
+    signing.files = picked;
+    names.textContent = picked.map((f) => f.name).join(", ");
+    ready();
+  };
+  const pick = el("button", "link", t("Choose files…"));
+  pick.onclick = () => file.click();
+  const acts = el("span", "acts");
+  acts.append(pick, names, file);
+  tt.append(acts, area);
+  if (signing.error) tt.append(el("span", "s why", signing.error));
+  box.append(tt);
+  go.onclick = () => runImport(sub.agent);
+  ready();
+  const close = el("button", "text", t("Cancel"));
+  close.onclick = cancelSignIn;
+  box.append(close, go);
+  return box;
 }
 
 // Each account's allowance comes from the vendor and takes a moment, so it
@@ -3739,7 +3870,7 @@ function loginUsageOf(agent) {
       .then((d) => { u.data = d || {}; }, () => { u.data = u.data || {}; })
       .finally(() => {
         u.at = Date.now(); u.loading = null;
-        if (providers?.providers.find((p) => p.id === editing)?.account?.agent === agent && !document.querySelector(".editor .rename-in, .editor input:focus")) renderProviders();
+        if (providers?.providers.find((p) => p.id === editing)?.account?.agent === agent && !document.querySelector(".editor .rename-in, .editor input:focus, .signing.import textarea:focus")) renderProviders();
       });
   }
   return u.data;

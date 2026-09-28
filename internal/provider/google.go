@@ -1010,24 +1010,11 @@ func googleExchange(ctx context.Context, app googleApp, code, verifier, redirect
 	}
 	g := googleAccount{app: app, auth: googleAuth{AccessToken: tok.AccessToken, RefreshToken: tok.RefreshToken,
 		Expiry: time.Now().Add(time.Duration(tok.ExpiresIn) * time.Second).UnixMilli()}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, googleUserInfoURL, nil)
+	who, err := googleWho(ctx, tok.AccessToken)
 	if err != nil {
 		return googleAccount{}, "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return googleAccount{}, "", err
-	}
-	defer res.Body.Close()
-	var who struct {
-		Email string `json:"email"`
-	}
-	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if res.StatusCode != http.StatusOK || json.Unmarshal(b, &who) != nil || who.Email == "" {
-		return googleAccount{}, "", errors.New("Google didn't say whose account this is")
-	}
-	g.user = who.Email
+	g.user = who
 	// kept even when Code Assist has no project for it yet: a Standard
 	// account gets one named afterwards
 	plan := ""
@@ -1035,4 +1022,26 @@ func googleExchange(ctx context.Context, app googleApp, code, verifier, redirect
 		g.auth.Project, plan = p.id, p.plan
 	}
 	return g, plan, nil
+}
+
+// googleWho is whose Google account an access token is.
+func googleWho(ctx context.Context, access string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, googleUserInfoURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+access)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	var who struct {
+		Email string `json:"email"`
+	}
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if res.StatusCode != http.StatusOK || json.Unmarshal(b, &who) != nil || who.Email == "" {
+		return "", errors.New("Google didn't say whose account this is")
+	}
+	return who.Email, nil
 }

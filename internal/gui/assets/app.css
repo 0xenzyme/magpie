@@ -1058,6 +1058,19 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .signing .acts .link { color: var(--fg-2); }
 .signing .devcode { display: flex; align-items: center; gap: 6px; margin: 6px 0 2px; }
 .signing .devcode code { font: 600 17px/1.2 var(--mono, ui-monospace, monospace); letter-spacing: .12em; padding: 4px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); user-select: all; }
+/* an import: what is pasted is sign-ins, so it is masked */
+.signing.import textarea { margin-top: 6px; width: 100%; box-sizing: border-box; padding: 6px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; outline: none; -webkit-text-security: disc; }
+.signing.import textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.signing.import .acts { align-items: center; gap: 8px; margin-top: 4px; }
+.signing.import .fname { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
+.signing.import .why { color: var(--red); }
+.signing.import .results { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+.signing.import .res { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 0; height: auto; padding: 0; border-radius: 0; background: none; color: var(--fg); font-size: 12px; font-variant-numeric: normal; }
+.signing.import .res .u { font-weight: 450; overflow-wrap: anywhere; }
+.signing.import .res .st { color: var(--muted); font-size: 11.5px; }
+.signing.import .res.added .st, .signing.import .res.updated .st { color: var(--green); }
+.signing.import .res.failed .st { color: var(--red); }
+.signing.import .res .why { flex-basis: 100%; font-size: 11.5px; overflow-wrap: anywhere; }
 .signing .spinner { width: 16px; height: 16px; flex: none; margin-top: 1px; border-radius: 50%; border: 1.75px solid var(--line); border-top-color: var(--fg); animation: spin .8s linear infinite; }
 .signing .mark { width: 16px; height: 16px; flex: none; margin-top: 1px; border-radius: 50%; display: grid; place-items: center; background: var(--fg); color: var(--card); font-size: 11px; font-weight: 700; }
 .fallback { display: grid; gap: 6px; }

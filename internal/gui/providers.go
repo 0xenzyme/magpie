@@ -712,6 +712,31 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		provider.CancelSignIn(r.PathValue("id"))
 		rw.WriteHeader(http.StatusNoContent)
 	})
+	// Accounts brought in from another tool's export (Antigravity's, from
+	// Antigravity Cockpit, Antigravity Manager, CLIProxyAPI), each file's
+	// text as it is; each checked with the vendor before it is kept.
+	mux.HandleFunc("POST /api/signin/import", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Agent string
+			Files []string
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 8<<20)).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+		defer cancel()
+		res, err := provider.ImportGoogleAccounts(ctx, in.Agent, in.Files)
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		agent.SyncCatalog()
+		writeJSON(rw, struct {
+			Results   []provider.ImportedAccount `json:"results"`
+			Providers providersJSON              `json:"providers"`
+		}{res, providersState()})
+	})
 	// the page copies through here first: in the app's window the
 	// clipboard API is refused or missing, depending on the system
 	mux.HandleFunc("POST /api/copy", func(rw http.ResponseWriter, r *http.Request) {
