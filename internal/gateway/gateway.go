@@ -828,7 +828,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		s.trace.update(tr, func(t *Route) {
 			t.Tries = append(t.Tries, Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Start: began})
 		})
-		call.Status, call.Error = s.attempt(hw, r, from, c.p, c.model, attemptBody, &call)
+		held := false // answered as its vendor did a moment ago, without asking
+		if said, ok := verifyHeld(c.restKey()); ok && last {
+			// the account must be verified first (#152): the agent's
+			// reconnects are told so again, not sent on to a vendor that
+			// just refused it
+			held, call.Status, call.Error = true, http.StatusForbidden, said
+			writeError(hw, from, call.Status, said)
+		} else {
+			call.Status, call.Error = s.attempt(hw, r, from, c.p, c.model, attemptBody, &call)
+		}
 		if hw.failure != 0 { // the stream failed before any of it was sent
 			call.Status, call.Error = hw.failure, c.p.Name+": "+hw.failMsg
 		}
@@ -896,6 +905,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 		} else {
 			try.Fail = failure(call.Status, []byte(call.Error))
+			if try.Fail == failVerify && !held {
+				// the last one left rests too, for the app to show and the
+				// next requests to be held
+				rest := s.restAfter(c, call.Status, hw.header, []byte(call.Error))
+				try.Rest = &rest
+			}
 		}
 		s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
 		break

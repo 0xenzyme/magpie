@@ -72,6 +72,13 @@ const (
 	// says when it's back: a week's window, and a day over
 	longestQuota = 8 * 24 * time.Hour
 	longestRetry = 10 * time.Minute // failing again and again
+	// verifyRest: an account Google wants verified (#152) is out until
+	// someone does, or lifts its rest in the app
+	verifyRest = 30 * time.Minute
+	// verifyHold is how long the last one left, refused for verification,
+	// is answered that way by magpie without asking again: an agent's
+	// reconnects don't all land on the account Google has stopped
+	verifyHold = time.Minute
 )
 
 var (
@@ -97,10 +104,16 @@ const (
 	// failFloor: the request asked for a shorter reply than the provider
 	// gives, and is sent again asking for the least it takes
 	failFloor = "floor"
+	// failVerify: the account must be verified with its vendor (Google's
+	// VALIDATION_REQUIRED) before it is served again
+	failVerify = "verify"
 )
 
 // failure says why a reply failed.
 func failure(status int, body []byte) string {
+	if _, ok := provider.Verification(body); ok && (status == 401 || status == 403) {
+		return failVerify
+	}
 	switch {
 	case status == 402, creditWords.Match(body) && status != 429 || strings.Contains(string(body), "insufficient_quota"):
 		return failCredit
@@ -123,8 +136,14 @@ type Rest struct {
 	// "cooldown" (a minute), "backoff" (longer each time it fails again).
 	By       string `json:"by"`
 	Failures int    `json:"failures,omitempty"` // in a row, for a backoff
+	// Key is what it rests by, for the app to lift the rest (Unrest)
+	Key string `json:"key,omitempty"`
+	// Link: where the vendor said to verify the account, for failVerify
+	Link string `json:"link,omitempty"`
 
-	agent, user string // the subscription account resting, when it is one
+	agent, user string    // the subscription account resting, when it is one
+	said        string    // the error it gave, for a failVerify held
+	hold        time.Time // until when a failVerify is answered without asking
 }
 
 // renewed lifts the rests of a subscription account whose windows were
@@ -141,6 +160,28 @@ func renewed(agent, user string) {
 }
 
 func init() { provider.OnRenewed(renewed) }
+
+// Unrest lifts the rest of what rests by key — an account just verified
+// with its vendor, say — so the next request asks it again. False when it
+// wasn't resting.
+func (s *Server) Unrest(key string) bool {
+	restingUntil.Lock()
+	defer restingUntil.Unlock()
+	_, ok := restingUntil.m[key]
+	delete(restingUntil.m, key)
+	delete(restingUntil.note, key)
+	return ok
+}
+
+// verifyHeld is the error to give again, without asking, for a candidate
+// its vendor refused a moment ago until the account is verified.
+func verifyHeld(key string) (string, bool) {
+	r, ok := restOf(key)
+	if !ok || r.Why != failVerify || r.said == "" || !time.Now().Before(r.hold) {
+		return "", false
+	}
+	return r.said, true
+}
 
 // resetsIn is how long until a used-up ChatGPT account is back, as its
 // refusal says: {"error":{"type":"usage_limit_reached","resets_at":<unix>,
@@ -206,6 +247,15 @@ func (s *Server) restAfter(c candidate, status int, header http.Header, body []b
 		if w := retryAfter(header, now); w > 0 {
 			d, r.By = w, "retry-after"
 		}
+	case failVerify:
+		d, r.By = verifyRest, "verify"
+		// the error as the agent was given it, and the link in it
+		r.said, r.hold = provider.APIError(body, ""), now.Add(verifyHold)
+		if !json.Valid(body) {
+			link, _ := provider.Verification(body)
+			r.said = provider.VerifyMessage(string(body), link)
+		}
+		r.Link, _ = provider.Verification([]byte(r.said))
 	default:
 		routed.Lock()
 		routed.failures[c.rest]++
@@ -218,10 +268,10 @@ func (s *Server) restAfter(c candidate, status int, header http.Header, body []b
 			d, r.By = t.Sub(now), "window"
 		}
 	}
-	if a := c.p.Account; a != nil && why != failOther {
+	if a := c.p.Account; a != nil && why != failOther && why != failVerify {
 		provider.StaleAllowance(a.Agent, a.User) // ask again what it has left
 	}
-	r.Until = now.Add(d)
+	r.Until, r.Key = now.Add(d), c.restKey()
 	if a := c.p.Account; a != nil {
 		r.agent, r.user = a.Agent, a.User
 	}

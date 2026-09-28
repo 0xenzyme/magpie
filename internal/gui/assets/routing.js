@@ -106,7 +106,7 @@
   }
   const tokens = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(Math.round(n));
   const pct = (n) => Math.round(n) + "%";
-  const FAIL = { rate: "rate limited", credit: "out of credit", quota: "quota used up", other: "failed", canceled: "canceled", foreign: "another account's reasoning", floor: "reply too short" };
+  const FAIL = { rate: "rate limited", credit: "out of credit", quota: "quota used up", other: "failed", canceled: "canceled", foreign: "another account's reasoning", floor: "reply too short", verify: "needs verification" };
   const failWord = (why) => t(FAIL[why] || "failed");
   const API = { anthropic: "Anthropic", chat: "OpenAI", responses: "OpenAI Responses", gemini: "Gemini" };
   const MODES = {
@@ -157,6 +157,7 @@
       case "window": return t("Its allowance is used up: it rests until that renews, at {time}", { time });
       case "resets": return t("It rests until {time}, when the vendor says the limit resets", { time });
       case "quota": return t("It rests 15 minutes: out of quota, with no word of when it resets");
+      case "verify": return t("The vendor wants the account verified first: it rests half an hour, or until you say it's verified");
       case "backoff": return rest.failures > 1
         ? t("It has failed {n} times in a row: it rests {d}, longer each time", { n: rest.failures, d })
         : t("It rests {d}, longer if it fails again", { d });
@@ -410,6 +411,8 @@
       return t("{who} couldn't read the reasoning another account wrote earlier in this conversation, so it is asked again without it, before any of the reply reaches {agent}.", { who: name, agent });
     if (tr.fail === "floor")
       return t("{who} takes no request for a reply as short as this one asked for, so it is asked again for the shortest it gives, before any of the reply reaches {agent}.", { who: name, agent });
+    if (tr.fail === "verify" && !r.tries[i + 1])
+      return t("{who} answered {status}: the vendor wants the account verified before it serves it again, and nobody is left to try, so {agent} gets the error with how to verify it. For a minute {agent}'s retries get the same answer without asking the vendor.", { who: name, status: tr.status, agent });
     if (tr.again)
       return t("{who} answered {status} · {fail}, and nobody else is left to ask — a failure that may pass, so it is tried again in {d}, before any of the reply reaches {agent}.",
         { who: name, status: tr.status, fail: failWord(tr.fail), d: took(tr.again), agent });
@@ -971,6 +974,18 @@
         ...(a.last ? [el("span", "", t("last answered {time}", { time: clock(a.last) }))] : []),
         ...[...a.models].map((m) => el("code", "mdl", m)));
       row.append(name, el("div", "st " + cls, st), tally);
+      if (resting && a.rest.why === "verify") {
+        // the vendor wants the account verified (#152): where, and a way to
+        // stop its rest once it is
+        const fix = el("div", "fix"), rest = a.rest;
+        if (rest.link) { const b = el("button", "link", t("Verify the account ↗")); b.onclick = () => api("open", { url: rest.link }).catch(() => {}); fix.append(b); }
+        const go = el("button", "link", t("It's verified — try it again"));
+        go.onclick = async () => {
+          try { await api("gateway/unrest", { key: rest.key }); rest.until = new Date().toISOString(); render(); } catch (e) { go.textContent = e.message; }
+        };
+        fix.append(go);
+        row.append(fix);
+      }
       if (w.kind === "account" && w.known) {
         const bar = el("div", "bar"), bi = el("i");
         bi.style.width = Math.min(100, w.used) + "%";

@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -32,5 +33,17 @@ func traceRoutes(mux *http.ServeMux) {
 		}
 		out.Now = time.Now()
 		writeJSON(rw, out)
+	})
+	// an account's rest lifted by hand: verified with its vendor, say
+	mux.HandleFunc("POST /api/gateway/unrest", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Key string `json:"key"`
+		}
+		gw := served.Load()
+		if json.NewDecoder(r.Body).Decode(&in) != nil || in.Key == "" || gw == nil {
+			http.Error(rw, "nothing to lift", http.StatusBadRequest)
+			return
+		}
+		writeJSON(rw, map[string]bool{"lifted": gw.Unrest(in.Key)})
 	})
 }

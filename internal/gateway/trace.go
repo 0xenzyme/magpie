@@ -238,8 +238,8 @@ func (t *trace) update(r *Route, f func(r *Route)) {
 	f(r)
 	if r.Done && !done {
 		t.totals.Requests++
-		for _, try := range r.Tries {
-			if try.Rest != nil {
+		for i, try := range r.Tries {
+			if try.Rest != nil && i < len(r.Tries)-1 { // the last rests with nobody after it (failVerify)
 				t.totals.Rerouted++
 			}
 		}
