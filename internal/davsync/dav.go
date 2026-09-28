@@ -45,6 +45,17 @@ func (d *dav) url(parts ...string) string {
 }
 
 func (d *dav) do(ctx context.Context, method, u string, body []byte, h map[string]string) (*http.Response, error) {
+	res, err := d.send(ctx, method, u, body, h)
+	if err == nil && res.StatusCode == http.StatusForbidden {
+		res.Body.Close()
+		return nil, d.forbidden(ctx)
+	}
+	return res, err
+}
+
+// send is do with a 403 handed back as it is, for the calls that can tell
+// what it meant.
+func (d *dav) send(ctx context.Context, method, u string, body []byte, h map[string]string) (*http.Response, error) {
 	var r io.Reader
 	if body != nil {
 		r = bytes.NewReader(body)
@@ -63,13 +74,9 @@ func (d *dav) do(ctx context.Context, method, u string, body []byte, h map[strin
 	if err != nil {
 		return nil, err
 	}
-	switch res.StatusCode {
-	case http.StatusUnauthorized:
+	if res.StatusCode == http.StatusUnauthorized {
 		res.Body.Close()
 		return nil, errLogin
-	case http.StatusForbidden:
-		res.Body.Close()
-		return nil, d.forbidden(ctx)
 	}
 	return res, nil
 }
@@ -105,13 +112,40 @@ func (d *dav) forbidden(ctx context.Context) error {
 	return fmt.Errorf("the WebDAV server doesn't let this account use %s (HTTP 403): the folder may not be there, or the account may not have access to it", dir)
 }
 
+// there is whether PROPFIND finds u: a server that answers 403 for what
+// isn't there may do so for PROPFIND too.
+func (d *dav) there(ctx context.Context, u string) bool {
+	req, err := http.NewRequestWithContext(ctx, "PROPFIND", u, nil)
+	if err != nil {
+		return true
+	}
+	req.Header.Set("Depth", "0")
+	if d.user != "" || d.pass != "" {
+		req.SetBasicAuth(d.user, d.pass)
+	}
+	res, err := d.client.Do(req)
+	if err != nil {
+		return true
+	}
+	res.Body.Close()
+	return res.StatusCode >= 200 && res.StatusCode < 300
+}
+
 // get reads the backup; nil data and no error when there is none yet.
 func (d *dav) get(ctx context.Context) (data []byte, etag string, err error) {
-	res, err := d.do(ctx, http.MethodGet, d.url(folder, file), nil, nil)
+	res, err := d.send(ctx, http.MethodGet, d.url(folder, file), nil, nil)
 	if err != nil {
 		return nil, "", err
 	}
 	defer res.Body.Close()
+	// a Synology answers 403, not 404, for a file in a folder that isn't
+	// there: before the first sync, magpie's folder isn't
+	if res.StatusCode == http.StatusForbidden {
+		if !d.there(ctx, d.url(folder)+"/") {
+			return nil, "", nil
+		}
+		return nil, "", d.forbidden(ctx)
+	}
 	switch {
 	// 409: the folder isn't there yet — how 坚果云 (Nutstore) answers a
 	// read in it, where others say 404; put makes it
@@ -135,7 +169,7 @@ func (d *dav) put(ctx context.Context, data []byte, etag string) error {
 		h["If-Match"] = etag
 	}
 	for try := 0; ; try++ {
-		res, err := d.do(ctx, http.MethodPut, d.url(folder, file), data, h)
+		res, err := d.send(ctx, http.MethodPut, d.url(folder, file), data, h)
 		if err != nil {
 			return err
 		}
@@ -145,7 +179,10 @@ func (d *dav) put(ctx context.Context, data []byte, etag string) error {
 			return nil
 		case res.StatusCode == http.StatusPreconditionFailed:
 			return errChanged
-		case (res.StatusCode == http.StatusNotFound || res.StatusCode == http.StatusConflict) && try == 0:
+		case res.StatusCode == http.StatusForbidden && (try > 0 || d.there(ctx, d.url(folder)+"/")):
+			return d.forbidden(ctx)
+		// a 403 for a folder not there (a Synology) is made as a 404 is
+		case (res.StatusCode == http.StatusNotFound || res.StatusCode == http.StatusConflict || res.StatusCode == http.StatusForbidden) && try == 0:
 			if err := d.mkcol(ctx); err != nil {
 				return err
 			}

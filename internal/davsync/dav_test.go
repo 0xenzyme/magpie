@@ -82,3 +82,52 @@ func TestDAVStorageRoot(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// A Synology answers 403 for anything under a folder that isn't there yet,
+// PROPFIND too: magpie's own folder, before the first sync, is made rather
+// than taken for a folder the account can't write in.
+func TestDAVForbiddenUntilMade(t *testing.T) {
+	made, stored := false, ""
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimSuffix(r.URL.Path, "/")
+		switch {
+		case path == "/data" && r.Method == "PROPFIND":
+			w.WriteHeader(http.StatusMultiStatus)
+		case path == "/data/magpie" && r.Method == "MKCOL":
+			made = true
+			w.WriteHeader(http.StatusCreated)
+		case strings.HasPrefix(path, "/data/magpie") && made:
+			switch r.Method {
+			case "PROPFIND":
+				w.WriteHeader(http.StatusMultiStatus)
+			case http.MethodPut:
+				b, _ := io.ReadAll(r.Body)
+				stored = string(b)
+				w.WriteHeader(http.StatusCreated)
+			case http.MethodGet:
+				if stored == "" {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				io.WriteString(w, stored)
+			}
+		default:
+			w.WriteHeader(http.StatusForbidden)
+		}
+	}))
+	defer srv.Close()
+	ctx := context.Background()
+	d, err := newDAV(Config{URL: srv.URL + "/data"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data, _, err := d.get(ctx); err != nil || data != nil {
+		t.Fatalf("before the first sync: %q %v", data, err)
+	}
+	if err := d.put(ctx, []byte("x"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if data, _, err := d.get(ctx); err != nil || string(data) != "x" {
+		t.Fatalf("after: %q %v", data, err)
+	}
+}
