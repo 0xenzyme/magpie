@@ -3,6 +3,8 @@ package agent
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -12,15 +14,19 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/proc"
+	"github.com/yetone/magpie/internal/provider"
 )
 
 // Codex installed in a WSL distro reads its config there, not in Windows'
 // home — so does the Codex app's WSL connection. On Windows magpie lists the
-// distros (wsl.exe -l -q), asks each once for its $HOME and whether Codex is
-// there, and edits the files through \\wsl.localhost\<distro>. Each is an
-// agent of its own, codex@wsl:<distro>. The gateway it is pointed at is
+// distros (wsl.exe -l -q), asks each running one once for its $HOME and
+// whether Codex is there (never starting one that is stopped), and edits
+// the files through \\wsl.localhost\<distro>. Each is an agent of its own,
+// codex@wsl:<distro>. The gateway it is pointed at is
 // 127.0.0.1 when WSL shares Windows' network (networkingMode=mirrored in
 // .wslconfig); under NAT it is Windows as WSL sees it, which reaches the
 // gateway only while that listens beyond loopback.
@@ -79,12 +85,14 @@ func (p place) key(k string) string {
 
 // distro is one WSL distro, as probed.
 type distro struct {
-	Name     string
-	Home     string          // $HOME inside it, e.g. /home/me
-	Root     string          // where magpie opens its / from, e.g. \\wsl.localhost\Ubuntu
-	Has      map[string]bool // "dir:.codex", "bin:codex": what the probe found
-	Gateway  string          // the Windows host as the distro reaches it, when not mirrored
-	Mirrored bool
+	Name     string            `json:"name"`
+	Home     string            `json:"home"`              // $HOME inside it, e.g. /home/me
+	Root     string            `json:"root"`              // where magpie opens its / from, e.g. \\wsl.localhost\Ubuntu
+	Has      map[string]bool   `json:"has"`               // "dir:.codex", "bin:codex": what the probe found
+	Gateway  string            `json:"gateway,omitempty"` // the Windows host as the distro reaches it, when not mirrored
+	Values   map[string]string `json:"values,omitempty"`  // Codex's fields as last read, shown while it is stopped
+	Mirrored bool              `json:"-"`
+	Running  bool              `json:"-"`
 }
 
 // local is a path inside the distro as magpie opens it.
@@ -118,7 +126,9 @@ func (d distro) place(id string) place {
 }
 
 // wslCodex is Codex in a distro: Codex's own reading and writing, at the
-// distro's home, with the distro's way to the gateway.
+// distro's home, with the distro's way to the gateway. A distro that isn't
+// running is shown as magpie last saw it, and nothing of it is read: any
+// access to its files starts it. Picking a value starts it, as asked.
 func wslCodex(d distro) *Agent {
 	id := "codex@wsl:" + d.Name
 	a := codexIn(d.place(id))
@@ -127,6 +137,17 @@ func wslCodex(d distro) *Agent {
 	// its requests carry Codex's User-Agent and are counted as Codex's
 	// on Windows, so a prompt with none of "its" own seen isn't a bypass
 	a.LastUsed = nil
+	a.Notice = func() string {
+		if !d.Mirrored {
+			return "WSL " + d.Name + " isn't in mirrored networking, so its Codex can't reach magpie on 127.0.0.1 and was pointed at Windows (" + d.base() +
+				"), which answers only while the gateway listens beyond loopback and Windows' firewall lets WSL in. " +
+				"Set networkingMode=mirrored under [wsl2] in %UserProfile%\\.wslconfig and run wsl --shutdown, then pick the model again."
+		}
+		return "Codex in WSL " + d.Name + " builds its model list at start-up — restart it (and the Codex app's WSL connection) to see this."
+	}
+	if !d.Running {
+		return asleep(a, d)
+	}
 	if reached := a.Reached; reached != nil {
 		a.Reached = func(since time.Time) (time.Time, string, bool) {
 			at, to, refused := reached(since)
@@ -136,13 +157,74 @@ func wslCodex(d distro) *Agent {
 			return at, to, refused
 		}
 	}
-	a.Notice = func() string {
-		if !d.Mirrored {
-			return "WSL " + d.Name + " isn't in mirrored networking, so its Codex can't reach magpie on 127.0.0.1 and was pointed at Windows (" + d.base() +
-				"), which answers only while the gateway listens beyond loopback and Windows' firewall lets WSL in. " +
-				"Set networkingMode=mirrored under [wsl2] in %UserProfile%\\.wslconfig and run wsl --shutdown, then pick the model again."
+	for i := range a.Fields {
+		f := &a.Fields[i]
+		get, key := f.Get, f.Key
+		f.Get = func() string { v := get(); wslRemember(d.Name, key, v); return v }
+	}
+	// what a set leaves is kept at once, in case the distro stops before
+	// the next look
+	for i := range a.Fields {
+		f := &a.Fields[i]
+		if set := f.Set; set != nil {
+			f.Set = func(v string) error {
+				err := set(v)
+				for _, g := range a.Fields {
+					g.Get()
+				}
+				wslSave()
+				return err
+			}
 		}
-		return "Codex in WSL " + d.Name + " builds its model list at start-up — restart it (and the Codex app's WSL connection) to see this."
+	}
+	return a
+}
+
+// asleep is a stopped distro's Codex: its fields read what magpie last saw,
+// their options come from magpie alone, and it has no files to check, sync
+// or migrate (Path and Dir are empty); setting a field goes to the files,
+// which starts the distro.
+func asleep(live *Agent, d distro) *Agent {
+	started := false
+	a := &Agent{ID: live.ID, Name: live.Name, Icon: live.Icon, WSL: d.Name, detect: live.detect,
+		Notice: func() string {
+			if started {
+				return live.Notice()
+			}
+			return "WSL " + d.Name + " isn't running: magpie shows what it last saw there, and starts it only to change something."
+		}}
+	own := func() []Option { return group("OpenAI", options(ownCodex(), "")) }
+	for _, lf := range live.Fields {
+		key, set := lf.Key, lf.Set
+		f := Field{Key: key, Label: lf.Label, Quiet: lf.Quiet, Options: lf.Options,
+			Get: func() string { return wslLastSeen(d.Name, key) },
+			Set: func(v string) error {
+				// opening a stopped distro's files is aborted rather than
+				// waiting for it to start, so it is started first
+				if _, err := wslRun(time.Minute, "-d", d.Name, "-e", "true"); err != nil {
+					return fmt.Errorf("start WSL %s: %w", d.Name, err)
+				}
+				started = true
+				err := set(v)
+				// a model settles the effort too
+				for _, f := range live.Fields {
+					wslRemember(d.Name, f.Key, f.Get())
+				}
+				wslSave()
+				return err
+			}}
+		switch key {
+		case "model", "subagent":
+			f.Options = func(map[string]string) []Option { return append(own(), viaMagpieFor("codex", "")...) }
+		case "effort":
+			f.Options = func(cur map[string]string) []Option {
+				if e := catalog.Efforts(append(catalog.Codex(), magpieModels("codex")...), cur["model"]); len(e) > 0 {
+					return static(e...)
+				}
+				return static("low", "medium", "high", "xhigh")
+			}
+		}
+		a.Fields = append(a.Fields, f)
 	}
 	return a
 }
@@ -152,8 +234,12 @@ func wslAgents() []*Agent {
 	if runtime.GOOS != "windows" {
 		return nil
 	}
+	return wslAgentsOf(wslDistros())
+}
+
+func wslAgentsOf(ds []distro) []*Agent {
 	var out []*Agent
-	for _, d := range wslDistros() {
+	for _, d := range ds {
 		// only where Codex is: magpie writes nothing into a distro without it
 		if a := wslCodex(d); a.Detected() {
 			out = append(out, a)
@@ -162,14 +248,21 @@ func wslAgents() []*Agent {
 	return out
 }
 
-// The distro list is asked for again after a while; a distro is probed once
-// (which starts it), and again only after a probe that failed.
+// Only running distros are probed — asking one anything starts it — once
+// each in a process, and again only after a probe that failed. Those Codex
+// was found in are kept in wsl.json beside magpie's settings (not the
+// stash, which profiles and backups carry), with their fields as last
+// read, so a stopped one is listed without being started.
 var wsl struct {
 	sync.Mutex
-	at     time.Time
-	names  []string
-	probed map[string]*distro
-	failed map[string]time.Time
+	at      time.Time
+	names   []string        // every distro installed
+	running map[string]bool // those running
+	listed  bool            // names is a real answer, and may forget distros
+	seen    map[string]*distro
+	probed  map[string]bool
+	failed  map[string]time.Time
+	dirty   bool
 }
 
 const (
@@ -177,38 +270,8 @@ const (
 	wslRetryAge = 10 * time.Minute
 )
 
-func wslDistros() []distro {
-	wsl.Lock()
-	defer wsl.Unlock()
-	if time.Since(wsl.at) > wslListAge {
-		wsl.names = wslList()
-		wsl.at = time.Now()
-	}
-	if wsl.probed == nil {
-		wsl.probed, wsl.failed = map[string]*distro{}, map[string]time.Time{}
-	}
-	mirrored := wslMirrored(wslConfig())
-	var out []distro
-	for _, n := range wsl.names {
-		d := wsl.probed[n]
-		if d == nil {
-			if t, ok := wsl.failed[n]; ok && time.Since(t) < wslRetryAge {
-				continue
-			}
-			if d = wslProbe(n); d == nil {
-				wsl.failed[n] = time.Now()
-				continue
-			}
-			wsl.probed[n] = d
-		}
-		c := *d
-		c.Mirrored = mirrored
-		out = append(out, c)
-	}
-	return out
-}
-
-func wslCommand(timeout time.Duration, args ...string) ([]byte, error) {
+// wslRun runs wsl.exe; a var for tests.
+var wslRun = func(timeout time.Duration, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := proc.CommandContext(ctx, "wsl.exe", args...)
@@ -217,13 +280,123 @@ func wslCommand(timeout time.Duration, args ...string) ([]byte, error) {
 	return cmd.Output()
 }
 
-// wslList is the installed distros' names.
-func wslList() []string {
-	b, err := wslCommand(10*time.Second, "-l", "-q")
-	if err != nil {
-		return nil
+// wslRoot is where magpie opens a running distro's / from; a var for tests.
+var wslRoot = func(name string) string {
+	if _, err := os.Stat(`\\wsl.localhost\` + name + `\`); err == nil {
+		return `\\wsl.localhost\` + name
 	}
-	return parseDistros(b)
+	return `\\wsl$\` + name // before Windows 11 / WSL 0.50
+}
+
+func wslStatePath() string { return filepath.Join(filepath.Dir(provider.Path()), "wsl.json") }
+
+func wslDistros() []distro {
+	wsl.Lock()
+	defer wsl.Unlock()
+	if wsl.seen == nil {
+		wsl.seen, wsl.probed, wsl.failed = map[string]*distro{}, map[string]bool{}, map[string]time.Time{}
+		if b, err := os.ReadFile(wslStatePath()); err == nil {
+			json.Unmarshal(b, &wsl.seen)
+		}
+	}
+	if time.Since(wsl.at) > wslListAge {
+		wsl.names, wsl.listed = wslList("-l", "-q")
+		run, _ := wslList("-l", "--running", "-q")
+		wsl.running = map[string]bool{}
+		for _, n := range run {
+			wsl.running[n] = true
+		}
+		wsl.at = time.Now()
+	}
+	installed := map[string]bool{}
+	mirrored := wslMirrored(wslConfig())
+	var out []distro
+	for _, n := range wsl.names {
+		installed[n] = true
+		if wsl.running[n] && !wsl.probed[n] {
+			if t, ok := wsl.failed[n]; !ok || time.Since(t) > wslRetryAge {
+				if d := wslProbe(n); d == nil {
+					wsl.failed[n] = time.Now()
+				} else {
+					wsl.probed[n] = true
+					if d.Has["dir:.codex"] || d.Has["bin:codex"] {
+						if old := wsl.seen[n]; old != nil {
+							d.Values = old.Values
+						}
+						wsl.seen[n] = d
+					} else {
+						delete(wsl.seen, n)
+					}
+					wsl.dirty = true
+				}
+			}
+		}
+		d := wsl.seen[n]
+		if d == nil {
+			continue
+		}
+		c := *d
+		c.Running, c.Mirrored = wsl.running[n], mirrored
+		out = append(out, c)
+	}
+	// an unregistered distro is forgotten
+	for n := range wsl.seen {
+		if wsl.listed && !installed[n] {
+			delete(wsl.seen, n)
+			wsl.dirty = true
+		}
+	}
+	wslSaveLocked()
+	return out
+}
+
+// wslSave writes wsl.json if anything in it changed.
+func wslSave() {
+	wsl.Lock()
+	defer wsl.Unlock()
+	wslSaveLocked()
+}
+
+func wslSaveLocked() {
+	if wsl.dirty {
+		if b, err := json.MarshalIndent(wsl.seen, "", "  "); err == nil && edit.WriteAtomic(wslStatePath(), b) == nil {
+			wsl.dirty = false
+		}
+	}
+}
+
+// wslRemember keeps what a distro's field reads, for while it is stopped.
+func wslRemember(name, key, v string) {
+	wsl.Lock()
+	defer wsl.Unlock()
+	d := wsl.seen[name]
+	if d == nil || d.Values[key] == v {
+		return
+	}
+	if d.Values == nil {
+		d.Values = map[string]string{}
+	}
+	d.Values[key] = v
+	wsl.dirty = true
+}
+
+func wslLastSeen(name, key string) string {
+	wsl.Lock()
+	defer wsl.Unlock()
+	if d := wsl.seen[name]; d != nil {
+		return d.Values[key]
+	}
+	return ""
+}
+
+// wslList is the names wsl.exe lists with args; ok is false when it
+// couldn't say (no WSL, or none installed).
+func wslList(args ...string) (names []string, ok bool) {
+	b, err := wslRun(10*time.Second, args...)
+	if err != nil {
+		return nil, false
+	}
+	return parseDistros(b), true
 }
 
 // wslProbeScript prints the distro's home, what of Codex it has, and its
@@ -234,7 +407,7 @@ const wslProbeScript = `echo "home:$HOME"; [ -d "$HOME/.codex" ] && echo dir:.co
 	`grep -m1 '^nameserver' /etc/resolv.conf 2>/dev/null | sed 's/^/ns:/'; true`
 
 func wslProbe(name string) *distro {
-	b, err := wslCommand(30*time.Second, "-d", name, "-e", "sh", "-lc", wslProbeScript)
+	b, err := wslRun(30*time.Second, "-d", name, "-e", "sh", "-lc", wslProbeScript)
 	if err != nil {
 		return nil
 	}
@@ -242,9 +415,8 @@ func wslProbe(name string) *distro {
 	if d == nil {
 		return nil
 	}
-	d.Root = `\\wsl.localhost\` + name
-	if _, err := os.Stat(d.Root + `\`); err != nil {
-		d.Root = `\\wsl$\` + name // before Windows 11 / WSL 0.50
+	if d.Has["dir:.codex"] || d.Has["bin:codex"] {
+		d.Root = wslRoot(name)
 	}
 	return d
 }

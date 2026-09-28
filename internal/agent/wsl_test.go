@@ -1,12 +1,15 @@
 package agent
 
 import (
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf16"
 
 	"github.com/yetone/magpie/internal/gateway"
@@ -100,7 +103,7 @@ func TestWSLPaths(t *testing.T) {
 // fakeDistro is a distro whose / is a temp dir, its $HOME the codexHome.
 func fakeDistro(home string, mirrored bool) distro {
 	return distro{Name: "Ubuntu-24.04", Root: filepath.Dir(home), Home: "/" + filepath.Base(home),
-		Has: map[string]bool{"dir:.codex": true}, Gateway: "172.20.0.1", Mirrored: mirrored}
+		Has: map[string]bool{"dir:.codex": true}, Gateway: "172.20.0.1", Mirrored: mirrored, Running: true}
 }
 
 // Codex in a distro under NAT, not signed in: magpie as its provider at the
@@ -171,5 +174,138 @@ func TestWSLAgentsElsewhere(t *testing.T) {
 	}
 	if len(wslAgents()) != 0 {
 		t.Fatal("wsl agents off windows")
+	}
+}
+
+// fakeWSL stands in for wsl.exe: the distros installed, those running, and
+// what probing each prints; it records the distros asked anything and those
+// whose files were opened.
+func fakeWSL(t *testing.T, installed, running string, probes, roots map[string]string) (asked, opened *[]string) {
+	t.Helper()
+	run, root := wslRun, wslRoot
+	reset := func() { wsl.seen, wsl.at, wsl.names, wsl.running, wsl.dirty = nil, time.Time{}, nil, nil, false }
+	t.Cleanup(func() { wslRun, wslRoot = run, root; reset() })
+	reset()
+	asked, opened = &[]string{}, &[]string{}
+	wslRun = func(_ time.Duration, args ...string) ([]byte, error) {
+		switch strings.Join(args, " ") {
+		case "-l -q":
+			return utf16le(installed, true), nil
+		case "-l --running -q":
+			return utf16le(running, true), nil
+		}
+		if len(args) > 2 && args[0] == "-d" {
+			*asked = append(*asked, args[1])
+			return []byte(probes[args[1]]), nil
+		}
+		return nil, errors.New("unexpected wsl.exe " + strings.Join(args, " "))
+	}
+	wslRoot = func(name string) string {
+		*opened = append(*opened, name)
+		return roots[name]
+	}
+	return asked, opened
+}
+
+// A stopped distro is never asked anything nor opened: one Codex was found
+// in before is listed as magpie last saw it, and picking a value goes to its
+// files (which starts it). Running ones are probed once; one without Codex,
+// or one no longer installed, isn't kept.
+func TestWSLStoppedDistro(t *testing.T) {
+	home, _ := codexHome(t, "", "model = \"gpt-5.5\"\n")
+	stopped := t.TempDir()
+	os.MkdirAll(filepath.Join(stopped, "home", "s", ".codex"), 0o755)
+	stoppedCfg := filepath.Join(stopped, "home", "s", ".codex", "config.toml")
+	os.WriteFile(stoppedCfg, []byte("model = \"on-disk\"\n"), 0o644)
+	seen := map[string]*distro{
+		"Stopped": {Name: "Stopped", Home: "/home/s", Root: stopped, Has: map[string]bool{"dir:.codex": true},
+			Values: map[string]string{"model": "gpt-5.4", "effort": "low"}},
+		"Gone": {Name: "Gone", Home: "/root", Root: stopped, Has: map[string]bool{"bin:codex": true}},
+	}
+	b, _ := json.Marshal(seen)
+	os.MkdirAll(filepath.Dir(wslStatePath()), 0o755)
+	os.WriteFile(wslStatePath(), b, 0o600)
+
+	asked, opened := fakeWSL(t, "Ubuntu\r\nStopped\r\nOther\r\n", "Ubuntu\r\nOther\r\n", map[string]string{
+		"Ubuntu": "home:/" + filepath.Base(home) + "\ndir:.codex\nroute:default via 172.20.0.1 dev eth0\n",
+		"Other":  "home:/home/o\n",
+	}, map[string]string{"Ubuntu": filepath.Dir(home)})
+
+	ds := wslDistros()
+	if len(ds) != 2 || ds[0].Name != "Ubuntu" || !ds[0].Running || ds[1].Name != "Stopped" || ds[1].Running {
+		t.Fatalf("%+v", ds)
+	}
+	if strings.Join(*asked, ",") != "Ubuntu,Other" || strings.Join(*opened, ",") != "Ubuntu" {
+		t.Fatalf("asked %v, opened %v", *asked, *opened)
+	}
+	as := wslAgentsOf(ds)
+	if len(as) != 2 {
+		t.Fatalf("%d agents", len(as))
+	}
+	live, sleeping := as[0], as[1]
+	if sleeping.ID != "codex@wsl:Stopped" || !sleeping.Detected() || sleeping.Path != "" || sleeping.Dir != "" ||
+		sleeping.Check != nil || sleeping.Sync != nil || sleeping.Reached != nil {
+		t.Fatalf("stopped: %+v", sleeping)
+	}
+	if v := sleeping.Values(); v["model"] != "gpt-5.4" || v["effort"] != "low" {
+		t.Fatalf("stopped values %v", v)
+	}
+	if d := sleeping.Drift(); d != nil {
+		t.Fatalf("drift %+v", d)
+	}
+	if len(sleeping.Fields[0].Options(nil)) == 0 || !strings.Contains(sleeping.Notice(), "isn't running") {
+		t.Fatal("options / notice")
+	}
+	if v := live.Values(); v["model"] != "gpt-5.5" {
+		t.Fatalf("live %v", v)
+	}
+
+	// within the minute nothing is asked again; the file keeps Ubuntu (its
+	// model as read) and Stopped, forgets Gone, and never had Other
+	*asked = nil
+	wslDistros()
+	if len(*asked) != 0 {
+		t.Fatalf("asked again %v", *asked)
+	}
+	var kept map[string]*distro
+	b, _ = os.ReadFile(wslStatePath())
+	json.Unmarshal(b, &kept)
+	if len(kept) != 2 || kept["Ubuntu"] == nil || kept["Ubuntu"].Values["model"] != "gpt-5.5" || kept["Stopped"] == nil {
+		t.Fatalf("kept %s", b)
+	}
+
+	// picking a value is the user's asking: the distro is started, then its
+	// files written
+	if err := sleeping.Fields[0].Set("gpt-5.3"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(*asked, ",") != "Stopped" {
+		t.Fatalf("not started first: %v", *asked)
+	}
+	if b, _ := os.ReadFile(stoppedCfg); !strings.Contains(string(b), `model = "gpt-5.3"`) {
+		t.Fatalf("set:\n%s", b)
+	}
+	if v := sleeping.Fields[0].Get(); v != "gpt-5.3" {
+		t.Fatal(v)
+	}
+	b, _ = os.ReadFile(wslStatePath())
+	if !strings.Contains(string(b), `"gpt-5.3"`) || strings.Contains(sleeping.Notice(), "isn't running") {
+		t.Fatalf("after set: %s / %s", b, sleeping.Notice())
+	}
+}
+
+// When wsl.exe can't list, nothing remembered is forgotten.
+func TestWSLListFails(t *testing.T) {
+	codexHome(t, "", "")
+	fakeWSL(t, "", "", nil, nil)
+	wslRun = func(time.Duration, ...string) ([]byte, error) { return nil, errors.New("no wsl") }
+	b, _ := json.Marshal(map[string]*distro{"Keep": {Name: "Keep", Has: map[string]bool{"dir:.codex": true}}})
+	os.MkdirAll(filepath.Dir(wslStatePath()), 0o755)
+	os.WriteFile(wslStatePath(), b, 0o600)
+	if ds := wslDistros(); len(ds) != 0 {
+		t.Fatalf("%+v", ds)
+	}
+	if b2, _ := os.ReadFile(wslStatePath()); string(b2) != string(b) {
+		t.Fatalf("rewrote %s", b2)
 	}
 }
