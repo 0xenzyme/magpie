@@ -314,6 +314,15 @@ input.lib-setname:focus { border-color: var(--accent); box-shadow: 0 0 0 3px col
 .mk-sheet .bar .mk-id { margin-left: 2px; }
 .lib-rtk-gain { margin: 6px 12px 10px; font-size: 12px; line-height: 1.5; color: var(--muted); }
 .lib-card > .lib-acts { padding: 0 12px 12px; }
+.lib-rtk-note { margin: 6px 12px 0; font-size: 12px; line-height: 1.5; color: var(--amber); }
+.lib-rtk-chart { margin: 0 12px 12px; padding: 10px 12px 8px; }
+.lib-rtk-chart .bars { height: 88px; }
+.lib-rtk-foot { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lib-rtk-foot .grow { flex: 1; }
+.lib-rtk-key { display: inline-flex; align-items: center; gap: 5px; }
+.lib-rtk-key i { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+.lib-rtk-key i.in { opacity: .38; }
+.lib-cardhead button.text { height: 22px; font-size: 11.5px; }
 .lib-rtk-cmd { margin: -4px 12px 10px; font: 11.5px var(--code); color: var(--muted); user-select: text; }
 
 /* projects: a card each, its skills shown when it is opened */
