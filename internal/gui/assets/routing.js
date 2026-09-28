@@ -63,7 +63,18 @@
   const steps = el("ol", "rt-steps");
   log.append(logHead, steps);
   const off = el("div", "none rt-off");
-  box.append(top, stage, foot, log, off);
+  // over the stage while a replay plays: the time it is replaying, which
+  // requests are in flight then, and where it is among them
+  const rbar = el("div", "rt-replay");
+  const rTop = el("div", "rp-top"), rClock = el("b", "rp-clock"), rDay = el("small", "rp-day"), rSkip = el("span", "rp-skip");
+  const rSpeed = el("button", "text"), rStop = el("button", "text");
+  rTop.append(el("span", "rp-tag"), rClock, rDay, rSkip, el("span", "grow"), rSpeed, rStop);
+  const rWhat = el("div", "rp-what");
+  const rTrack = el("div", "rp-track"), rHead = el("i", "rp-head");
+  rTrack.append(rHead);
+  rbar.append(rTop, rWhat, rTrack);
+  rbar.hidden = true;
+  box.append(top, rbar, stage, foot, log, off);
 
   // under the stage: every request the gateway keeps, and each account or
   // key as those requests found it
@@ -85,7 +96,8 @@
   // ---------- words ----------
 
   let skew = 0; // the gateway's clock less this page's
-  const now = () => Date.now() + skew;
+  // now is the gateway's time — or, in a replay, the time it is replaying
+  const now = () => rp ? rp.real : Date.now() + skew;
   const at = (s) => new Date(s).getTime();
   const known0 = (s) => s && !s.startsWith("0001-");
   function dur(ms) {
@@ -437,7 +449,9 @@
   const subs = new Map();   // a group in the group's way down → its heading { li, wire, key, up }
   const agents = new Map(); // agent → { node, ic, name, sub, wire }
   let sets = [];            // the account sets on the stage, in the order they came
-  const playing = new Set(); // the routes being played
+  const playing = new Map(); // the routes being played → the gen playing each
+  let rp = null;            // a replay playing: see replay
+  const src = () => rp ? rp.routes : routes; // the routes the stage plays from
   const LINGER = 12e3;      // how long an agent's last request stays on the stage
   let gen = 0, trips = [], waiters = [];
   let capQ = [], capAt = -1e9, capLo = false, flipUntil = 0;
@@ -569,11 +583,11 @@
   // playing, and each agent's latest while it lingers, a few agents at most
   function staged() {
     if (pinned) return [pinned];
-    const n = now(), last = new Map();
-    const rs = [...routes.values()].sort((a, b) => a.id - b.id);
+    const n = now(), last = new Map(), map = src();
+    const rs = [...map.values()].sort((a, b) => a.id - b.id);
     for (const r of rs) last.set(r.agent, r);
     const out = rs.filter((r) => playing.has(r.id) || (last.get(r.agent) === r && (!r.done || at(r.time) + (r.ms || 0) > n - LINGER)));
-    const c = cur && routes.get(cur.id);
+    const c = cur && map.get(cur.id);
     if (c && !out.includes(c)) out.push(c);
     const ags = [...new Set(out.map((r) => r.agent))].slice(-4);
     return out.filter((r) => ags.includes(r.agent)).sort((a, b) => a.id - b.id);
@@ -659,7 +673,7 @@
     rebuild(rs, false);
   }
   function rebuild(rs, force) {
-    cur = routes.get((pinned || rs[rs.length - 1]).id) || pinned || rs[rs.length - 1];
+    cur = src().get((pinned || rs[rs.length - 1]).id) || pinned || rs[rs.length - 1];
     if (force) {
       for (const row of rows.values()) row.wire.remove();
       rows = new Map();
@@ -776,7 +790,7 @@
     for (const f of flying.values()) { onWire.add(f.id); busy.add(f.agent); }
     for (const [id, row] of rows) {
       // each row as the latest staged request that weighed it found it
-      const r = routes.get(row.rid) || pinned || cur, answered = new Set(), rests = new Map(), gave = new Map();
+      const r = src().get(row.rid) || pinned || cur, answered = new Set(), rests = new Map(), gave = new Map();
       for (const w of r.order) if (w.rest) rests.set(w.id, w.rest);
       for (const tr of r.tries) {
         if (tr.done && tr.status < 400) answered.add(seat(tr));
@@ -830,9 +844,15 @@
     log.hidden = !r;
     if (!r) return;
     logHead.replaceChildren(
-      el("span", "", pinned ? t("How the request at {time} was routed", { time: clock(r.time) }) : t("How the last request was routed")),
+      el("span", "", rp ? t("How the request at {time} was routed", { time: clock(r.time) })
+        : pinned ? t("How the request at {time} was routed", { time: clock(r.time) }) : t("How the last request was routed")),
       el("span", "grow"));
-    if (pinned) {
+    if (!rp && r.done) {
+      const again = el("button", "text", t("Replay"));
+      again.onclick = () => replay([r], pinned);
+      logHead.append(again);
+    }
+    if (pinned && !rp) {
       const live = el("button", "text", t("Back to live"));
       live.onclick = () => { pinned = null; cur = newest(); sync(true); renderAll(); };
       logHead.append(live);
@@ -855,8 +875,8 @@
   // pick sets the stage to a past request, or back to live with the newest
   function pick(r) {
     pinned = r.id === newest()?.id ? null : r;
-    gen++; trips = []; flying.clear(); playing.clear();
-    for (const p of sky.querySelectorAll(".pkt, .rt-flier")) p.remove();
+    if (rp) { rp = null; rbar.hidden = true; }
+    stopPlays();
     cur = r;
     sync(true); renderAll();
     say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r));
@@ -880,6 +900,11 @@
     const rs = [...routes.values()].sort((a, b) => b.id - a.id);
     hist.hidden = !rs.length;
     reqHead.replaceChildren(el("span", "label", t("Requests")), el("span", "grow"), reqNote);
+    if (rs.filter((r) => r.done).length > 1 && !rp) {
+      const all = el("button", "text", t("Replay them all"));
+      all.onclick = () => replay(rs, pinned);
+      reqHead.append(all);
+    }
     reqNote.textContent = t("the last {n} the gateway keeps", { n: rs.length });
     reqs.replaceChildren(...rs.map((r) => {
       const [said, how, tr] = outcome(r);
@@ -1046,9 +1071,10 @@
   // picks up the answer and brings it back — a failure only as far as
   // magpie, where the first takes the request on to the next.
   async function play(id) {
+    const routes = src(); // a replay's, if it is one
     let r = routes.get(id);
     const g = gen;
-    playing.add(id);
+    playing.set(id, g);
     cur = r;
     sync();
     say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r));
@@ -1140,7 +1166,7 @@
       away(back);
       flying.delete(dot);
       dot.remove();
-      playing.delete(id);
+      if (playing.get(id) === g) playing.delete(id);
       renderAll();
     }
   }
@@ -1150,6 +1176,157 @@
     const ws = wiresTo(row);
     return [...[...ws].reverse().map((p) => ({ p, rev: true })), via(tip(ws[0], false, true), tip(A.wire, true, true)), { p: A.wire, rev: true }];
   };
+
+  // stopPlays ends whatever is flying: each play sees its gen gone and
+  // clears up after itself
+  function stopPlays() {
+    gen++; flying.clear(); playing.clear();
+    for (const p of sky.querySelectorAll(".pkt, .rt-flier")) p.remove();
+    wake();
+  }
+
+  // ---------- replay ----------
+
+  // replay plays kept requests again as they happened, from the trace the
+  // gateway kept: each at its time, each try as long as it took, and the
+  // stage — every agent, account, rest and sentence — as it was then. A
+  // wait longer than GAP is cut to GAP, so a minute's answer or a quiet
+  // hour doesn't hold it up; the clock over the stage still tells the time
+  // it is replaying, running fast through what was cut.
+  const GAP = 1800, LEAD = 500;
+  const ends = (r) => Math.max(at(r.time) + (r.ms || 0), ...r.tries.map((tr) => at(tr.start) + (tr.ms || 0)));
+  function replay(list, back) {
+    list = list.filter((r) => r.done).sort((a, b) => a.id - b.id);
+    if (!list.length) return;
+    const all = [];
+    for (const r of list) { all.push(at(r.time), ends(r)); for (const tr of r.tries) all.push(at(tr.start), at(tr.start) + (tr.ms || 0)); }
+    const ts = [...new Set(all)].sort((a, b) => a - b), vs = [];
+    let v = 0;
+    ts.forEach((x, i) => { if (i) v += Math.min(x - ts[i - 1], GAP); vs.push(v); });
+    const vOf = (x) => vs[ts.indexOf(x)];
+    const plan = list.map((r, i) => ({ r, n: i + 1, s: vOf(at(r.time)), e: vOf(ends(r)),
+      tries: r.tries.map((tr) => ({ s: vOf(at(tr.start)), e: vOf(at(tr.start) + (tr.ms || 0)) })) }));
+    const speed = rp?.speed || 1;
+    rp = null; // the old one, if one was playing, stops here
+    stopPlays();
+    pinned = null;
+    rp = { routes: new Map(), plan, ts, vs, v: -LEAD, total: v, speed, back: back || null, t: performance.now(), real: ts[0] - LEAD };
+    rTrack.replaceChildren(rHead, ...plan.map((g) => {
+      const m = el("i", "rp-mark");
+      m.style.left = (g.s / (v || 1)) * 100 + "%";
+      m.style.setProperty("--agent", hueOf(g.r.agent));
+      m.title = `${clock(g.r.time)} · ${agentName(g.r.agent)} · ${g.r.model}`;
+      g.mark = m;
+      return m;
+    }));
+    rbar.hidden = false;
+    renderAll();
+    requestAnimationFrame(step);
+  }
+  // ghost is a request as it was v into the replay
+  function ghost(g, v) {
+    const tries = [];
+    g.r.tries.forEach((tr, i) => {
+      const x = g.tries[i];
+      if (x.s <= v) tries.push(x.e <= v ? tr : { ...tr, done: false, status: 0, rest: null, again: false });
+    });
+    return { ...g.r, tries, done: g.e <= v };
+  }
+  // realAt is the time it was v into the replay, and how much faster than
+  // time it runs there
+  function realAt(p, v) {
+    const { ts, vs } = p;
+    if (v <= 0) return [ts[0] + v, 1];
+    for (let k = 1; k < ts.length; k++) {
+      if (v > vs[k]) continue;
+      const dv = vs[k] - vs[k - 1], dt = ts[k] - ts[k - 1];
+      return [dv ? ts[k - 1] + (v - vs[k - 1]) * dt / dv : ts[k], dv ? dt / dv : 1];
+    }
+    return [ts[ts.length - 1], 1];
+  }
+  const same = (a, b) => a.done === b.done && a.tries.length === b.tries.length && a.tries.every((x, i) => x.done === b.tries[i].done);
+  function step(ts) {
+    const p = rp;
+    if (!p) return;
+    p.v += (ts - p.t) * p.speed;
+    p.t = ts;
+    let fast;
+    [p.real, fast] = realAt(p, p.v);
+    let moved = false;
+    for (const g of p.plan) {
+      if (g.s > p.v) continue;
+      const was = p.routes.get(g.r.id), is = ghost(g, p.v);
+      if (was && same(was, is)) continue;
+      p.routes.set(g.r.id, is);
+      moved = true;
+      if (!was) play(g.r.id);
+    }
+    wake();
+    // as the gateway's own trace would: a try begun or ended shows at once
+    if (moved) { if (cur && p.routes.has(cur.id)) cur = p.routes.get(cur.id); renderAll(); }
+    replayBar(p, fast);
+    if (p.v > p.total && !playing.size) { endReplay(); return; }
+    requestAnimationFrame(step);
+  }
+  function replayBar(p, fast) {
+    const d = new Date(p.real);
+    rClock.textContent = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + "." + Math.floor(d.getMilliseconds() / 100);
+    const day = d.toDateString() === new Date().toDateString() ? t("today") : d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+    if (rDay.textContent !== day) rDay.textContent = day;
+    const skip = fast > 1.5 ? t("fast-forwarding · {n}×", { n: Math.round(fast) }) : "";
+    if (rSkip.textContent !== skip) rSkip.textContent = skip;
+    rSpeed.textContent = t("{n}× speed", { n: p.speed });
+    rStop.textContent = t("Stop replay");
+    rTop.firstChild.textContent = t("Replaying");
+    rHead.style.left = Math.max(0, Math.min(100, (p.v / (p.total || 1)) * 100)) + "%";
+    // the requests in flight at this moment of the replay, else the last one
+    const on = p.plan.filter((g) => playing.has(g.r.id) || (p.routes.has(g.r.id) && !p.routes.get(g.r.id).done));
+    const shown_ = on.length ? on : p.plan.filter((g) => p.routes.has(g.r.id)).slice(-1);
+    for (const g of p.plan) g.mark.classList.toggle("on", on.includes(g));
+    const key = shown_.map((g) => g.r.id + ":" + p.routes.get(g.r.id)?.tries.length + ":" + p.routes.get(g.r.id)?.done).join(",") + (shown_.length ? "" : "-");
+    if (rWhat.dataset.key === key) return;
+    rWhat.dataset.key = key;
+    rWhat.replaceChildren(...(shown_.length ? shown_.map((g) => {
+      const r = p.routes.get(g.r.id) || g.r, row = el("div", "rp-req" + (on.includes(g) ? " on" : ""));
+      const sw = el("i", "ag");
+      sw.style.setProperty("--agent", hueOf(r.agent));
+      const [said] = outcome(r);
+      row.append(el("span", "rp-n", t("request {i} of {n}", { i: g.n, n: p.plan.length })), sw,
+        el("b", "", agentName(r.agent)), el("code", "mdl", r.model), el("span", "rp-to", "→ " + said),
+        el("span", "rp-at", t("sent {time}", { time: new Date(r.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) })));
+      row.onclick = () => { cur = r; renderLog(); };
+      return row;
+    }) : [el("span", "rp-wait", t("starting…"))]));
+  }
+  // seek plays the replay on from where on its track was clicked
+  function seek(frac) {
+    const p = rp;
+    if (!p) return;
+    const v = Math.max(0, Math.min(1, frac)) * p.total;
+    stopPlays(); // the flights end; the replay goes on
+    p.v = v; p.t = performance.now(); p.routes.clear();
+    for (const g of p.plan) if (g.s <= v) p.routes.set(g.r.id, ghost(g, v));
+    // one in flight there flies on from where it was; the rest are done
+    for (const g of p.plan) if (p.routes.has(g.r.id) && !p.routes.get(g.r.id).done) play(g.r.id);
+    const last = [...p.routes.values()].pop();
+    if (last) { cur = last; sync(true); }
+    rWhat.dataset.key = "";
+    renderAll();
+  }
+  function endReplay(stop) {
+    const p = rp;
+    if (!p) return;
+    rp = null;
+    rbar.hidden = true;
+    if (stop) stopPlays();
+    const b = p.back && routes.get(p.back.id);
+    pinned = b || null;
+    cur = b || newest();
+    if (cur) { sync(true); renderAll(); }
+  }
+  rSpeed.onclick = () => { if (rp) { rp.speed = rp.speed >= 8 ? 1 : rp.speed * 2; replayBar(rp, 1); } };
+  rStop.onclick = () => endReplay(true);
+  rTrack.onclick = (e) => { const b = rTrack.getBoundingClientRect(); seek((e.clientX - b.left) / b.width); };
 
   // ---------- the loop ----------
 
@@ -1276,9 +1453,9 @@
           const r = newest();
           if (r) { cur = r; sync(true); say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r)); renderAll(); } else empty();
         } else {
-          if (cur && routes.has(cur.id)) cur = routes.get(cur.id);
+          if (cur && routes.has(cur.id) && !rp) cur = routes.get(cur.id);
           if (pinned && routes.has(pinned.id)) pinned = routes.get(pinned.id);
-          for (const id of fresh) if (!pinned) play(id);
+          for (const id of fresh) if (!pinned && !rp) play(id);
           wake();
           renderAll();
         }
