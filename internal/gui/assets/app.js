@@ -180,6 +180,7 @@ function renderAgents() {
     list.append(e);
   }
   const { shown: used, folded } = arrangeAgents();
+  if (mode === "panel") $("#ptabN").textContent = state.agents.length || "";
   const agentRow = (a, inFold) => {
     const row = el("div", "row agent");
     row.dataset.id = a.id;
@@ -224,37 +225,42 @@ function renderAgents() {
     if (extras.childNodes.length) fields.append(extras);
     // the panel shows what's set as words, and a row's controls only
     // once it's opened: one row at a time, in place
-    let sum = null;
-    if (mode === "panel" && fields.childNodes.length) {
-      sum = el("button", "ag-sum");
-      sum.type = "button";
-      const main = sorted.find((f) => !extra(f) && !f.menu);
-      const effortOf = (f) => f.key === "effort" || f.label === "effort" || f.label === "thinking";
-      if (main && !effortOf(main)) {
-        const opt = optionFor(main, main.value);
-        sum.append(el("span", "v" + (main.value ? "" : " empty"), opt?.label || main.value || t("default")));
-      }
+    let sum = null, openBox = null;
+    const effortOf = (f) => f.key === "effort" || f.label === "effort" || f.label === "thinking";
+    if (mode === "panel") {
+      sum = el("span", "ag-sum");
+      const main = sorted.find((f) => !extra(f) && !f.menu && !effortOf(f));
+      const opt = main && optionFor(main, main.value);
+      sum.append(el("span", "v" + (main?.value ? "" : " empty"), main ? (opt?.label || main.value || t("default")) : ""));
+      // how much effort as three bars, in a column of its own down the list:
+      // none lit for the default, or for an agent that has no such setting
       const ef = a.fields.find(effortOf);
-      if (ef) {
-        const e = effortIcon(ef);
-        e.title = t("{label}: {value}", { label: t(ef.label), value: effortName(optionFor(ef, ef.value) || { value: ef.value }) });
-        sum.append(e);
-      }
+      sum.append(effortBars(ef));
       const c = el("span", "chev");
-      c.append(svg(CHEV, 11, 1.7));
+      c.append(svg(CHEV, 10, 1.6));
       sum.append(c);
-      sum.setAttribute("aria-expanded", String(panelOpenAgent === a.id));
+      // opened: each setting on a line of its own, named, and the effort as
+      // its levels side by side
+      openBox = el("div", "ag-open");
+      for (const b of [...fields.querySelectorAll(":scope > .field")]) {
+        const f = sorted.find((x) => x.key === b.dataset.key) || (b.dataset.key === "tiers" ? tiers : null);
+        if (f && effortOf(f)) { openBox.append(effortSeg(a, f)); continue; }
+        if (f && !b.querySelector(":scope > .k")) b.prepend(el("span", "k", t(f.label)));
+        openBox.append(b);
+      }
+      if (extras.childNodes.length) openBox.append(extras);
       row.classList.toggle("open", panelOpenAgent === a.id);
+      row.setAttribute("aria-expanded", String(panelOpenAgent === a.id));
       row.onclick = (ev) => {
-        if (ev.target.closest(".fields, .ag-handle, .ag-fix, .ag-show")) return;
+        if (ev.target.closest(".ag-open, .ag-handle, .ag-fix, .ag-show")) return;
         const open = panelOpenAgent !== a.id;
         panelOpenAgent = open ? a.id : null;
         for (const r of $("#agents").querySelectorAll(".row.agent.open")) {
           r.classList.remove("open");
-          r.querySelector(".ag-sum")?.setAttribute("aria-expanded", "false");
+          r.setAttribute("aria-expanded", "false");
         }
         row.classList.toggle("open", open);
-        sum.setAttribute("aria-expanded", String(open));
+        row.setAttribute("aria-expanded", String(open));
         fit();
       };
     }
@@ -277,8 +283,8 @@ function renderAgents() {
       who.append(driftFix(a));
     }
     row.append(agentHandle(a, row, inFold), who);
-    if (sum) row.append(sum);
-    row.append(fields);
+    if (sum) row.append(sum, openBox);
+    else row.append(fields);
     return row;
   };
   // the extras column is there for every row once any agent has one, so the
@@ -953,6 +959,43 @@ function effortIcon(f) {
     `<rect x="${1.25 + i * 3.6}" y="${14.5 - h}" width="2.6" height="${h}" rx="1" fill="currentColor" opacity="${i < lit ? 1 : 0.28}"/>`).join("");
   e.append(s);
   return e;
+}
+
+// effortBars: the panel's effort at a glance, three bars lit up to it.
+function effortBars(f) {
+  const levels = (f?.options || []).filter((o) => o.value && o.value !== "off");
+  const at = f ? levels.findIndex((o) => o.value === f.value) : -1;
+  const e = el("span", "eff");
+  e.dataset.l = at < 0 ? 0 : Math.max(1, Math.round(((at + 1) / levels.length) * 3));
+  e.append(el("i"), el("i"), el("i"));
+  if (f) e.title = t("{label}: {value}", { label: t(f.label), value: effortName(optionFor(f, f.value) || { value: f.value }) });
+  return e;
+}
+
+// effortSeg: an opened panel row's effort, every level side by side.
+function effortSeg(a, f) {
+  const seg = el("div", "ag-seg");
+  seg.setAttribute("role", "radiogroup");
+  seg.setAttribute("aria-label", t(f.label));
+  for (const o of f.options) {
+    const b = el("button", o.value === f.value ? "on" : "", effortName(o));
+    b.type = "button";
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", String(o.value === f.value));
+    if (o.note) b.title = o.note;
+    b.onclick = async () => {
+      if (o.value === f.value) return;
+      try {
+        state = await api("set", { agent: a.id, field: f.key, value: o.value });
+        renderAgents();
+        status(`${a.name} ${t(f.label)} → ${effortName(o)}`, "ok");
+      } catch (e) {
+        status(e.message, "err");
+      }
+    };
+    seg.append(b);
+  }
+  return seg;
 }
 
 function renderEffortPicker() {
@@ -3889,6 +3932,7 @@ const PERIODS = [["today", "Today"], ["7d", "7 days"], ["30d", "30 days"], ["all
 // never come without a proxy), so they load on their own and the local log
 // never waits for them. They don't depend on the period either.
 let quotas = null;
+let quotasAt = 0; // when they came in
 async function loadUsage() {
   renderUsageTab();
   if (usageTab === "sessions") return loadSessions();
@@ -3902,7 +3946,7 @@ let quotasLoading = null;
 function loadQuotas() {
   if (quotasLoading) return quotasLoading;
   quotasLoading = api("usage/quotas")
-    .then((q) => { quotas = q || []; }, () => { quotas = quotas || []; })
+    .then((q) => { quotas = q || []; quotasAt = Date.now(); }, () => { quotas = quotas || []; })
     .finally(() => { quotasLoading = null; renderQuotas(); });
   return quotasLoading;
 }
@@ -4037,6 +4081,7 @@ function setPanelTab(tab) {
     b.classList.toggle("on", b.dataset.ptab === tab);
     b.setAttribute("aria-selected", String(b.dataset.ptab === tab));
   }
+  panelAge();
   fit();
 }
 if (mode === "panel") {
@@ -4082,53 +4127,54 @@ function renderPanelQuota() {
   for (const [name, qs] of groups) {
     const g = el("div", "pq-group");
     const head = el("div", "pq-gh");
-    head.append(icon(qs[0].icon), el("span", "pq-gn", name));
-    if (qs.length > 1) head.append(el("span", "pq-gc", String(qs.length)));
+    // how many accounts, or the one account's plan and until when
+    const note = qs.length > 1 ? t("{n} accounts", { n: qs.length }) : [qs[0].plan, qs[0].until ? planTerm(qs[0]) : ""].filter(Boolean).join(" · ");
+    head.append(icon(qs[0].icon), el("span", "pq-gn", name), el("span", "pq-gnote" + (qs.length === 1 && qs[0].renew === "off" ? " ends" : ""), note));
     g.append(head);
     for (const q of qs) g.append(panelQuotaCard(q));
     box.append(g);
   }
   if (bals.length) {
     const g = el("div", "pq-group");
-    g.append(el("div", "pq-gh", t("Balance")));
+    const head = el("div", "pq-gh");
+    head.append(el("span", "pq-gn", t("Balances")));
+    g.append(head);
     const grid = el("div", "pq-bals");
     for (const q of bals) {
       const card = el("div", "pq-card bal");
-      const who = el("span", "pq-who");
-      const name = el("span", "pq-bn");
-      name.append(icon(q.icon), el("span", "", q.name));
-      who.append(name);
-      if (q.user && q.user !== q.name) who.append(el("span", "pq-sub", q.user));
       card.title = [q.name, q.user].filter(Boolean).join(" · ");
-      card.append(who, el("b", "pq-amt", q.balance));
+      card.append(el("span", "pq-sub", q.name), el("b", "pq-amt", q.balance));
       grid.append(card);
     }
     g.append(grid);
     box.append(g);
   }
+  panelAge();
   fit();
+}
+
+// shortWindow: "5 hours" as 5h, "7 days" as 7d; any other name as it is.
+function shortWindow(name) {
+  const m = /^(\d+)\s*(minute|hour|day|week|month)s?$/i.exec(name || "");
+  return m ? m[1] + { minute: "m", hour: "h", day: "d", week: "w", month: "mo" }[m[2].toLowerCase()] : t(name);
 }
 
 function panelQuotaCard(q) {
   const card = el("div", "pq-card");
-  const who = el("span", "pq-who");
-  who.append(el("span", "pq-user", q.user || q.name));
-  card.title = [q.name, q.user, q.plan, planTerm(q)].filter(Boolean).join(" · ");
-  const sub = [];
-  if (q.plan) sub.push(q.plan);
-  if (q.until) sub.push(planTerm(q));
-  card.append(who);
+  card.append(el("span", "pq-user", q.user || q.name));
+  card.title = [q.name, q.user, q.plan, q.until ? planTerm(q) : ""].filter(Boolean).join(" · ");
   if (q.error) {
     card.classList.add("err");
-    who.append(el("span", "pq-sub err", quotaError(q.error)));
+    card.append(el("span", "pq-sub err", quotaError(q.error)));
     card.title += "\n" + q.error;
-    if (sub.length) who.append(el("span", "pq-sub", sub.join(" · ")));
     return card;
   }
   const ws = q.windows.slice(0, 3);
-  // when each window starts again, the ones that have begun
-  const resets = ws.filter((w) => w.resetsAt && w.used > 0).map((w) => (ws.length > 1 ? t(w.name) + " " : "") + "↻ " + resetClock(new Date(w.resetsAt)));
-  if (sub.length || resets.length) who.append(el("span", "pq-sub" + (q.renew === "off" ? " ends" : ""), [...sub, ...resets].join(" · ")));
+  // when the windows begun start again: the first bare, the others by name
+  const begun = ws.filter((w) => w.resetsAt && w.used > 0);
+  card.append(el("span", "pq-sub", begun.length
+    ? begun.map((w, i) => (i ? shortWindow(w.name) + " " : "↻ ") + resetClock(new Date(w.resetsAt))).join(" · ")
+    : t("Not used yet")));
   const rings = el("span", "pq-rings");
   for (const w of ws) {
     const used = Math.max(0, Math.min(100, w.used));
@@ -4136,7 +4182,7 @@ function panelQuotaCard(q) {
     const dial = el("span", "pq-dial");
     dial.style.setProperty("--p", quotaFill(w));
     dial.append(el("b", "", quotaFill(w) + "%"));
-    r.append(dial, el("span", "pq-rn", t(w.name)));
+    r.append(dial, el("span", "pq-rn", shortWindow(w.name)));
     r.title = t(w.name) + " · " + quotaText(w) + (w.resetsAt ? "\n" + t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() }) + " · " + untilText(new Date(w.resetsAt)) : "")
       + "\n" + t(quotaLeft ? "Show how much of each window is used" : "Show how much of each window is left");
     // used or left turns here too, as on the Usage page (#124)
@@ -4146,6 +4192,15 @@ function panelQuotaCard(q) {
   card.append(rings);
   return card;
 }
+
+// panelAge: on the Usage tab, the footer says how old what it shows is.
+function panelAge() {
+  const a = $("#pqAge");
+  if (!a) return;
+  a.hidden = mode !== "panel" || panelTab !== "usage" || !quotasAt;
+  if (!a.hidden) a.textContent = t("Updated {when}", { when: ago(quotasAt) });
+}
+if (mode === "panel") setInterval(panelAge, 30000);
 
 // quotaFit puts every window's count under its name once one's doesn't fit
 // beside it, so windows side by side read alike rather than one count up
