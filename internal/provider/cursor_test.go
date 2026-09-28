@@ -97,7 +97,7 @@ func TestCursorLegacyPicks(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 	was := cursorStatus
 	defer func() { cursorStatus = was }()
-	cursorStatus = &cliIdentity{name: "cursor-test", exe: func() string { return "/bin/sh" }, ask: func() (string, string, bool) { return "me@example.com", "Pro", true }}
+	cursorStatus = &cliIdentity{name: "cursor-test", exe: func() string { return "/bin/sh" }, ask: func() (string, string, bool, error) { return "me@example.com", "Pro", true, nil }}
 	raw := withCursorContexts(parseCursorModels(cursorListed))
 	if err := catalog.SaveLive("cursor", "", raw); err != nil {
 		t.Fatal(err)
