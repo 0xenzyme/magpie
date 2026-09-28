@@ -285,7 +285,7 @@
       ["mcp", t("MCP servers") + (counts.mcp ? " · " + counts.mcp : "")],
       ["skills", t("Skills") + (counts.skills ? " · " + counts.skills : "")],
       ["rtk", "RTK"],
-    ], tab, (id) => { tab = id; try { localStorage.setItem("magpie.libTab", id); } catch {} render(); page.scrollTop = 0; });
+    ], tab, (id) => { tab = id; try { localStorage.setItem("magpie.libTab", id); } catch {} render(); page.scrollTop = 0; syncLists(); });
     tabs.classList.add("lib-tabs");
     head.append(tabs, el("span", "grow"));
     const more = button("", "lib-more", () => reveal(lib.dir));
@@ -316,6 +316,7 @@
     page.append(foot);
     for (const f of fits.splice(0)) f();
     page.scrollTop = top;
+    syncLists(); // a long list's rows where the view is, before it's painted
     if (focus) {
       const e = page.querySelector(`[data-lib="${CSS.escape(focus)}"]`);
       if (e) { e.focus({ preventScroll: true }); if (caret && e.setSelectionRange) e.setSelectionRange(caret[0], caret[1]); }
@@ -1065,17 +1066,30 @@
   // Hundreds of skills were one list of rows, every one of them drawn with
   // a chip for each agent — thousands of icons laid out and painted on each
   // redraw, scroll and hover. They're grouped by the GitHub repository they
-  // came from (the ones on this computer together): a folded group draws
-  // only its heading, and a filter or a fold draws the groups again, not
-  // the page.
+  // came from (the ones on this computer together), a big group again by
+  // the folder they sit in there (or the start of their names), and a
+  // group's rows are a window on its list: only those near the view are
+  // drawn, the rest is room kept for them, so a scroll through a thousand
+  // skills draws a few rows now and then instead of laying out and painting
+  // each as it comes into view.
   let skillQuery = "";         // what the filter over the skills holds
+  let skillTimer = 0;          // the filter's redraw, waiting for typing to pause
   const unfiltered = new Set(); // groups folded while filtering, till the filter changes
   let folds = {};              // group → true when folded, false when opened by hand
   try { folds = JSON.parse(localStorage.getItem("magpie.libSkillFolds") || "{}") || {}; } catch {}
   function saveFolds() { try { localStorage.setItem("magpie.libSkillFolds", JSON.stringify(folds)); } catch {} }
   const repoOf = (u) => (u || "").replace(/^https:\/\/github\.com\//, "").split("/").slice(0, 2).join("/");
+  const MANY = 40;   // a group bigger than this starts folded, and so do its parts
+  const SPLIT = 8;   // a group bigger than this is split by folder, or by name
+  // Heights the rows are held to (library.css): a list's room is known
+  // without drawing it.
+  const ROW_H = 51, ROW_SRC_H = 67, SUB_H = 36;
 
+  // the groups, and each skill's text to filter by, worked out once for
+  // each answer from magpie
+  let grouped = null;
   function skillGroups() {
+    if (grouped?.lib === lib) return grouped.groups;
     const by = new Map();
     for (const s of lib.skills) {
       const repo = s.kind === "github" ? repoOf(s.source) : s.origin ? repoOf(s.origin) : "";
@@ -1084,9 +1098,58 @@
       if (!g) by.set(key, (g = { key, repo, skills: [] }));
       g.skills.push(s);
     }
-    const out = [...by.values()].sort((a, b) => (a.key === "local") - (b.key === "local") || a.repo.localeCompare(b.repo));
-    for (const g of out) g.skills.sort((a, b) => a.name.localeCompare(b.name));
-    return out;
+    const groups = [...by.values()].sort((a, b) => (a.key === "local") - (b.key === "local") || a.repo.localeCompare(b.repo));
+    for (const g of groups) {
+      g.skills.sort((a, b) => a.name.localeCompare(b.name));
+      g.text = new Map(g.skills.map((s) => [s, (s.name + " " + (s.description || "") + " " + g.repo).toLowerCase()]));
+      g.parts = partsOf(g);
+    }
+    grouped = { lib, groups };
+    return groups;
+  }
+
+  // A big group's parts: by the folder its skills sit in — in the
+  // repository, or on this computer — when they sit in more than one;
+  // else by the start their names share ("gh-review", "gh-triage" → gh),
+  // a start three or more share being a part and the rest one more.
+  // Nothing is fetched: it's all in where each skill came from.
+  function partsOf(g) {
+    if (g.skills.length <= SPLIT) return null;
+    const split = (keyOf) => {
+      const m = new Map();
+      for (const s of g.skills) {
+        const k = keyOf(s);
+        if (!m.has(k)) m.set(k, []);
+        m.get(k).push(s);
+      }
+      return m.size > 1 ? m : null;
+    };
+    const folderIn = (s) => {
+      if (s.kind === "github") {
+        // …/tree/<ref>/<path to the folder>/<skill>
+        const m = /^https:\/\/github\.com\/[^/]+\/[^/]+\/tree\/[^/]+\/(.+)$/.exec(s.source || "");
+        return m ? m[1].split("/").slice(0, -1).join("/") : "";
+      }
+      if (s.kind === "folder") return tilde((s.source || "").replace(/[\\/][^\\/]+[\\/]?$/, ""));
+      return "";
+    };
+    let m = split(folderIn), mono = true;
+    if (!m) {
+      mono = false;
+      const segs = (s) => s.name.toLowerCase().split(/[-_:.\s]+/).filter(Boolean);
+      // a start every name has says nothing: the part after it does
+      const all = g.skills.map(segs);
+      let skip = 0;
+      while (all.every((x) => x.length > skip + 1 && x[skip] === all[0][skip])) skip++;
+      const lead = new Map();
+      for (const x of all) if (x.length > skip + 1) lead.set(x[skip], (lead.get(x[skip]) || 0) + 1);
+      m = split((s) => { const x = segs(s); const k = x.length > skip + 1 ? x[skip] : ""; return lead.get(k) >= 3 ? k : ""; });
+      if (m && m.size === 2 && m.has("") && m.get("").length > g.skills.length * 0.8) m = null; // one small part and the rest
+    }
+    if (!m) return null;
+    return [...m].map(([key, skills]) => ({ key, skills, mono,
+      label: key || (mono ? (g.repo ? t("At the top of the repository") : t("Kept in the library")) : t("Others")) }))
+      .sort((a, b) => (!a.key) - (!b.key) || a.key.localeCompare(b.key));
   }
 
   function skillFilter(box, all) {
@@ -1097,43 +1160,100 @@
     f.spellcheck = false;
     f.autocomplete = "off";
     f.value = skillQuery;
-    f.oninput = () => { skillQuery = f.value; unfiltered.clear(); drawSkills(box, all); };
+    // what's typed is kept at once (a redraw of the page shows it), the
+    // rows drawn again once typing pauses
+    const redraw = () => { clearTimeout(skillTimer); unfiltered.clear(); if (box.isConnected) drawSkills(box, all); };
+    f.oninput = () => { skillQuery = f.value; clearTimeout(skillTimer); skillTimer = setTimeout(redraw, 120); };
     f.onkeydown = (e) => {
       e.stopPropagation();
-      if (e.key === "Escape" && f.value) { e.preventDefault(); f.value = ""; f.oninput(); }
+      if (e.key === "Escape" && f.value) { e.preventDefault(); f.value = ""; skillQuery = ""; redraw(); }
     };
     return f;
   }
 
+  // The skills' lists as last drawn into a box: a group's list keeps its
+  // rows through a filter or a fold, and draws only those it hasn't.
+  let drawn = null; // { box, lists: Map group → window }
   function drawSkills(box, all) {
     const groups = skillGroups();
     const q = skillQuery.trim().toLowerCase();
-    const hitsOf = (g) => (q ? g.skills.filter((s) => (s.name + " " + (s.description || "") + " " + g.repo).toLowerCase().includes(q)) : g.skills);
-    box.replaceChildren();
-    let shown = 0;
-    if (groups.length === 1) {
-      // from one place only: the list as it always was
-      const hits = hitsOf(groups[0]);
-      if (hits.length) {
-        const list = el("div", "list lib-list");
-        for (const s of hits) list.append(skillRow(s, all));
-        box.append(list);
-        shown = hits.length;
+    if (drawn?.box !== box) drawn = { box, lists: new Map() };
+    const hitsOf = (g) => (q ? g.skills.filter((s) => g.text.get(s).includes(q)) : g.skills);
+    const cards = [];
+    const single = groups.length === 1;
+    const many = lib.skills.length > MANY;
+    const redraw = () => { drawSkills(box, all); };
+    for (const g of groups) {
+      const hits = hitsOf(g);
+      if (!hits.length) continue;
+      const folded = !single && (q ? unfiltered.has(g.key) : folds[g.key] ?? many);
+      let w = drawn.lists.get(g.key);
+      if (!folded) {
+        if (!w) drawn.lists.set(g.key, (w = windowed()));
+        w.set(groupItems(g, hits, all, !!q, redraw));
       }
-    } else {
-      // many skills from several places start folded, each group a line
-      const many = lib.skills.length > 40;
-      for (const g of groups) {
-        const hits = hitsOf(g);
-        if (!hits.length) continue;
-        shown++;
-        box.append(groupCard(g, hits, all, q ? unfiltered.has(g.key) : folds[g.key] ?? many, !!q));
-      }
+      // from one place only: its list with no heading over it
+      if (single) {
+        const card = el("div", "list lib-list lib-vcard");
+        w.el.classList.add("bare");
+        card.append(w.el);
+        cards.push(card);
+      } else cards.push(groupCard(g, hits, all, folded, !!q, w, redraw));
     }
-    if (!shown) box.append(el("div", "list lib-none", t("No skill matches “{q}”.", { q: skillQuery.trim() })));
+    if (!cards.length) cards.push(el("div", "list lib-none", t("No skill matches “{q}”.", { q: skillQuery.trim() })));
+    box.replaceChildren(...cards);
+    if (box.isConnected) syncLists();
   }
 
-  function groupCard(g, hits, all, folded, filtering) {
+  // A group's list: its skills, or its parts, each a heading over its own.
+  function groupItems(g, hits, all, filtering, redraw) {
+    const row = (s) => ({ key: "s\n" + s.name, h: s.source ? ROW_SRC_H : ROW_H, make: () => skillRow(skillNamed(s.name) || s, all) });
+    if (!g.parts) return hits.map(row);
+    const hit = hits.length === g.skills.length ? null : new Set(hits);
+    const items = [];
+    for (const p of g.parts) {
+      const ph = hit ? p.skills.filter((s) => hit.has(s)) : p.skills;
+      if (!ph.length) continue;
+      const fk = g.key + "\n" + p.key;
+      const folded = filtering ? unfiltered.has(fk) : folds[fk] ?? g.skills.length > MANY;
+      items.push({ key: ["p", p.key, folded, filtering, ph.length].join("\n"), h: SUB_H, make: () => partHead(g, p, ph, folded, filtering, fk, redraw) });
+      if (!folded) for (const s of ph) items.push(row(s));
+    }
+    return items;
+  }
+
+  function partHead(g, p, hits, folded, filtering, fk, redraw) {
+    const head = el("div", "row lib-row click lib-subhead" + (folded ? "" : " open"));
+    const chev = el("span", "chev");
+    chev.append(svg(CHEV_R, 10, 1.7));
+    const n = p.skills.length;
+    head.append(chev, el("span", "name" + (p.mono && p.key ? " mono" : ""), p.label),
+      el("span", "sub", filtering && hits.length !== n ? t("{n} of {total}", { n: hits.length, total: n }) : String(n)));
+    // a dot when GitHub changed some of its skills
+    const stale = p.skills.filter((s) => s.check?.status === "update").length;
+    if (stale) {
+      const dot = el("span", "lib-dot");
+      dot.title = stale === 1 ? t("1 skill has an update") : t("{n} skills have updates", { n: stale });
+      head.append(dot);
+    }
+    head.title = folded ? t("Show its skills") : t("Hide its skills");
+    head.onclick = () => {
+      if (filtering) { if (folded) unfiltered.delete(fk); else unfiltered.add(fk); }
+      else { folds[fk] = !folded; saveFolds(); }
+      redraw();
+    };
+    return head;
+  }
+
+  // the skill as magpie last said, for a row drawn after the list was:
+  // a row scrolled away and back is drawn from what the page has now
+  let named = null;
+  function skillNamed(name) {
+    if (named?.lib !== lib) named = { lib, by: new Map(lib.skills.map((s) => [s.name, s])) };
+    return named.by.get(name);
+  }
+
+  function groupCard(g, hits, all, folded, filtering, w, redraw) {
     const card = el("div", "list lib-card lib-group");
     card.dataset.group = g.key;
     const head = el("div", "row lib-row click lib-grouphead" + (folded ? "" : " open"));
@@ -1178,11 +1298,139 @@
     head.onclick = () => {
       if (filtering) { if (folded) unfiltered.delete(g.key); else unfiltered.add(g.key); }
       else { folds[g.key] = !folded; saveFolds(); }
-      card.replaceWith(groupCard(g, hits, all, !folded, filtering));
+      redraw();
     };
     card.append(head);
-    if (!folded) for (const s of hits) card.append(skillRow(s, all));
+    if (!folded) card.append(w.el);
     return card;
+  }
+
+  // ---------- a long list, drawn near the view only ----------
+
+  // A window on a list of items of known heights ({ key, h, make }): the
+  // rows near the page's view are drawn, with room kept above and below
+  // for the rest. A scroll draws more once what's drawn ahead is less than
+  // a view, and then a few rows a frame until half a view more is, so no
+  // frame builds many rows and most touch nothing; a row still wanted
+  // after a change (a filter, a fold) is kept as it is, not drawn again.
+  const lists = new Set();
+  let listFrame = 0;
+  function syncLists() {
+    cancelAnimationFrame(listFrame);
+    listFrame = 0;
+    if (page.hidden) return;
+    const vp = page.getBoundingClientRect();
+    let more = false;
+    for (const w of lists) {
+      if (w.el.isConnected) more = w.sync(vp) || more;
+      else if (w.shown) lists.delete(w); // its page is gone; one drawn again comes back
+    }
+    if (more) queueLists();
+  }
+  const STEP = 4; // rows a frame, beyond those in view
+  const queueLists = () => { if (!listFrame) listFrame = requestAnimationFrame(syncLists); };
+  page.addEventListener("scroll", queueLists, { passive: true });
+  window.addEventListener("resize", queueLists);
+
+  function windowed() {
+    const box = el("div", "lib-vl");
+    const above = el("div", "lib-vpad"), below = el("div", "lib-vpad");
+    box.append(above, below);
+    let items = [], tops = [0], from = 0, to = 0;
+    let live = new Map(); // key → its row, for the items from…to
+    const w = { el: box, shown: false };
+    // the first item whose bottom is below y
+    const at = (y) => {
+      let lo = 0, hi = items.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (tops[mid + 1] > y) hi = mid; else lo = mid + 1; }
+      return lo;
+    };
+    const node = (i) => {
+      const it = items[i];
+      let n = live.get(it.key);
+      if (!n) n = it.make();
+      n.classList.toggle("first", i === 0);
+      return n;
+    };
+    const pads = () => {
+      above.style.height = tops[from] + "px";
+      below.style.height = tops[items.length] - tops[to] + "px";
+    };
+    // draw items a…b, keeping the rows of those already drawn
+    function show(a, b, fresh) {
+      if (!fresh && a === from && b === to) return;
+      if (!fresh && a < to && b > from) {
+        // the same list moved along: rows are taken off the ends and added
+        // at them, the rest untouched
+        for (let i = from; i < a; i++) { live.get(items[i].key)?.remove(); live.delete(items[i].key); }
+        for (let i = b; i < to; i++) { live.get(items[i].key)?.remove(); live.delete(items[i].key); }
+        if (a < from) {
+          const f = document.createDocumentFragment();
+          const made = [];
+          for (let i = a; i < from; i++) { const n = node(i); made.push([items[i].key, n]); f.append(n); }
+          above.after(f);
+          for (const [k, n] of made) live.set(k, n);
+        }
+        if (b > to) {
+          const f = document.createDocumentFragment();
+          for (let i = to; i < b; i++) { const n = node(i); live.set(items[i].key, n); f.append(n); }
+          below.before(f);
+        }
+      } else {
+        const next = new Map(), rows = [];
+        for (let i = a; i < b; i++) { const n = node(i); next.set(items[i].key, n); rows.push(n); }
+        for (const [k, n] of live) if (next.get(k) !== n) n.remove();
+        live = next;
+        // rows kept stay where they are; the others go in between them
+        let prev = above;
+        for (const n of rows) {
+          if (prev.nextSibling !== n) prev.after(n);
+          prev = n;
+        }
+      }
+      from = a; to = b;
+      pads();
+    }
+    w.set = (next) => {
+      items = next;
+      tops = [0];
+      for (const it of items) tops.push(tops[tops.length - 1] + it.h);
+      // placed, what's near the view; until then the first rows, enough for one
+      if (box.isConnected && !page.hidden) { if (w.sync(page.getBoundingClientRect(), true)) queueLists(); }
+      else show(0, Math.min(items.length, 12), true);
+    };
+    w.sync = (vp, fresh) => {
+      w.shown = true;
+      lists.add(w);
+      const r = box.getBoundingClientRect();
+      const total = tops[items.length];
+      if (!total) { show(0, 0, fresh); return; }
+      const k = r.height ? r.height / total : 1; // the page may be zoomed
+      const view = vp.height / k;
+      const top = (vp.top - r.top) / k, bottom = (vp.bottom - r.top) / k;
+      // what must be drawn: the view and a view about it; what is drawn
+      // when that runs out: a view and a half about it — the rows in view
+      // at once, the others a few a frame, so no frame builds a whole view
+      const need = (m) => [top - view * m > total ? items.length : at(Math.max(0, top - view * m)),
+        bottom + view * m < 0 ? 0 : Math.min(items.length, at(bottom + view * m) + 1)];
+      const [a, b] = need(1);
+      if (!fresh && from <= a && to >= b && (a < b || from === to)) return false;
+      let [na, nb] = need(1.5);
+      if (nb < na) nb = na;
+      if (fresh || na >= to || nb <= from) {
+        // drawn anew, or a jump past what's drawn: the view and a little
+        // about it now, the rest as above
+        const [ja, jb] = need(0.25);
+        show(ja, Math.max(ja, jb), !!fresh);
+        return ja > na || jb < nb;
+      }
+      const [va, vb] = need(0);
+      const sa = Math.max(na, Math.min(va, from - STEP)), sb = Math.min(nb, Math.max(vb, to + STEP));
+      show(sa, sb);
+      return sa > na || sb < nb; // more to come next frame
+    };
+    lists.add(w);
+    return w;
   }
 
   // ---------- projects ----------
@@ -1509,7 +1757,7 @@
   }
 
   function skillRow(s, all) {
-    const row = el("div", "row lib-row click lib-skill" + (s.missing ? " missing" : ""));
+    const row = el("div", "row lib-row click lib-skill" + (s.missing ? " missing" : "") + (s.source ? " src" : ""));
     const who = el("div", "who");
     const nm = el("div", "name", s.name);
     const c = s.check;
