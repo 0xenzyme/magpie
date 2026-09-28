@@ -701,7 +701,10 @@ function fit(extra = 0, glide) {
 
 async function load() {
   if (!load.done) renderAgentsLoading();
+  // the gateway page too waits for the state first: its skeleton, not a
+  // blank page, until then (#123)
   if (view === "providers" && !providers) renderProvidersLoading();
+  if (view === "gateway" && !providers) renderGatewayLoading();
   try {
     state = await api("state");
     load.done = true;

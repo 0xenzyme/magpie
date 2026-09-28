@@ -48,41 +48,12 @@ func isCursorAgent(path string) bool {
 	return err == nil && strings.Contains(real, "cursor-agent")
 }
 
-var cursorStatus struct {
-	sync.Mutex
-	at         time.Time
-	refreshing bool
-	user, plan string
-	ok         bool
-}
+var cursorStatus = &cliIdentity{name: "cursor", exe: func() string { return CursorExecutable() }, ask: func() (string, string, bool) { return askCursorIdentity() }}
 
-// cursorIdentity asks cursor-agent who is signed in. `about` takes a few
-// seconds, so after the first answer a stale one is served while a fresh one
-// is fetched behind it.
-func cursorIdentity() (user, plan string, ok bool) {
-	cursorStatus.Lock()
-	defer cursorStatus.Unlock()
-	if cursorStatus.at.IsZero() {
-		cursorStatus.user, cursorStatus.plan, cursorStatus.ok = askCursorIdentity()
-		cursorStatus.at = time.Now()
-	} else if time.Since(cursorStatus.at) > time.Minute && !cursorStatus.refreshing {
-		cursorStatus.refreshing = true
-		go func() {
-			u, p, ok := askCursorIdentity()
-			cursorStatus.Lock()
-			cursorStatus.user, cursorStatus.plan, cursorStatus.ok = u, p, ok
-			cursorStatus.at, cursorStatus.refreshing = time.Now(), false
-			cursorStatus.Unlock()
-		}()
-	}
-	return cursorStatus.user, cursorStatus.plan, cursorStatus.ok
-}
+// cursorIdentity is who Cursor's CLI says is signed in; see cliIdentity.
+func cursorIdentity() (user, plan string, ok bool) { return cursorStatus.get() }
 
-func forgetCursorStatus() {
-	cursorStatus.Lock()
-	cursorStatus.at = time.Time{}
-	cursorStatus.Unlock()
-}
+func forgetCursorStatus() { cursorStatus.forget() }
 
 func askCursorIdentity() (user, plan string, ok bool) {
 	path := CursorExecutable()

@@ -53,41 +53,12 @@ func DevinCredentialsPath() string {
 	return filepath.Join(base, "devin", "credentials.toml")
 }
 
-var devinStatus struct {
-	sync.Mutex
-	at         time.Time
-	refreshing bool
-	user, plan string
-	ok         bool
-}
+var devinStatus = &cliIdentity{name: "devin", exe: func() string { return DevinExecutable() }, ask: func() (string, string, bool) { return askDevinIdentity() }}
 
-// devinIdentity asks the CLI who is signed in. `devin auth status` takes a
-// moment, so after the first answer a stale one is served while a fresh one
-// is fetched behind it.
-func devinIdentity() (user, plan string, ok bool) {
-	devinStatus.Lock()
-	defer devinStatus.Unlock()
-	if devinStatus.at.IsZero() {
-		devinStatus.user, devinStatus.plan, devinStatus.ok = askDevinIdentity()
-		devinStatus.at = time.Now()
-	} else if time.Since(devinStatus.at) > time.Minute && !devinStatus.refreshing {
-		devinStatus.refreshing = true
-		go func() {
-			u, p, ok := askDevinIdentity()
-			devinStatus.Lock()
-			devinStatus.user, devinStatus.plan, devinStatus.ok = u, p, ok
-			devinStatus.at, devinStatus.refreshing = time.Now(), false
-			devinStatus.Unlock()
-		}()
-	}
-	return devinStatus.user, devinStatus.plan, devinStatus.ok
-}
+// devinIdentity is who Devin's CLI says is signed in; see cliIdentity.
+func devinIdentity() (user, plan string, ok bool) { return devinStatus.get() }
 
-func forgetDevinStatus() {
-	devinStatus.Lock()
-	devinStatus.at = time.Time{}
-	devinStatus.Unlock()
-}
+func forgetDevinStatus() { devinStatus.forget() }
 
 func askDevinIdentity() (user, plan string, ok bool) {
 	path := DevinExecutable()
