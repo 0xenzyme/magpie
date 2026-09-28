@@ -206,6 +206,16 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	if len(a.Fields) == 0 && a.Import != nil {
+		// `magpie cindy`: it takes magpie through its own link, confirmed there
+		if len(args) > 1 {
+			link := a.Import()
+			openInBrowser(link)
+			fmt.Println(green.Render("✓"), bold.Render(a.Name), muted.Render("opened to add magpie — confirm it there"))
+			fmt.Println(muted.Render("  " + link))
+			return nil
+		}
+	}
 	switch len(args) {
 	case 1:
 		return list([]*agent.Agent{a}, true, -1)
@@ -328,6 +338,13 @@ func list(agents []*agent.Agent, detectedOnly bool, dimFrom int) error {
 				r.name = faint.Render(a.Name) + " " + faint.Render("hidden")
 			}
 			r.vals = strings.Join(parts, label.Render("  ·  "))
+			if a.Import != nil {
+				if a.Added != nil && a.Added() {
+					r.vals = value.Render("magpie added")
+				} else {
+					r.vals = label.Render("magpie "+a.ID+" add") + faint.Render("  to add magpie")
+				}
+			}
 		}
 		nameW = max(nameW, lipgloss.Width(r.name))
 		valW = max(valW, lipgloss.Width(r.vals))

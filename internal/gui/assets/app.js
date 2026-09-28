@@ -90,6 +90,7 @@ const CHEV = "m5.5 6.5 2.5 2.5 2.5-2.5";
 const CHEV_R = "m6.5 4.5 3 3.5-3 3.5";
 const CHECK = "m3.5 8.5 3 3 6-7";
 const PLUS = "M8 3.5v9M3.5 8h9";
+const OUT = "M6.5 3.5h-3v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5";
 const COPY_ICON = "M5.5 5.5V3.5h7v7h-2M3.5 5.5h7v7h-7z";
 
 // A brand icon: colour logos are images, mono logos take the text colour.
@@ -113,9 +114,9 @@ function icon(name) {
     return e;
   }
   if (name) {
-    if (name.endsWith("-color") || name === "crush" || name === "zcode" || name === "alma" || name === "hanako" || name === "typesafe") {
+    if (name.endsWith("-color") || name === "crush" || name === "zcode" || name === "alma" || name === "hanako" || name === "cindy" || name === "typesafe") {
       const img = el("img");
-      img.src = `icons/${name}.${name === "crush" || name === "zcode" || name === "alma" || name === "hanako" || name === "typesafe" ? "png" : "svg"}`;
+      img.src = `icons/${name}.${name === "crush" || name === "zcode" || name === "alma" || name === "hanako" || name === "cindy" || name === "typesafe" ? "png" : "svg"}`;
       img.alt = "";
       img.draggable = false;
       e.append(img);
@@ -229,11 +230,26 @@ function renderAgents() {
       fields.append(b);
     }
     if (extras.childNodes.length) fields.append(extras);
+    // an app that takes magpie by a link of its own (Cindy) has nothing to
+    // pick: its row opens the link, and the app asks to add magpie
+    if (a.import && mode !== "panel") fields.append(importButton(a));
     // the panel shows what's set as words, and a row's controls only
     // once it's opened: one row at a time, in place
     let sum = null, openBox = null;
     const effortOf = (f) => f.key === "effort" || f.label === "effort" || f.label === "thinking";
-    if (mode === "panel") {
+    if (mode === "panel" && a.import) {
+      // in words like the rest, the row itself the link
+      sum = el("span", "ag-sum");
+      sum.append(el("span", "v" + (a.added ? "" : " empty"), a.added ? "magpie" : t("Add magpie")), el("span"));
+      const c = el("span", "chev");
+      c.append(svg(OUT, 10, 1.6));
+      sum.append(c);
+      row.title = importButton(a).title;
+      row.onclick = (ev) => {
+        if (ev.target.closest(".ag-handle, .ag-fix, .ag-show")) return;
+        importButton(a).click();
+      };
+    } else if (mode === "panel") {
       sum = el("span", "ag-sum");
       const main = sorted.find((f) => !extra(f) && !f.menu && !effortOf(f));
       const opt = main && optionFor(main, main.value);
@@ -318,7 +334,7 @@ function renderAgents() {
       who.append(driftFix(a));
     }
     row.append(agentHandle(a, row, inFold), who);
-    if (sum) row.append(sum, openBox);
+    if (sum) row.append(sum, ...(openBox ? [openBox] : []));
     else row.append(fields);
     return row;
   };
@@ -472,7 +488,27 @@ async function reapplyAgent(a, btn) {
 let agentsGlide = null; // how the panel's edge moves after the next render
 let panelOpenAgent = null; // the one agent row the panel has opened
 
-const agentUsed = (a) => a.fields.some((f) => f.value);
+const agentUsed = (a) => a.added || a.fields.some((f) => f.value);
+
+// importButton: the one control of an app magpie is added to by its import
+// link: magpie, once the app has it, or an offer to add it
+function importButton(a) {
+  const b = el("button", "field solo import");
+  b.type = "button";
+  b.title = a.added
+    ? t("{name} has magpie as a provider · click to add it again", { name: a.name })
+    : t("Opens {name} to add magpie as a provider — confirm it there", { name: a.name });
+  b.append(icon("magpie"), el("span", "v" + (a.added ? "" : " empty"), a.added ? "magpie" : t("Add magpie")));
+  const c = el("span", "chev");
+  c.append(svg(OUT, 11, 1.6));
+  b.append(c);
+  b.onclick = (ev) => {
+    ev.stopPropagation();
+    if (web) location.href = a.import;
+    else api("open", { url: a.import });
+  };
+  return b;
+}
 const isHidden = (a) => (state.settings?.agentsHidden || []).includes(a.id);
 
 // arrangeAgents: the rows in view, in order, and the folded rest. Folded is

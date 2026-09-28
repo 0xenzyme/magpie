@@ -79,6 +79,11 @@ type Agent struct {
 	// WSL is the distro an agent inside WSL lives in, "" for this
 	// machine's own (see wsl.go).
 	WSL string
+	// Import, for an app that takes magpie only through an import link of
+	// its own, which the user confirms there (Cindy), is that link; the app
+	// has no fields magpie sets. Added says whether it has magpie already.
+	Import func() string
+	Added  func() bool
 	// detect, when set, says whether the agent is here in place of looking
 	// for its files and binary: a distro's, probed once.
 	detect func() bool

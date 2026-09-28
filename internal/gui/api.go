@@ -70,6 +70,10 @@ type agentJSON struct {
 	Fields []fieldJSON `json:"fields"`
 	// Drift: its config no longer does what magpie set, and how to set it again
 	Drift *agent.Drift `json:"drift,omitempty"`
+	// Import: an app that takes magpie by its own link (Cindy), and
+	// whether it has magpie already
+	Import string `json:"import,omitempty"`
+	Added  bool   `json:"added,omitempty"`
 }
 
 // clientJSON is an agent, or another client the gateway knows, as a
@@ -462,6 +466,9 @@ func state() stateJSON {
 			aj.Fields = append(aj.Fields, fieldJSON{Key: f.Key, Label: f.Label, Value: vals[f.Key], Options: opts})
 		}
 		aj.Drift = a.Drift()
+		if a.Import != nil {
+			aj.Import, aj.Added = a.Import(), a.Added != nil && a.Added()
+		}
 		s.Agents = append(s.Agents, aj)
 	}
 	if ps, err := profile.Load(); err == nil {

@@ -146,7 +146,15 @@ func Run() error {
 
 func newModel() model {
 	// in the order the app lists them, those hidden there last
-	shown, hidden := settings.Arrange(settings.Load(), agent.Detected(), func(a *agent.Agent) string { return a.ID })
+	// an app magpie has no fields in (Cindy, which takes it by a link) has
+	// nothing to pick here
+	var set []*agent.Agent
+	for _, a := range agent.Detected() {
+		if len(a.Fields) > 0 {
+			set = append(set, a)
+		}
+	}
+	shown, hidden := settings.Arrange(settings.Load(), set, func(a *agent.Agent) string { return a.ID })
 	m := model{agents: append(shown, hidden...), hidden: len(shown), period: usage.Week, srange: 1}
 	m.reload()
 	return m
