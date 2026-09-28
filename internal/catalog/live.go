@@ -32,17 +32,53 @@ type liveFile struct {
 	Models  []Model   `json:"models"`
 }
 
-// Live returns the model list last fetched from the provider, if any.
-func Live(provider string) (models []Model, fetched time.Time, ok bool) {
-	f, err := filememo.Read("live models", LivePath(provider), func(b []byte) (liveFile, error) {
+func readLive(provider string) (liveFile, error) {
+	return filememo.Read("live models", LivePath(provider), func(b []byte) (liveFile, error) {
 		var f liveFile
 		err := json.Unmarshal(b, &f)
 		return f, err
 	})
-	if err != nil || len(f.Models) == 0 {
+}
+
+// Live returns the model list last fetched from the provider, if any: the
+// models to talk to, without the ones that draw (LiveDrawers).
+func Live(provider string) (models []Model, fetched time.Time, ok bool) {
+	f, err := readLive(provider)
+	if err != nil {
 		return nil, time.Time{}, false
 	}
-	return slices.Clone(f.Models), f.Fetched, true
+	ms := Chat(f.Models)
+	if len(ms) == 0 {
+		return nil, time.Time{}, false
+	}
+	return ms, f.Fetched, true
+}
+
+// LiveDrawers are the models in the provider's fetched list that make
+// images, in the list's order.
+func LiveDrawers(provider string) []Model {
+	f, err := readLive(provider)
+	if err != nil {
+		return nil
+	}
+	var out []Model
+	for _, m := range f.Models {
+		if m.Draws {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// Chat is ms without the models that draw.
+func Chat(ms []Model) []Model {
+	out := make([]Model, 0, len(ms))
+	for _, m := range ms {
+		if !m.Draws {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // SaveLive stores a fetched list; an empty list forgets it.
@@ -224,7 +260,13 @@ func fetchOne(ctx context.Context, url, key string, anthropic bool, headers map[
 		if id == "" {
 			id = r.Name
 		}
-		if id == "" || !textModel(mdModel{ID: id}) {
+		if id == "" {
+			continue
+		}
+		// a model that draws is kept, marked, for Settings → Images; any
+		// other that isn't for text (embeddings, speech) is left out
+		drawer := DrawsID(id) && !strings.Contains(strings.ToLower(id), "deep-research")
+		if !drawer && !textModel(mdModel{ID: id}) {
 			continue
 		}
 		name := r.DisplayName
@@ -232,7 +274,7 @@ func fetchOne(ctx context.Context, url, key string, anthropic bool, headers map[
 			name = id
 		}
 		input := imageInput(r.Modalities.Input)
-		m := Model{ID: id, Name: name, ImageInput: input, APIs: EndpointAPIs(r.Endpoints)}
+		m := Model{ID: id, Name: name, ImageInput: input, APIs: EndpointAPIs(r.Endpoints), Draws: drawer}
 		if n, ok := r.ContextLength.(float64); ok && n > 0 {
 			m.Context = int(n)
 		}

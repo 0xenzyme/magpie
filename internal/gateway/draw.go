@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -59,11 +60,33 @@ func drawer() (string, bool) {
 	return m, m != ""
 }
 
+// codexDrawers are the image models a ChatGPT account draws with, at
+// its Codex backend's images API, as Codex CLI does (gpt-image-2 is the one
+// it asks for).
+var codexDrawers = []catalog.Model{
+	{ID: "gpt-image-2", Name: "GPT Image 2", Released: "2026-01-01"},
+	{ID: "gpt-image-2.5", Name: "GPT Image 2.5", Released: "2026-06-01"},
+}
+
+// drawsCodex is whether p is a ChatGPT account, which draws at its Codex
+// backend's images API.
+func drawsCodex(p provider.Provider) bool {
+	return p.Account != nil && p.Account.Agent == "codex" && p.Base(provider.Responses) != ""
+}
+
 // Drawers are the models a provider can draw with: its catalogs' models
-// that make images, and those of its own list named for images.
+// that make images, those its own model list names that do, and those of
+// its own picks named for images; a ChatGPT account's GPT Image.
 func Drawers(p provider.Provider) []catalog.Model {
-	// a subscription is asked through its agent's own API, which draws
-	// nothing magpie can ask for yet
+	if drawsCodex(p) {
+		out := slices.Clone(codexDrawers)
+		for i := range out {
+			out[i].Provider = p.ID
+		}
+		return out
+	}
+	// any other subscription is asked through its agent's own API, which
+	// draws nothing magpie can ask for yet
 	if p.Account != nil || p.Base(provider.Chat) == "" {
 		return nil
 	}
@@ -77,6 +100,13 @@ func Drawers(p provider.Provider) []catalog.Model {
 			}
 		}
 	}
+	for _, m := range catalog.LiveDrawers(p.ID) {
+		if !have[m.ID] {
+			have[m.ID] = true
+			m.Provider = p.ID
+			out = append(out, m)
+		}
+	}
 	for _, id := range p.Models {
 		if !have[id] && catalog.DrawsID(id) {
 			have[id] = true
@@ -87,8 +117,9 @@ func Drawers(p provider.Provider) []catalog.Model {
 }
 
 // AutoDrawer is the model magpie draws with when the Settings name none:
-// the cheapest of the models the API keys set up can draw with, the newest
-// of those whose price isn't known. "" when none can.
+// a ChatGPT account's, which its plan pays for, else the cheapest of the
+// models the API keys set up can draw with, the newest of those whose price
+// isn't known. "" when none can.
 func AutoDrawer() string {
 	best, bestCost, bestDate := "", 0.0, ""
 	for _, p := range provider.All() {
@@ -97,7 +128,10 @@ func AutoDrawer() string {
 		}
 		for _, m := range Drawers(p) {
 			cost := 1e9
-			if m.Price != nil {
+			switch {
+			case drawsCodex(p):
+				cost = 0 // a ChatGPT plan's images come with it
+			case m.Price != nil:
 				cost = m.Price.Input + m.Price.Output
 			}
 			if best == "" || cost < bestCost || cost == bestCost && m.Released > bestDate {
@@ -414,6 +448,9 @@ func viaFor(p provider.Provider, model string) drawVia {
 // draw asks the provider for d's images, on the API model draws on there,
 // and on the other when that one isn't served.
 func (s *Server) draw(ctx context.Context, p provider.Provider, model string, d drawing) (drawn, int, error) {
+	if drawsCodex(p) {
+		return s.drawImages(ctx, p, model, d)
+	}
 	if p.Base(provider.Chat) == "" {
 		return drawn{}, 400, fmt.Errorf("%s can't draw: magpie draws only through an OpenAI-compatible API, and %s has none", p.Name, p.Name)
 	}
@@ -452,6 +489,12 @@ func (s *Server) send(ctx context.Context, p provider.Provider, url, contentType
 	if sign {
 		if err := p.Sign(ctx, req, provider.Chat, body); err != nil {
 			return nil, 502, err
+		}
+		if drawsCodex(p) {
+			// the images API answers in JSON, not the stream Codex's
+			// signing asks of its Responses; the id is Codex CLI's own
+			req.Header.Set("Accept", "application/json")
+			req.Header.Set("x-codex-imagegen-request-id", newUUID())
 		}
 	} else {
 		// Google's API keys go in their own header
@@ -502,6 +545,9 @@ func vendorMessage(b []byte) string {
 // sent along.
 func (s *Server) drawImages(ctx context.Context, p provider.Provider, model string, d drawing) (drawn, int, error) {
 	base := strings.TrimRight(p.Base(provider.Chat), "/")
+	if drawsCodex(p) {
+		base = strings.TrimRight(p.Base(provider.Responses), "/")
+	}
 	var body []byte
 	var ct, url string
 	m := strings.ToLower(model)
@@ -518,6 +564,24 @@ func (s *Server) drawImages(ctx context.Context, p provider.Provider, model stri
 		}
 		body, _ = json.Marshal(req)
 		ct, url = "application/json", base+"/images/generations"
+	} else if drawsCodex(p) {
+		// ChatGPT's backend takes an edit only as JSON, each image a data URL
+		req := map[string]any{"model": model, "prompt": d.Prompt, "n": d.N}
+		for k, v := range map[string]string{"size": d.Size, "quality": d.Quality, "background": d.Background, "output_format": d.Format} {
+			if v != "" {
+				req[k] = v
+			}
+		}
+		var imgs []map[string]string
+		for _, pic := range d.Images {
+			imgs = append(imgs, map[string]string{"image_url": pic.dataURL()})
+		}
+		req["images"] = imgs
+		if d.Mask != nil {
+			req["mask"] = map[string]string{"image_url": d.Mask.dataURL()}
+		}
+		body, _ = json.Marshal(req)
+		ct, url = "application/json", base+"/images/edits"
 	} else {
 		var buf bytes.Buffer
 		mw := multipart.NewWriter(&buf)
@@ -671,6 +735,13 @@ func (s *Server) drawChat(ctx context.Context, p provider.Provider, model string
 							URL string `json:"url"`
 						} `json:"image_url"`
 					} `json:"images"`
+					// AIHubMix's Gemini: the parts as Gemini gives them
+					MultiMod []struct {
+						InlineData struct {
+							Data     string `json:"data"`
+							MimeType string `json:"mime_type"`
+						} `json:"inline_data"`
+					} `json:"multi_mod_content"`
 				} `json:"message"`
 			} `json:"choices"`
 			Usage struct {
@@ -689,6 +760,11 @@ func (s *Server) drawChat(ctx context.Context, p provider.Provider, model string
 		var srcs []string
 		for _, im := range msg.Images {
 			srcs = append(srcs, im.ImageURL.URL)
+		}
+		for _, part := range msg.MultiMod {
+			if in := part.InlineData; in.Data != "" {
+				srcs = append(srcs, "data:"+cmp.Or(in.MimeType, "image/png")+";base64,"+in.Data)
+			}
 		}
 		var text string
 		if json.Unmarshal(msg.Content, &text) != nil {

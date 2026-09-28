@@ -48,6 +48,11 @@ func (e *easel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(400)
 			return
 		}
+		if strings.Contains(string(body), "gemini") {
+			// AIHubMix's shape: Gemini's parts, under multi_mod_content
+			io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"Here you go!","multi_mod_content":[{"text":"Here you go! ","inline_data":{}},{"inline_data":{"data":"`+b64+`","mime_type":"image/png"}}]}}]}`)
+			return
+		}
 		io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"Here it is.","images":[{"type":"image_url","image_url":{"url":"data:image/png;base64,`+b64+`"}}]}}],"usage":{"prompt_tokens":3,"completion_tokens":50}}`)
 	default:
 		w.WriteHeader(404)
@@ -66,7 +71,7 @@ func easeled(t *testing.T) (*Server, *easel) {
 	e := &easel{}
 	up := httptest.NewServer(e)
 	t.Cleanup(up.Close)
-	if err := provider.Save(provider.Provider{ID: "art", Name: "Art", Chat: up.URL + "/v1", Key: "key", Models: []string{"text", "gpt-image-1", "painter-image-preview"}}); err != nil {
+	if err := provider.Save(provider.Provider{ID: "art", Name: "Art", Chat: up.URL + "/v1", Key: "key", Models: []string{"text", "gpt-image-1", "painter-image-preview", "gemini-2.5-flash-image"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := catalog.SaveLive("art", up.URL+"/v1", []catalog.Model{{ID: "text"}}); err != nil {
@@ -122,6 +127,17 @@ func TestChatModelDrawsWithModalities(t *testing.T) {
 	sent := e.got("/v1/chat/completions")
 	if len(sent) != 2 || !strings.Contains(sent[0], "Aspect ratio: 3:2") {
 		t.Fatalf("vendor was sent %v", sent)
+	}
+}
+
+func TestChatModelsGeminiPartsAreImages(t *testing.T) {
+	s, _ := easeled(t)
+	code, a, raw := postImages(t, s, "/v1/images/generations", "application/json", `{"model":"art/gemini-2.5-flash-image","prompt":"a magpie"}`)
+	if code != 200 || len(a.Data) != 1 || a.Text != "Here you go!" {
+		t.Fatalf("%d %s", code, raw)
+	}
+	if b, _ := base64.StdEncoding.DecodeString(a.Data[0].B64); string(b) != string(pngBytes) {
+		t.Fatalf("image %q", b)
 	}
 }
 
@@ -222,5 +238,85 @@ func TestCatalogDrawers(t *testing.T) {
 				t.Errorf("%s/%s is a drawer", id, m.ID)
 			}
 		}
+	}
+}
+
+// A vendor's own list that names image models: they draw, and they aren't
+// among the models offered to talk to.
+func TestListedImageModelsDraw(t *testing.T) {
+	fresh(t)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"data":[{"id":"gpt-5.5"},{"id":"gpt-image-2"},{"id":"flux-kontext-pro"},{"id":"text-embedding-3-small"}]}`)
+	}))
+	defer up.Close()
+	p := provider.Provider{ID: "relay", Name: "Relay", Chat: up.URL + "/v1", Key: "key"}
+	if err := provider.Save(p); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := p.Fetch(t.Context())
+	if err != nil || len(ms) != 1 || ms[0].ID != "gpt-5.5" {
+		t.Fatalf("fetched %v %v", ms, err)
+	}
+	if live, _, _ := catalog.Live("relay"); len(live) != 1 {
+		t.Fatalf("live %v", live)
+	}
+	var ids []string
+	for _, m := range Drawers(p) {
+		ids = append(ids, m.ID)
+	}
+	if strings.Join(ids, ",") != "gpt-image-2,flux-kontext-pro" {
+		t.Fatalf("drawers %v", ids)
+	}
+}
+
+// A ChatGPT account draws with GPT Image at its Codex backend's images API,
+// signed as Codex, and Automatic picks it, as the plan pays for it.
+func TestCodexAccountDraws(t *testing.T) {
+	codexSignedIn(t)
+	var mu sync.Mutex
+	var paths, bodies []string
+	var head http.Header
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		paths, bodies, head = append(paths, r.URL.Path), append(bodies, string(b)), r.Header.Clone()
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"created":1,"output_format":"png","data":[{"b64_json":"`+base64.StdEncoding.EncodeToString(pngBytes)+`","generation_id":"g1"}],"usage":{"input_tokens":5,"output_tokens":196}}`)
+	}))
+	defer up.Close()
+	was := provider.CodexBase
+	provider.CodexBase = up.URL + "/backend-api/codex"
+	defer func() { provider.CodexBase = was }()
+	p, err := provider.Find("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ds := Drawers(*p); len(ds) != 2 || ds[0].ID != "gpt-image-2" || ds[1].ID != "gpt-image-2.5" {
+		t.Fatalf("drawers %v", ds)
+	}
+	if m, ok := drawer(); !ok || m != "codex/gpt-image-2.5" {
+		t.Fatalf("drawer = %q %v", m, ok)
+	}
+	s := New()
+	code, a, raw := postImages(t, s, "/v1/images/generations", "application/json", `{"model":"codex/gpt-image-2","prompt":"a magpie","size":"1024x1024"}`)
+	if code != 200 || len(a.Data) != 1 || a.Usage.Output != 196 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if paths[0] != "/backend-api/codex/images/generations" || !strings.Contains(bodies[0], `"model":"gpt-image-2"`) {
+		t.Fatalf("asked %v %v", paths, bodies)
+	}
+	if head.Get("chatgpt-account-id") != "acct-1" || head.Get("Accept") != "application/json" || head.Get("originator") != "codex_cli_rs" || head.Get("x-codex-imagegen-request-id") == "" {
+		t.Fatalf("headers %v", head)
+	}
+	// an edit goes as JSON, the image a data URL: the backend turns multipart away
+	mu.Unlock()
+	img := "data:image/png;base64," + base64.StdEncoding.EncodeToString(pngBytes)
+	code, _, raw = postImages(t, s, "/v1/images/edits", "application/json", `{"model":"codex/gpt-image-2","prompt":"bluer","images":[{"image_url":"`+img+`"}]}`)
+	mu.Lock()
+	if code != 200 || paths[1] != "/backend-api/codex/images/edits" || head.Get("Content-Type") != "application/json" || !strings.Contains(bodies[1], `"images":[{"image_url":"data:image/png;base64,`) {
+		t.Fatalf("%d %s; asked %v %s", code, raw, paths, head.Get("Content-Type"))
 	}
 }

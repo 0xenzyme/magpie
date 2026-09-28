@@ -105,7 +105,7 @@ func (p Provider) Fetch(ctx context.Context) ([]catalog.Model, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ms, catalog.SaveLive(p.ID, base, ms)
+	return catalog.Chat(ms), catalog.SaveLive(p.ID, base, ms)
 }
 
 // fetchOne asks the first endpoint that answers, with p's key.
@@ -217,6 +217,7 @@ func (p Provider) fixV1(base, at string) string {
 // key that can't be asked now keeps the models it saw last time.
 func (p Provider) fetchPerKey(ctx context.Context, keys []KeyAccount) ([]catalog.Model, error) {
 	old, _, _ := catalog.Live(p.ID)
+	old = append(old, catalog.LiveDrawers(p.ID)...)
 	var out []catalog.Model
 	at := map[string]int{}
 	add := func(m catalog.Model, id string) {
@@ -258,7 +259,7 @@ func (p Provider) fetchPerKey(ctx context.Context, keys []KeyAccount) ([]catalog
 	if len(out) == 0 {
 		return nil, lastErr
 	}
-	return out, catalog.SaveLive(p.ID, base, out)
+	return catalog.Chat(out), catalog.SaveLive(p.ID, base, out)
 }
 
 // An explicit text-only answer wins. Without one, an unknown answer stays
