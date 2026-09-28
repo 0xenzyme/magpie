@@ -116,6 +116,13 @@ func parseResponses(body []byte) (*Request, error) {
 					continue
 				}
 				r.Messages = append(r.Messages, Message{Role: role, Parts: parts})
+			case it.Type == "agent_message":
+				// MultiAgentV2 hands a subagent its task, and agents their
+				// messages to each other, as this item: what it says is the
+				// user's turn for the agent that receives it.
+				if parts := responsesParts(it.Content); len(parts) > 0 {
+					r.Messages = append(r.Messages, Message{Role: "user", Parts: parts})
+				}
 			case it.Type == "function_call":
 				name := it.Name
 				if it.Namespace != "" {
@@ -464,6 +471,10 @@ type responsesEncoder struct {
 func callTo(item map[string]any, name string, named map[string]nsTool) map[string]any {
 	if q, ok := named[name]; ok {
 		item["name"], item["namespace"] = q.Name, q.Namespace
+		// Nothing magpie serves seals arguments. Codex reads a namespaced call
+		// without this list as sealed: spawn_agent's message in MultiAgentV2
+		// would reach the subagent as ciphertext, which is really plain text.
+		item["encrypted_function_args"] = []any{}
 	} else {
 		item["name"] = name
 	}
