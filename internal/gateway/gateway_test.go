@@ -413,7 +413,10 @@ func TestChatClientAnthropicUpstream(t *testing.T) {
 	}
 	var up map[string]any
 	json.Unmarshal(f.got, &up)
-	if up["system"] != "sys" || up["max_tokens"] != float64(50) || up["temperature"] != 0.2 || up["stream"] != true {
+	// the system prompt and the conversation so far are marked for caching
+	if !strings.Contains(string(f.got), `"system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral"}}]`) ||
+		!strings.Contains(string(f.got), `{"type":"text","text":"ls","cache_control":{"type":"ephemeral"}}`) ||
+		up["max_tokens"] != float64(50) || up["temperature"] != 0.2 || up["stream"] != true {
 		t.Errorf("upstream: %s", f.got)
 	}
 	if f.head.Get("x-api-key") != "k" || f.head.Get("anthropic-version") == "" {

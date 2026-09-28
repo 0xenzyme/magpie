@@ -36,7 +36,12 @@ type aBlock struct {
 	// thinking
 	Thinking  string `json:"thinking,omitempty"`
 	Signature string `json:"signature,omitempty"`
+	// a prompt-cache breakpoint: the prompt up to here is cached
+	CacheControl map[string]string `json:"cache_control,omitempty"`
 }
+
+// ephemeral marks a prompt-cache breakpoint.
+var ephemeral = map[string]string{"type": "ephemeral"}
 
 type aRequest struct {
 	Model    string          `json:"model"`
@@ -284,10 +289,27 @@ func buildAnthropic(r *Request, model string) []byte {
 		}
 		push(role, append(results, rest...))
 	}
+	// Anthropic caches a prompt only up to a block marked for it, which a
+	// request from another API (Codex's, a Chat client's) never has: the
+	// conversation so far is marked at its last block, so the next turn,
+	// which only adds to it, reads it from the cache; thinking can't be
+	// marked. Two marks at most, with the one Claude's sign-in adds kept
+	// within Anthropic's four.
+	if n := len(msgs); n > 0 {
+		c := msgs[n-1].Content
+		for i := len(c) - 1; i >= 0; i-- {
+			if c[i].Type != "thinking" {
+				c[i].CacheControl = ephemeral
+				break
+			}
+		}
+	}
 	// an assistant turn made only of unsigned thinking is nothing to Anthropic
 	out := map[string]any{"model": model, "messages": msgs, "stream": r.Stream}
 	if r.System != "" {
-		out["system"] = r.System
+		// the tools and system prompt, the same every turn, are cached
+		// apart from the conversation
+		out["system"] = []aBlock{{Type: "text", Text: r.System, CacheControl: ephemeral}}
 	}
 	maxTokens := r.MaxTokens
 	if maxTokens <= 0 {
@@ -327,6 +349,9 @@ func buildAnthropic(r *Request, model string) []byte {
 				schema = json.RawMessage(`{"type":"object","properties":{}}`)
 			}
 			tools = append(tools, map[string]any{"name": t.Name, "description": t.Description, "input_schema": schema})
+		}
+		if r.System == "" && len(tools) > 0 {
+			tools[len(tools)-1]["cache_control"] = ephemeral
 		}
 		if r.WebSearch {
 			tools = append(tools, map[string]any{"type": "web_search_20250305", "name": "web_search", "max_uses": 5})
