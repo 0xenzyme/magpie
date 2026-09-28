@@ -1207,6 +1207,9 @@ async function loadProviders() {
   // the skeletons only while there is nothing yet: a reload keeps what is
   // drawn, and where the reader is in it, until the new one is in
   if (!providers) { if (view === "gateway") renderGatewayLoading(); else renderProvidersLoading(); }
+  // the gateway page opened from another that had the list: drawn from it
+  // at once, not left as empty cards until the new one is in (#123)
+  else if (view === "gateway" && !$("#gateway").childElementCount) renderGatewayView();
   const was = providers;
   providers = await api("providers");
   // a reload's provider may be gone since

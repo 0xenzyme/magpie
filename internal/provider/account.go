@@ -175,6 +175,8 @@ var (
 	claudeStatusUser string
 	claudeStatusPlan string
 	claudeStatusOut  bool // Claude Code says nobody is signed in
+	claudeStatusGen  int  // bumped when forgotten: an answer asked before is dropped
+	claudeStatusBusy bool // asked again behind the last answer
 
 	claudeCacheMu  sync.Mutex
 	claudeCacheAt  time.Time
@@ -409,13 +411,38 @@ var claudeExecutable = func() string {
 func claudeIdentity() (user, plan string, signedOut bool) {
 	claudeStatusMu.Lock()
 	defer claudeStatusMu.Unlock()
-	if time.Since(claudeStatusAt) < 30*time.Second {
-		return claudeStatusUser, claudeStatusPlan, claudeStatusOut
+	switch {
+	case claudeStatusAt.IsZero():
+		claudeStatusAt = time.Now()
+		if u, p, out, ok := askClaudeStatus(); ok {
+			claudeStatusUser, claudeStatusPlan, claudeStatusOut = u, p, out
+		}
+	case time.Since(claudeStatusAt) >= 30*time.Second && !claudeStatusBusy:
+		// the CLI takes up to seconds and the accounts are read by every page
+		// and request: the last answer is served while it is asked again (#123)
+		claudeStatusBusy = true
+		gen := claudeStatusGen
+		go func() {
+			u, p, out, ok := askClaudeStatus()
+			claudeStatusMu.Lock()
+			defer claudeStatusMu.Unlock()
+			if gen != claudeStatusGen {
+				return
+			}
+			claudeStatusAt, claudeStatusBusy = time.Now(), false
+			if ok {
+				claudeStatusUser, claudeStatusPlan, claudeStatusOut = u, p, out
+			}
+		}()
 	}
-	claudeStatusAt = time.Now()
+	return claudeStatusUser, claudeStatusPlan, claudeStatusOut
+}
+
+// askClaudeStatus runs `claude auth status`; ok is false when it gave no answer.
+func askClaudeStatus() (user, plan string, signedOut, ok bool) {
 	path := claudeExecutable()
 	if path == "" {
-		return claudeStatusUser, claudeStatusPlan, claudeStatusOut
+		return "", "", false, false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -427,15 +454,12 @@ func claudeIdentity() (user, plan string, signedOut bool) {
 		SubscriptionType string `json:"subscriptionType"`
 	}
 	if json.Unmarshal(out, &status) != nil || status.LoggedIn == nil {
-		return claudeStatusUser, claudeStatusPlan, claudeStatusOut
+		return "", "", false, false
 	}
-	claudeStatusOut = !*status.LoggedIn
-	claudeStatusUser, claudeStatusPlan = "", ""
-	if *status.LoggedIn {
-		claudeStatusUser = strings.TrimSpace(status.Email)
-		claudeStatusPlan = strings.TrimSpace(status.SubscriptionType)
+	if !*status.LoggedIn {
+		return "", "", true, true
 	}
-	return claudeStatusUser, claudeStatusPlan, claudeStatusOut
+	return strings.TrimSpace(status.Email), strings.TrimSpace(status.SubscriptionType), false, true
 }
 
 func claudeAccount() (Provider, bool) {
@@ -1190,5 +1214,7 @@ func copilotModels(ctx context.Context, app copilotApp) ([]catalog.Model, error)
 func forgetClaudeStatus() {
 	claudeStatusMu.Lock()
 	claudeStatusAt, claudeStatusUser, claudeStatusPlan, claudeStatusOut = time.Time{}, "", "", false
+	claudeStatusGen++
+	claudeStatusBusy = false
 	claudeStatusMu.Unlock()
 }
