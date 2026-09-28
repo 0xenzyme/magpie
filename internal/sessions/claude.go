@@ -41,7 +41,8 @@ var (
 )
 
 func claudeLine(s *state, b []byte, main bool) {
-	s.saw(tsAt(b, true))
+	at := tsAt(b, true)
+	s.saw(at, main)
 	want := bytes.Contains(b, ccAssistant) ||
 		main && s.Title == "" && bytes.Contains(b, ccUser) ||
 		main && (bytes.Contains(b, ccTitle) || bytes.Contains(b, ccSummary)) ||
@@ -84,18 +85,11 @@ func claudeLine(s *state, b []byte, main bool) {
 		if id := l.Message.ID; id != "" && id == s.Msg {
 			// another block of the message counted: its usage stands for
 			// the whole, the latest word on it
-			if m, ok := s.Models[s.MsgModel]; ok {
-				m.sub(s.MsgUse)
-				s.Models[s.MsgModel] = m
-			}
+			s.unuse(s.MsgDay, s.MsgModel, s.MsgUse)
 		}
-		s.Msg, s.MsgModel, s.MsgUse = l.Message.ID, l.Message.Model, t
-		if s.Models == nil {
-			s.Models = map[string]Tokens{}
-		}
-		m := s.Models[l.Message.Model]
-		m.add(t)
-		s.Models[l.Message.Model] = m
+		date := dateOf(at)
+		s.Msg, s.MsgModel, s.MsgUse, s.MsgDay = l.Message.ID, l.Message.Model, t, date
+		s.use(date, l.Message.Model, t)
 	}
 }
 

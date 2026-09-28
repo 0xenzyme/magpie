@@ -66,8 +66,9 @@ var (
 	cxUserRole = []byte(`"role":"user"`)
 )
 
-func codexLine(s *state, b []byte, _ bool) {
-	s.saw(tsAt(b, false))
+func codexLine(s *state, b []byte, main bool) {
+	at := tsAt(b, false)
+	s.saw(at, main)
 	want := s.ID == "" && bytes.Contains(b, cxMeta) ||
 		bytes.Contains(b, cxTurn) || bytes.Contains(b, cxCount) || bytes.Contains(b, cxSettings) ||
 		s.Title == "" && (bytes.Contains(b, cxUserMsg) || bytes.Contains(b, cxUserRole))
@@ -131,7 +132,7 @@ func codexLine(s *state, b []byte, _ bool) {
 			d = total
 		}
 		s.Total = &total
-		s.use(s.Model, spent(d))
+		s.use(dateOf(at), s.Model, spent(d))
 	}
 }
 

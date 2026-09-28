@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -94,16 +95,57 @@ type state struct {
 	Start  time.Time         `json:"start"`
 	Last   time.Time         `json:"last"`
 	Models map[string]Tokens `json:"models,omitempty"`
-	// Claude Code: the message last counted, whose later lines repeat it
+	// Days is Models again, split by the local date each message was
+	// written on: a session that runs past midnight counts on both days.
+	Days map[string]*day `json:"days,omitempty"`
+	// Claude Code: the message last counted, whose later lines repeat it,
+	// and the day it was counted on
 	Msg      string `json:"msg,omitempty"`
 	MsgModel string `json:"msg_model,omitempty"`
 	MsgUse   Tokens `json:"msg_use"`
+	MsgDay   string `json:"msg_day,omitempty"`
 	// Codex: the model in use, and its running total (input with cache) last seen
 	Model string  `json:"model,omitempty"`
 	Total *Tokens `json:"total,omitempty"`
 }
 
-func (s *state) use(model string, t Tokens) {
+// day is one local date's share of a file: tokens by model, and the time
+// the session was at work on it.
+type day struct {
+	Models map[string]Tokens `json:"m,omitempty"`
+	// Active is milliseconds of work: the gaps between one line and the
+	// next, each counted when shorter than idleGap and put on the later
+	// line's day. A longer pause (lunch, the night, a session picked up
+	// again next week) counts nothing. A subagent's file counts none, as
+	// it runs while its session's own file goes on.
+	Active int64 `json:"a,omitempty"`
+}
+
+// idleGap is the longest pause between two lines still counted as work.
+const idleGap = 5 * time.Minute
+
+// dateOf is the local date of a time, "" for none.
+func dateOf(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.In(time.Local).Format(time.DateOnly)
+}
+
+func (s *state) day(date string) *day {
+	if s.Days == nil {
+		s.Days = map[string]*day{}
+	}
+	d := s.Days[date]
+	if d == nil {
+		d = &day{}
+		s.Days[date] = d
+	}
+	return d
+}
+
+// use counts a model's tokens, spent on a date.
+func (s *state) use(date, model string, t Tokens) {
 	if t.zero() {
 		return
 	}
@@ -113,9 +155,32 @@ func (s *state) use(model string, t Tokens) {
 	m := s.Models[model]
 	m.add(t)
 	s.Models[model] = m
+	d := s.day(date)
+	if d.Models == nil {
+		d.Models = map[string]Tokens{}
+	}
+	m = d.Models[model]
+	m.add(t)
+	d.Models[model] = m
 }
 
-func (s *state) saw(t time.Time) {
+// unuse takes back what use counted.
+func (s *state) unuse(date, model string, t Tokens) {
+	if m, ok := s.Models[model]; ok {
+		m.sub(t)
+		s.Models[model] = m
+	}
+	if d := s.Days[date]; d != nil {
+		if m, ok := d.Models[model]; ok {
+			m.sub(t)
+			d.Models[model] = m
+		}
+	}
+}
+
+// saw notes the time of a line and, in a session's own file, the work
+// since the line before.
+func (s *state) saw(t time.Time, main bool) {
 	if t.IsZero() {
 		return
 	}
@@ -123,6 +188,9 @@ func (s *state) saw(t time.Time) {
 		s.Start = t
 	}
 	if t.After(s.Last) {
+		if gap := t.Sub(s.Last); main && !s.Last.IsZero() && gap < idleGap {
+			s.day(dateOf(t)).Active += gap.Milliseconds()
+		}
 		s.Last = t
 	}
 }
@@ -136,6 +204,14 @@ func (s *state) clone() *state {
 	if s.Total != nil {
 		t := *s.Total
 		c.Total = &t
+	}
+	c.Days = make(map[string]*day, len(s.Days))
+	for k, v := range s.Days {
+		d := &day{Active: v.Active, Models: make(map[string]Tokens, len(v.Models))}
+		for m, t := range v.Models {
+			d.Models[m] = t
+		}
+		c.Days[k] = d
 	}
 	return &c
 }
@@ -225,6 +301,8 @@ var (
 	mu     sync.Mutex
 	cache  map[string]*state // path → parse
 	loaded bool
+	// the zone the parses in memory date their days in
+	cacheZone string
 )
 
 // CachePath is where the parses are kept between runs.
@@ -232,32 +310,39 @@ func CachePath() string { return filepath.Join(filepath.Dir(catalog.CachePath())
 
 // cacheVersion changes when a parse would come out differently, so the
 // parses kept by an older magpie are read again.
-const cacheVersion = 1
+// 2: each file's usage by day, and its active time
+const cacheVersion = 2
 
 type cacheFile struct {
 	Version int               `json:"version"`
+	Zone    string            `json:"zone"` // the time zone its days are dates in
 	Files   map[string]*state `json:"files"`
 }
 
+// zone tells time zones apart well enough for the days kept by date: their
+// offsets in winter and in summer. Moved to another, the files are read again.
+func zone() string {
+	y := time.Now().Year()
+	_, w := time.Date(y, 1, 1, 0, 0, 0, 0, time.Local).Zone()
+	_, s := time.Date(y, 7, 1, 0, 0, 0, 0, time.Local).Zone()
+	return strconv.Itoa(w) + "/" + strconv.Itoa(s)
+}
+
 func loadCache() {
-	if loaded {
+	z := zone()
+	if loaded && z == cacheZone {
 		return
 	}
-	loaded = true
+	loaded, cacheZone = true, z
 	cache = map[string]*state{}
 	var c cacheFile
-	if b, err := os.ReadFile(CachePath()); err == nil && json.Unmarshal(b, &c) == nil && c.Version == cacheVersion && c.Files != nil {
+	if b, err := os.ReadFile(CachePath()); err == nil && json.Unmarshal(b, &c) == nil && c.Version == cacheVersion && c.Zone == z && c.Files != nil {
 		cache = c.Files
 	}
 }
 
-func saveCache(keep map[string]bool) {
-	for p := range cache {
-		if !keep[p] {
-			delete(cache, p)
-		}
-	}
-	b, err := json.Marshal(cacheFile{Version: cacheVersion, Files: cache})
+func saveCache() {
+	b, err := json.Marshal(cacheFile{Version: cacheVersion, Zone: zone(), Files: cache})
 	if err != nil {
 		return
 	}
@@ -275,6 +360,77 @@ func saveCache(keep map[string]bool) {
 	}
 	if err != nil || os.Rename(tmp.Name(), CachePath()) != nil {
 		os.Remove(tmp.Name())
+	}
+}
+
+// refresh parses those of want that changed since their parse was kept, a
+// few files at a time, and keeps the parses of every file still on disk
+// (all of them), read by List or by Stats.
+func refresh(want, all []file) {
+	var todo []file
+	for _, f := range want {
+		if s := cache[f.path]; s == nil || s.Size != f.size || s.Mod != f.mod.UnixNano() {
+			todo = append(todo, f)
+		}
+	}
+	gone := false
+	if len(cache) > 0 {
+		on := make(map[string]bool, len(all))
+		for _, f := range all {
+			on[f.path] = true
+		}
+		for p := range cache {
+			if !on[p] {
+				delete(cache, p)
+				gone = true
+			}
+		}
+	}
+	if len(todo) == 0 {
+		if gone {
+			saveCache()
+		}
+		return
+	}
+	var wg sync.WaitGroup
+	var put sync.Mutex
+	ch := make(chan file)
+	for i := 0; i < min(max(4, runtime.NumCPU()/2), len(todo)); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for f := range ch {
+				put.Lock()
+				old := cache[f.path]
+				put.Unlock()
+				s := parse(f, old)
+				put.Lock()
+				cache[f.path] = s
+				put.Unlock()
+			}
+		}()
+	}
+	for _, f := range todo {
+		ch <- f
+	}
+	close(ch)
+	wg.Wait()
+	saveCache()
+}
+
+// pricer looks up the price of each model once.
+func pricer() func(string) *catalog.Price {
+	prices := map[string]*catalog.Price{}
+	return func(model string) *catalog.Price {
+		if p, ok := prices[model]; ok {
+			return p
+		}
+		var pp *catalog.Price
+		if p, ok := PriceOf(model); ok {
+			pp = &p
+		}
+		prices[model] = pp
+		return pp
 	}
 }
 
@@ -317,57 +473,13 @@ func List(limit int) []Session {
 	if len(keys) > limit {
 		keys = keys[:limit]
 	}
-
-	// parse what changed, a few files at a time
-	var todo []file
-	keep := map[string]bool{}
+	var want []file
 	for _, k := range keys {
-		for _, f := range groups[k] {
-			keep[f.path] = true
-			if s := cache[f.path]; s == nil || s.Size != f.size || s.Mod != f.mod.UnixNano() {
-				todo = append(todo, f)
-			}
-		}
+		want = append(want, groups[k]...)
 	}
-	if len(todo) > 0 {
-		var wg sync.WaitGroup
-		var put sync.Mutex
-		ch := make(chan file)
-		for i := 0; i < min(4, runtime.NumCPU(), len(todo)); i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for f := range ch {
-					put.Lock()
-					old := cache[f.path]
-					put.Unlock()
-					s := parse(f, old)
-					put.Lock()
-					cache[f.path] = s
-					put.Unlock()
-				}
-			}()
-		}
-		for _, f := range todo {
-			ch <- f
-		}
-		close(ch)
-		wg.Wait()
-		saveCache(keep)
-	}
+	refresh(want, files)
 
-	prices := map[string]*catalog.Price{}
-	price := func(model string) *catalog.Price {
-		if p, ok := prices[model]; ok {
-			return p
-		}
-		var pp *catalog.Price
-		if p, ok := PriceOf(model); ok {
-			pp = &p
-		}
-		prices[model] = pp
-		return pp
-	}
+	price := pricer()
 	out := []Session{}
 	for _, k := range keys {
 		if s, ok := assemble(groups[k], price); ok {

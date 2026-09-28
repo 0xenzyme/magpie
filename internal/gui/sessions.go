@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -47,6 +48,30 @@ func sessionRoutes(mux *http.ServeMux, w Windows) {
 			out.Sessions = append(out.Sessions, j)
 		}
 		writeJSON(rw, out)
+	})
+	// stats is every session's usage by day over the last ?days=N days
+	// (every day when 0 or none), cut by agent, folder and model for the
+	// page to filter; names are the agents' as the page shows them.
+	mux.HandleFunc("GET /api/sessions/stats", func(rw http.ResponseWriter, r *http.Request) {
+		n, _ := strconv.Atoi(r.URL.Query().Get("days"))
+		st := sessions.StatsFor(max(0, n))
+		names := map[string]string{}
+		for _, a := range agent.Clients() {
+			names[a.ID] = a.Name
+		}
+		agents := map[string]string{}
+		for _, d := range st.Days {
+			for _, u := range d.Usage {
+				agents[u.Agent] = cmp.Or(names[u.Agent], u.Agent)
+			}
+			for _, a := range d.Active {
+				agents[a.Agent] = cmp.Or(names[a.Agent], a.Agent)
+			}
+		}
+		writeJSON(rw, struct {
+			sessions.Stats
+			Agents map[string]string `json:"agents"`
+		}{st, agents})
 	})
 	// terminal opens Terminal on a session's resume command. The command is
 	// made here from the session as listed, never taken from the page.

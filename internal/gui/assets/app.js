@@ -3681,9 +3681,9 @@ function closeProtoMenu() {
   removeEventListener("resize", closeProtoMenu);
   protoMenu = null;
 }
-function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key speaks") {
+function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key speaks", cls = "") {
   closeProtoMenu();
-  const box = el("div", "pop proto-menu");
+  const box = el("div", "pop proto-menu" + (cls ? " " + cls : ""));
   box.setAttribute("role", "menu");
   box.append(el("div", "pm-head", t(head)));
   const items = opts.map((o) => {
@@ -4197,6 +4197,19 @@ try { if (localStorage.getItem("magpie.usageTab") === "sessions") usageTab = "se
 let sessions = null; // { sessions, terminal, dirs }
 let sessAgent = "all";
 let sessQuery = "";
+// The totals and the chart are every session's, by day, over a range; the
+// list is the latest sessions within it. [id, name, days (0: all)]
+const SESS_RANGES = [["today", "Today", 1], ["7d", "7 days", 7], ["30d", "30 days", 30], ["90d", "90 days", 90], ["all", "All", 0]];
+let sessRange = "30d";
+let sessMetric = "tokens"; // what the chart's bars are: tokens or cost
+try {
+  const r = localStorage.getItem("magpie.sessRange");
+  if (SESS_RANGES.some(([id]) => id === r)) sessRange = r;
+  if (localStorage.getItem("magpie.sessMetric") === "cost") sessMetric = "cost";
+} catch {}
+let sessStats = null; // { from, to, days: [{ date, usage, active }], agents } for sessRange
+let sessModel = ""; // "" for every model
+let sessFolder = ""; // "" for every folder
 const sessOpen = new Set(); // agent:id of the sessions opened to their details
 
 function renderUsageTab() {
@@ -4216,15 +4229,20 @@ function renderUsageTab() {
   slide(seg, "usageTab");
   const on = usageTab === "sessions";
   $("#period").hidden = on;
+  $("#sessRange").hidden = !on;
   $("#usagePane").hidden = on;
   $("#sessionsPane").hidden = !on;
 }
 
+const sessDays = () => SESS_RANGES.find(([id]) => id === sessRange)[2];
 async function loadSessions() {
-  if (!sessions) renderSessionsLoading();
-  const s = await api("sessions");
-  if (sessions && JSON.stringify(s) === JSON.stringify(sessions)) return;
+  if (!sessions || !sessStats) renderSessionsLoading();
+  const range = sessRange;
+  const [s, st] = await Promise.all([api("sessions"), api("sessions/stats?days=" + sessDays())]);
+  if (range !== sessRange) return; // another range was picked meanwhile; its load draws
+  if (sessions && sessStats && JSON.stringify(s) === JSON.stringify(sessions) && JSON.stringify(st) === JSON.stringify(sessStats)) return;
   sessions = s;
+  sessStats = st;
   if (view === "usage" && usageTab === "sessions") renderSessions();
 }
 
@@ -4233,7 +4251,10 @@ function renderSessionsLoading() {
   view.classList.add("loading");
   view.setAttribute("aria-busy", "true");
   $("#usageCost").replaceChildren(el("span", "skeleton sk-cost"));
+  renderSessRange(true);
   $("#sessAgent").replaceChildren();
+  $("#sessModel").hidden = $("#sessFolder").hidden = true;
+  $("#sessChart").hidden = true;
   const stats = $("#sessStats");
   stats.classList.remove("empty");
   stats.replaceChildren();
@@ -4273,14 +4294,64 @@ function stamp(when) {
 }
 const baseName = (p) => (p || "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 
+// the range picker, in the page's head where the Overview's period is
+function renderSessRange(loading) {
+  const seg = $("#sessRange");
+  seg.replaceChildren();
+  for (const [id, name] of SESS_RANGES) {
+    const b = el("button", "opt" + (id === sessRange ? " on" : ""), t(name));
+    b.disabled = !!loading;
+    b.onclick = () => {
+      if (id === sessRange) return;
+      sessRange = id;
+      try { localStorage.setItem("magpie.sessRange", id); } catch {}
+      sessStats = null;
+      loadSessions().catch((e) => status(e.message, "err"));
+    };
+    seg.append(b);
+  }
+  slide(seg, "sessRange");
+}
+
+// a "YYYY-MM-DD" as a local date, and back
+const sessDate = (d) => { const [y, m, day] = d.split("-").map(Number); return new Date(y, m - 1, day); };
+const sessISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const sessDay = (d) => d.toLocaleDateString(locale === "zh" ? "zh-CN" : "en", { month: "short", day: "numeric" });
+// a length of time, as hours and minutes
+function fmtDur(sec) {
+  const m = Math.round(sec / 60);
+  if (!sec) return "0";
+  if (m < 1) return t("<1m");
+  if (m < 60) return t("{m}m", { m });
+  return t("{h}h {m}m", { h: Math.floor(m / 60), m: m % 60 });
+}
+
+// sessPick is a filter button that drops a menu of what there is to pick
+function sessPick(btn, all, value, opts, head, choose) {
+  btn.hidden = opts.length < 2 && !value;
+  const cur = opts.find((o) => o.v === value);
+  btn.classList.toggle("set", !!value);
+  btn.replaceChildren(el("span", "", value ? (cur?.name || value) : t(all)), svg(CHEV, 11, 1.6));
+  btn.title = value || "";
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    if (btn.classList.contains("open")) return closeProtoMenu();
+    openProtoMenu(btn, [{ v: "", name: all, note: "" }, ...opts], value, choose, head, "sess-menu");
+  };
+}
+
 function renderSessions() {
   const view = $("#view-usage");
   view.classList.remove("loading");
   view.removeAttribute("aria-busy");
+  renderSessRange();
   const all = sessions?.sessions || [];
+  const st = sessStats || { from: "", to: "", days: [], agents: {} };
+  const rows = st.days.flatMap((d) => d.usage.map((u) => ({ ...u, date: d.date })));
+  const acts = st.days.flatMap((d) => d.active.map((a) => ({ ...a, date: d.date })));
 
-  // one segment per agent that has sessions
-  const agents = [...new Map(all.map((s) => [s.agent, s.name])).entries()];
+  // one segment per agent that has sessions, or usage in the range
+  const agents = [...new Map([...all.map((s) => [s.agent, s.name]), ...Object.entries(st.agents || {})]).entries()];
   if (sessAgent !== "all" && !agents.some(([id]) => id === sessAgent)) sessAgent = "all";
   const seg = $("#sessAgent");
   seg.replaceChildren();
@@ -4292,36 +4363,62 @@ function renderSessions() {
   }
   slide(seg, "sessAgent");
 
+  // the model and folder filters offer what the range has, under the other filters
+  const byAgent = (x) => sessAgent === "all" || x.agent === sessAgent;
+  const byModel = (x) => !sessModel || x.model === sessModel;
+  const byFolder = (x) => !sessFolder || x.cwd === sessFolder;
+  const spent = (list, key) => {
+    const m = new Map();
+    for (const r of list) if (r[key]) m.set(r[key], (m.get(r[key]) || 0) + r.input + r.output);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  };
+  const models = spent(rows.filter((r) => byAgent(r) && byFolder(r)), "model").map(([v, n]) => ({ v, name: v, note: t("{n} tokens", { n: fmtN(n) }) }));
+  const folders = spent(rows.filter((r) => byAgent(r) && byModel(r)), "cwd").map(([v, n]) => ({ v, name: baseName(v), note: v + " · " + t("{n} tokens", { n: fmtN(n) }) }));
+  sessPick($("#sessModel"), "All models", sessModel, models, "Model", (v) => { sessModel = v; renderSessions(); });
+  sessPick($("#sessFolder"), "All folders", sessFolder, folders, "Folder", (v) => { sessFolder = v; renderSessions(); });
+
+  // the list: the latest sessions active in the range, under every filter
+  const from = sessDays() && st.from ? sessDate(st.from) : null;
   const q = sessQuery.trim().toLowerCase();
-  const list = all.filter((s) => (sessAgent === "all" || s.agent === sessAgent) &&
+  const list = all.filter((s) => byAgent(s) && (!sessFolder || s.cwd === sessFolder) &&
+    (!sessModel || s.models.some((m) => m.model === sessModel)) && (!from || new Date(s.last) >= from) &&
     (!q || [s.title, s.cwd, s.id, s.name, ...s.models.map((m) => m.model)].some((x) => (x || "").toLowerCase().includes(q))));
 
-  // the total of what is listed
+  // the range's totals, of every session under the filters
+  const used = rows.filter((r) => byAgent(r) && byModel(r) && byFolder(r));
   const tot = { input: 0, output: 0, cache_read: 0, cache_write: 0, cost: 0, unpriced: 0 };
-  for (const s of list) {
-    for (const k of ["input", "output", "cache_read", "cache_write", "cost"]) tot[k] += s[k];
-    if (sessCost(s) === "—" ? sessTokens(s) : s.unpriced) tot.unpriced++;
+  const unpriced = new Set();
+  for (const r of used) {
+    for (const k of ["input", "output", "cache_read", "cache_write", "cost"]) tot[k] += r[k];
+    if (!r.priced) unpriced.add(r.model);
   }
+  tot.unpriced = unpriced.size;
+  // active time isn't told apart by model
+  const active = sessModel ? null : acts.filter((a) => byAgent(a) && byFolder(a)).reduce((n, a) => n + a.seconds, 0);
+
   const cost = $("#usageCost");
   cost.replaceChildren();
   cost.title = "";
   const c = tot.cost ? fmtCost(tot) : "";
+  const unpricedNote = tot.unpriced ? t("Not counted: {models}, with no known price", { models: [...unpriced].join(", ") }) : t("At each model's list price on models.dev");
   if (c) {
     cost.append(el("b", "", "≈" + c), el("span", "", t("list price")));
-    cost.title = tot.unpriced ? t(tot.unpriced === 1 ? "{n} session used a model with no known price; its share is not counted" : "{n} sessions used a model with no known price; their share is not counted", { n: tot.unpriced }) : t("At each model's list price on models.dev");
+    cost.title = unpricedNote;
   }
 
   const stats = $("#sessStats");
   stats.replaceChildren();
   const box = $("#sessList");
   box.replaceChildren();
-  if (!list.length) {
+  const chart = $("#sessChart");
+  if (!used.length && !list.length) {
     stats.classList.add("empty");
-    stats.append(el("div", "none", all.length ? t("No session matches.") : t("No sessions yet. Claude Code's and Codex's sessions on this computer show up here, with what each cost and the command that resumes it.")));
+    const filtered = sessAgent !== "all" || sessModel || sessFolder || q;
+    stats.append(el("div", "none", !all.length && !rows.length ? t("No sessions yet. Claude Code's and Codex's sessions on this computer show up here, with what each cost and the command that resumes it.") : filtered ? t("No session matches.") : t("Nothing in this range.")));
     box.hidden = true;
+    chart.hidden = true;
   } else {
     stats.classList.remove("empty");
-    box.hidden = false;
     const tile = (n, label, sub, title) => {
       const e = el("div", "kpi");
       if (title) e.title = title;
@@ -4329,16 +4426,86 @@ function renderSessions() {
       if (sub) e.append(el("small", "", sub));
       stats.append(e);
     };
-    const projects = new Set(list.map((s) => s.cwd).filter(Boolean)).size;
-    tile(String(list.length), t(list.length === 1 ? "session" : "sessions"), t(projects === 1 ? "{n} folder" : "{n} folders", { n: projects }));
+    const days = new Set(used.map((r) => r.date)).size;
+    tile(c ? "≈" + c : "—", t("cost"), t("at list price"), unpricedNote);
     tile(fmtN(tot.input + tot.output), t("tokens"), t("{a} in · {b} out", { a: fmtN(tot.input), b: fmtN(tot.output) }));
     const prompt = tot.input + tot.cache_read;
     tile(fmtN(tot.cache_read), t("cache read"), tot.cache_read && prompt ? t("hit rate {p}", { p: Math.round(100 * tot.cache_read / prompt) + "%" }) : "", tot.cache_write ? t("{n} written", { n: fmtN(tot.cache_write) }) : "");
-    tile(c ? "≈" + c : "—", t("cost"), t("at list price"));
+    tile(active == null ? "—" : fmtDur(active), t("active"), active == null ? t("not kept by model") : t(days === 1 ? "on {n} day" : "on {n} days", { n: days }),
+      t("The time the sessions were at work: the pauses between one message and the next, each under five minutes"));
+    renderSessChart(chart, st, used);
+    box.hidden = !list.length;
     for (const s of list) box.append(sessionItem(s));
   }
   const dirs = (sessions?.dirs || []).join(" · ");
-  $("#sessNote").textContent = t("Read from the agents' own session files, the latest {n} by activity · {dirs}", { n: all.length, dirs });
+  $("#sessNote").textContent = t("Totals count every session in the agents' own files; the list is the latest {n} by activity · {dirs}", { n: all.length, dirs });
+}
+
+// renderSessChart draws the range day by day (week by week past 92 days):
+// tokens, output on top of input as on the Overview, or cost.
+function renderSessChart(chart, st, used) {
+  const first = sessDate(st.from), last = sessDate(st.to);
+  const n = Math.round((last - first) / 864e5) + 1;
+  chart.hidden = n < 2;
+  if (chart.hidden) return;
+  const step = n > 92 ? 7 : 1;
+  const buckets = [];
+  const at = new Map();
+  for (let d = new Date(first); d <= last; d.setDate(d.getDate() + step)) {
+    const b = { day: new Date(d), input: 0, output: 0, cost: 0, unpriced: 0 };
+    for (let i = 0; i < step; i++) { const x = new Date(d); x.setDate(x.getDate() + i); at.set(sessISO(x), b); }
+    buckets.push(b);
+  }
+  for (const r of used) {
+    const b = at.get(r.date);
+    if (!b) continue;
+    b.input += r.input; b.output += r.output; b.cost += r.cost;
+    if (!r.priced) b.unpriced++;
+  }
+  const byCost = sessMetric === "cost";
+  const value = (b) => byCost ? b.cost : b.input + b.output;
+  const peak = Math.max(byCost ? 0.001 : 1, ...buckets.map(value));
+
+  chart.replaceChildren();
+  const head = el("div", "sess-chart-head");
+  const seg = el("div", "segs");
+  for (const [id, name] of [["tokens", "Tokens"], ["cost", "Cost"]]) {
+    const b = el("button", "opt" + (id === sessMetric ? " on" : ""), t(name));
+    b.onclick = () => {
+      if (id === sessMetric) return;
+      sessMetric = id;
+      try { localStorage.setItem("magpie.sessMetric", id); } catch {}
+      renderSessChart(chart, st, used);
+    };
+    seg.append(b);
+  }
+  head.append(el("span", "label", t(step === 7 ? "By week" : "By day")), seg, el("span", "grow"),
+    el("span", "peak", byCost ? "≈" + fmtCost({ cost: peak }) : fmtN(peak)));
+  const bars = el("div", "bars");
+  const labels = el("div", "labels");
+  const k = buckets.length;
+  const every = k <= 8 ? 1 : k <= 31 ? Math.ceil(k / 6) : Math.ceil(k / 5);
+  buckets.forEach((b, i) => {
+    const bar = el("div", "bar");
+    if (byCost) {
+      const c = el("i", "out");
+      c.style.height = (100 * b.cost / peak).toFixed(1) + "%";
+      bar.append(c);
+    } else {
+      const inp = el("i", "in"), out = el("i", "out");
+      inp.style.height = (100 * b.input / peak).toFixed(1) + "%";
+      out.style.height = (100 * b.output / peak).toFixed(1) + "%";
+      bar.append(out, inp);
+    }
+    const label = sessDay(b.day);
+    const when = step === 7 ? t("week of {label}", { label }) : label;
+    bar.title = b.input + b.output ? t("{when} · {tokens} tokens", { when, tokens: fmtN(b.input + b.output) }) + (fmtCost(b) ? " · ≈" + fmtCost(b) : "") : t("{when} · nothing", { when });
+    bars.append(bar);
+    const end = i === k - 1 && (k - 1) % every >= every / 2;
+    labels.append(el("span", "", i % every === 0 || end ? label : ""));
+  });
+  chart.append(head, bars, labels);
+  slide(seg, "sessMetric");
 }
 
 function sessionItem(s) {

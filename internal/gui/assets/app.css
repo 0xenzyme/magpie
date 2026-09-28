@@ -471,6 +471,23 @@ body.window .field.solo { grid-column: auto; }
 .sess-tools .grow { flex: 1; }
 .sess-filter { width: 220px; max-width: 100%; height: 26px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font-size: 12px; outline: none; }
 .sess-filter:focus { border-color: var(--accent); }
+.sess-tools { flex-wrap: wrap; row-gap: 6px; }
+.sess-pick { flex: none; display: inline-flex; align-items: center; gap: 4px; max-width: 180px; height: 26px; padding: 0 7px 0 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--muted); font: inherit; font-size: 12px; cursor: default; }
+.sess-pick span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sess-pick svg { flex: none; opacity: .7; transition: transform .15s var(--ease); }
+.sess-pick:hover { background: var(--pill); }
+.sess-pick.set { color: var(--fg); border-color: var(--line-2); background: var(--pill); }
+.sess-pick.open svg { transform: rotate(180deg); }
+.pop.proto-menu.sess-menu { width: 300px; max-height: min(360px, 70vh); overflow-y: auto; }
+.sess-menu .pm-name, .sess-menu .pm-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sess-chart-head { display: flex; align-items: center; gap: 8px; margin: -2px 0 8px; }
+.sess-chart-head .label { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.sess-chart-head .grow { flex: 1; }
+.sess-chart-head .segs { align-self: center; }
+.sess-chart-head .segs .opt { height: 20px; padding: 0 9px; font-size: 11px; }
+.chart .sess-chart-head .peak { margin: 0; align-self: flex-end; }
+/* the last day's label is wider than its bar at 90 days: let it spill left, not off the card */
+.sess-chart .labels span:last-child { display: flex; justify-content: flex-end; }
 .sess-list { margin-top: 8px; }
 .sess-sk { flex-direction: column; align-items: stretch; justify-content: center; gap: 7px; min-height: 48px; }
 .sess-item + .sess-item { border-top: 1px solid var(--line-2); }
