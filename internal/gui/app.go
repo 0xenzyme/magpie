@@ -21,6 +21,7 @@ import (
 
 	"github.com/yetone/magpie/internal/library"
 	"github.com/yetone/magpie/internal/settings"
+	"github.com/yetone/magpie/internal/shortcut"
 	"github.com/yetone/magpie/internal/stats"
 	"github.com/yetone/magpie/internal/update"
 )
@@ -160,6 +161,8 @@ func Run(version string, showMain bool, link string) error {
 		if err := registerScheme(); err != nil {
 			log.Println("magpie:// links:", err)
 		}
+		// Windows has no installer to put magpie in the Start menu
+		shortcut.Ensure()
 	}()
 	// MAGPIE_THEME=light|dark forces the palette; handy for screenshots.
 	theme := ""
