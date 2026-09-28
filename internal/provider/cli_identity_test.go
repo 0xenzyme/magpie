@@ -73,3 +73,51 @@ func TestCLIIdentityKeptIgnoredWithoutTheCLI(t *testing.T) {
 		t.Fatalf("a removed CLI still served %q", u)
 	}
 }
+
+// a CLI never answered before that takes long holds a look only so long:
+// nobody is signed in until it answers, and then its answer is served
+func TestCLIIdentityFirstAskBounded(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	old := firstAsk
+	firstAsk = 100 * time.Millisecond
+	t.Cleanup(func() { firstAsk = old })
+	release := make(chan struct{})
+	c := &cliIdentity{name: "x", exe: func() string { return "/bin/sh" }, ask: func() (string, string, bool) { <-release; return "me@example.com", "Pro", true }}
+	start := time.Now()
+	if _, _, ok := c.get(); ok {
+		t.Fatal("an unanswered CLI served someone")
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("the first look waited %v", d)
+	}
+	// a request looks again: that one doesn't wait
+	start = time.Now()
+	c.get()
+	if d := time.Since(start); d > 50*time.Millisecond {
+		t.Fatalf("a second look waited %v", d)
+	}
+	close(release)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if u, _, ok := c.get(); ok && u == "me@example.com" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the answer never came")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if k := readIdentities()["x"]; k.User != "me@example.com" {
+		t.Fatalf("not kept: %+v", k)
+	}
+}
+
+// a CLI saying nobody is signed in is kept too: the next start serves that
+// rather than waiting for it again
+func TestCLIIdentitySignedOutKept(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	(&cliIdentity{name: "x", exe: func() string { return "/bin/sh" }, ask: func() (string, string, bool) { return "", "", false }}).get()
+	if _, found := readIdentities()["x"]; !found {
+		t.Fatal("a signed-out answer wasn't kept")
+	}
+}
