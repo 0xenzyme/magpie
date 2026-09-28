@@ -33,6 +33,8 @@ func SetLoginOn(agent, user string, on bool) error {
 		return setZCodeLoginOn(user, on)
 	case "workbuddy":
 		return setWorkBuddyLoginOn(user, on)
+	case CommandCodePlanID:
+		return setCommandCodeLoginOn(user, on)
 	case "gemini", "antigravity":
 		return setGoogleLoginOn(agent, user, on)
 	}
@@ -68,6 +70,9 @@ func (p Provider) AlsoOn() []Provider {
 	}
 	if p.Account != nil && p.Account.Agent == "workbuddy" {
 		return workBuddyAlsoOn()
+	}
+	if p.Account != nil && p.Account.Agent == CommandCodePlanID {
+		return commandCodeAlsoOn()
 	}
 	if p.Account != nil && (p.Account.Agent == "gemini" || p.Account.Agent == "antigravity") {
 		return googleAlsoOn(p.Account.Agent)

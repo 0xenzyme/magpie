@@ -238,6 +238,11 @@ func (s *signInFlow) begin() error {
 		if err := startWorkBuddySignIn(s); err != nil {
 			return err
 		}
+	case CommandCodePlanID:
+		// Command Code's browser sign-in, as its CLI makes it
+		if err := startCommandCodeSignIn(s); err != nil {
+			return err
+		}
 	case "zcode":
 		// Z.ai's sign-in, as ZCode makes it
 		if err := startZCodeSignIn(s); err != nil {
