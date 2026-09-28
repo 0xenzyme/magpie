@@ -3,6 +3,7 @@ package agent
 import (
 	"cmp"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -275,4 +276,42 @@ var claudeManaged = func() string {
 		return `C:\ProgramData\ClaudeCode\managed-settings.json`
 	}
 	return "/etc/claude-code/managed-settings.json"
+}
+
+// StandIn is the model Claude Code is set to use in place of one it named
+// that magpie doesn't serve: claude-haiku-4-5-… for a title or a small
+// task goes to its haiku tier's model, and a name of no tier to its main
+// model. "" when Claude Code isn't routed through magpie or asked for
+// isn't Claude Code. For gateway.StandIn.
+func StandIn(agent, model string) string {
+	if agent != "claude" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return claudeStandIn(filepath.Join(home, ".claude", "settings.json"), model)
+}
+
+func claudeStandIn(path, model string) string {
+	env := func(k string) string { v, _ := edit.GetJSON(path, "env."+k); return v }
+	if env("ANTHROPIC_BASE_URL") != gateway.URL() {
+		return ""
+	}
+	m := strings.ToLower(model)
+	for _, t := range claudeTiers {
+		if strings.Contains(m, t) {
+			if v := env(tierEnv(t)); v != "" {
+				return v
+			}
+			if t == "haiku" {
+				if v := env("ANTHROPIC_SMALL_FAST_MODEL"); v != "" {
+					return v
+				}
+			}
+			break
+		}
+	}
+	return env("ANTHROPIC_MODEL")
 }

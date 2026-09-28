@@ -50,6 +50,37 @@ func agentOf(r *http.Request) string {
 	return usage.AgentOf(r.Header.Get("User-Agent"))
 }
 
+// StandIn is the model an agent is set to use in place of one it named that
+// magpie doesn't serve it: Claude Code asks for claude-haiku-… by name for
+// its small tasks, whatever its haiku tier is set to, and that goes to the
+// tier's model rather than to some provider that happens to list the name.
+// "" leaves the model as asked. Set by main.
+var StandIn func(agent, model string) string
+
+// standIn is StandIn's model for one magpie shows no entry for: not a
+// catalog id or model, nor a ready provider's "provider/model".
+func standIn(agent, asked string) string {
+	if StandIn == nil || asked == "" || strings.HasPrefix(asked, provider.GroupPrefix) {
+		return ""
+	}
+	id := strings.TrimSuffix(asked, "[1m]")
+	for _, e := range provider.Catalog() {
+		if e.ID == id || e.Model == id {
+			return ""
+		}
+	}
+	if pid, _, ok := strings.Cut(id, "/"); ok {
+		if p, err := provider.Find(pid); err == nil && p.Ready() {
+			return ""
+		}
+	}
+	m := StandIn(agent, asked)
+	if m == asked {
+		return ""
+	}
+	return m
+}
+
 // Version is set by main.
 var Version = "dev"
 
@@ -589,6 +620,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	asked := call.Model
 	if id, ok := provider.GroupFor(asked); ok {
 		asked = id
+	} else if m := standIn(call.Agent, asked); m != "" {
+		asked = m
 	}
 	p, model, ok := provider.Resolve(asked)
 	if !ok {
