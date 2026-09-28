@@ -134,7 +134,9 @@
 #view-routing .row-head .rt-livedot + .note { margin-left: 8px; }
 .rt-mask { display: inline-flex; align-items: center; gap: 5px; }
 .rt-mask svg { width: 13px; height: 13px; flex: none; }
-.rt-mask[aria-pressed="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent); }
+/* on, it says so in its struck eye and its words, a shade darker: a
+   page tool, not a banner */
+.rt-mask[aria-pressed="true"] { color: var(--fg-2); }
 /* an email, hidden: stand-in letters of its shape, softly blurred —
    coming in out of focus when asked for */
 .pii { filter: blur(2.2px); opacity: .5; user-select: none; }
