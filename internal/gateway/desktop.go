@@ -141,8 +141,9 @@ func isClaudeDesktop(r *http.Request) bool {
 // the user picked. A small tool-less request (a title's max_tokens is 200,
 // a turn's tens of thousands) for a model whose id reads as Claude's, and
 // any request for a model magpie doesn't serve, goes to that model instead,
-// so a chat the user started on a Claude model of their own stays on it. It is kept on disk, so a title asked for before the first
-// turn after a restart goes there too.
+// so a chat the user started on a Claude model of their own stays on it. It is
+// kept on disk, so a title asked for before the first turn after a restart
+// goes there too; before any turn at all it goes to desktopDefault.
 var desktopPicked struct {
 	sync.Mutex
 	model string
@@ -171,6 +172,9 @@ func desktopTurn(asked string, body []byte) string {
 		if picked != "" {
 			return picked
 		}
+		if m := desktopDefault(asked); m != "" {
+			return m
+		}
 		return asked
 	}
 	if tools {
@@ -180,6 +184,27 @@ func desktopTurn(asked string, body []byte) string {
 		}
 	}
 	return asked
+}
+
+// desktopDefault is the model a request Desktop sends before any turn has
+// named one goes to: a new session's first message is titled before it is
+// sent (ARNO), so nothing is picked yet when the title is asked for. It is
+// the model the agent is set to stand in for asked if there is one, else
+// the model a new Desktop session starts on — the first row of /v1/models
+// (resolveDefaultSessionModel in its app.asar takes the first model it
+// doesn't restrict), which is magpie's first model shown to it. "" when
+// that is asked itself or magpie shows Desktop no model.
+func desktopDefault(asked string) string {
+	if StandIn != nil {
+		if m := StandIn("claude-desktop", asked); m != "" && m != asked {
+			return m
+		}
+	}
+	shown, _ := provider.CatalogFor("claude-desktop")
+	if len(shown) == 0 || shown[0].ID == asked {
+		return ""
+	}
+	return shown[0].ID
 }
 
 // small: the request asks for a short answer (max_tokens at most 4096), as
