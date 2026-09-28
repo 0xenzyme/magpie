@@ -720,7 +720,9 @@
       after.append(button(t("＋ Add server"), "", () => editServer(null)));
       body.append(after);
     }
-    const found = lib.foundServers.filter((f) => !f.own), own = lib.foundServers.filter((f) => f.own);
+    // an agent's own servers (Codex's node_repl, added each time it starts)
+    // aren't listed: magpie leaves them as they are
+    const found = lib.foundServers.filter((f) => !f.own);
     if (found.length) {
       const rh = el("div", "row-head");
       rh.append(el("span", "label", t("In your agents")), el("span", "grow"), el("span", "note", t("not in the library — bring one in to manage it here")));
@@ -728,12 +730,6 @@
       const list = el("div", "list lib-list");
       for (const f of found) list.append(foundServerRow(f));
       body.append(list);
-    }
-    if (own.length) {
-      const by = [...new Set(own.flatMap((f) => f.server.agents))].map(nameOf).join(", ");
-      const p = el("p", "lib-aside", t("{names}: {agents}'s own MCP servers, which it adds itself each time it starts; magpie leaves them as they are", { agents: by, names: own.map((f) => f.server.name).join(", ") }));
-      p.title = own.map((f) => f.server.name + ": " + serverLine(f.server)).join("\n");
-      body.append(p);
     }
     const skip = shownAgents().filter((a) => !a.mcp);
     if (skip.length) body.append(el("p", "lib-aside", t("{agents} has no MCP servers magpie can write.", { agents: skip.map((a) => a.name).join(", ") })));
