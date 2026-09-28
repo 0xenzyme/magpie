@@ -65,8 +65,10 @@ func TestWorkBuddyAccounts(t *testing.T) {
 				w.WriteHeader(401)
 				return
 			}
+			// capacities come back as strings, some fractional, as the live API sends them
 			ok(map[string]any{"IsPaidUser": true, "Packages": []any{
-				map[string]any{"PackageCode": "coding", "CycleTotalCapacity": 10000, "CycleRemainCapacity": 7500, "CycleUsedCapacity": 2500},
+				map[string]any{"PackageCode": "coding", "CycleTotalCapacity": "9500", "CycleRemainCapacity": "7500", "CycleUsedCapacity": "2000"},
+				map[string]any{"PackageCode": "vibe", "CycleTotalCapacity": "500", "CycleRemainCapacity": "0", "CycleUsedCapacity": "500.00000000"},
 			}})
 		default:
 			w.WriteHeader(404)

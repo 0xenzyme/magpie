@@ -32,6 +32,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,11 @@ var (
 	wbEndpoint = "https://copilot.tencent.com"
 	// wbAppVersion is the plugin version the sign-in page is told.
 	wbAppVersion = "2.0.0"
+	// wbUAVersion is the WorkBuddy desktop version the User-Agent carries.
+	// copilot.tencent.com's gateway rejects a request whose User-Agent it
+	// doesn't recognise with code 10085 ("请求不合法"), so every call to it —
+	// chat and billing alike — must go out as WorkBuddy/<version>.
+	wbUAVersion = "5.5.6"
 	// wbPollInterval is how often the sign-in asks whether it is ready.
 	wbPollInterval = time.Second
 )
@@ -266,6 +272,7 @@ func wbProvider(a wbAccount) Provider {
 		req.Header.Set("X-Domain", wbDomain(c))
 		req.Header.Set("X-Product", "SaaS")
 		req.Header.Set("X-IDE-Type", "WorkBuddy")
+		req.Header.Set("User-Agent", "WorkBuddy/"+wbUAVersion)
 		return nil
 	}
 	acct.models = func() []catalog.Model { return wbModels }
@@ -437,8 +444,8 @@ func wbQuota(ctx context.Context, a wbAccount) SubscriptionQuota {
 	}
 	var total, used float64
 	for _, p := range sum.Packages {
-		total += p.CycleTotalCapacity
-		used += p.CycleUsedCapacity
+		total += float64(p.CycleTotalCapacity)
+		used += float64(p.CycleUsedCapacity)
 	}
 	if total > 0 {
 		w := QuotaWindow{Name: "Credits", Used: 100 * used / total, Display: fmt.Sprintf("%s / %s", compactNumber(used), compactNumber(total))}
@@ -449,13 +456,32 @@ func wbQuota(ctx context.Context, a wbAccount) SubscriptionQuota {
 
 type wbResourceSummary struct {
 	Packages []struct {
-		PackageCode         string  `json:"PackageCode"`
-		CycleTotalCapacity  float64 `json:"CycleTotalCapacity"`
-		CycleRemainCapacity float64 `json:"CycleRemainCapacity"`
-		CycleUsedCapacity   float64 `json:"CycleUsedCapacity"`
+		PackageCode         string `json:"PackageCode"`
+		CycleTotalCapacity  wbNum  `json:"CycleTotalCapacity"`
+		CycleRemainCapacity wbNum  `json:"CycleRemainCapacity"`
+		CycleUsedCapacity   wbNum  `json:"CycleUsedCapacity"`
 	} `json:"Packages"`
 	SubscriptionPackageCode string `json:"SubscriptionPackageCode"`
 	IsPaidUser              bool   `json:"IsPaidUser"`
+}
+
+// wbNum is a capacity the billing API sends as a JSON string ("3300",
+// "438.88000002"), though it occasionally comes as a bare number; it parses
+// either, and an empty or unparseable value reads as 0.
+type wbNum float64
+
+func (n *wbNum) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(string(b), `"`)
+	if s == "" || s == "null" {
+		*n = 0
+		return nil
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return err
+	}
+	*n = wbNum(f)
+	return nil
 }
 
 func wbAuthHeaders(c wbCreds) map[string]string {
@@ -514,7 +540,7 @@ func wbCall(ctx context.Context, method, u string, headers map[string]string, bo
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "WorkBuddy/"+wbAppVersion)
+	req.Header.Set("User-Agent", "WorkBuddy/"+wbUAVersion)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
