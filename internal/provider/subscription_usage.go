@@ -129,7 +129,18 @@ func visibleQuotas(all []SubscriptionQuota) []SubscriptionQuota {
 			if chosen == nil {
 				chosen = exposedIDs()
 			}
-			q.Windows = chosenWindows(q.Windows, chosen[q.Provider])
+			var base func(string) string
+			if q.Provider == "antigravity" {
+				// Antigravity's quota names each level's id; magpie offers
+				// the family (gemini-3.7-flash-high is gemini-3.7-flash)
+				base = func(id string) string {
+					if b, _, ok := AntigravityBase(id); ok {
+						return b
+					}
+					return id
+				}
+			}
+			q.Windows = chosenWindows(q.Windows, chosen[q.Provider], base)
 		}
 		out = append(out, q)
 	}
@@ -153,10 +164,15 @@ func exposedIDs() map[string]map[string]bool {
 // enabled: Antigravity reports one for every model it has, a couple of dozen,
 // most of them never used through magpie. When none of them is enabled — the
 // ids a quota names aren't always the ones served — they are all kept.
-func chosenWindows(ws []QuotaWindow, chosen map[string]bool) []QuotaWindow {
+// base, when not nil, is the model magpie offers for an id a quota names.
+func chosenWindows(ws []QuotaWindow, chosen map[string]bool, base func(string) string) []QuotaWindow {
 	var out []QuotaWindow
 	for _, w := range ws {
-		if w.Model == "" || chosen[w.Model] {
+		m := w.Model
+		if base != nil && m != "" {
+			m = base(m)
+		}
+		if w.Model == "" || chosen[m] {
 			out = append(out, w)
 		}
 	}
