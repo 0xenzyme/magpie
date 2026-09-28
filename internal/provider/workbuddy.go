@@ -422,8 +422,11 @@ func wbQuota(ctx context.Context, a wbAccount) SubscriptionQuota {
 		q.Error = err.Error()
 		return q
 	}
+	// The resource-summary meter (unlike the older /v2/billing meters) has
+	// no /v2 gateway prefix — WorkBuddy asks it at /billing/meter/... on
+	// both desktop and web.
 	var sum wbResourceSummary
-	if err := wbCall(ctx, http.MethodPost, wbAPI()+"/v2/billing/meter/get-user-resource-summary", wbAuthHeaders(c), map[string]any{}, &sum); err != nil {
+	if err := wbCall(ctx, http.MethodPost, wbAPI()+"/billing/meter/get-user-resource-summary", wbAuthHeaders(c), map[string]any{}, &sum); err != nil {
 		q.Error = err.Error()
 		return q
 	}

@@ -59,7 +59,7 @@ func TestWorkBuddyAccounts(t *testing.T) {
 				return
 			}
 			ok(map[string]any{"uid": "u2", "nickname": "Two", "phoneNumber": ""})
-		case "/v2/billing/meter/get-user-resource-summary":
+		case "/billing/meter/get-user-resource-summary":
 			auth := r.Header.Get("Authorization")
 			if auth != "Bearer own-access" && auth != "Bearer two-access" {
 				w.WriteHeader(401)
