@@ -99,8 +99,92 @@
   const icons = new Map();
   function agentIcon(name) {
     let i = icons.get(name);
-    if (!i) icons.set(name, (i = icon(name)));
+    if (!i) { icons.set(name, (i = icon(name))); greyIcon(i); }
     return i.cloneNode(true);
+  }
+
+  // A chip's icon is grey while its agent hasn't the item. A filter made it
+  // so on every paint of every chip — most of what a scroll through
+  // hundreds of skills painted — so it's made grey once instead: a picture
+  // gets a grey copy (by the filter's own sum), which stands in for
+  // it once ready, and an icon drawn in the text's colour takes that colour
+  // grey (library.css). Until then, or if it can't be, the filter does it.
+  function greyIcon(i) {
+    if (i.querySelector(":scope > .mask, :scope > svg")) { i.classList.add("flat"); return; }
+    const src = i.querySelector(":scope > img")?.getAttribute("src");
+    if (!src) return;
+    greyCopy(src).then((url) => {
+      if (!url) return;
+      const add = (ic) => {
+        if (ic.classList.contains("baked")) return;
+        const g = el("img", "grey");
+        g.src = url;
+        g.alt = "";
+        g.draggable = false;
+        ic.append(g);
+        ic.classList.add("baked");
+      };
+      add(i);
+      for (const x of document.querySelectorAll(".lib-ag > .ic:not(.baked) > img")) if (x.getAttribute("src") === src) add(x.parentElement);
+    }, () => {});
+  }
+  // grayscale(1)'s own sum: each colour's red, green and blue become this
+  const lum = (r, g, b) => Math.round(r * .2126 + g * .7152 + b * .0722);
+  let tint;
+  function greyColour(v) {
+    tint ||= document.createElement("canvas").getContext("2d");
+    // a colour in any spelling, read back as #rrggbb or rgba(…); anything
+    // else (none, url(#…), currentColor) is left as it is
+    if (/^\s*(none|currentcolor|inherit|transparent|url\()/i.test(v)) return v;
+    tint.fillStyle = "#010203";
+    tint.fillStyle = v;
+    const c = tint.fillStyle;
+    let m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(c);
+    if (m) {
+      if (c === "#010203" && !/010203/.test(v)) return v;
+      const y = lum(parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)).toString(16).padStart(2, "0");
+      return "#" + y + y + y;
+    }
+    m = /^rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\s*\)$/.exec(c);
+    if (!m) return v;
+    const y = lum(+m[1], +m[2], +m[3]);
+    return `rgba(${y}, ${y}, ${y}, ${m[4] ?? 1})`;
+  }
+  async function greyCopy(src) {
+    const r = await fetch(src);
+    if (!r.ok) return null;
+    let blob;
+    if (/svg/.test(r.headers.get("content-type") || "") || /\.svg$/.test(src)) {
+      // the drawing with each of its colours made grey — the same as the
+      // filter, which is a sum over each colour (blending and gradients
+      // mix colours in sRGB, as the filter does, so they come out the same)
+      // and drawn as sharp as the drawing itself
+      const s = (await r.text()).replace(/(?<![\w-])(fill|stroke|stop-color|flood-color|lighting-color|color)(\s*=\s*)(["'])([^"']*)\3/g, (_, k, eq, q, v) => k + eq + q + greyColour(v) + q)
+        .replace(/(?<![\w-])(fill|stroke|stop-color|flood-color|lighting-color|color)(\s*:\s*)([^;"'}]+)/g, (_, k, eq, v) => k + eq + greyColour(v));
+      if (/<(image|feColorMatrix|feComponentTransfer|feTurbulence)\b/.test(s)) return null; // a colour the sum can't reach
+      blob = new Blob([s], { type: "image/svg+xml" });
+    } else {
+      // a picture made grey pixel by pixel
+      const im = new Image();
+      im.src = URL.createObjectURL(await r.blob());
+      await im.decode();
+      const c = document.createElement("canvas");
+      c.width = im.naturalWidth;
+      c.height = im.naturalHeight;
+      const x = c.getContext("2d");
+      x.drawImage(im, 0, 0);
+      URL.revokeObjectURL(im.src);
+      const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
+      for (let k = 0; k < p.length; k += 4) p[k] = p[k + 1] = p[k + 2] = p[k] * .2126 + p[k + 1] * .7152 + p[k + 2] * .0722;
+      x.putImageData(d, 0, 0);
+      blob = await new Promise((done) => c.toBlob(done));
+      if (!blob) return null;
+    }
+    const url = URL.createObjectURL(blob);
+    const t = new Image();
+    t.src = url;
+    await t.decode(); // ready before it stands in, so nothing blinks
+    return url;
   }
 
   // Agent chips for a server or a skill: each agent that could have it, lit
@@ -1305,32 +1389,60 @@
     return card;
   }
 
-  // ---------- a long list, drawn near the view only ----------
+  // ---------- a long list, drawn near the view first ----------
 
-  // A window on a list of items of known heights ({ key, h, make }): the
-  // rows near the page's view are drawn, with room kept above and below
-  // for the rest. A scroll draws more once what's drawn ahead is less than
-  // a view, and then a few rows a frame until half a view more is, so no
-  // frame builds many rows and most touch nothing; a row still wanted
-  // after a change (a filter, a fold) is kept as it is, not drawn again.
+  // A list of items of known heights ({ key, h, make }) drawn in two goes:
+  // the rows near the page's view at once, with room kept above and below
+  // for the rest, and then the rest while the page is idle, a few rows at
+  // a time, each kept once drawn. A scroll builds nothing and takes nothing
+  // away, so it only paints what's there — unless it outruns the filling,
+  // when what's left is drawn at once rather than a view a frame. A row
+  // still wanted after a change (a filter, a fold) is kept as it is.
   const lists = new Set();
   let listFrame = 0;
   function syncLists() {
     cancelAnimationFrame(listFrame);
     listFrame = 0;
     if (page.hidden) return;
-    const vp = page.getBoundingClientRect();
-    let more = false;
+    let vp = null;
     for (const w of lists) {
-      if (w.el.isConnected) more = w.sync(vp) || more;
-      else if (w.shown) lists.delete(w); // its page is gone; one drawn again comes back
+      if (!w.el.isConnected) { if (w.shown) lists.delete(w); continue; } // its page is gone; one drawn again comes back
+      if (!w.full()) w.sync(vp ||= page.getBoundingClientRect());
     }
-    if (more) queueLists();
   }
-  const STEP = 4; // rows a frame, beyond those in view
   const queueLists = () => { if (!listFrame) listFrame = requestAnimationFrame(syncLists); };
-  page.addEventListener("scroll", queueLists, { passive: true });
+  // and while the page scrolls, its lists say so (library.css, .scrolling)
+  let still = 0;
+  const settled = () => { still = 0; for (const w of lists) w.el.classList.remove("scrolling"); };
+  page.addEventListener("scroll", () => {
+    queueLists();
+    if (!still) for (const w of lists) w.el.classList.add("scrolling");
+    clearTimeout(still);
+    still = setTimeout(settled, 150);
+  }, { passive: true });
   window.addEventListener("resize", queueLists);
+
+  // The filling: one list's next few rows per idle moment, the lists in turn.
+  const FILL = 20;
+  const filling = new Set();
+  let fillTask = 0;
+  const idle = window.requestIdleCallback
+    ? (f) => requestIdleCallback(f, { timeout: 200 })
+    : (f) => setTimeout(f, 24);
+  function queueFill(w) {
+    filling.add(w);
+    if (!fillTask) fillTask = idle(fillSome);
+  }
+  function fillSome() {
+    fillTask = 0;
+    for (const w of filling) {
+      if (!w.el.isConnected || w.full()) { filling.delete(w); continue; }
+      w.grow(FILL);
+      if (w.full()) filling.delete(w);
+      break;
+    }
+    if (filling.size) fillTask = idle(fillSome);
+  }
 
   function windowed() {
     const box = el("div", "lib-vl");
@@ -1356,14 +1468,11 @@
       above.style.height = tops[from] + "px";
       below.style.height = tops[items.length] - tops[to] + "px";
     };
-    // draw items a…b, keeping the rows of those already drawn
+    // draw items a…b around those drawn (a ≤ from, b ≥ to), or afresh,
+    // keeping the rows of those already drawn
     function show(a, b, fresh) {
       if (!fresh && a === from && b === to) return;
-      if (!fresh && a < to && b > from) {
-        // the same list moved along: rows are taken off the ends and added
-        // at them, the rest untouched
-        for (let i = from; i < a; i++) { live.get(items[i].key)?.remove(); live.delete(items[i].key); }
-        for (let i = b; i < to; i++) { live.get(items[i].key)?.remove(); live.delete(items[i].key); }
+      if (!fresh && a <= from && b >= to && from < to) {
         if (a < from) {
           const f = document.createDocumentFragment();
           const made = [];
@@ -1391,13 +1500,20 @@
       from = a; to = b;
       pads();
     }
+    w.full = () => from === 0 && to === items.length;
+    // n more rows, below what's drawn first, then above it
+    w.grow = (n) => {
+      const b = Math.min(items.length, to + n);
+      show(Math.max(0, from - (n - (b - to))), b);
+    };
     w.set = (next) => {
       items = next;
       tops = [0];
       for (const it of items) tops.push(tops[tops.length - 1] + it.h);
       // placed, what's near the view; until then the first rows, enough for one
-      if (box.isConnected && !page.hidden) { if (w.sync(page.getBoundingClientRect(), true)) queueLists(); }
+      if (box.isConnected && !page.hidden) w.sync(page.getBoundingClientRect(), true);
       else show(0, Math.min(items.length, 12), true);
+      if (!w.full()) queueFill(w);
     };
     w.sync = (vp, fresh) => {
       w.shown = true;
@@ -1408,26 +1524,12 @@
       const k = r.height ? r.height / total : 1; // the page may be zoomed
       const view = vp.height / k;
       const top = (vp.top - r.top) / k, bottom = (vp.bottom - r.top) / k;
-      // what must be drawn: the view and a view about it; what is drawn
-      // when that runs out: a view and a half about it — the rows in view
-      // at once, the others a few a frame, so no frame builds a whole view
-      const need = (m) => [top - view * m > total ? items.length : at(Math.max(0, top - view * m)),
-        bottom + view * m < 0 ? 0 : Math.min(items.length, at(bottom + view * m) + 1)];
-      const [a, b] = need(1);
-      if (!fresh && from <= a && to >= b && (a < b || from === to)) return false;
-      let [na, nb] = need(1.5);
-      if (nb < na) nb = na;
-      if (fresh || na >= to || nb <= from) {
-        // drawn anew, or a jump past what's drawn: the view and a little
-        // about it now, the rest as above
-        const [ja, jb] = need(0.25);
-        show(ja, Math.max(ja, jb), !!fresh);
-        return ja > na || jb < nb;
-      }
-      const [va, vb] = need(0);
-      const sa = Math.max(na, Math.min(va, from - STEP)), sb = Math.min(nb, Math.max(vb, to + STEP));
-      show(sa, sb);
-      return sa > na || sb < nb; // more to come next frame
+      // the rows in view and half a view about it
+      const a = top - view / 2 > total ? items.length : at(Math.max(0, top - view / 2));
+      const b = bottom + view / 2 < 0 ? 0 : Math.min(items.length, at(bottom + view / 2) + 1);
+      if (fresh) { show(a, Math.max(a, b), true); return; }
+      // a scroll past what's filled in: the rest, now
+      if (from === to || (a < b && (a < from || b > to))) show(0, items.length, from === to);
     };
     lists.add(w);
     return w;

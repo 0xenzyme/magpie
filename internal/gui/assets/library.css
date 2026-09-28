@@ -135,6 +135,16 @@ input.lib-setname:focus { border-color: var(--accent); box-shadow: 0 0 0 3px col
 .lib-ag:hover .ic { opacity: .7; }
 .lib-ag.on { background: var(--card); border-color: var(--line); color: var(--fg); box-shadow: 0 1px 1px rgba(0, 0, 0, .05); }
 .lib-ag.on .ic { filter: none; opacity: 1; }
+/* an icon made grey once rather than through the filter on every paint
+   (library.js, greyIcon): a picture's grey copy stands in for it, and one
+   drawn in the text's colour takes that colour grey — the same pixels */
+.lib-ag .ic > img.grey { display: none; }
+.lib-ag:not(.on) .ic.baked { filter: none; }
+.lib-ag:not(.on) .ic.baked > img:not(.grey) { display: none; }
+.lib-ag:not(.on) .ic.baked > img.grey { display: block; }
+@supports (color: rgb(from currentColor r g b)) {
+  .lib-ag:not(.on) .ic.flat { filter: none; color: rgb(from currentColor calc(r * .2126 + g * .7152 + b * .0722) calc(r * .2126 + g * .7152 + b * .0722) calc(r * .2126 + g * .7152 + b * .0722)); }
+}
 .lib-ag.via { border: 1px dashed var(--line); }
 .lib-ag.via .ic { opacity: .6; }
 .lib-ag.warn::after { content: ""; position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 2px var(--card); }
@@ -149,16 +159,22 @@ input.lib-setname:focus { border-color: var(--accent); box-shadow: 0 0 0 3px col
 /* in a list row they sit stacked like a hand of cards, on one line, and fan
    out when the pointer or focus comes to them */
 .lib-row > .lib-agents { flex-wrap: nowrap; gap: 0; max-width: none; padding-left: 4px; }
-.lib-row > .lib-agents .lib-ag { flex: none; width: 24px; min-width: 0; height: 24px; padding: 0 0 0 4px; justify-content: flex-start; background: var(--card); border-color: var(--line-2); box-shadow: 0 0 0 1.5px var(--card); transition: margin .22s var(--ease), background .14s, border-color .14s, transform .14s var(--ease); }
+.lib-row > .lib-agents .lib-ag { flex: none; width: 24px; min-width: 0; height: 24px; padding: 0 0 0 4px; justify-content: flex-start; background: var(--card); border-color: var(--line-2); box-shadow: none; transition: margin .22s var(--ease), background .14s, border-color .14s, transform .14s var(--ease); }
 .lib-row > .lib-agents .lib-ag .ic { width: 14px; height: 14px; }
+/* the ring in the card's colour that cuts each chip out of the one under
+   it: an outline rather than a spread shadow, the same ring cheaper to
+   paint; a chip with the focus shows the focus ring instead */
+.lib-row > .lib-agents .lib-ag:not(:focus-visible) { outline: 1.5px solid var(--card); outline-offset: 0; }
 .lib-row > .lib-agents .lib-ag + .lib-ag { margin-left: -7px; }
-.lib-row > .lib-agents .lib-ag.on { border-color: var(--line); box-shadow: 0 0 0 1.5px var(--card), 0 1px 2px rgba(0, 0, 0, .08); }
+.lib-row > .lib-agents .lib-ag.on { border-color: var(--line); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
 .lib-row > .lib-agents .lib-ag.via { border-style: dashed; }
 .lib-row > .lib-agents:hover .lib-ag + .lib-ag, .lib-row > .lib-agents:focus-within .lib-ag + .lib-ag { margin-left: 3px; }
 .lib-row > .lib-agents:hover .lib-ag, .lib-row > .lib-agents:focus-within .lib-ag { box-shadow: none; }
+.lib-row > .lib-agents:hover .lib-ag:not(:focus-visible), .lib-row > .lib-agents:focus-within .lib-ag:not(:focus-visible) { outline-color: transparent; }
 .lib-row > .lib-agents .lib-ag:hover { background: var(--pill); z-index: 1; }
-.lib-row.click:hover > .lib-agents .lib-ag { box-shadow: 0 0 0 1.5px var(--card-2); }
-.lib-row.click:hover > .lib-agents:hover .lib-ag { box-shadow: none; }
+.lib-row.click:hover > .lib-agents .lib-ag { box-shadow: none; }
+.lib-row.click:hover > .lib-agents .lib-ag:not(:focus-visible) { outline-color: var(--card-2); }
+.lib-row.click:hover > .lib-agents:hover .lib-ag:not(:focus-visible) { outline-color: transparent; }
 
 /* agents that have one of their own, not in the library */
 .lib-have { display: flex; gap: 4px; flex: none; }
@@ -324,12 +340,18 @@ input.lib-setname:focus { border-color: var(--accent); box-shadow: 0 0 0 3px col
 /* a project's skills out of view are neither laid out nor painted until they near it */
 .lib-projskill { content-visibility: auto; contain-intrinsic-size: auto 76px; }
 .lib-grouphead .lib-rowacts { min-width: 26px; }
-/* A group's skills are a window on its list (library.js, windowed): the
-   rows near the view are drawn, room is kept for the others. Every row is
-   held to the height the list counts on — its description one line, the
-   whole of it in its tooltip — so what's kept is exactly what's missing. */
+/* A group's skills are drawn near the view first (library.js, windowed),
+   room kept for the rest, which are drawn in while nothing else is going
+   on and then stay. Every row is held to the height the list counts on —
+   its description one line, the whole of it in its tooltip — so the room
+   kept is exactly what's missing. */
 .lib-vl { flex: none; }
-.lib-vl > .row { border-top: 1px solid var(--line-2); overflow: hidden; flex-wrap: nowrap; }
+/* each row kept to itself, as a skipped one was; and a row the pointer
+   passes over in a scroll shows its buttons at once rather than fading them
+   in — in WebKit each fade, given a layer of its own while it ran, cost a
+   long frame (library.js marks a list .scrolling while it scrolls) */
+.lib-vl > .row { border-top: 1px solid var(--line-2); overflow: hidden; flex-wrap: nowrap; contain: layout paint style; }
+.lib-vl.scrolling > .row .lib-rowacts { transition: none; }
 .lib-vl.bare > .row.first { border-top: 0; }
 .lib-vl > .row.lib-skill { height: 51px; min-height: 0; padding: 7px 10px 7px 12px; gap: 11px; }
 .lib-vl > .row.lib-skill.src { height: 67px; }
