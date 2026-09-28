@@ -229,7 +229,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.info)
 	mux.HandleFunc("GET /v1/models", s.models)
 	mux.HandleFunc("GET /models", s.models)
-	mux.HandleFunc("GET /v1/models/{id}", s.model)
+	mux.HandleFunc("GET /v1/models/{id...}", s.model)
+	// Claude Desktop's third-party gateway looks for one here before it
+	// takes the address
+	mux.HandleFunc("GET /api/hello", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"name": "magpie", "version": Version})
+	})
 	mux.HandleFunc("GET /v1/magpie/quotas", s.quotas)
 	mux.HandleFunc("POST /v1/chat/completions", s.handle(provider.Chat))
 	mux.HandleFunc("POST /chat/completions", s.handle(provider.Chat))
@@ -308,7 +313,7 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) model(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := unprefixed(r.PathValue("id"))
 	for _, e := range provider.Catalog() {
 		if e.ID == id {
 			writeJSON(w, 200, modelObject(e))
@@ -316,6 +321,25 @@ func (s *Server) model(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeError(w, provider.Chat, 404, "unknown model "+id)
+}
+
+// unprefixed is the model magpie serves by an id with "anthropic/" put in
+// front of it. Claude Desktop, pointed at a third-party gateway, takes only
+// models whose id says claude, sonnet, opus, haiku or anthropic, so any of
+// magpie's is asked for there as anthropic/<its id>. An id that is magpie's
+// as it stands (a provider named anthropic) is left alone.
+func unprefixed(id string) string {
+	rest, ok := strings.CutPrefix(id, "anthropic/")
+	if !ok || rest == "" {
+		return id
+	}
+	if _, _, ok := provider.Resolve(id); ok {
+		return id
+	}
+	if _, ok := provider.GroupFor(id); ok {
+		return id
+	}
+	return rest
 }
 
 // countTokens answers Anthropic's count_tokens: through the provider when
@@ -336,7 +360,7 @@ func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 	// Count the same masked prompt that generation sends to the vendor.
 	w, body, unmask := redacted(w, body)
 	defer unmask()
-	p, model, ok := provider.Resolve(model)
+	p, model, ok := provider.Resolve(unprefixed(model))
 	// Claude Subscription generations run through the Claude Code binary. Its
 	// OAuth token must not take a direct HTTP side path just for token counting.
 	if ok && p.Account != nil && (p.Account.Agent == "claude" || p.Account.Agent == "cursor" || p.Account.Agent == "grok" || p.Account.Agent == "devin" || p.Account.Agent == "kiro" || p.Account.Agent == "gemini" || p.Account.Agent == "antigravity") {
@@ -532,7 +556,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	requestBody, requestTruncated := captureRequestBody(body)
 	capture := &captureResponseWriter{ResponseWriter: w}
 	w = capture
-	call := Call{Time: start, From: from, Model: modelOf(body), Agent: agentOf(r),
+	call := Call{Time: start, From: from, Model: unprefixed(modelOf(body)), Agent: agentOf(r),
 		RequestBody: requestBody, RequestTruncated: requestTruncated}
 	usage.Saw(call.Agent)
 	finishCapture := func() {
