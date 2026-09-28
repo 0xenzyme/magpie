@@ -614,6 +614,7 @@ const I18N = {
     "Other Models": "其他模型",
     "Total": "合计",
     "Usage unavailable": "暂时无法获取用量",
+    "As of {when} — couldn't be read just now": "截至 {when}，暂时无法获取最新用量",
     "Hide usage": "收起用量",
     "Show usage": "展开用量",
     "Signed out — add this account again to use it": "登录已失效，请重新添加此账号",

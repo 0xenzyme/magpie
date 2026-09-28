@@ -528,7 +528,10 @@ body.window .field.solo { grid-column: auto; }
 
 /* ---- the panel's tabs: agents, usage, profiles ---------------------------- */
 /* outside the scrolling page, so they stay put under the header */
-.ptabs { position: relative; display: flex; flex: none; gap: 2px; margin: 0 12px 10px; }
+.ptabs { position: relative; display: flex; flex: none; gap: 2px; margin: 0 12px 8px; }
+/* the view scrolls, so it clips at its own top: the card's edge is a ring
+   outside its box and needs the 2px the tabs give up to be drawn whole */
+body.panel .view { padding-top: 2px; }
 .ptabs > .thumb { top: 0; bottom: 0; border-radius: 7px; box-shadow: 0 1px 2px rgba(0, 0, 0, .08), var(--card-edge); }
 .ptabs[hidden] { display: none; }
 .ptabs button { position: relative; z-index: 1; flex: 1; display: flex; align-items: center; justify-content: center; gap: 3px; height: 26px; border-radius: 7px; font-size: 12px; color: var(--muted); transition: color .15s, background-color .15s; }
@@ -552,9 +555,15 @@ body.panel .row.agent.open { background: var(--card-2); }
 .ag-sum { display: grid; grid-template-columns: auto 12px 10px; align-items: center; gap: 10px; min-width: 0; max-width: 100%; font-size: 12px; color: var(--muted); }
 .ag-sum .v { display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
 .ag-sum .vt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
-.ag-sum .mi { display: inline-flex; flex: none; max-width: 0; overflow: hidden; margin-right: 0; opacity: 0; transform: scale(.7); transition: max-width .22s var(--ease), margin-right .22s var(--ease), opacity .18s var(--ease), transform .22s var(--ease); }
+/* the logo comes in as its column opens from nothing to its own width, so
+   a stack of three is as whole as one; the clip is padded out past the
+   discs' rings, which it would otherwise shave */
+.ag-sum .mi { display: inline-grid; grid-template-columns: 0fr; flex: none; margin-right: 0; opacity: 0; transform: scale(.7); transition: grid-template-columns .22s var(--ease), margin-right .22s var(--ease), opacity .18s var(--ease), transform .22s var(--ease); }
+.ag-sum .mi-in { display: inline-flex; align-items: center; min-width: 0; overflow: hidden; margin: -2px; padding: 2px; }
 .row.agent .ag-sum .mi .ic { width: 14px; height: 14px; }
-.row.agent:hover .ag-sum .mi { max-width: 48px; margin-right: 6px; opacity: 1; transform: none; }
+.row.agent .ag-sum .mi .ic-stack .disc { width: 16px; height: 16px; }
+.row.agent .ag-sum .mi .ic-stack .disc > .ic { width: 10px !important; height: 10px !important; }
+.row.agent:hover .ag-sum .mi { grid-template-columns: 1fr; margin-right: 6px; opacity: 1; transform: none; }
 #addSheet { scroll-margin-top: 12px; }
 .ag-sum .v.empty { color: var(--muted); }
 .ag-sum .chev { display: inline-flex; width: 10px; color: var(--faint); transform: rotate(-90deg); transition: transform .4s var(--row-spring); }

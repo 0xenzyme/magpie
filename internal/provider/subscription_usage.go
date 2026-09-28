@@ -53,6 +53,9 @@ type SubscriptionQuota struct {
 	Until *time.Time `json:"until,omitempty"`
 	Renew string     `json:"renew,omitempty"`
 	Error string     `json:"error,omitempty"`
+	// AsOf is when an allowance shown in place of one that couldn't be
+	// read was read (see keepLast); nil for a reading just made.
+	AsOf *time.Time `json:"asOf,omitempty"`
 }
 
 var subscriptionUsageCache struct {
@@ -224,7 +227,7 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 	var wg sync.WaitGroup
 	for i, f := range fetches {
 		wg.Add(1)
-		go func() { defer wg.Done(); out[i] = f() }()
+		go func() { defer wg.Done(); out[i] = keepLast(f(), "") }()
 	}
 	wg.Wait()
 	return out

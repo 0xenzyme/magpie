@@ -66,7 +66,7 @@ func LoginUsage(ctx context.Context, agent string) map[string]SubscriptionQuota 
 		wg.Add(1)
 		go func(l Login) {
 			defer wg.Done()
-			q := loginQuota(ctx, l)
+			q := keepLast(loginQuota(ctx, l), l.User)
 			if q.Error != "" && ok {
 				q = e.q // a hiccup keeps what was known
 			}

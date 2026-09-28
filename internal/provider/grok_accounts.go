@@ -140,7 +140,7 @@ func grokLoginUsage(ctx context.Context) map[string]SubscriptionQuota {
 		wg.Add(1)
 		go func(g grokLogin) {
 			defer wg.Done()
-			q := grokUsageAt(ctx, g.Home)
+			q := keepLast(grokUsageAt(ctx, g.Home), g.User)
 			if q.Error != "" && ok {
 				q = e.q // a hiccup keeps what was known
 			}

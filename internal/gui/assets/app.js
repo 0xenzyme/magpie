@@ -242,7 +242,8 @@ function renderAgents() {
       if (main?.value && (opt?.icon || opt?.icons?.length)) {
         const mi = el("span", "mi");
         mi.setAttribute("aria-hidden", "true");
-        mi.append(optionIcon(opt));
+        mi.append(el("span", "mi-in"));
+        mi.firstChild.append(optionIcon(opt));
         v.append(mi);
       }
       v.append(el("span", "vt", main ? (opt?.label || main.value || t("default")) : ""));
@@ -3694,6 +3695,7 @@ function accountQuota(data, user) {
   }
   // the two rolling windows fit a line; the per-model ones go in its tooltip
   line.title = q.windows.slice(2).map((w) => t(w.name) + " " + quotaText(w)).join(" · ");
+  if (q.asOf) line.title = [line.title, asOfText(q)].filter(Boolean).join("\n");
   for (const w of q.windows.slice(0, 2)) {
     const used = Math.max(0, Math.min(100, w.used));
     const m = el("span", "aq-w" + (used >= 90 ? " full" : ""));
@@ -4279,6 +4281,12 @@ function renderPanelQuota() {
   fit();
 }
 
+// asOfText: an allowance standing in for one that couldn't be read just
+// now (a vendor rate limiting its usage endpoint) says when it was read.
+function asOfText(q) {
+  return t("As of {when} — couldn't be read just now", { when: new Date(q.asOf).toLocaleString() });
+}
+
 // shortWindow: "5 hours" as 5h, "7 days" as 7d; any other name as it is.
 function shortWindow(name) {
   const m = /^(\d+)\s*(minute|hour|day|week|month)s?$/i.exec(name || "");
@@ -4295,6 +4303,7 @@ function panelQuotaCard(q) {
     card.title += "\n" + q.error;
     return card;
   }
+  if (q.asOf) card.title += "\n" + asOfText(q);
   const ws = q.windows.slice(0, 3);
   // when the windows begun start again: the first bare, the others by name
   const begun = ws.filter((w) => w.resetsAt && w.used > 0);
