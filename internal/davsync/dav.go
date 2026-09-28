@@ -61,11 +61,46 @@ func (d *dav) do(ctx context.Context, method, u string, body []byte, h map[strin
 	if err != nil {
 		return nil, err
 	}
-	if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
+	switch res.StatusCode {
+	case http.StatusUnauthorized:
 		res.Body.Close()
-		return nil, fmt.Errorf("the WebDAV server refused the user name or password (HTTP %d)", res.StatusCode)
+		return nil, errLogin
+	case http.StatusForbidden:
+		res.Body.Close()
+		return nil, d.forbidden(ctx)
 	}
 	return res, nil
+}
+
+var errLogin = errors.New("the WebDAV server refused the user name or password (HTTP 401)")
+
+// forbidden says why a 403 was: servers answer it for a folder that isn't
+// there as much as for one the account may not use — a Synology does for a
+// shared folder not made — so the folder in the address is looked at first.
+func (d *dav) forbidden(ctx context.Context) error {
+	dir := d.base.Path
+	if dir == "" {
+		dir = "/"
+	}
+	req, err := http.NewRequestWithContext(ctx, "PROPFIND", d.url(), nil)
+	if err == nil {
+		req.Header.Set("Depth", "0")
+		if d.user != "" || d.pass != "" {
+			req.SetBasicAuth(d.user, d.pass)
+		}
+		if res, err := d.client.Do(req); err == nil {
+			res.Body.Close()
+			switch {
+			case res.StatusCode == http.StatusUnauthorized:
+				return errLogin
+			case res.StatusCode == http.StatusNotFound || res.StatusCode == http.StatusConflict || res.StatusCode == http.StatusGone:
+				return fmt.Errorf("there is no folder %s on the WebDAV server (HTTP 403): make it there first, or leave it out of the address", dir)
+			case res.StatusCode >= 200 && res.StatusCode < 300:
+				return fmt.Errorf("the WebDAV server doesn't let this account write in %s (HTTP 403): check the account may change files in that folder", dir)
+			}
+		}
+	}
+	return fmt.Errorf("the WebDAV server doesn't let this account use %s (HTTP 403): the folder may not be there, or the account may not have access to it", dir)
 }
 
 // get reads the backup; nil data and no error when there is none yet.
@@ -124,7 +159,10 @@ func (d *dav) mkcol(ctx context.Context) error {
 		return err
 	}
 	res.Body.Close()
-	// 405: it is there already
+	// 405: it is there already; 409: the folder above it isn't
+	if res.StatusCode == http.StatusConflict {
+		return fmt.Errorf("there is no folder %s on the WebDAV server (HTTP 409): make it there first, or leave it out of the address", d.base.Path)
+	}
 	if res.StatusCode >= 300 && res.StatusCode != http.StatusMethodNotAllowed {
 		return fmt.Errorf("making the folder %s on the WebDAV server: HTTP %d", folder, res.StatusCode)
 	}
