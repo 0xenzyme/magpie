@@ -54,10 +54,10 @@ var (
 const zcodeAppVersion = "3.14.3"
 
 var zcodeModels = []catalog.Model{
-	{ID: "GLM-5.3", Name: "GLM-5.3", Context: 1_000_000},
-	{ID: "GLM-5.3-Flash", Name: "GLM-5.3-Flash", Context: 1_000_000},
-	{ID: "GLM-5.2", Name: "GLM-5.2", Context: 1_000_000},
-	{ID: "GLM-5-Turbo", Name: "GLM-5-Turbo", Context: 200_000},
+	{ID: "GLM-5.3", Name: "GLM-5.3", Context: 1_000_000, Efforts: []string{"low", "high", "max"}},
+	{ID: "GLM-5.3-Flash", Name: "GLM-5.3-Flash", Context: 1_000_000, Efforts: []string{"low", "high", "max"}},
+	{ID: "GLM-5.2", Name: "GLM-5.2", Context: 1_000_000, Efforts: []string{"none", "high", "max"}},
+	{ID: "GLM-5-Turbo", Name: "GLM-5-Turbo", Context: 200_000, Efforts: []string{"none", "high"}},
 }
 
 // zcodeKey is a coding plan's key and where it is served.

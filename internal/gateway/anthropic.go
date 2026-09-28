@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/yetone/magpie/internal/provider"
 )
 
 // ---- Anthropic Messages -----------------------------------------------------
@@ -183,7 +185,6 @@ func withoutThinkingOff(body []byte) ([]byte, bool) {
 	return out, err == nil
 }
 
-// buildAnthropic renders a request for an Anthropic-style upstream.
 // claudeVersion finds the family's version in a Claude model id however a
 // relay spells it: claude-opus-4-6, claude-opus-5, anthropic.claude-sonnet-4.6-v1.
 var claudeVersion = regexp.MustCompile(`claude-(?:opus|sonnet|haiku)-(\d+)(?:[-.](\d{1,2}))?(?:[^0-9]|$)`)
@@ -201,6 +202,31 @@ func adaptiveOnly(model string) bool {
 	return major > 4 || major == 4 && minor >= 6
 }
 
+// effortInOutputConfig is a model that takes how hard it thinks from
+// output_config.effort, beside thinking turned on, as ZCode asks it: Z.ai's
+// GLM-5.2 and GLM-5.3 on their Anthropic endpoints. A budget alone leaves
+// them at their own default.
+var effortInOutputConfig = regexp.MustCompile(`(?i)glm-5\.[23](?:$|[-.:/\[])`)
+
+// withOutputEffort is body asking, in output_config.effort, for the level
+// of levels nearest the reasoning it asks for; body when it asks for none.
+func withOutputEffort(body []byte, levels []string) []byte {
+	e := requestEffort(provider.Anthropic, body)
+	var v struct {
+		OutputConfig map[string]any `json:"output_config"`
+	}
+	if e == "" || json.Unmarshal(body, &v) != nil {
+		return body
+	}
+	oc := v.OutputConfig
+	if oc == nil {
+		oc = map[string]any{}
+	}
+	oc["effort"] = fitEffort(e, levels)
+	return withFields(body, map[string]any{"output_config": oc})
+}
+
+// buildAnthropic renders a request for an Anthropic-style upstream.
 func buildAnthropic(r *Request, model string) []byte {
 	type msg struct {
 		Role    string   `json:"role"`
@@ -281,6 +307,9 @@ func buildAnthropic(r *Request, model string) []byte {
 			maxTokens = budget + 4096
 		}
 		out["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
+		if r.Effort != "" && effortInOutputConfig.MatchString(model) {
+			out["output_config"] = map[string]any{"effort": r.Effort}
+		}
 	} else if r.Temp != nil {
 		out["temperature"] = *r.Temp
 	} else if r.TopP != nil {

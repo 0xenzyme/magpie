@@ -29,3 +29,42 @@ func TestAdaptiveThinking(t *testing.T) {
 		t.Errorf("old model thinking = %s", th)
 	}
 }
+
+// Z.ai's GLM-5.2 and GLM-5.3 take their effort in output_config, as ZCode
+// sends it, fitted to their levels; a budget alone leaves them at theirs
+func TestGLMEffortInOutputConfig(t *testing.T) {
+	for model, want := range map[string]bool{
+		"GLM-5.3": true, "glm-5.3-flash": true, "GLM-5.2": true, "zai/glm-5.3": true,
+		"GLM-5-Turbo": false, "glm-5.1": false, "glm-5.30": false, "claude-opus-5-5": false,
+	} {
+		if got := effortInOutputConfig.MatchString(model); got != want {
+			t.Errorf("effortInOutputConfig(%q) = %v", model, got)
+		}
+	}
+	var out map[string]any
+	json.Unmarshal(buildAnthropic(&Request{Thinking: true, Effort: "max"}, "GLM-5.3"), &out)
+	if oc, _ := json.Marshal(out["output_config"]); string(oc) != `{"effort":"max"}` {
+		t.Errorf("output_config = %s", oc)
+	}
+	out = nil
+	json.Unmarshal(buildAnthropic(&Request{Thinking: true, Effort: "high"}, "GLM-5-Turbo"), &out)
+	if out["output_config"] != nil {
+		t.Errorf("GLM-5-Turbo asked output_config: %v", out["output_config"])
+	}
+
+	levels := []string{"low", "high", "max"}
+	for body, want := range map[string]string{
+		// Claude Code's budget for medium, the nearest of GLM-5.3's
+		`{"thinking":{"type":"enabled","budget_tokens":10000}}`:                          `{"output_config":{"effort":"high"},"thinking":{"budget_tokens":10000,"type":"enabled"}}`,
+		`{"thinking":{"type":"adaptive"},"output_config":{"effort":"low","format":"x"}}`: `{"output_config":{"effort":"low","format":"x"},"thinking":{"type":"adaptive"}}`,
+		`{"thinking":{"type":"adaptive"},"output_config":{"effort":"xhigh"}}`:            `{"output_config":{"effort":"max"},"thinking":{"type":"adaptive"}}`,
+		`{"thinking":{"type":"disabled"}}`:                                               `{"thinking":{"type":"disabled"}}`,
+		`{"max_tokens":5}`:                                                               `{"max_tokens":5}`,
+	} {
+		var v any
+		json.Unmarshal(withOutputEffort([]byte(body), levels), &v)
+		if got, _ := json.Marshal(v); string(got) != want {
+			t.Errorf("%s:\n got  %s\n want %s", body, got, want)
+		}
+	}
+}

@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/yetone/magpie/internal/catalog"
@@ -61,7 +62,29 @@ type zcodeModelRule struct {
 		MaxOutputTokens struct {
 			Max int `json:"max"`
 		} `json:"maxOutputTokens"`
+		ReasoningLevel struct {
+			Values []string `json:"values"`
+		} `json:"reasoningLevel"`
 	} `json:"optionSpecs"`
+}
+
+// zcodeEfforts are ZCode's reasoning levels for a model in magpie's words:
+// "disabled" is none, and "enabled", a model's one level when it has no
+// others (GLM-5-Turbo's), is high.
+func zcodeEfforts(values []string) []string {
+	var out []string
+	for _, v := range values {
+		switch v {
+		case "disabled":
+			v = "none"
+		case "enabled":
+			v = "high"
+		}
+		if !slices.Contains(out, v) {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // zcodePlanID is ZCode's providerId for the coding plan served at base.
@@ -137,6 +160,9 @@ func (b zcodeBuiltin) models(plan string) []catalog.Model {
 			}
 			if v := c.Properties.InputFormat.SupportsImage; v != nil {
 				m.Images, m.ImageInput = *v, v
+			}
+			if vs := c.OptionSpecs.ReasoningLevel.Values; len(vs) > 0 {
+				m.Efforts = zcodeEfforts(vs)
 			}
 		}
 		out = append(out, m)

@@ -59,20 +59,20 @@ var (
 // the names and context windows its config gives them.
 var wbModels = []catalog.Model{
 	{ID: "auto", Name: "Auto", Context: 168_000},
-	{ID: "hy4-preview-f", Name: "Hy4 preview", Context: 1_000_000},
-	{ID: "hy3", Name: "Hy3", Context: 192_000},
-	{ID: "hy3-x", Name: "Hy3-X", Context: 192_000},
+	{ID: "hy4-preview-f", Name: "Hy4 preview", Context: 1_000_000, Efforts: []string{"high"}},
+	{ID: "hy3", Name: "Hy3", Context: 192_000, Efforts: []string{"low", "high"}},
+	{ID: "hy3-x", Name: "Hy3-X", Context: 192_000, Efforts: []string{"low", "high"}},
 	{ID: "deepseek-v4.1-flash", Name: "Deepseek-V4.1-Flash", Context: 1_000_000},
-	{ID: "glm-5.3", Name: "GLM-5.3", Context: 1_000_000},
-	{ID: "glm-5.3-flash", Name: "GLM-5.3-Flash", Context: 1_000_000},
-	{ID: "glm-5.2", Name: "GLM-5.2", Context: 1_000_000},
+	{ID: "glm-5.3", Name: "GLM-5.3", Context: 1_000_000, Efforts: []string{"low", "high", "max"}},
+	{ID: "glm-5.3-flash", Name: "GLM-5.3-Flash", Context: 1_000_000, Efforts: []string{"low", "high", "max"}},
+	{ID: "glm-5.2", Name: "GLM-5.2", Context: 1_000_000, Efforts: []string{"high", "xhigh"}},
 	{ID: "glm-5.1", Name: "GLM-5.1", Context: 200_000},
 	{ID: "glm-5v-turbo", Name: "GLM-5v-Turbo", Context: 200_000},
 	{ID: "minimax-m3", Name: "MiniMax-M3", Context: 512_000},
-	{ID: "kimi-k3-1", Name: "Kimi-K3", Context: 1_000_000},
+	{ID: "kimi-k3-1", Name: "Kimi-K3", Context: 1_000_000, Efforts: []string{"low", "high", "xhigh"}},
 	{ID: "kimi-k2.7", Name: "Kimi-K2.7-Code", Context: 256_000},
 	{ID: "kimi-k2.6", Name: "Kimi-K2.6", Context: 256_000},
-	{ID: "deepseek-v4-pro", Name: "Deepseek-V4-Pro", Context: 1_000_000},
+	{ID: "deepseek-v4-pro", Name: "Deepseek-V4-Pro", Context: 1_000_000, Efforts: []string{"none", "high", "xhigh"}},
 }
 
 // wbCreds is a WorkBuddy account's tokens and where they are served, as the

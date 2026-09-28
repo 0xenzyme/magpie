@@ -1003,6 +1003,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		}
 	case provider.Anthropic:
 		body = thinkingOffUnlessAsked(body)
+		if effortInOutputConfig.MatchString(model) {
+			body = withOutputEffort(body, p.Efforts(model))
+		}
 	}
 	// the effort as the agent sent it, fitted to the model's levels: Qoder's
 	// permission check asks "none", which Command Code turns away

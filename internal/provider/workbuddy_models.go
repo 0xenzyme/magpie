@@ -28,6 +28,11 @@ type wbProductConfig struct {
 		MaxInputTokens  int    `json:"maxInputTokens"`
 		MaxOutputTokens int    `json:"maxOutputTokens"`
 		SupportsImages  *bool  `json:"supportsImages"`
+		OnlyReasoning   bool   `json:"onlyReasoning"`
+		Reasoning       struct {
+			SupportedEfforts   []string `json:"supportedEfforts"`
+			CanDisableThinking *bool    `json:"canDisableThinking"`
+		} `json:"reasoning"`
 	} `json:"models"`
 }
 
@@ -89,6 +94,14 @@ func (c wbProductConfig) cliModels() []catalog.Model {
 				m.Context, m.Output = d.MaxInputTokens, d.MaxOutputTokens
 				if d.SupportsImages != nil {
 					m.Images, m.ImageInput = *d.SupportsImages, d.SupportsImages
+				}
+				// the levels WorkBuddy offers the model, and off when it
+				// offers that; a model it gives no levels takes any
+				if es := d.Reasoning.SupportedEfforts; len(es) > 0 {
+					if !d.OnlyReasoning && (d.Reasoning.CanDisableThinking == nil || *d.Reasoning.CanDisableThinking) {
+						m.Efforts = append(m.Efforts, "none")
+					}
+					m.Efforts = append(m.Efforts, es...)
 				}
 				break
 			}

@@ -18,8 +18,8 @@ const zcodeBuiltinJSON = `{"revision":%d,"config":{
   {"providerId":"account:zai-start-plan","builtinModelIds":["GLM-5-Turbo"]}]},
  "modelConfigRules":{
   "modelRules":[
-   {"modelMatch":".*","config":{"properties":{"contextWindow":200000},"optionSpecs":{"maxOutputTokens":{"max":32000}}}},
-   {"modelMatch":".*glm-5\\.3(?:-flash)?(?:[.\\-:/\\[].*)?","config":{"properties":{"contextWindow":1000000},"optionSpecs":{"maxOutputTokens":{"max":128000}}}},
+   {"modelMatch":".*","config":{"properties":{"contextWindow":200000},"optionSpecs":{"maxOutputTokens":{"max":32000},"reasoningLevel":{"values":["disabled","enabled"]}}}},
+   {"modelMatch":".*glm-5\\.3(?:-flash)?(?:[.\\-:/\\[].*)?","config":{"properties":{"contextWindow":1000000},"optionSpecs":{"maxOutputTokens":{"max":128000},"reasoningLevel":{"values":["low","high","max"]}}}},
    {"modelMatch":".*glm-5\\.3-flash(?:[.\\-:/\\[].*)?","config":{"properties":{"inputFormat":{"supportsImage":true}}}}],
   "builtinProviderModelRules":[
    {"providerId":"account:zai-individual-coding-plan","modelId":"GLM-5.3-Flash","config":{"enabled":true}},
@@ -57,12 +57,12 @@ func TestZCodeFetchModels(t *testing.T) {
 		}
 		var s []string
 		for _, m := range ms {
-			b, _ := json.Marshal([]any{m.ID, m.Context, m.Output, m.Images})
+			b, _ := json.Marshal([]any{m.ID, m.Context, m.Output, m.Images, m.Efforts})
 			s = append(s, string(b))
 		}
 		return strings.Join(s, " ")
 	}
-	want := `["GLM-5.3",1000000,128000,false] ["GLM-5.3-Flash",1000000,128000,true] ["GLM-5-Turbo",200000,32000,false]`
+	want := `["GLM-5.3",1000000,128000,false,["low","high","max"]] ["GLM-5.3-Flash",1000000,128000,true,["low","high","max"]] ["GLM-5-Turbo",200000,32000,false,["none","high"]]`
 	if g := got(); g != want {
 		t.Fatalf("got  %s\nwant %s", g, want)
 	}
@@ -99,10 +99,12 @@ func TestWorkBuddyFetchModels(t *testing.T) {
 			return
 		}
 		w.Write([]byte(`{"code":0,"msg":"OK","data":{
-			"agents":[{"name":"craft","models":["gpt"]},{"name":"cli","models":["auto","kimi-k2.8-preview","bare"]}],
+			"agents":[{"name":"craft","models":["gpt"]},{"name":"cli","models":["auto","kimi-k2.8-preview","deepseek-v4-pro","bare"]}],
 			"models":[{"id":"gpt","name":"GPT"},
-			 {"id":"auto","name":"Auto","maxInputTokens":256000,"maxOutputTokens":32000,"supportsImages":true},
-			 {"id":"kimi-k2.8-preview","name":"Kimi-K2.8-Preview","maxInputTokens":1000000,"maxOutputTokens":64000,"supportsImages":false}]}}`))
+			 {"id":"auto","name":"Auto","maxInputTokens":256000,"maxOutputTokens":32000,"supportsImages":true,"onlyReasoning":true,"reasoning":{"effort":"high"}},
+			 {"id":"kimi-k2.8-preview","name":"Kimi-K2.8-Preview","maxInputTokens":1000000,"maxOutputTokens":64000,"supportsImages":false,
+			  "onlyReasoning":true,"reasoning":{"canDisableThinking":true,"defaultEffort":"high","supportedEfforts":["low","high","max"]}},
+			 {"id":"deepseek-v4-pro","name":"Deepseek-V4-Pro","onlyReasoning":false,"reasoning":{"canDisableThinking":true,"supportedEfforts":["high","xhigh"]}}]}}`))
 	}))
 	defer srv.Close()
 	old := wbEndpoint
@@ -119,7 +121,8 @@ func TestWorkBuddyFetchModels(t *testing.T) {
 	}
 	b, _ := json.Marshal(ms)
 	want := `[{"ID":"auto","Name":"Auto","Provider":"","Released":"","Efforts":null,"Temperature":null,"Price":null,"Images":true,"ImageInput":true,"Context":256000,"Output":32000},` +
-		`{"ID":"kimi-k2.8-preview","Name":"Kimi-K2.8-Preview","Provider":"","Released":"","Efforts":null,"Temperature":null,"Price":null,"ImageInput":false,"Context":1000000,"Output":64000},` +
+		`{"ID":"kimi-k2.8-preview","Name":"Kimi-K2.8-Preview","Provider":"","Released":"","Efforts":["low","high","max"],"Temperature":null,"Price":null,"ImageInput":false,"Context":1000000,"Output":64000},` +
+		`{"ID":"deepseek-v4-pro","Name":"Deepseek-V4-Pro","Provider":"","Released":"","Efforts":["none","high","xhigh"],"Temperature":null,"Price":null},` +
 		`{"ID":"bare","Name":"bare","Provider":"","Released":"","Efforts":null,"Temperature":null,"Price":null}]`
 	if string(b) != want {
 		t.Fatalf("got  %s\nwant %s", b, want)
