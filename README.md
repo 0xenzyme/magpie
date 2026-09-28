@@ -46,8 +46,8 @@ and there is a terminal version (`magpie tui`) and a plain CLI.
   paste.
 - **Providers with one field.** Pick a preset (Anthropic, OpenAI, Gemini,
   DeepSeek, Kimi, GLM, MiniMax, StepFun, Qwen, Tencent Cloud Token Plan,
-  Huawei Cloud MaaS, Mistral, Groq, xAI, OpenRouter, Together, Fireworks,
-  SiliconFlow, AiHubMix, 302.AI, Ollama, LM Studio…),
+  Huawei Cloud MaaS, Volcengine Ark, Mistral, Groq, xAI, OpenRouter, Together,
+  Fireworks, SiliconFlow, AiHubMix, 302.AI, Ollama, LM Studio…),
   paste a key, done. Custom vendors need a name and a base URL. magpie never
   reads keys from your shell environment.
 - **Real model lists, nothing compiled in.** With a key in hand magpie asks
