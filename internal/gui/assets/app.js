@@ -1506,6 +1506,11 @@ function renderProviders() {
       key = el("span", "key " + (p.key.set ? (keyPill(p) === p.key.masked ? "on" : "on acct") : p.ready ? "free" : "none"), p.key.set ? keyPill(p) : p.ready ? t("no key") : t("needs a key"));
       key.title = p.key.set ? t("API key {masked}", { masked: p.key.masked }) : p.ready ? t("Local servers need no key") : t("Open the row and paste an API key");
     }
+    // every pill is one width so the dots line up down the list; a label too long for it ends in "…" and is said whole on hover
+    const label = key.textContent;
+    key.textContent = "";
+    key.append(el("span", "", label));
+    if (!key.title.includes(label)) key.title = label + " · " + key.title;
     const chev = el("span", "chev");
     chev.append(svg(CHEV_R, 11, 1.7));
     row.append(icon(p.icon || "generic"), who, uses, key, chev);
