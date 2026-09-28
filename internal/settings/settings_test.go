@@ -42,6 +42,16 @@ func TestRoundTrip(t *testing.T) {
 	if Save(Settings{ClaudeWarmup: "hourly"}) == nil {
 		t.Fatal("bad claude warm-up accepted")
 	}
+	// the menu bar's usage: every 3 minutes unless told, left or used
+	if s := Load(); s.TrayUsageEvery != 3 || s.QuotaLeft {
+		t.Fatalf("tray defaults: %+v", s)
+	}
+	if Save(Settings{TrayUsageEvery: 10, QuotaLeft: true}) != nil || Load().TrayUsageEvery != 10 || !Load().QuotaLeft {
+		t.Fatal("tray refresh or left not kept")
+	}
+	if Save(Settings{TrayUsageEvery: 7}) == nil {
+		t.Fatal("bad tray refresh accepted")
+	}
 }
 
 func TestMigrate(t *testing.T) {

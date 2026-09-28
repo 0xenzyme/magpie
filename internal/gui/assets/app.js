@@ -3485,10 +3485,9 @@ function accountQuota(data, user) {
 
 // A window reads as how much of it is used, or — as the vendors' own apps
 // show it — how much is left, the bar filling with that; one choice for
-// every meter, kept for next time. The vendor's own count, where it gives
-// one, stands before the percentage.
+// every meter and the menu bar, kept in the settings (#122). The vendor's
+// own count, where it gives one, stands before the percentage.
 let quotaLeft = false;
-try { quotaLeft = localStorage.getItem("magpie.quotaLeft") === "1"; } catch {}
 function quotaFill(w) {
   const used = Math.round(Math.max(0, Math.min(100, w.used)));
   return quotaLeft ? 100 - used : used;
@@ -3497,10 +3496,16 @@ function quotaText(w) {
   const pct = t(quotaLeft ? "{n} left" : "{n} used", { n: quotaFill(w) + "%" });
   return w.display ? w.display + " · " + pct : pct;
 }
-function setQuotaLeft(on) {
+async function setQuotaLeft(on) {
   quotaLeft = on;
-  try { localStorage.setItem("magpie.quotaLeft", on ? "1" : "0"); } catch {}
   renderQuotas();
+  try {
+    prefs = await api("settings/quota-left", { on });
+    state.settings = prefs;
+    if (view === "settings") renderSettings();
+  } catch (e) {
+    status(e.message, "err");
+  }
 }
 
 // resetClock is when a window starts again, on the clock: "14:30" today,
@@ -4445,6 +4450,15 @@ function applyPrefs(s) {
     }
   }
   applyPrefs.ready = true;
+  // this browser's choice from before it was a setting, carried over once
+  let kept = null;
+  try { kept = localStorage.getItem("magpie.quotaLeft"); localStorage.removeItem("magpie.quotaLeft"); } catch {}
+  if (kept === "1" && !s.quotaLeft) { s.quotaLeft = true; setQuotaLeft(true); }
+  if (quotaLeft !== !!s.quotaLeft) {
+    quotaLeft = !!s.quotaLeft;
+    if (applyPrefs.painted) renderQuotas();
+  }
+  applyPrefs.painted = true;
   const was = locale;
   setLocale(s.lang);
   if (was !== locale && mode === "window") queueMicrotask(() => slide($("#nav"), "nav"));
@@ -4463,7 +4477,7 @@ function renderSettings() {
   const keep = { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, proxy: s.proxy || "",
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "",
-    trayUsage: s.trayUsage || "" };
+    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3 };
   $("#themeSegs").replaceChildren(segs(THEMES.map(([id, name]) => [id, t(name)]), s.theme, (theme) => savePrefs({ ...keep, theme })));
   $("#langSegs").replaceChildren(segs(LOCALES.map(([id, name]) => [id, t(name)]), s.lang, (lang) => savePrefs({ ...keep, lang })));
   $("#traySegs").replaceChildren(segs(TRAYS.map(([id, name]) => [id, t(name)]), s.tray || "panel", (tray) => savePrefs({ ...keep, tray })));
@@ -4736,6 +4750,8 @@ const trayCardID = (q) => q.user ? q.provider + "|" + q.user : q.provider;
 // renderTrayUsage: the subscription or plan whose windows show beside the
 // tray icon. The cards are the Usage page's, asked for when the menu opens.
 function renderTrayUsage(s, keep) {
+  $("#quotaLeftSegs").replaceChildren(segs([[false, t("Used")], [true, t("Left")]], !!s.quotaLeft,
+    (on) => { if (on !== quotaLeft) setQuotaLeft(on); }));
   $("#trayUsageRow").hidden = web;
   if (web) return;
   const mac = document.body.classList.contains("mac");
@@ -4761,7 +4777,13 @@ function renderTrayUsage(s, keep) {
     openProtoMenu(pill, opts, id, (v) => { if (v !== id && v !== "\x00") savePrefs({ ...keep, trayUsage: v }); }, "Shown beside the icon");
   };
   $("#trayUsagePick").replaceChildren(pill);
+  // how often it is asked for again, and whether it reads as used or left —
+  // the Usage page's choice too (#122)
+  $("#trayEveryRow").hidden = !id;
+  $("#trayEverySegs").replaceChildren(segs(TRAY_EVERY.map((m) => [m, t("{n} min", { n: m })]), s.trayUsageEvery || 3,
+    (trayUsageEvery) => savePrefs({ ...keep, trayUsageEvery })));
 }
+const TRAY_EVERY = [1, 3, 5, 10, 30];
 
 // renderProxy: magpie's own requests to vendors follow the system proxy on
 // their own; this row says which one, and lets it be turned off or set.

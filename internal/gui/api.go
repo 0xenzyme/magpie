@@ -325,6 +325,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// who sees them, and sharing on the network, set on its own
 		in.Visible, in.ModelNames, in.ModelEfforts = cur.Visible, cur.ModelNames, cur.ModelEfforts
 		in.LAN, in.LANKey = cur.LAN, cur.LANKey
+		// used or left is the Usage page's toggle as much as Settings', set on its own
+		in.QuotaLeft = cur.QuotaLeft
 		if err := settings.Save(in); err != nil {
 			fail(rw, err)
 			return
@@ -332,7 +334,27 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		if (in.Dock != cur.Dock || in.DockWindow != cur.DockWindow) && onDock != nil {
 			onDock(in)
 		}
-		if in.TrayUsage != cur.TrayUsage && onTrayUsage != nil {
+		if (in.TrayUsage != cur.TrayUsage || in.TrayUsageEvery != cur.TrayUsageEvery) && onTrayUsage != nil {
+			onTrayUsage()
+		}
+		writeJSON(rw, settingsState())
+	})
+	// whether usage reads as used or left: the Usage page's toggle and
+	// Settings', for every meter and the menu bar alike (#122)
+	mux.HandleFunc("POST /api/settings/quota-left", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ On bool }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		s := settings.Load()
+		changed := s.QuotaLeft != in.On
+		s.QuotaLeft = in.On
+		if err := settings.Save(s); err != nil {
+			fail(rw, err)
+			return
+		}
+		if changed && onTrayUsage != nil {
 			onTrayUsage()
 		}
 		writeJSON(rw, settingsState())

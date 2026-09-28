@@ -26,7 +26,7 @@ func (h *host) watchTrayUsage() {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			label, tip := "", "magpie"
 			if q, ok := trayUsageCard(ctx); ok {
-				if label, tip = trayUsageText(q, time.Now()); tip == "" {
+				if label, tip = trayUsageText(q, time.Now(), settings.Load().QuotaLeft); tip == "" {
 					tip = "magpie"
 				}
 			}
@@ -37,7 +37,7 @@ func (h *host) watchTrayUsage() {
 				h.tray.SetTooltip(tip)
 			}
 			// the first answer can take a while; look again soon after it
-			next := trayUsageEvery
+			next := trayUsageEvery()
 			if label == "" && settings.Load().TrayUsage != "" {
 				next = 20 * time.Second
 			}

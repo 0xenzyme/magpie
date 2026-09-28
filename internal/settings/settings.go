@@ -57,6 +57,12 @@ type Settings struct {
 	// TrayUsage is the subscription or plan whose windows are shown beside
 	// the tray icon, by its provider and account ("claude|a@b.c"); "" none.
 	TrayUsage string `json:"trayUsage,omitempty"`
+	// TrayUsageEvery is how often, in minutes, that text is brought up to
+	// date; 0 is every 3 (one of TrayEvery).
+	TrayUsageEvery int `json:"trayUsageEvery,omitempty"`
+	// QuotaLeft shows a subscription's windows by how much of each is left,
+	// not used: the Usage page, the tray panel and the menu bar alike.
+	QuotaLeft bool `json:"quotaLeft,omitempty"`
 	// How the agents are listed, by agent id. AgentOrder comes first, as
 	// ordered; an agent it doesn't name (one installed since) follows in
 	// magpie's own order. A hidden agent is folded away at the bottom of the
@@ -123,6 +129,8 @@ var (
 	Trays  = []string{"panel", "window"}
 	// Warmups are CodexWarmup's and ClaudeWarmup's values, off as "".
 	Warmups = []string{"", "week", "all"}
+	// TrayEvery are TrayUsageEvery's values, in minutes.
+	TrayEvery = []int{1, 3, 5, 10, 30}
 )
 
 // Path is the settings file.
@@ -164,6 +172,9 @@ func Save(s Settings) error {
 	if !slices.Contains(Warmups, s.ClaudeWarmup) {
 		return fmt.Errorf("claude warm-up must be off, week or all, not %q", s.ClaudeWarmup)
 	}
+	if !slices.Contains(TrayEvery, s.TrayUsageEvery) {
+		return fmt.Errorf("the menu bar's usage is refreshed every %v minutes, not %d", TrayEvery, s.TrayUsageEvery)
+	}
 	s.Proxy = strings.TrimSpace(s.Proxy)
 	if s.Proxy != "" && s.Proxy != "direct" {
 		raw := s.Proxy
@@ -201,6 +212,9 @@ func (s Settings) normal() Settings {
 	}
 	if s.ClaudeWarmup == "off" {
 		s.ClaudeWarmup = ""
+	}
+	if s.TrayUsageEvery == 0 {
+		s.TrayUsageEvery = 3
 	}
 	return s
 }
