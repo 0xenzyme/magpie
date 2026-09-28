@@ -21,6 +21,7 @@ import (
 
 	"github.com/yetone/magpie/internal/library"
 	"github.com/yetone/magpie/internal/settings"
+	"github.com/yetone/magpie/internal/stats"
 	"github.com/yetone/magpie/internal/update"
 )
 
@@ -166,6 +167,7 @@ func Run(version string, showMain bool, link string) error {
 		theme = "&theme=" + t
 	}
 	h := &host{query: theme, ready: make(chan struct{})}
+	go stats.Run(version, "app")
 	handler := devShell(h)
 	if handler == nil {
 		handler = Handler(h, startBackend())

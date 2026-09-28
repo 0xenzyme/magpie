@@ -92,6 +92,8 @@ const I18N = {
     "Other computers send it as their API key; a new one stops the old from working": "其他电脑把它填作 API Key；换新后旧的立即失效",
     "API keys, private keys, tokens and passwords go to vendors as placeholders, and come back as they were": "API Key、私钥、Token 和密码以占位符发给模型厂商，回复里再还原",
     "Mask personal data": "脱敏个人信息",
+    "Count me as a user": "计入用户数",
+    "Once a day, a random id for this computer with magpie's version and system — nothing you use magpie for": "每天一次，只发送本机的随机 ID、magpie 版本和系统，不含你用 magpie 做的任何事",
     "Codex warm-up": "Codex 预热",
     "Claude Code warm-up": "Claude Code 预热",
     "Usage in the menu bar": "菜单栏显示用量",

@@ -54,6 +54,9 @@ type Settings struct {
 	// ClaudeWarmup is CodexWarmup for the Claude accounts, the request
 	// sent through Claude Code.
 	ClaudeWarmup string `json:"claudeWarmup,omitempty"`
+	// NoStats stops the one event a day that counts magpie's users (see
+	// internal/stats).
+	NoStats bool `json:"noStats,omitempty"`
 	// TrayUsage is the subscription or plan whose windows are shown beside
 	// the tray icon, by its provider and account ("claude|a@b.c"); "" none.
 	TrayUsage string `json:"trayUsage,omitempty"`

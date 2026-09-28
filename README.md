@@ -437,6 +437,16 @@ stdin.
 
 `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are respected.
 
+## Counting users
+
+Once a day, a running magpie (the app, or `magpie serve`) sends one event to
+PostHog so we know how many people use it: a random id made up on your
+computer (`~/.config/magpie/install-id`), magpie's version, and your system
+and architecture. Nothing else goes: no accounts, keys, providers, models,
+prompts or usage. Turn it off in Settings → Privacy → Count me as a user, or
+with `DO_NOT_TRACK=1` or `MAGPIE_NO_STATS=1`. Builds from source never send
+it. The code is [internal/stats](internal/stats/stats.go).
+
 ## Community
 
 Questions, setups worth sharing, ideas, bugs: come talk to us and other

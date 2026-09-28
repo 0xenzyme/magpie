@@ -15,6 +15,7 @@ import (
 	"github.com/yetone/magpie/internal/agent"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/stats"
 )
 
 var amber = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#F2B544"})
@@ -726,6 +727,7 @@ func refreshLive(ctx context.Context) {
 // serve: `magpie serve` — the gateway alone, in the foreground.
 func serve() error {
 	s := gateway.New()
+	go stats.Run(version, "serve")
 	fmt.Println(green.Render("●"), "magpie gateway on", bold.Render(gateway.URL()))
 	fmt.Println(muted.Render("  OpenAI  "), gateway.URL()+"/v1/chat/completions", muted.Render("·"), gateway.URL()+"/v1/responses")
 	fmt.Println(muted.Render("  Anthropic"), gateway.URL()+"/v1/messages")

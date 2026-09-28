@@ -5331,6 +5331,8 @@ function renderRedact(s, keep) {
   i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") save(); else if (e.key === "Escape") { i.value = words; i.blur(); } };
   i.onblur = save;
   row(t("Masked words"), t("Your own words to keep from vendors, separated by commas"), i);
+  row(t("Count me as a user"), t("Once a day, a random id for this computer with magpie's version and system — nothing you use magpie for"),
+    onOff(!s.noStats, (on) => savePrefs({ ...keep, noStats: !on })));
 }
 
 // renderLAN: the gateway shared on the local network, for agents on other
@@ -5423,7 +5425,7 @@ async function renderUpdate(r, u) {
 function prefsKeep(s) {
   return { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, proxy: s.proxy || "",
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
-    claudeWarmup: s.claudeWarmup || "",
+    claudeWarmup: s.claudeWarmup || "", noStats: !!s.noStats,
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3 };
 }
 
