@@ -179,7 +179,21 @@ func apps() []*agent.Agent {
 // three to, in the order the rest of magpie lists them.
 func Targets() []*Target {
 	var out []*Target
-	for _, a := range append(agent.Detected(), apps()...) {
+	own := map[string]bool{}
+	for _, a := range apps() {
+		own[a.ID] = true
+	}
+	for _, a := range agent.Detected() {
+		// an app magpie also sets up as an agent (Claude Desktop) keeps its
+		// MCP servers where apps says, once
+		if own[a.ID] {
+			continue
+		}
+		if t := targetOf(a); t != nil {
+			out = append(out, t)
+		}
+	}
+	for _, a := range apps() {
 		if !a.Detected() {
 			continue
 		}

@@ -58,6 +58,7 @@ func All() []*Agent {
 	}
 	return append([]*Agent{
 		claude(home),
+		claudeDesktop(home),
 		codex(home),
 		gemini(home),
 		opencode(home, cfg),

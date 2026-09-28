@@ -117,3 +117,23 @@ func TestClaudeDesktopAliases(t *testing.T) {
 		t.Fatal("an alias no model has resolved")
 	}
 }
+
+// Claude Desktop set up by magpie sends the key magpie gave it, from its
+// own client and from the Claude Code its Code tab runs alike; without it,
+// its Electron User-Agent still says who it is.
+func TestClaudeDesktopKnown(t *testing.T) {
+	for _, c := range []struct{ key, ua string }{
+		{TokenFor("claude-desktop"), "Mozilla/5.0 (Macintosh) Claude/2.7032.0 Chrome/138.0 Electron/37.0 Safari/537.36"},
+		{TokenFor("claude-desktop"), "claude-cli/2.1.200 (external, claude-desktop)"},
+		{"", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Claude/2.7032.0 Chrome/138.0 Electron/37.0 Safari/537.36"},
+	} {
+		r := httptest.NewRequest("GET", "/v1/models", nil)
+		r.Header.Set("User-Agent", c.ua)
+		if c.key != "" {
+			r.Header.Set("Authorization", "Bearer "+c.key)
+		}
+		if got := agentOf(r); got != "claude-desktop" {
+			t.Errorf("%q %q: %s", c.key, c.ua, got)
+		}
+	}
+}
