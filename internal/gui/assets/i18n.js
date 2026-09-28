@@ -194,6 +194,8 @@ const I18N = {
 
     // providers
     "sponsored": "赞助",
+    "free": "免费",
+    "free: it doesn't use the plan's credits": "免费：不消耗套餐积分",
     "{n} model": "{n} 个模型",
     "{n} models": "{n} 个模型",
     "no models exposed": "未暴露模型",

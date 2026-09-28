@@ -30,7 +30,8 @@ type modelJSON struct {
 	Given   bool     `json:"given,omitempty"` // its levels aren't known: Efforts are those it can be given, Kept those it was
 	On      bool     `json:"on"`              // exposed to agents
 	Context int      `json:"context,omitempty"`
-	Max     int      `json:"max,omitempty"` // the most its context may be set to, above Context
+	Max     int      `json:"max,omitempty"`  // the most its context may be set to, above Context
+	Free    bool     `json:"free,omitempty"` // costs the subscription nothing
 }
 
 type providerJSON struct {
@@ -231,7 +232,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		most = catalog.Codex()
 	}
 	named := func(m catalog.Model, on bool) modelJSON {
-		j := modelJSON{ID: m.ID, Name: m.Name, Efforts: provider.EffortsOf(m), On: on, Context: m.Context, Max: m.MaxContext}
+		j := modelJSON{ID: m.ID, Name: m.Name, Efforts: provider.EffortsOf(m), On: on, Context: m.Context, Max: m.MaxContext, Free: m.Free}
 		if i := slices.IndexFunc(most, func(c catalog.Model) bool { return c.ID == m.ID }); j.Max == 0 && i >= 0 {
 			j.Max = most[i].MaxContext
 		}

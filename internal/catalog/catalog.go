@@ -54,6 +54,9 @@ type Model struct {
 	// a relay's flux): kept with the list for Settings → Images, never
 	// offered to agents as a model to talk to.
 	Draws bool `json:",omitempty"`
+	// Free is set on a model a subscription serves at no cost to its
+	// allowance: WorkBuddy's "credits": "x0.00".
+	Free bool `json:",omitempty"`
 }
 
 func imageInput(modalities []string) *bool {

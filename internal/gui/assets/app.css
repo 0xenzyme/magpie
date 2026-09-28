@@ -781,6 +781,7 @@ body.window .foot { padding-left: 18px; }
 .pop li .ic { width: 16px; height: 16px; }
 .pop li .option-words { display: flex; align-items: center; min-width: 0; flex: 1 1 auto; gap: 9px; }
 .pop li .v { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.pop li .badge.free { flex: none; margin-left: -4px; padding: 0 4px; font-size: 9px; line-height: 14px; align-self: center; }
 .pop li .n { flex: 1 1 0; min-width: 0; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .pop li .favorite { display: none; align-items: center; justify-content: center; color: var(--faint); width: 24px; height: 24px; border-radius: 6px; flex: none; }
 .pop li:hover .favorite, .pop li .favorite.on { display: inline-flex; }
@@ -965,6 +966,8 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .provider.off > .ic, .provider.off .who .sub, .provider.off .uses, .provider.off .key { opacity: .45; }
 .provider.off .name { color: var(--muted); }
 .badge.off { background: var(--pill); color: var(--muted); }
+.badge.free { background: var(--green-soft); color: var(--green); }
+.mchip .badge { margin: 0 -3px 0 1px; padding: 0 4px; font-size: 9px; line-height: 14px; }
 .provider .pswitch { margin-left: 8px; }
 .editor .off-note { grid-column: 1 / -1; }
 .uses { display: flex; align-items: center; gap: 4px; margin-left: auto; flex: none; }

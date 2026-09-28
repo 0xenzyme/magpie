@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/yetone/magpie/internal/catalog"
@@ -30,7 +31,10 @@ type wbProductConfig struct {
 		MaxOutputTokens int    `json:"maxOutputTokens"`
 		SupportsImages  *bool  `json:"supportsImages"`
 		OnlyReasoning   bool   `json:"onlyReasoning"`
-		Reasoning       struct {
+		// what a request costs of the plan's credits, as WorkBuddy's
+		// picker shows it: "x0.00" (free), "x0.03", "x1.00"
+		Credits   json.RawMessage `json:"credits"`
+		Reasoning struct {
 			SupportedEfforts   []string `json:"supportedEfforts"`
 			CanDisableThinking *bool    `json:"canDisableThinking"`
 		} `json:"reasoning"`
@@ -93,6 +97,7 @@ func (c wbProductConfig) cliModels() []catalog.Model {
 					m.Name = d.Name
 				}
 				m.Context, m.Output = d.MaxInputTokens, d.MaxOutputTokens
+				m.Free = wbFreeCredits(d.Credits)
 				if d.SupportsImages != nil {
 					m.Images, m.ImageInput = *d.SupportsImages, d.SupportsImages
 				}
@@ -110,6 +115,18 @@ func (c wbProductConfig) cliModels() []catalog.Model {
 		}
 	}
 	return wbDistinctNames(out)
+}
+
+// wbFreeCredits says whether a model's credits are none: "x0.00", "0" or 0.
+// A rate it can't read is not free.
+func wbFreeCredits(raw json.RawMessage) bool {
+	var s string
+	if json.Unmarshal(raw, &s) != nil {
+		s = string(raw)
+	}
+	s = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(s)), "x")
+	f, err := strconv.ParseFloat(s, 64)
+	return err == nil && f == 0
 }
 
 // wbDistinctNames tells apart models the config gives the same name:

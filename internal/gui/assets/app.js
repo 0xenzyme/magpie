@@ -1297,6 +1297,7 @@ function renderList() {
     // a choice of magpie's own (Codex's sign-in) reads in the page's language
     const own = pick.field.label === "sign-in";
     words.append(el("span", "v", own ? t(o.label || o.value) : o.label || o.value));
+    if (o.free) { const f = el("span", "badge free", t("free")); f.title = t("free: it doesn't use the plan's credits"); words.append(f); }
     let note = o.note && o.note !== (o.label || o.value) ? (own ? t(o.note) : o.note) : "";
     if (q && o.group && !note) note = o.group;
     if (note) words.append(el("span", "n", note));
@@ -3313,8 +3314,11 @@ function renderModels(p) {
       if (f && !m.id.toLowerCase().includes(f) && !(m.name || "").toLowerCase().includes(f) && !(m.default || "").toLowerCase().includes(f)) continue;
       const c = el("button", "mchip" + (on ? " on" : ""));
       c.append(el("span", "", m.name && m.name !== m.id ? m.name : m.id));
+      // one the plan serves at no cost to it (WorkBuddy's x0.00 credits)
+      if (m.free) c.append(el("span", "badge free", t("free")));
       if (m.default) c.title = `${m.id} · ${m.default}`;
       else if (m.name && m.name !== m.id) c.title = m.id;
+      if (m.free) c.title = (c.title || m.id) + " · " + t("free: it doesn't use the plan's credits");
       tested(c, m.id);
       c.onclick = () => { draft.chosen = on ? draft.chosen.filter((x) => x !== m.id) : [...draft.chosen, m.id]; draw(); };
       chips.append(c);

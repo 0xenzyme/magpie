@@ -404,6 +404,8 @@ type Entry struct {
 	Output int `json:"output,omitempty"`
 	// Family is the provider's or group's tag (see Visible).
 	Family string `json:"family,omitempty"`
+	// Free is set on a model its subscription serves at no cost to it.
+	Free bool `json:"free,omitempty"`
 }
 
 // Catalog lists the routing groups, then every exposed model of every ready
@@ -453,7 +455,7 @@ func providerEntries() []Entry {
 				images = *m.ImageInput
 			}
 			e := Entry{ID: p.ID + "/" + m.ID, Model: m.ID, Family: p.Family, Name: m.Name, Efforts: effortsOf(m), Provider: p,
-				Images: images, ImageInput: m.ImageInput, Context: ctx, Output: output}
+				Images: images, ImageInput: m.ImageInput, Context: ctx, Output: output, Free: m.Free}
 			if n, ok := modelNameIn(s.ModelNames, p.ID, m.ID); ok {
 				e.Name, e.Default = n, m.Name
 			}
