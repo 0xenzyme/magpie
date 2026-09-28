@@ -528,7 +528,7 @@ body.window .field.solo { grid-column: auto; }
 
 /* ---- the panel's tabs: agents, usage, profiles ---------------------------- */
 /* outside the scrolling page, so they stay put under the header */
-.ptabs { display: flex; flex: none; margin: 0 12px 10px; padding: 2px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.ptabs { display: flex; flex: none; gap: 2px; margin: 0 12px 10px; }
 .ptabs[hidden] { display: none; }
 .ptabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 3px; height: 26px; border-radius: 7px; font-size: 12px; color: var(--muted); transition: color .15s, background-color .15s; }
 .ptabs button:hover:not(.on) { color: var(--fg-2); }
