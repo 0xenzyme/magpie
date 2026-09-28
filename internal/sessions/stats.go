@@ -64,7 +64,8 @@ func statsAt(days int, now time.Time) Stats {
 	mu.Lock()
 	defer mu.Unlock()
 	loadCache()
-	files := append(claudeFiles(), codexFiles()...)
+	defer closeDBs()
+	files := allFiles()
 	var want []file
 	for _, f := range files {
 		if !f.mod.Before(since) {

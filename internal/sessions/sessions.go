@@ -1,5 +1,6 @@
 // Package sessions lists the agents' recent sessions from their own session
-// files — Claude Code's projects/*/<id>.jsonl, Codex's rollout files — with
+// files — Claude Code's projects/*/<id>.jsonl, Codex's rollout files,
+// OpenCode's database (or its older JSON files), Pi's session files — with
 // the tokens each spent, what that cost at list price, and the command that
 // resumes it. It only ever reads the agents' folders.
 //
@@ -62,7 +63,7 @@ type Model struct {
 
 // Session is one agent session.
 type Session struct {
-	Agent  string    `json:"agent"` // magpie agent id: claude, codex
+	Agent  string    `json:"agent"` // magpie agent id: claude, codex, opencode, pi
 	ID     string    `json:"id"`
 	Cwd    string    `json:"cwd"`
 	Title  string    `json:"title"` // the first prompt, else the agent's own title
@@ -107,6 +108,9 @@ type state struct {
 	// Codex: the model in use, and its running total (input with cache) last seen
 	Model string  `json:"model,omitempty"`
 	Total *Tokens `json:"total,omitempty"`
+	// Pi: in a forked session, the time it was forked; the lines before
+	// it are the copy of the session it was forked from
+	Since time.Time `json:"since,omitzero"`
 }
 
 // day is one local date's share of a file: tokens by model, and the time
@@ -221,9 +225,12 @@ type file struct {
 	agent string
 	key   string // agent:session id — a session may span files
 	path  string
-	main  bool // Claude Code: the session's own file, not a subagent's
+	main  bool // the session's own file, not a subagent's
 	size  int64
 	mod   time.Time
+	// OpenCode: the session, and where it is kept
+	sid string
+	oc  ocStore
 }
 
 // ClaudeDir is Claude Code's folder: $CLAUDE_CONFIG_DIR, else ~/.claude.
@@ -268,6 +275,27 @@ func claudeFiles() []file {
 		f := file{agent: "claude", key: "claude:" + filepath.Base(filepath.Dir(filepath.Dir(p))), path: p}
 		if stat(&f) {
 			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// allFiles are every agent's session files.
+func allFiles() []file {
+	var out []file
+	for _, fs := range [][]file{claudeFiles(), codexFiles(), openCodeFiles(), piFiles()} {
+		out = append(out, fs...)
+	}
+	return out
+}
+
+// Dirs are the folders the sessions are read from: Claude Code's and
+// Codex's, and OpenCode's and Pi's where they are on this computer.
+func Dirs() []string {
+	out := []string{ClaudeDir(), CodexDir()}
+	for _, d := range []string{OpenCodeDir(), PiDir()} {
+		if fi, err := os.Stat(d); err == nil && fi.IsDir() {
+			out = append(out, d)
 		}
 	}
 	return out
@@ -451,7 +479,8 @@ func List(limit int) []Session {
 	defer mu.Unlock()
 	loadCache()
 
-	files := append(claudeFiles(), codexFiles()...)
+	defer closeDBs()
+	files := allFiles()
 	groups := map[string][]file{}
 	latest := map[string]time.Time{}
 	for _, f := range files {
@@ -521,7 +550,7 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 			if first == "" {
 				first = st.First
 			}
-			if s.Agent == "codex" && st.ID != "" && f.path == fs[0].path {
+			if (s.Agent == "codex" || s.Agent == "pi") && st.ID != "" && f.path == fs[0].path {
 				s.ID = st.ID
 			}
 		}
@@ -575,6 +604,9 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 
 // parse reads a file on from where old left it, or from the start.
 func parse(f file, old *state) *state {
+	if f.agent == "opencode" {
+		return parseOpenCode(f)
+	}
 	var s *state
 	if old != nil && f.size >= old.Size && old.Off <= f.size {
 		s = old.clone()
@@ -583,8 +615,11 @@ func parse(f file, old *state) *state {
 	}
 	s.Size, s.Mod = f.size, f.mod.UnixNano()
 	line := claudeLine
-	if f.agent == "codex" {
+	switch f.agent {
+	case "codex":
 		line = codexLine
+	case "pi":
+		line = piParse
 	}
 	off, err := scan(f.path, s.Off, func(b []byte) { line(s, b, f.main) })
 	if err == nil {
@@ -747,6 +782,10 @@ func ResumeCommand(agent, id, cwd string) string {
 		run = "claude --resume " + id
 	case "codex":
 		run = "codex resume " + id
+	case "opencode":
+		run = "opencode --session " + id
+	case "pi":
+		run = "pi --session " + id
 	default:
 		return ""
 	}

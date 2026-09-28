@@ -42,7 +42,10 @@ func sessionRoutes(mux *http.ServeMux, w Windows) {
 			agents[a.ID] = a
 		}
 		out := sessionsJSON{Sessions: []sessionJSON{}, Terminal: runtime.GOOS == "darwin" && !isWeb(w),
-			Dirs: []string{tilde(sessions.ClaudeDir()), tilde(sessions.CodexDir())}}
+			Dirs: []string{}}
+		for _, d := range sessions.Dirs() {
+			out.Dirs = append(out.Dirs, tilde(d))
+		}
 		list := sessions.List(n)
 		since := time.Now()
 		for _, s := range list {

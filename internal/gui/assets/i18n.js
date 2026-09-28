@@ -603,7 +603,7 @@ const I18N = {
     "at list price": "按标价",
     "just now": "刚刚",
     "No session matches.": "没有匹配的会话。",
-    "No sessions yet. Claude Code's and Codex's sessions on this computer show up here, with what each cost and the command that resumes it.": "还没有会话。这台电脑上 Claude Code 和 Codex 的会话会显示在这里，附带各自的费用和继续会话的命令。",
+    "No sessions yet. Claude Code's, Codex's, OpenCode's and Pi's sessions on this computer show up here, with what each cost and the command that resumes it.": "还没有会话。这台电脑上 Claude Code、Codex、OpenCode 和 Pi 的会话会显示在这里，附带各自的费用和继续会话的命令。",
     "Reading the agents' session files…": "正在读取 Agent 的会话文件…",
     "Totals count every session in the agents' own files; the list is the latest {n} by activity · {dirs}": "合计统计 Agent 自己文件里的全部会话；列表为按最近活动取的 {n} 个 · {dirs}",
     "90 days": "90 天",

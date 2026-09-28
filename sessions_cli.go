@@ -203,8 +203,8 @@ func sessionList(w io.Writer, o sessionsOpts, all []sessions.Session, now time.T
 	}
 	if len(out) == 0 {
 		if len(all) == 0 {
-			fmt.Fprintln(w, muted.Render("no sessions yet ·"), "Claude Code's and Codex's sessions on this computer show up here")
-			fmt.Fprintln(w, faint.Render("  "+tildePath(sessions.ClaudeDir())+" · "+tildePath(sessions.CodexDir())))
+			fmt.Fprintln(w, muted.Render("no sessions yet ·"), "Claude Code's, Codex's, OpenCode's and Pi's sessions on this computer show up here")
+			fmt.Fprintln(w, faint.Render("  "+dirList(" · ")))
 		} else {
 			fmt.Fprintln(w, muted.Render("no session matches"))
 		}
@@ -344,8 +344,18 @@ func sessionStats(w io.Writer, o sessionsOpts, st sessions.Stats, now time.Time)
 			return tildePath(s)
 		})
 	}
-	fmt.Fprintln(w, faint.Render("  every session in "+tildePath(sessions.ClaudeDir())+" and "+tildePath(sessions.CodexDir())))
+	fmt.Fprintln(w, faint.Render("  every session in "+dirList(", ")))
 	return nil
+}
+
+// dirList is the folders the sessions are read from, as the user would
+// type them.
+func dirList(sep string) string {
+	var out []string
+	for _, d := range sessions.Dirs() {
+		out = append(out, tildePath(d))
+	}
+	return strings.Join(out, sep)
 }
 
 func rangeName(days int) string {

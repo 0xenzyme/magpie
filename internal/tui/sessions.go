@@ -1,6 +1,7 @@
 package tui
 
-// The sessions page: what Claude Code's and Codex's sessions spent, day by
+// The sessions page: what the agents' sessions (Claude Code's, Codex's,
+// OpenCode's, Pi's) spent, day by
 // day, as the app's Sessions view shows it — a range, a model and a folder
 // to narrow it to, the totals and a chart of the days.
 
@@ -137,7 +138,7 @@ func sessLines(st sessions.Stats, rng int, model, folder string, byCost bool, wi
 		if model != "" || folder != "" {
 			add(sMuted.Render("no session matches · x clears the filters"))
 		} else {
-			add(sMuted.Render("nothing in this range · Claude Code's and Codex's sessions on this computer show up here"))
+			add(sMuted.Render("nothing in this range · Claude Code's, Codex's, OpenCode's and Pi's sessions on this computer show up here"))
 		}
 		return out
 	}

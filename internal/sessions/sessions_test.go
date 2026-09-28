@@ -42,6 +42,11 @@ func setup(t *testing.T) (claude, codex string) {
 	t.Setenv("CLAUDE_CONFIG_DIR", claude)
 	t.Setenv("CODEX_HOME", codex)
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
+	// OpenCode and Pi keep nothing here unless a test puts it there
+	t.Setenv("XDG_DATA_HOME", filepath.Join(dir, "data"))
+	t.Setenv("PI_CODING_AGENT_DIR", filepath.Join(dir, "pi"))
+	t.Setenv("OPENCODE_DB", "")
+	t.Setenv("PI_CODING_AGENT_SESSION_DIR", "")
 	PriceOf = func(m string) (catalog.Price, bool) {
 		switch m {
 		case "claude-opus-5-5":
@@ -208,7 +213,7 @@ func TestResumeCommand(t *testing.T) {
 	if got := ResumeCommand("codex", "abc", ""); got != "codex resume abc" {
 		t.Fatalf("no folder: %q", got)
 	}
-	if ResumeCommand("pi", "abc", "/tmp") != "" {
+	if ResumeCommand("goose", "abc", "/tmp") != "" {
 		t.Fatal("unknown agent")
 	}
 }

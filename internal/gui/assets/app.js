@@ -4914,7 +4914,7 @@ function renderSessions() {
   if (!used.length && !list.length) {
     stats.classList.add("empty");
     const filtered = sessAgent !== "all" || sessModel || sessFolder || q;
-    stats.append(el("div", "none", !all.length && !rows.length ? t("No sessions yet. Claude Code's and Codex's sessions on this computer show up here, with what each cost and the command that resumes it.") : filtered ? t("No session matches.") : t("Nothing in this range.")));
+    stats.append(el("div", "none", !all.length && !rows.length ? t("No sessions yet. Claude Code's, Codex's, OpenCode's and Pi's sessions on this computer show up here, with what each cost and the command that resumes it.") : filtered ? t("No session matches.") : t("Nothing in this range.")));
     box.hidden = true;
     chart.hidden = true;
   } else {
