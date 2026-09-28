@@ -9,6 +9,7 @@
 // internal/gui/assets/index.html.
 //
 //	go run build/icon/gen.go tray internal/gui/tray.png     # 44px black template icon (macOS menu bar)
+//	go run build/icon/gen.go tray-flap internal/gui/trayflap # its frames when clicked (a size after the folder for a bigger look)
 //	go run build/icon/gen.go app 64 internal/gui/icon.png   # app icon at a given size
 //	make icons                                              # regenerates all of them plus magpie.icns
 package main
@@ -38,6 +39,19 @@ func main() {
 	switch {
 	case len(os.Args) == 3 && os.Args[1] == "tray":
 		img = tray()
+	case len(os.Args) == 3 && os.Args[1] == "tray-flap":
+		if err := trayFlap(os.Args[2], 44); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	case len(os.Args) == 4 && os.Args[1] == "tray-flap":
+		n, _ := strconv.Atoi(os.Args[3])
+		if err := trayFlap(os.Args[2], n); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
 	case len(os.Args) == 4 && os.Args[1] == "glyph":
 		n, _ := strconv.Atoi(os.Args[2])
 		img = glyph(n)
@@ -69,6 +83,86 @@ func tray() image.Image {
 		img.SetNRGBA(i%S, i/S, color.NRGBA{0, 0, 0, uint8(a*255 + 0.5)})
 	}
 	return img
+}
+
+// flapFrames is how many pictures one flap of the tray bird is drawn in.
+const flapFrames = 16
+
+// trayFlap writes the frames the tray icon plays when it is clicked,
+// flap-01.png to flap-16.png: the wing beats twice and the tail flicks up
+// once, both easing out of and back into the still bird. The drawing is
+// bent, not cut: every point of the outline near the tail turns about the
+// tail's root, and every point near the wing about the shoulder, by less
+// the nearer it is to the pivot, so the outline stays whole.
+func trayFlap(dir string, S int) error {
+	base := parse(smallSVG)
+	for f := 1; f <= flapFrames; f++ {
+		t := float64(f) / (flapFrames + 1)
+		env := math.Sin(math.Pi * t) // 0 at both ends
+		tail := 14 * env * math.Sin(math.Pi*t)
+		wing := 8 * env * math.Sin(4*math.Pi*t)
+		if wing < 0 {
+			wing /= 2 // a beat is mostly up; down only a little, into the belly
+		}
+		rings := make([][][2]float64, len(base))
+		for i, r := range base {
+			rings[i] = make([][2]float64, len(r))
+			for j, p := range r {
+				// Tail and wing meet in a notch of the outline (ring 0): above
+				// it the outline bends with the tail, below it with the wing,
+				// eased across it so it stays one line. The holes, the
+				// shoulder and the belly, move only where they meet the wing.
+				up, down := 0.0, smooth((p[1]-25)/3)
+				if i == 0 {
+					up = 1 - smooth((p[1]-24)/2.5)
+				}
+				p = bend(p, [2]float64{12, 24}, [2]float64{2, 6}, 5, tail*up)
+				p = bend(p, [2]float64{29, 19.5}, [2]float64{8, 30}, 3.5, wing*down)
+				rings[i][j] = p
+			}
+		}
+		k := float64(S) / 44
+		cov := coverage(rings, S, 8, k, 0, 0)
+		img := image.NewNRGBA(image.Rect(0, 0, S, S))
+		for i, a := range cov {
+			img.SetNRGBA(i%S, i/S, color.NRGBA{0, 0, 0, uint8(a*255 + 0.5)})
+		}
+		out, err := os.Create(fmt.Sprintf("%s/flap-%02d.png", dir, f))
+		if err != nil {
+			return err
+		}
+		err = png.Encode(out, img)
+		out.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// bend turns p about pivot by deg degrees (clockwise on screen, which
+// raises what points left), by all of it at tip's end of the axis from pivot
+// to tip and by none at the pivot or behind it, fading too with p's distance
+// from that axis past width.
+func bend(p, pivot, tip [2]float64, width, deg float64) [2]float64 {
+	ax, ay := tip[0]-pivot[0], tip[1]-pivot[1]
+	l := math.Hypot(ax, ay)
+	dx, dy := p[0]-pivot[0], p[1]-pivot[1]
+	along := (dx*ax + dy*ay) / (l * l)
+	across := math.Abs(dx*ay-dy*ax) / l
+	w := smooth(along/0.45) * (1 - smooth((across-width)/width))
+	if w <= 0 {
+		return p
+	}
+	a := deg * w * math.Pi / 180
+	s, c := math.Sin(a), math.Cos(a)
+	return [2]float64{pivot[0] + dx*c - dy*s, pivot[1] + dx*s + dy*c}
+}
+
+// smooth eases 0..1 (clamped) in and out.
+func smooth(x float64) float64 {
+	x = math.Max(0, math.Min(1, x))
+	return x * x * (3 - 2*x)
 }
 
 // glyph is the bird alone, black on clear, as big on an n-pixel canvas as
