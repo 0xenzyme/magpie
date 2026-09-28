@@ -2248,7 +2248,7 @@
     const d = el("p", "mk-desc", about(x));
     d.title = about(x);
     const foot = el("div", "mk-foot");
-    foot.append(el("span", "mk-id mono", x.name), el("span", "grow"), needsKey(x) && !x.have ? button(t("Add…"), "action mk-add", () => serverSheet(x)) : addButton(x, () => addServer(x, {}, null)));
+    foot.append(el("span", "mk-id mono", x.name), el("span", "grow"), (needsKey(x) || x.optIn) && !x.have ? button(t("Add…"), "action mk-add", () => serverSheet(x)) : addButton(x, () => addServer(x, {}, null)));
     c.append(top, d, foot);
     c.onclick = () => serverSheet(x);
     c.title = t("About {name}", { name: x.title || x.name });
@@ -2266,7 +2266,9 @@
   // A market server up close: what it is, what it needs, and who gets it.
   function serverSheet(x) {
     const all = mcpAgents();
-    let agents = all.filter(reaches(x)).map((a) => a.id);
+    // an opt-in one (magpie's image generation costs what its model does)
+    // goes only to the agents picked for it
+    let agents = x.optIn ? [] : all.filter(reaches(x)).map((a) => a.id);
     const values = {};
     const ed = el("div", "editor lib-editor mk-sheet");
     const head = el("div", "mk-sheethead");
@@ -2281,6 +2283,7 @@
     ed.append(head);
     if (x.description) ed.append(el("p", "mk-about", about(x)));
     if (x.signIn) ed.append(el("p", "mk-hint", t("Each agent asks you to sign in, in the browser, the first time it uses it.")));
+    if (x.optIn) ed.append(el("p", "mk-hint", t("Pick the agents that may generate images: each image costs what the model set in Settings → Images charges.")));
     const firsts = [];
     for (const i of x.inputs || []) {
       const f = field2("", i.placeholder || (i.where === "env" ? i.key : ""), (v) => { values[i.key] = v.trim(); });

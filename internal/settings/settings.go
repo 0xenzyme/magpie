@@ -70,6 +70,10 @@ type Settings struct {
 	// it: a model's id (provider/model, group/<id>), "off" to turn such an
 	// image away, or empty for one magpie picks (see gateway.seer).
 	Vision string `json:"vision,omitempty"`
+	// ImageGen is the model magpie's generate_image tool draws with (the
+	// gateway's /v1/images/generations when a request names no model): a
+	// model's id, "off", or empty for one magpie picks (gateway.drawer).
+	ImageGen string `json:"imageGen,omitempty"`
 	// TrayUsage is the subscription or plan whose windows are shown beside
 	// the tray icon, by its provider and account ("claude|a@b.c"); "" none.
 	TrayUsage string `json:"trayUsage,omitempty"`
@@ -210,6 +214,10 @@ func Save(s Settings) error {
 	s.Vision = strings.TrimSpace(s.Vision)
 	if s.Vision != "" && s.Vision != "off" && !strings.Contains(s.Vision, "/") {
 		return fmt.Errorf("the vision model must be a model's id such as openai/gpt-5-mini, or off, not %q", s.Vision)
+	}
+	s.ImageGen = strings.TrimSpace(s.ImageGen)
+	if s.ImageGen != "" && s.ImageGen != "off" && !strings.Contains(s.ImageGen, "/") {
+		return fmt.Errorf("the image generation model must be a model's id such as openai/gpt-image-1, or off, not %q", s.ImageGen)
 	}
 	s.AgentOrder, s.AgentsHidden, s.AgentsShown = ids(s.AgentOrder), ids(s.AgentsHidden), ids(s.AgentsShown)
 	if err := os.MkdirAll(Dir(), 0o755); err != nil {

@@ -5807,6 +5807,42 @@ function renderImages(s, keep) {
   val.append(b);
   r.append(who, val);
   box.append(r);
+  renderImageGen(s, keep, box);
+}
+
+// renderImageGen: the model magpie's generate_image tool draws with — the
+// one magpie picks, one named, or none — and where agents are given the tool.
+function renderImageGen(s, keep, box) {
+  const models = s.imageGenModels || [];
+  const named = (id) => {
+    const m = models.find((x) => x.id === id);
+    return m ? `${m.name || m.id} · ${m.providerName}` : id;
+  };
+  const icOf = (id) => models.find((x) => x.id === id)?.icon;
+  const v = s.imageGen || "";
+  const r = el("div", "row pref");
+  const who = el("div", "who");
+  const sub = el("div", "sub",
+    v === "off" ? t("Agents given Magpie Image can't generate images: the tool says it is off")
+    : t("The model Magpie Image draws with. Give an agent the tool from Library → MCP servers → Discover → Magpie Image; images are saved in its project"));
+  who.append(el("div", "name", t("Image generation")), sub);
+  const b = el("button", "rt-cond on");
+  if (v === "off") b.append(el("span", "", t("Off")));
+  else if (v) b.append(icon(icOf(v) || "generic"), el("span", "", named(v)));
+  else {
+    if (s.imageGenAuto) b.append(icon(icOf(s.imageGenAuto) || "generic"));
+    b.append(el("span", "", s.imageGenAuto ? t("Automatic") + " · " + named(s.imageGenAuto) : t("Automatic") + " · " + t("no model that draws")));
+  }
+  const opt = (x) => ({ value: x.id, label: x.name || x.id, note: x.providerName, icon: x.icon, group: x.providerName, ref: x.id });
+  b.onclick = (ev) => openPicker({ id: "", name: "", fields: [] }, { key: "imageGen", label: "model", value: v, options: [
+    { value: "", label: t("Automatic"), note: s.imageGenAuto ? named(s.imageGenAuto) : t("no model that draws"), reset: true },
+    { value: "off", label: t("Off"), note: t("no images generated") },
+    ...models.map(opt)],
+  onPick: (id) => { if (id !== v) savePrefs({ ...keep, imageGen: id }); } }, b, ev);
+  const val = el("div", "val");
+  val.append(b);
+  r.append(who, val);
+  box.append(r);
 }
 
 // renderRedact: what the gateway masks before a request goes to a vendor —
@@ -5935,7 +5971,7 @@ function prefsKeep(s) {
   return { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, proxy: s.proxy || "",
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", noStats: !!s.noStats,
-    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, vision: s.vision || "" };
+    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, vision: s.vision || "", imageGen: s.imageGen || "" };
 }
 
 // savePrefs sends what the page was drawn with (prefsBase) and the choice

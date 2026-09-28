@@ -124,6 +124,10 @@ type settingsJSON struct {
 	// that can be named
 	VisionAuto   string     `json:"visionAuto,omitempty"`
 	VisionModels []modelRef `json:"visionModels"`
+	// the model magpie's generate_image tool draws with when ImageGen
+	// names none, and those that can be named
+	ImageGenAuto   string     `json:"imageGenAuto,omitempty"`
+	ImageGenModels []modelRef `json:"imageGenModels"`
 	// where other machines reach the gateway while it is shared
 	LANURLs []string `json:"lanURLs,omitempty"`
 	// when the Codex warm-up last started an account's window
@@ -148,6 +152,19 @@ func settingsState() settingsJSON {
 				m.Provider, m.PName = "", e.Group
 			}
 			s.VisionModels = append(s.VisionModels, m)
+		}
+	}
+	s.ImageGenAuto, s.ImageGenModels = gateway.AutoDrawer(), []modelRef{}
+	for _, p := range provider.All() {
+		if !p.Ready() || p.Decides() {
+			continue
+		}
+		for _, m := range gateway.Drawers(p) {
+			name := m.Name
+			if name == "" {
+				name = m.ID
+			}
+			s.ImageGenModels = append(s.ImageGenModels, modelRef{ID: p.ID + "/" + m.ID, Name: name, Provider: p.ID, PName: p.Name, Icon: p.Icon})
 		}
 	}
 	return s
@@ -352,6 +369,12 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		if v := strings.TrimSpace(in.Vision); v != "" && v != "off" && v != cur.Vision {
 			if _, _, ok := provider.Resolve(v); !ok {
 				fail(rw, fmt.Errorf("no model %s to describe images", v))
+				return
+			}
+		}
+		if v := strings.TrimSpace(in.ImageGen); v != "" && v != "off" && v != cur.ImageGen {
+			if _, _, ok := provider.Resolve(v); !ok {
+				fail(rw, fmt.Errorf("no model %s to generate images", v))
 				return
 			}
 		}
