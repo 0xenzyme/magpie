@@ -222,6 +222,42 @@ function renderAgents() {
       fields.append(b);
     }
     if (extras.childNodes.length) fields.append(extras);
+    // the panel shows what's set as words, and a row's controls only
+    // once it's opened: one row at a time, in place
+    let sum = null;
+    if (mode === "panel" && fields.childNodes.length) {
+      sum = el("button", "ag-sum");
+      sum.type = "button";
+      const main = sorted.find((f) => !extra(f) && !f.menu);
+      const effortOf = (f) => f.key === "effort" || f.label === "effort" || f.label === "thinking";
+      if (main && !effortOf(main)) {
+        const opt = optionFor(main, main.value);
+        sum.append(el("span", "v" + (main.value ? "" : " empty"), opt?.label || main.value || t("default")));
+      }
+      const ef = a.fields.find(effortOf);
+      if (ef) {
+        const e = effortIcon(ef);
+        e.title = t("{label}: {value}", { label: t(ef.label), value: effortName(optionFor(ef, ef.value) || { value: ef.value }) });
+        sum.append(e);
+      }
+      const c = el("span", "chev");
+      c.append(svg(CHEV, 11, 1.7));
+      sum.append(c);
+      sum.setAttribute("aria-expanded", String(panelOpenAgent === a.id));
+      row.classList.toggle("open", panelOpenAgent === a.id);
+      row.onclick = (ev) => {
+        if (ev.target.closest(".fields, .ag-handle, .ag-fix, .ag-show")) return;
+        const open = panelOpenAgent !== a.id;
+        panelOpenAgent = open ? a.id : null;
+        for (const r of $("#agents").querySelectorAll(".row.agent.open")) {
+          r.classList.remove("open");
+          r.querySelector(".ag-sum")?.setAttribute("aria-expanded", "false");
+        }
+        row.classList.toggle("open", open);
+        sum.setAttribute("aria-expanded", String(open));
+        fit();
+      };
+    }
     // one hidden by hand gives its way back in words, rather than being a
     // greyed row whose way back is its menu. One nothing is set on isn't
     // hidden: setting something on it brings it up the list.
@@ -240,7 +276,9 @@ function renderAgents() {
       row.classList.add("drifted");
       who.append(driftFix(a));
     }
-    row.append(agentHandle(a, row, inFold), who, fields);
+    row.append(agentHandle(a, row, inFold), who);
+    if (sum) row.append(sum);
+    row.append(fields);
     return row;
   };
   // the extras column is there for every row once any agent has one, so the
@@ -391,6 +429,7 @@ async function reapplyAgent(a, btn) {
 // installed since — follows the ordered ones, in magpie's own order.
 
 let agentsGlide = null; // how the panel's edge moves after the next render
+let panelOpenAgent = null; // the one agent row the panel has opened
 
 const agentUsed = (a) => a.fields.some((f) => f.value);
 const isHidden = (a) => (state.settings?.agentsHidden || []).includes(a.id);
@@ -700,7 +739,7 @@ if (mode === "panel") {
 // glide moves the panel's edge there over time instead of at once.
 function fit(extra = 0, glide) {
   if (mode !== "panel") return;
-  const h = $(".top").offsetHeight + $("#agents").offsetHeight + $(".profiles").offsetHeight + $("#panelQuota").offsetHeight + $(".foot").offsetHeight + 4 + extra;
+  const h = $(".top").offsetHeight + $("#ptabs").offsetHeight + $("#agents").offsetHeight + $(".profiles").offsetHeight + $("#panelQuota").offsetHeight + $(".foot").offsetHeight + 4 + extra;
   if (h === fit.last) return;
   fit.last = h;
   const still = !glide || matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -3962,90 +4001,129 @@ function planSpan(q) {
   return s;
 }
 
-// The tray panel keeps every subscription's allowance in sight, a line per
-// account under the agents: its two rolling windows, or its balance, the
-// rest on the Usage page. Its heading folds it away, remembered.
-let panelQuotaOpen = true;
-try { panelQuotaOpen = localStorage.getItem("magpie.panelQuota") !== "0"; } catch {}
+// The tray panel is three tabs over the one page: the agents, the usage of
+// every subscription and key, and the saved profiles. The tab is remembered.
+let panelTab = "agents";
+try { panelTab = localStorage.getItem("magpie.panelTab") || "agents"; } catch {}
+function setPanelTab(tab) {
+  const tabs = $("#ptabs");
+  // no usage to show, no tab for it
+  if (tabs.querySelector(`[data-ptab="${tab}"]`)?.hidden) tab = "agents";
+  panelTab = tab;
+  try { localStorage.setItem("magpie.panelTab", tab); } catch {}
+  document.body.dataset.ptab = tab;
+  for (const b of tabs.children) {
+    b.classList.toggle("on", b.dataset.ptab === tab);
+    b.setAttribute("aria-selected", String(b.dataset.ptab === tab));
+  }
+  fit();
+}
+if (mode === "panel") {
+  const tabs = $("#ptabs");
+  tabs.hidden = false;
+  tabs.setAttribute("role", "tablist");
+  for (const b of tabs.children) {
+    b.setAttribute("role", "tab");
+    b.onclick = () => setPanelTab(b.dataset.ptab);
+  }
+  setPanelTab(panelTab);
+}
+
+// The Usage tab: accounts under their vendor, each window a ring with its
+// share in it, when the plan ends and the windows start again under the
+// account; balances last, as figures.
 function renderPanelQuota() {
   const box = $("#panelQuota");
   if (mode !== "panel" || !box) return;
   const subs = (quotas || []).filter((q) => q.balance || q.error || q.windows?.length);
-  box.hidden = !!quotas && !subs.length;
+  const none = !!quotas && !subs.length;
+  $('#ptabs [data-ptab="usage"]').hidden = none;
+  if (none && panelTab === "usage") setPanelTab("agents");
+  box.hidden = none;
   box.replaceChildren();
-  if (box.hidden) { fit(); return; }
-  const head = el("button", "pq-head" + (panelQuotaOpen ? " open" : ""));
-  head.type = "button";
-  head.setAttribute("aria-expanded", String(panelQuotaOpen));
-  const c = el("span", "chev");
-  c.append(svg(CHEV, 11, 1.7));
-  head.append(el("span", "label", t("Usage")), c);
-  head.title = t(panelQuotaOpen ? "Hide usage" : "Show usage");
-  head.onclick = () => {
-    panelQuotaOpen = !panelQuotaOpen;
-    try { localStorage.setItem("magpie.panelQuota", panelQuotaOpen ? "1" : "0"); } catch {}
-    renderPanelQuota();
-  };
-  box.append(head);
-  if (panelQuotaOpen) {
-    const list = el("div", "pq-list");
-    if (!quotas) {
-      const row = el("div", "pq-row");
-      row.append(el("span", "skeleton sk-aq"), el("span", "skeleton sk-aq"));
-      list.append(row);
+  if (none) { fit(); return; }
+  if (!quotas) {
+    for (let i = 0; i < 2; i++) {
+      const card = el("div", "pq-card");
+      card.append(el("span", "skeleton sk-aq"), el("span", "skeleton sk-ring"));
+      box.append(card);
     }
-    for (const q of subs) list.append(panelQuotaRow(q));
-    box.append(list);
+    fit();
+    return;
+  }
+  const groups = new Map();
+  const bals = [];
+  for (const q of subs) {
+    if (q.balance) { bals.push(q); continue; }
+    if (!groups.has(q.name)) groups.set(q.name, []);
+    groups.get(q.name).push(q);
+  }
+  for (const [name, qs] of groups) {
+    const g = el("div", "pq-group");
+    const head = el("div", "pq-gh");
+    head.append(icon(qs[0].icon), el("span", "pq-gn", name));
+    if (qs.length > 1) head.append(el("span", "pq-gc", String(qs.length)));
+    g.append(head);
+    for (const q of qs) g.append(panelQuotaCard(q));
+    box.append(g);
+  }
+  if (bals.length) {
+    const g = el("div", "pq-group");
+    g.append(el("div", "pq-gh", t("Balance")));
+    const grid = el("div", "pq-bals");
+    for (const q of bals) {
+      const card = el("div", "pq-card bal");
+      const who = el("span", "pq-who");
+      const name = el("span", "pq-bn");
+      name.append(icon(q.icon), el("span", "", q.name));
+      who.append(name);
+      if (q.user && q.user !== q.name) who.append(el("span", "pq-sub", q.user));
+      card.title = [q.name, q.user].filter(Boolean).join(" · ");
+      card.append(who, el("b", "pq-amt", q.balance));
+      grid.append(card);
+    }
+    g.append(grid);
+    box.append(g);
   }
   fit();
 }
 
-// Every row is the same height: the account over one quiet line (when the
-// plan ends, when the fullest window starts again, or what went wrong), and
-// in two columns shared down the list each window's name and share over its
-// bar. One window takes the last column, a balance the two, right-aligned;
-// the times are in the tooltips and on the Usage page.
-function panelQuotaRow(q) {
-  const row = el("div", "pq-row");
+function panelQuotaCard(q) {
+  const card = el("div", "pq-card");
   const who = el("span", "pq-who");
   who.append(el("span", "pq-user", q.user || q.name));
-  row.title = [q.name, q.user, q.plan, planTerm(q)].filter(Boolean).join(" · ");
-  row.append(icon(q.icon), who);
+  card.title = [q.name, q.user, q.plan, planTerm(q)].filter(Boolean).join(" · ");
   const sub = [];
+  if (q.plan) sub.push(q.plan);
   if (q.until) sub.push(planTerm(q));
-  if (q.balance) {
-    const c = el("span", "pq-w bal");
-    const line = el("span", "pq-line");
-    line.append(el("span", "pq-n", t("Balance")), el("b", "", q.balance));
-    c.append(line);
-    row.append(c);
-  } else if (q.error) {
+  card.append(who);
+  if (q.error) {
+    card.classList.add("err");
     who.append(el("span", "pq-sub err", quotaError(q.error)));
-    row.title += "\n" + q.error;
-  } else {
-    const ws = q.windows.slice(0, 2);
-    // the window that runs out first says when it comes back
-    const tight = ws.filter((w) => w.used > 0 && w.resetsAt).sort((x, y) => y.used - x.used)[0];
-    if (tight) sub.push("↻ " + resetClock(new Date(tight.resetsAt)));
-    for (const w of ws) {
-      const used = Math.max(0, Math.min(100, w.used));
-      const m = el("span", "pq-w" + (used >= 90 ? " full" : "") + (ws.length === 1 ? " last" : ""));
-      const line = el("span", "pq-line");
-      line.append(el("span", "pq-n", t(w.name)), el("b", "", quotaFill(w) + "%"));
-      const track = el("span", "pq-track");
-      const fill = el("i");
-      fill.style.width = quotaFill(w) + "%";
-      track.append(fill);
-      m.append(line, track);
-      m.title = t(w.name) + " · " + quotaText(w) + (w.resetsAt ? "\n" + t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() }) + " · " + untilText(new Date(w.resetsAt)) : "")
-        + "\n" + t(quotaLeft ? "Show how much of each window is used" : "Show how much of each window is left");
-      // used or left turns here too, as on the Usage page (#124)
-      m.onclick = () => setQuotaLeft(!quotaLeft);
-      row.append(m);
-    }
+    card.title += "\n" + q.error;
+    if (sub.length) who.append(el("span", "pq-sub", sub.join(" · ")));
+    return card;
   }
-  if (sub.length && !q.error) who.append(el("span", "pq-sub" + (q.renew === "off" ? " ends" : ""), sub.join(" · ")));
-  return row;
+  const ws = q.windows.slice(0, 3);
+  // when each window starts again, the ones that have begun
+  const resets = ws.filter((w) => w.resetsAt && w.used > 0).map((w) => (ws.length > 1 ? t(w.name) + " " : "") + "↻ " + resetClock(new Date(w.resetsAt)));
+  if (sub.length || resets.length) who.append(el("span", "pq-sub" + (q.renew === "off" ? " ends" : ""), [...sub, ...resets].join(" · ")));
+  const rings = el("span", "pq-rings");
+  for (const w of ws) {
+    const used = Math.max(0, Math.min(100, w.used));
+    const r = el("span", "pq-ring" + (used >= 90 ? " full" : ""));
+    const dial = el("span", "pq-dial");
+    dial.style.setProperty("--p", quotaFill(w));
+    dial.append(el("b", "", quotaFill(w) + "%"));
+    r.append(dial, el("span", "pq-rn", t(w.name)));
+    r.title = t(w.name) + " · " + quotaText(w) + (w.resetsAt ? "\n" + t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() }) + " · " + untilText(new Date(w.resetsAt)) : "")
+      + "\n" + t(quotaLeft ? "Show how much of each window is used" : "Show how much of each window is left");
+    // used or left turns here too, as on the Usage page (#124)
+    r.onclick = () => setQuotaLeft(!quotaLeft);
+    rings.append(r);
+  }
+  card.append(rings);
+  return card;
 }
 
 // quotaFit puts every window's count under its name once one's doesn't fit

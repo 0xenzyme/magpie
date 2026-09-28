@@ -526,36 +526,67 @@ body.window .field.solo { grid-column: auto; }
   .sess-detail { padding-left: 12px; }
 }
 
-/* ---- the panel's usage, a line per account ------------------------------- */
-.panel-quota { flex: none; padding: 6px 4px 2px; }
-.pq-head { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; background: none; border: 0; color: var(--muted); cursor: default; }
-.pq-head .chev { display: inline-flex; transform: rotate(-90deg); transition: transform .2s; }
-.pq-head.open .chev { transform: none; }
-/* one grid down the list, so every account's windows sit in the same two
-   columns, bars and counts lined up whatever the names */
-/* one grid down the list, every row the same height, so every account's
-   windows sit in the same two columns, bars and counts lined up */
-.pq-list { display: grid; grid-template-columns: 16px minmax(0, 1fr) 88px 88px; column-gap: 12px; padding-top: 4px; }
-.pq-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; height: 34px; font-size: 12px; }
-.pq-row + .pq-row { border-top: 1px solid var(--line); }
-.pq-row .ic { flex: none; }
-.pq-who { grid-column: 2; display: flex; flex-direction: column; gap: 1px; min-width: 0; line-height: 1.25; color: var(--fg-2); }
+/* ---- the panel's tabs: agents, usage, profiles ---------------------------- */
+.ptabs { display: flex; flex: none; gap: 2px; margin: 0 0 8px; padding: 2px; border-radius: 9px; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.ptabs[hidden] { display: none; }
+.ptabs button { flex: 1; height: 24px; border-radius: 7px; font-size: 12px; color: var(--muted); transition: color .15s, background-color .15s; }
+.ptabs button:hover:not(.on) { color: var(--fg-2); }
+.ptabs button.on { color: var(--fg); font-weight: 550; background: var(--card); box-shadow: var(--card-edge); }
+.ptabs button[hidden] { display: none; }
+body.panel[data-ptab="usage"] :is(#agents, .profiles),
+body.panel[data-ptab="profiles"] :is(#agents, #panelQuota),
+body.panel[data-ptab="agents"] :is(.profiles, #panelQuota) { display: none; }
+
+/* ---- the panel's agents: what's set in words, controls once opened ------- */
+body.panel .row.agent { flex-wrap: wrap; row-gap: 7px; cursor: default; }
+body.panel .row.agent .fields { display: none; }
+body.panel .row.agent.open { background: var(--card-2); }
+body.panel .row.agent.open .fields, body.panel #agents.extras .row.agent.open .fields { display: grid; order: 3; flex: 0 0 100%; width: 100%; padding: 0 0 3px 27px; }
+body.panel .row.agent.open .field.main, body.panel .row.agent.open .field.solo { justify-self: stretch; }
+.ag-sum { display: flex; align-items: center; gap: 7px; min-width: 0; max-width: 62%; margin-left: auto; height: 24px; padding: 0 2px 0 6px; border-radius: 6px; font-size: 12px; color: var(--muted); }
+.ag-sum .v { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-sum .v.empty { color: var(--faint); }
+.ag-sum .effort-ic { flex: none; width: 13px; height: 13px; color: var(--fg-2); }
+.ag-sum .chev { flex: none; display: inline-flex; color: var(--faint); transform: rotate(-90deg); transition: transform .2s var(--ease); }
+.row.agent:hover .ag-sum, .row.agent.open .ag-sum { color: var(--fg-2); }
+.row.agent.open .ag-sum .chev { transform: none; }
+body.panel .row.agent .ag-fix { top: 21px; }
+
+/* ---- the panel's profiles tab ---------------------------------------------- */
+body.panel .profiles { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 0 2px; }
+body.panel .profiles > .label { display: none; }
+body.panel .profiles .chips { flex: none; flex-wrap: wrap; }
+body.panel .profiles .chips .hint { white-space: normal; line-height: 1.4; padding: 0 4px; color: var(--muted); }
+body.panel .profiles .chips:has(.chip-input) .hint { display: none; }
+body.panel .profiles #save { margin: 0; align-self: flex-start; }
+
+/* ---- the panel's usage tab: accounts under their vendor, windows as rings -- */
+.panel-quota { flex: none; display: flex; flex-direction: column; gap: 12px; padding: 0 0 4px; }
+.pq-group { display: flex; flex-direction: column; gap: 6px; }
+.pq-gh { display: flex; align-items: center; gap: 6px; padding: 0 2px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--faint); }
+.pq-gh .ic { width: 13px; height: 13px; }
+.pq-gc { font-weight: 500; letter-spacing: 0; }
+.pq-card { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 12px; border-radius: 10px; background: var(--card); box-shadow: var(--card-edge); }
+.pq-who { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .pq-who > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pq-sub { font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; }
-.pq-sub.ends, .pq-sub.err { color: var(--muted); }
-.pq-w { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 10.5px; color: var(--muted); cursor: pointer; }
-.pq-w.last { grid-column: 4; }
-.pq-w.bal { grid-column: 3 / 5; }
-.pq-w.bal .pq-line { justify-content: flex-end; gap: 6px; }
-.pq-line { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; white-space: nowrap; min-width: 0; line-height: 1.2; }
-.pq-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.pq-track { display: block; height: 3px; border-radius: 2px; background: var(--pill); overflow: hidden; }
-.pq-track i { display: block; height: 100%; border-radius: inherit; background: var(--fg-2); }
-.pq-w b { flex: none; color: var(--fg-2); font-weight: 600; font-variant-numeric: tabular-nums; }
-.pq-w.full b { color: var(--fg); }
-.pq-w.full .pq-track i { background: var(--fg); }
-.pq-row .skeleton.sk-aq { grid-column: 2; width: 110px; height: 8px; border-radius: 4px; }
-.pq-row .skeleton.sk-aq + .sk-aq { grid-column: 3 / 5; width: 100%; }
+.pq-user { font-size: 12.5px; color: var(--fg); }
+.pq-sub { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.pq-sub.ends { color: var(--muted); }
+.pq-sub.err { color: var(--muted); white-space: normal !important; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.pq-rings { flex: none; display: flex; gap: 10px; }
+.pq-ring { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 44px; cursor: pointer; }
+.pq-dial { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--fg-2) calc(var(--p) * 1%), color-mix(in srgb, var(--fg) 9%, transparent) 0); }
+.pq-dial b { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--card); font-size: 9.5px; font-weight: 600; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+.pq-ring.full .pq-dial { background: conic-gradient(var(--amber) calc(var(--p) * 1%), color-mix(in srgb, var(--amber) 18%, transparent) 0); }
+.pq-ring.full b { color: var(--fg); }
+.pq-rn { max-width: 100%; font-size: 9.5px; line-height: 1.2; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pq-bals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.pq-card.bal { flex-direction: column; align-items: stretch; gap: 4px; min-height: 0; }
+.pq-bn { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+.pq-bn .ic { width: 13px; height: 13px; flex: none; }
+.pq-amt { font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--fg); font-variant-numeric: tabular-nums; }
+.pq-card .skeleton.sk-aq { width: 130px; height: 9px; border-radius: 4px; margin-right: auto; }
+.pq-card .skeleton.sk-ring { width: 34px; height: 34px; border-radius: 50%; }
 #view-agents.loading .panel-quota { visibility: hidden; }
 
 /* ---- profiles ------------------------------------------------------------- */
