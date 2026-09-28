@@ -73,6 +73,7 @@ type rRequest struct {
 	Stream            bool            `json:"stream,omitempty"`
 	ParallelToolCalls *bool           `json:"parallel_tool_calls,omitempty"`
 	ServiceTier       string          `json:"service_tier,omitempty"`
+	PromptCacheKey    string          `json:"prompt_cache_key,omitempty"`
 	Reasoning         *struct {
 		Effort  string `json:"effort,omitempty"`
 		Summary string `json:"summary,omitempty"`
@@ -85,7 +86,7 @@ func parseResponses(body []byte) (*Request, error) {
 		return nil, fmt.Errorf("invalid request: %v", err)
 	}
 	r := &Request{Model: q.Model, System: q.Instructions, MaxTokens: q.MaxOutputTokens, Temp: q.Temperature,
-		TopP: q.TopP, Stream: q.Stream, Parallel: q.ParallelToolCalls, Fast: q.ServiceTier == "priority"}
+		TopP: q.TopP, Stream: q.Stream, Parallel: q.ParallelToolCalls, Fast: q.ServiceTier == "priority", CacheKey: q.PromptCacheKey}
 	if q.Reasoning != nil {
 		r.Effort = effortOf(q.Reasoning.Effort)
 		r.Thinking = true
@@ -271,6 +272,9 @@ func buildResponses(r *Request, model, host string, rejectTemp bool) []byte {
 		input = []map[string]any{}
 	}
 	out := map[string]any{"model": model, "input": input, "stream": r.Stream, "store": false}
+	if r.CacheKey != "" {
+		out["prompt_cache_key"] = r.CacheKey
+	}
 	if r.System != "" {
 		out["instructions"] = r.System
 	}

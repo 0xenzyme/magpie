@@ -98,6 +98,10 @@ type Request struct {
 	Parallel   *bool  // parallel tool calls allowed
 	WebSearch  bool   // the client offered its provider's own web search
 	Fast       bool   // the client asked for priority processing: service_tier priority (Codex's Fast mode)
+	// CacheKey is the client's prompt_cache_key (Codex sends its thread's
+	// id), which OpenAI, and relays in front of it, route a conversation by
+	// to where its prompt is cached.
+	CacheKey string
 	// Namespaced are the tools a Responses client offered inside a
 	// namespace, by the flat name the model is offered them under.
 	Namespaced map[string]nsTool

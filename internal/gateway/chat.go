@@ -47,6 +47,7 @@ type cRequest struct {
 	ReasoningEffort     string          `json:"reasoning_effort,omitempty"`
 	ParallelToolCalls   *bool           `json:"parallel_tool_calls,omitempty"`
 	ServiceTier         string          `json:"service_tier,omitempty"`
+	PromptCacheKey      string          `json:"prompt_cache_key,omitempty"`
 }
 
 func parseChat(body []byte) (*Request, error) {
@@ -55,7 +56,8 @@ func parseChat(body []byte) (*Request, error) {
 		return nil, fmt.Errorf("invalid request: %v", err)
 	}
 	r := &Request{Model: c.Model, MaxTokens: c.MaxCompletionTokens, Temp: c.Temperature, TopP: c.TopP,
-		Stream: c.Stream, Effort: effortOf(c.ReasoningEffort), Parallel: c.ParallelToolCalls, Fast: c.ServiceTier == "priority"}
+		Stream: c.Stream, Effort: effortOf(c.ReasoningEffort), Parallel: c.ParallelToolCalls, Fast: c.ServiceTier == "priority",
+		CacheKey: c.PromptCacheKey}
 	if r.MaxTokens == 0 {
 		r.MaxTokens = c.MaxTokens
 	}
@@ -236,6 +238,9 @@ func buildChat(r *Request, model, host string, rejectTemp bool) []byte {
 		flush()
 	}
 	out := map[string]any{"model": model, "messages": msgs, "stream": r.Stream}
+	if r.CacheKey != "" {
+		out["prompt_cache_key"] = r.CacheKey
+	}
 	if r.Stream {
 		out["stream_options"] = map[string]any{"include_usage": true}
 	}
@@ -293,18 +298,41 @@ type cUsage struct {
 	CompletionTokens    int `json:"completion_tokens"`
 	TotalTokens         int `json:"total_tokens"`
 	PromptTokensDetails *struct {
-		CachedTokens int `json:"cached_tokens"`
+		CachedTokens     int `json:"cached_tokens"`
+		CacheWriteTokens int `json:"cache_write_tokens"` // OpenRouter's
 	} `json:"prompt_tokens_details,omitempty"`
 	CompletionTokensDetails *struct {
 		ReasoningTokens int `json:"reasoning_tokens"`
 	} `json:"completion_tokens_details,omitempty"`
+	// what others say was read from their cache, when prompt_tokens_details
+	// doesn't: DeepSeek's hits, Moonshot's cached_tokens, and Anthropic's
+	// own names from relays in front of Claude
+	PromptCacheHitTokens     int `json:"prompt_cache_hit_tokens"`
+	CachedTokens             int `json:"cached_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 }
 
 func (u cUsage) usage() Usage {
-	out := Usage{Input: u.PromptTokens, Output: u.CompletionTokens}
-	if u.PromptTokensDetails != nil {
-		out.CacheRead = u.PromptTokensDetails.CachedTokens
-		out.Input -= out.CacheRead
+	out := Usage{Output: u.CompletionTokens}
+	if d := u.PromptTokensDetails; d != nil {
+		out.CacheRead, out.CacheWrite = d.CachedTokens, d.CacheWriteTokens
+	}
+	for _, n := range []int{u.PromptCacheHitTokens, u.CachedTokens} {
+		if out.CacheRead == 0 {
+			out.CacheRead = n
+		}
+	}
+	whole := true // prompt_tokens counts what was cached too, as OpenAI's does
+	if out.CacheRead == 0 && out.CacheWrite == 0 {
+		out.CacheRead, out.CacheWrite = u.CacheReadInputTokens, u.CacheCreationInputTokens
+		// Anthropic's names, and less than they come to: counted as
+		// Anthropic counts, only what was neither read nor written
+		whole = u.PromptTokens >= out.CacheRead+out.CacheWrite
+	}
+	out.Input = u.PromptTokens
+	if whole {
+		out.Input = max(u.PromptTokens-out.CacheRead-out.CacheWrite, 0)
 	}
 	if u.CompletionTokensDetails != nil {
 		out.Reasoning = u.CompletionTokensDetails.ReasoningTokens

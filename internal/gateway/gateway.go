@@ -1181,11 +1181,17 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 		}
 	}
 	web := req.WebSearch
+	// the cache key was left out to see if it was what the upstream refused
+	dropped := false
 	for {
 		// only a provider that searches by itself is asked to
 		if want := web && searchesItself(p, to); want != req.WebSearch {
 			r := *req
 			r.WebSearch, req = want, &r
+		}
+		if req.CacheKey != "" && !s.fits(p.ID, cacheKeyField, to) {
+			r := *req
+			r.CacheKey, req = "", &r
 		}
 		body := build(to, req, model, p.Host(), p.RejectsTemperature(model))
 		if to == provider.CodeAssist && p.Account != nil {
@@ -1193,11 +1199,29 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 		}
 		res, err := s.forward(ctx, p, to, pathOf(to), p.Prepare(body), in)
 		if err != nil || res.StatusCode < 400 {
+			if dropped && err == nil {
+				// it was the key: not sent there again
+				s.markUnfit(p.ID, cacheKeyField, to)
+			}
 			return res, to, err
 		}
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 		res.Body.Close()
 		res.Body = io.NopCloser(bytes.NewReader(b))
+		if req.CacheKey != "" && badRequest(res.StatusCode) && !wrongEndpoint(res.StatusCode, b) {
+			// a vendor that turns away fields it doesn't know is asked again
+			// without the cache key, and not sent it again once that works —
+			// at once when its error names the key; not every error does
+			if refusesField(res.StatusCode, b, cacheKeyField) {
+				s.markUnfit(p.ID, cacheKeyField, to)
+			} else {
+				dropped = true
+			}
+			r := *req
+			r.CacheKey, req = "", &r
+			continue
+		}
+		dropped = false
 		if !wrongEndpoint(res.StatusCode, b) {
 			return res, to, nil
 		}
@@ -1208,6 +1232,22 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 		}
 		to = next[0]
 	}
+}
+
+// cacheKeyField is the client's prompt cache key as a request carries it
+// upstream; a provider that refused it is remembered under it in unfit.
+const cacheKeyField = "prompt_cache_key"
+
+// refusesField recognizes a vendor turning a request away for a field it
+// doesn't take — Gemini's "Unknown name", Mistral's extra_forbidden,
+// Groq's "unsupported" — by the field's name in the error.
+func refusesField(status int, body []byte, field string) bool {
+	return badRequest(status) && bytes.Contains(body, []byte(field))
+}
+
+// badRequest is a status an upstream refuses a request's contents with.
+func badRequest(status int) bool {
+	return status == http.StatusBadRequest || status == http.StatusUnprocessableEntity
 }
 
 // wrongEndpoint recognizes the errors OpenAI-compatible servers give when a
