@@ -193,7 +193,7 @@ const I18N = {
     "Local servers need no key": "本地服务无需密钥",
     "Open the row and paste an API key": "展开这一行并粘贴 API 密钥",
     "{agent} is signed in, but stays out of this list. ": "{agent} 已登录，但不在此列表中。",
-    "{agents} adds these itself, each time it starts, and magpie leaves them as they are: {names}": "{agents} 每次启动都会自己加上这些，magpie 不去动它们：{names}",
+    "{names}: {agents}'s own MCP servers, which it adds itself each time it starts; magpie leaves them as they are": "{names} 是 {agents} 自带的 MCP 服务器，它每次启动时自己加上，magpie 不去动它们",
     "{agent}'s saved accounts aren't offered. ": "{agent} 保存的账号没有提供出来。",
     "signed in": "已登录",
     "{p} exposes no models yet — pick some below": "{p} 尚未暴露模型 — 在下方选几个",

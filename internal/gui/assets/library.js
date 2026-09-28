@@ -731,7 +731,7 @@
     }
     if (own.length) {
       const by = [...new Set(own.flatMap((f) => f.server.agents))].map(nameOf).join(", ");
-      const p = el("p", "lib-aside", t("{agents} adds these itself, each time it starts, and magpie leaves them as they are: {names}", { agents: by, names: own.map((f) => f.server.name).join(", ") }));
+      const p = el("p", "lib-aside", t("{names}: {agents}'s own MCP servers, which it adds itself each time it starts; magpie leaves them as they are", { agents: by, names: own.map((f) => f.server.name).join(", ") }));
       p.title = own.map((f) => f.server.name + ": " + serverLine(f.server)).join("\n");
       body.append(p);
     }
