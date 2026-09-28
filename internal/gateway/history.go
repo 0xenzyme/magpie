@@ -32,6 +32,11 @@ const (
 // HistoryDir is where the days are kept: ~/.config/magpie/routing.
 func HistoryDir() string { return filepath.Join(filepath.Dir(provider.Path()), "routing") }
 
+// keepRoutes is whether done routes are written to disk. Off in the
+// package's tests: a write still going when a test ends would put the
+// routing directory back into its temporary HOME as that is removed.
+var keepRoutes = true
+
 var history struct {
 	mu     sync.Mutex
 	pruned time.Time

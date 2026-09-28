@@ -251,11 +251,13 @@ func (t *trace) update(r *Route, f func(r *Route)) {
 		if r.Status >= 400 {
 			t.totals.Errors++
 		}
-		c := *r
-		c.Order = append([]Weighed(nil), r.Order...)
-		c.Left = append([]Weighed(nil), r.Left...)
-		c.Tries = append([]Try{}, r.Tries...)
-		go saveRoute(c)
+		if keepRoutes {
+			c := *r
+			c.Order = append([]Weighed(nil), r.Order...)
+			c.Left = append([]Weighed(nil), r.Left...)
+			c.Tries = append([]Try{}, r.Tries...)
+			go saveRoute(c)
+		}
 	}
 	t.changed()
 	r.Seq = t.seq
