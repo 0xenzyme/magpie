@@ -117,7 +117,7 @@ func (p Provider) fetchOne(ctx context.Context) ([]catalog.Model, string, error)
 		if err != nil {
 			return nil, u, err
 		}
-		return p.planModels(ms), u, nil
+		return catalog.WithDrawers(p.planModels(ms), catalog.PublicDrawers(ctx, u)), u, nil
 	}
 	var errs []string
 	for _, proto := range p.Speaks() {
@@ -127,7 +127,8 @@ func (p Provider) fetchOne(ctx context.Context) ([]catalog.Model, string, error)
 			if proto != Anthropic {
 				base = p.fixV1(base, at)
 			}
-			return p.planModels(ms), base, nil
+			// the image models its list leaves out (AIHubMix's gpt-image-2)
+			return catalog.WithDrawers(p.planModels(ms), catalog.PublicDrawers(ctx, base)), base, nil
 		}
 		// Chat and Responses at one base say the same thing
 		if !slices.Contains(errs, err.Error()) {
