@@ -36,6 +36,9 @@ func (webHost) TintPanel([4]uint8, int) bool { return false }
 func (webHost) OpenFolder(path string) error {
 	return errors.New("in the browser magpie can't open folders: it is " + tilde(path))
 }
+func (webHost) ChooseFolder(string) (string, error) {
+	return "", errors.New("in the browser magpie can't show a folder picker: type the folder's path")
+}
 
 // Web is a started `magpie web`: its address and the link that signs a
 // browser in.

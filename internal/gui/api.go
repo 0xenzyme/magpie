@@ -41,6 +41,9 @@ type Windows interface {
 	OpenURL(url string)
 	// OpenFolder shows a folder in the system file manager.
 	OpenFolder(path string) error
+	// ChooseFolder asks for a folder in the system's picker: "" when the
+	// user cancels it.
+	ChooseFolder(title string) (string, error)
 	// Copy puts text on the system clipboard, which the page's own
 	// navigator.clipboard can't always reach from inside the app.
 	Copy(text string) bool

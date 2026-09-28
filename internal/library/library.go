@@ -23,6 +23,8 @@ type Library struct {
 	Instructions Instructions `json:"instructions"`
 	MCP          []*Server    `json:"mcp"`
 	Skills       []*Skill     `json:"skills"`
+	// Projects are folders whose agents get some of the skills there
+	Projects []*Project `json:"projects,omitempty"`
 	// Applied is what magpie wrote into each agent, so that what it takes
 	// away is only ever its own.
 	Applied map[string]*Applied `json:"applied,omitempty"`
@@ -86,6 +88,7 @@ func load() (*Library, error) {
 func (l *Library) save() error {
 	sort.Slice(l.MCP, func(i, j int) bool { return l.MCP[i].Name < l.MCP[j].Name })
 	sort.Slice(l.Skills, func(i, j int) bool { return l.Skills[i].Name < l.Skills[j].Name })
+	sort.Slice(l.Projects, func(i, j int) bool { return l.Projects[i].Dir < l.Projects[j].Dir })
 	for _, a := range l.Applied {
 		sort.Strings(a.MCP)
 		sort.Strings(a.Skills)

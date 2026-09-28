@@ -49,6 +49,7 @@ func (l *Library) sync() *Result {
 		l.syncMCP(t, b, res)
 		l.syncSkills(t, res, all)
 	}
+	l.syncProjects(res)
 	res.Backup = b.dir
 	if b.dir != "" {
 		pruneBackups()
@@ -122,17 +123,19 @@ func (l *Library) syncMCP(t *Target, b *backups, res *Result) {
 
 // AgentView is an agent as the page lists it, with where it keeps each.
 type AgentView struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Icon         string   `json:"icon"`
-	Instructions string   `json:"instructions,omitempty"`
-	MCP          string   `json:"mcp,omitempty"`
-	Skills       string   `json:"skills,omitempty"`
-	SkillsAlso   []string `json:"skillsAlso,omitempty"`
-	Note         string   `json:"note,omitempty"`
-	NoSSE        bool     `json:"noSSE,omitempty"`
-	NoRemote     bool     `json:"noRemote,omitempty"`
-	MCPVia       string   `json:"mcpVia,omitempty"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Icon         string `json:"icon"`
+	Instructions string `json:"instructions,omitempty"`
+	MCP          string `json:"mcp,omitempty"`
+	Skills       string `json:"skills,omitempty"`
+	// ProjectSkills is the folder in a project it reads skills from
+	ProjectSkills string   `json:"projectSkills,omitempty"`
+	SkillsAlso    []string `json:"skillsAlso,omitempty"`
+	Note          string   `json:"note,omitempty"`
+	NoSSE         bool     `json:"noSSE,omitempty"`
+	NoRemote      bool     `json:"noRemote,omitempty"`
+	MCPVia        string   `json:"mcpVia,omitempty"`
 }
 
 // ServerView is a library server, and what each agent it's on made of it.
@@ -164,6 +167,7 @@ type View struct {
 	FoundServers []Found           `json:"foundServers"`
 	Skills       []SkillView       `json:"skills"`
 	FoundSkills  []FoundSkill      `json:"foundSkills"`
+	Projects     []ProjectView     `json:"projects"`
 	Instructions *InstructionsView `json:"instructions"`
 	Dir          string            `json:"dir"`
 	Backups      string            `json:"backups"`
@@ -186,7 +190,7 @@ func Read(problems []Problem) (*View, error) {
 	targets := Targets()
 	for _, t := range targets {
 		av := AgentView{ID: t.Agent.ID, Name: t.Agent.Name, Icon: t.Agent.Icon, Instructions: t.Instructions, Skills: t.Skills,
-			SkillsAlso: t.SkillsAlso, Note: t.Note, MCPVia: t.MCPVia}
+			SkillsAlso: t.SkillsAlso, Note: t.Note, MCPVia: t.MCPVia, ProjectSkills: ProjectSkillsDir(t.Agent.ID)}
 		if t.MCP != nil {
 			av.MCP = t.MCP.Path
 			av.NoSSE = t.MCP.supports(&Server{Transport: "sse"}) != nil
@@ -248,6 +252,7 @@ func Read(problems []Problem) (*View, error) {
 		v.FoundServers[i].Icon = serverIcon(l, v.FoundServers[i].Server)
 	}
 	v.FoundSkills = foundSkills(l)
+	v.Projects = projectViews(l, problems)
 	return v, nil
 }
 

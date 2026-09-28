@@ -167,6 +167,20 @@ func (c remoteWindows) OpenFolder(path string) error {
 	}
 	return nil
 }
+
+// ChooseFolder's answer is the folder after "ok:", or what went wrong.
+func (c remoteWindows) ChooseFolder(title string) (string, error) {
+	res, err := backendClient.PostForm("http://"+string(c)+"/choose", url.Values{"arg": {title}})
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
+	if dir, ok := strings.CutPrefix(string(b), "ok:"); ok {
+		return dir, nil
+	}
+	return "", fmt.Errorf("%s", b)
+}
 func (c remoteWindows) Copy(text string) bool {
 	return c.post("copy", url.Values{"arg": {text}}) == "ok"
 }
@@ -225,6 +239,14 @@ func devShell(h *host) http.Handler {
 				return
 			}
 			rw.Write([]byte("ok"))
+			return
+		case "choose":
+			dir, err := h.ChooseFolder(arg)
+			if err != nil {
+				rw.Write([]byte(err.Error()))
+				return
+			}
+			rw.Write([]byte("ok:" + dir))
 			return
 		case "copy":
 			if h.Copy(arg) {

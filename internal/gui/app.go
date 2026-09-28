@@ -106,6 +106,10 @@ func (h *host) Quit()                        { h.app.Quit() }
 func (h *host) OpenURL(url string)           { _ = h.app.Browser.OpenURL(url) }
 func (h *host) OpenFolder(path string) error { return openFolder(h.app, path) }
 func (h *host) Copy(text string) bool        { return h.app.Clipboard.SetText(text) }
+func (h *host) ChooseFolder(title string) (string, error) {
+	return h.app.Dialog.OpenFile().CanChooseDirectories(true).CanChooseFiles(false).CanCreateDirectories(true).
+		SetTitle(title).AttachToWindow(h.main).PromptForSingleSelection()
+}
 
 const panelWidth, panelMin, panelMax = 440, 220, 720
 

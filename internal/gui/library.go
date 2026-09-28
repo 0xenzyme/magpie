@@ -66,6 +66,12 @@ func revealable(v *library.View) []string {
 	for _, s := range v.FoundSkills {
 		out = append(out, s.Link)
 	}
+	for _, p := range v.Projects {
+		out = append(out, p.Dir)
+		for _, e := range p.Placed {
+			out = append(out, filepath.Join(p.Dir, filepath.FromSlash(e)))
+		}
+	}
 	return out
 }
 
@@ -174,6 +180,15 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 		}
 		writeJSON(rw, v)
 	})
+	// a project's folder, from the system's picker; "" when it's cancelled
+	mux.HandleFunc("POST /api/library/projects/choose", func(rw http.ResponseWriter, r *http.Request) {
+		dir, err := w.ChooseFolder("Choose a project")
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, map[string]string{"dir": dir})
+	})
 	mux.HandleFunc("POST /api/library/reveal", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct{ Path string }
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Path == "" {
@@ -222,6 +237,8 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 			Server library.Server
 			ID     string            // a market server's, or a market skill's in its repository
 			Values map[string]string // what a market server needs
+			Dir    string            // a project's folder
+			Copy   bool              // a project gets copies, not links
 			library.InstructionsChange
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -263,6 +280,14 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 			res, err = library.InstallServer(in.ID, in.Values, in.Agents)
 		case "market/skill":
 			res, err = library.InstallMarketSkill(in.Source, in.ID, in.Agents)
+		case "projects/add":
+			res, err = library.AddProject(in.Dir)
+		case "projects/remove":
+			res, err = library.RemoveProject(in.Dir)
+		case "projects/skill":
+			res, err = library.ProjectSkill(in.Dir, in.Name, in.Agents)
+		case "projects/copy":
+			res, err = library.ProjectCopy(in.Dir, in.Copy)
 		case "all/sync":
 			res, err = library.Sync()
 		default:

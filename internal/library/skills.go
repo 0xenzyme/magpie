@@ -807,6 +807,9 @@ func RemoveSkill(name string) (*Result, error) {
 		}
 		l.Skills = slices.Delete(l.Skills, i, i+1)
 		forgetCheck(name)
+		for _, p := range l.Projects {
+			delete(p.Skills, name)
+		}
 		p := skillDir(name)
 		if fi, err := os.Lstat(p); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
 			return os.Remove(p) // a folder of the user's: only the link goes
