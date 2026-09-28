@@ -33,6 +33,11 @@ type PresetDef struct {
 	// HeaderHints name optional request headers the vendor documents, which
 	// the editor offers to add; their values are the user's to fill in.
 	HeaderHints []string `json:"headerHints,omitempty"`
+	// Only, for a plan behind a key that also buys much else, is what its
+	// models' ids start with: the rest of the vendor's list is left out.
+	// Models are the plan's, for when the list has none of them.
+	Only   string   `json:"only,omitempty"`
+	Models []string `json:"models,omitempty"`
 }
 
 // Region is one base-URL option of a preset that offers several. The first
@@ -148,6 +153,16 @@ var presets = []PresetDef{
 		Chat: "https://opencode.ai/zen/go/v1", Responses: "https://opencode.ai/zen/go/v1", Anthropic: "https://opencode.ai/zen/go",
 		Note:    "open coding models, $10/month",
 		Website: "https://opencode.ai/docs/go", KeysURL: "https://opencode.ai/auth"},
+	// Cline's plan for open models, at the Cline API with a Cline key: the
+	// API lists only its paid models, not the plan's
+	{ID: "clinepass", Name: "ClinePass", Icon: "cline", Kind: KindRelay,
+		Chat:    "https://api.cline.bot/api/v1",
+		Note:    "open coding models, $9.99/month",
+		Website: "https://docs.cline.bot/getting-started/clinepass", KeysURL: "https://app.cline.bot",
+		Only: "cline-pass/",
+		Models: []string{"cline-pass/glm-5.3", "cline-pass/glm-5.3-flash", "cline-pass/kimi-k3", "cline-pass/deepseek-v4-pro",
+			"cline-pass/deepseek-v4.1-flash", "cline-pass/mimo-v2.5", "cline-pass/mimo-v2.5-pro", "cline-pass/minimax-m3",
+			"cline-pass/muse-spark-1.3-contributor", "cline-pass/qwen3.8-max", "cline-pass/qwen3.7-max", "cline-pass/qwen3.7-plus"}},
 	{ID: "opencode-zen", Name: "OpenCode Zen", Icon: "opencode", Kind: KindRelay, Catalog: "opencode",
 		Chat: "https://opencode.ai/zen/v1", Responses: "https://opencode.ai/zen/v1", Anthropic: "https://opencode.ai/zen",
 		Website: "https://opencode.ai/docs/zen", KeysURL: "https://opencode.ai/auth"},

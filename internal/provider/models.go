@@ -51,6 +51,12 @@ func (p Provider) Available() []catalog.Model {
 	if signedIn {
 		return known
 	}
+	if len(known) == 0 {
+		// a plan's models, before its list was fetched
+		if ms := p.planModels(nil); len(ms) > 0 {
+			return ms
+		}
+	}
 	var out []catalog.Model
 	for _, m := range known {
 		if !strings.Contains(m.ID, "-exp") && !strings.Contains(m.ID, "preview") {
@@ -99,7 +105,10 @@ func (p Provider) fetchOne(ctx context.Context) ([]catalog.Model, string, error)
 		// asked where the user said, and nowhere else: the base URLs
 		// list nothing, or the wrong thing
 		ms, err := catalog.FetchURL(ctx, u, p.Key, p.Chat == "" && p.Responses == "", p.Headers)
-		return ms, u, err
+		if err != nil {
+			return nil, u, err
+		}
+		return p.planModels(ms), u, nil
 	}
 	var lastErr error
 	for _, proto := range p.Speaks() {
@@ -109,7 +118,7 @@ func (p Provider) fetchOne(ctx context.Context) ([]catalog.Model, string, error)
 			if proto != Anthropic {
 				base = p.fixV1(base, at)
 			}
-			return ms, base, nil
+			return p.planModels(ms), base, nil
 		}
 		lastErr = err
 	}
@@ -117,6 +126,37 @@ func (p Provider) fetchOne(ctx context.Context) ([]catalog.Model, string, error)
 		lastErr = errorf("%s has no endpoint to ask", p.Name)
 	}
 	return nil, "", lastErr
+}
+
+// planModels keeps a plan's own models of a vendor's list (PresetDef.Only),
+// or gives the plan's when the list has none; any other provider's list is
+// as it came.
+func (p Provider) planModels(ms []catalog.Model) []catalog.Model {
+	pr := Preset(p.Preset)
+	if pr == nil || pr.Only == "" {
+		return ms
+	}
+	var out []catalog.Model
+	for _, m := range ms {
+		if strings.HasPrefix(m.ID, pr.Only) {
+			out = append(out, m)
+		}
+	}
+	if len(out) == 0 {
+		for _, id := range pr.Models {
+			out = append(out, catalog.Model{ID: id, Name: id})
+		}
+	}
+	for i, m := range out {
+		// the vendor's window for its model, as models.dev has it
+		if m.Context == 0 {
+			out[i].Context = catalog.ContextOf(strings.TrimPrefix(m.ID, pr.Only))
+		}
+		if m.Output == 0 {
+			out[i].Output = catalog.OutputOf(strings.TrimPrefix(m.ID, pr.Only))
+		}
+	}
+	return out
 }
 
 // fixV1 adds the /v1 an OpenAI-style base URL was given without, when
