@@ -2,12 +2,17 @@
 
 package gateway
 
-import "syscall"
+import (
+	"syscall"
 
+	"golang.org/x/sys/unix"
+)
+
+// syscall has SO_REUSEPORT on darwin but not on linux; x/sys/unix has it on both
 func reusePort(_, _ string, c syscall.RawConn) error {
 	var err error
 	if cerr := c.Control(func(fd uintptr) {
-		err = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
+		err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
 	}); cerr != nil {
 		return cerr
 	}
