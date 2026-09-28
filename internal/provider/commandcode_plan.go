@@ -277,12 +277,47 @@ func cmdQuotaOf(q SubscriptionQuota, c cmdCredits) SubscriptionQuota {
 
 func cmdQuota(ctx context.Context, l Login, a cmdAuth) SubscriptionQuota {
 	q := SubscriptionQuota{Provider: CommandCodePlanID, Name: "Command Code", Icon: "commandcode", Plan: l.Plan, User: l.User, Windows: []QuotaWindow{}}
+	// the plan is said even while the credits can't be read (Command Code
+	// answers 503, "Couldn't verify your credit balance just now", at times)
+	plan, until, renew, planOK := cmdSubscription(ctx, a)
 	var c cmdCredits
 	if err := accountJSON(ctx, cmdAPI+"/alpha/billing/credits", a.APIKey, nil, &c); err != nil {
 		q.Error = err.Error()
-		return q
+	} else {
+		q = cmdQuotaOf(q, c)
 	}
-	return cmdQuotaOf(q, c)
+	if planOK {
+		q.Plan, q.Until, q.Renew = plan, until, renew
+	}
+	return q
+}
+
+// cmdNoPlan is the plan of an account with no subscription: its key is
+// billed against the credits it bought, if any.
+const cmdNoPlan = "No plan"
+
+// cmdSubscription is the account's plan, when its period ends and whether
+// it renews then, as billing/subscriptions says; cmdNoPlan when it has
+// none. ok is false when that can't be read.
+func cmdSubscription(ctx context.Context, a cmdAuth) (plan string, until *time.Time, renew string, ok bool) {
+	var r struct {
+		Data *struct {
+			PlanID           string `json:"planId"`
+			Status           string `json:"status"`
+			CurrentPeriodEnd any    `json:"currentPeriodEnd"`
+			CancelAtEnd      *bool  `json:"cancelAtPeriodEnd"`
+		} `json:"data"`
+	}
+	if accountJSON(ctx, cmdAPI+"/alpha/billing/subscriptions", a.APIKey, nil, &r) != nil {
+		return "", nil, "", false
+	}
+	if d := r.Data; d != nil && d.PlanID != "" && d.Status != "canceled" && d.Status != "incomplete_expired" {
+		if d.CancelAtEnd != nil {
+			renew = map[bool]string{true: "off", false: "auto"}[*d.CancelAtEnd]
+		}
+		return firstNonEmpty(cmdPlanName(d.PlanID), d.PlanID), cmdTime(d.CurrentPeriodEnd), renew, true
+	}
+	return cmdNoPlan, nil, "", true
 }
 
 func cmdLoginQuota(ctx context.Context, l Login) SubscriptionQuota {
@@ -461,9 +496,8 @@ func cmdSignedIn(ctx context.Context, a cmdAuth) (who, plan string, err error) {
 	if who == "" {
 		return "", "", fmt.Errorf("Command Code didn't say which account signed in")
 	}
-	var c cmdCredits
-	if accountJSON(ctx, cmdAPI+"/alpha/billing/credits", a.APIKey, nil, &c) == nil {
-		plan = cmdPlanName(c.Credits.PlanID)
+	if p, _, _, ok := cmdSubscription(ctx, a); ok {
+		plan = p
 	}
 	return who, plan, nil
 }

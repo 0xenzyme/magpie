@@ -263,6 +263,7 @@ const I18N = {
     "Stop using this account": "停用这个账号",
     "Use this account too": "同时启用这个账号",
     "No usage reported": "暂无用量数据",
+    "No plan": "无订阅",
     "resets {in}": "{in}重置",
     "in {n}m": "{n} 分钟后",
     "in {n}h": "{n} 小时后",

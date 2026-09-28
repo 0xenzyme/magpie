@@ -1594,7 +1594,7 @@ function accountPlan(a) {
   if (a.agent === "gemini" || a.agent === "antigravity") return a.plan || "Google";
   if (a.agent === "zcode") return a.plan || "GLM Coding Plan";
   if (a.agent === "workbuddy") return a.plan || "WorkBuddy";
-  if (a.agent === "commandcode-plan") return "Command Code" + (a.plan ? " " + a.plan : "");
+  if (a.agent === "commandcode-plan") return "Command Code" + (a.plan ? " " + t(a.plan) : "");
   return t("signed in");
 }
 
@@ -3765,8 +3765,15 @@ function accountQuota(data, user) {
     return line;
   }
   const q = data[user];
+  // an account on no plan says so, whatever else can be read of it
+  const noPlan = q?.plan === "No plan" ? [t("No plan")] : [];
+  if (q && !q.error && !q.windows?.length && q.balance) {
+    // no rolling limits, only what is left to spend
+    line.append(el("span", "aq-none", [...noPlan, t("Balance") + " " + q.balance].join(" · ")));
+    return line;
+  }
   if (!q || q.error || !q.windows?.length) {
-    line.append(el("span", "aq-none", q?.error ? quotaError(q.error) : t("No usage reported")));
+    line.append(el("span", "aq-none", [...noPlan, q?.error ? quotaError(q.error) : t("No usage reported")].join(" · ")));
     if (q?.error) line.title = q.error;
     return line;
   }

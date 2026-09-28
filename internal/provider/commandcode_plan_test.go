@@ -29,6 +29,12 @@ func TestCommandCodePlan(t *testing.T) {
 		switch r.URL.Path {
 		case "/alpha/whoami":
 			ok(map[string]any{"user": map[string]any{"id": "u2", "userName": "two", "email": "two@example.com"}})
+		case "/alpha/billing/subscriptions":
+			if key == "own-key" { // as for an account with no plan
+				ok(map[string]any{"success": true, "data": nil})
+				return
+			}
+			ok(map[string]any{"success": true, "data": map[string]any{"planId": "individual-max-monthly", "status": "active", "currentPeriodEnd": "2026-10-28T00:00:00Z", "cancelAtPeriodEnd": true}})
 		case "/alpha/billing/credits":
 			ok(map[string]any{
 				"credits": map[string]any{"planId": "individual-max-monthly", "monthlyCredits": 150.5, "purchasedCredits": 10, "freeCredits": 0},
@@ -122,8 +128,12 @@ func TestCommandCodePlan(t *testing.T) {
 		q.Windows[0].ResetsAt.Unix() != reset {
 		t.Fatalf("usage: %+v", q)
 	}
-	if !strings.Contains(q.Balance, "160.5") {
-		t.Fatalf("balance: %q", q.Balance)
+	if !strings.Contains(q.Balance, "160.5") || q.Until == nil || q.Until.Format("2006-01-02") != "2026-10-28" || q.Renew != "off" {
+		t.Fatalf("balance, period: %q %v", q.Balance, q.Until)
+	}
+	// an account with no subscription says so
+	if q := LoginUsage(context.Background(), CommandCodePlanID)["ownuser"]; q.Error != "" || q.Plan != "No plan" || q.Balance == "" {
+		t.Fatalf("no plan: %+v", q)
 	}
 
 	if err := ForgetLogin(CommandCodePlanID, "ownuser"); err == nil {
