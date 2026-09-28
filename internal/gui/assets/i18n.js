@@ -584,6 +584,7 @@ const I18N = {
     "7 days": "7 天",
     "1 day": "1 天",
     "Month": "本月",
+    "Credits": "积分",
     "On-demand": "按需用量",
     "30 days": "30 天",
     "All": "全部",

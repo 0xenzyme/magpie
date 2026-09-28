@@ -18,7 +18,7 @@ func TestCommandCodePlan(t *testing.T) {
 	writeFile(t, filepath.Join(home, ".commandcode", "auth.json"), map[string]any{
 		"apiKey": "own-key", "userId": "u1", "userName": "ownuser", "keyName": "cli", "authenticatedAt": "2026-09-01T00:00:00Z",
 	})
-	reset := time.Now().Add(2 * time.Hour).Unix()
+	reset := time.Now().Add(2 * time.Hour).UnixMilli()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if key != "own-key" && key != "two-key" {
@@ -36,11 +36,16 @@ func TestCommandCodePlan(t *testing.T) {
 			}
 			ok(map[string]any{"success": true, "data": map[string]any{"planId": "individual-max-monthly", "status": "active", "currentPeriodEnd": "2026-10-28T00:00:00Z", "cancelAtPeriodEnd": true}})
 		case "/alpha/billing/credits":
+			if key == "own-key" { // no plan: bought credits, no windows
+				ok(map[string]any{"credits": map[string]any{"monthlyCredits": 0, "purchasedCredits": 7.25, "freeCredits": 0}})
+				return
+			}
+			// as the live reply: no planId here, it is billing/subscriptions'
 			ok(map[string]any{
-				"credits": map[string]any{"planId": "individual-max-monthly", "monthlyCredits": 150.5, "purchasedCredits": 10, "freeCredits": 0},
-				"windowLimits": map[string]any{"limited": false,
+				"credits": map[string]any{"monthlyCredits": 100.5, "purchasedCredits": 10, "freeCredits": 0},
+				"windowLimits": map[string]any{"limited": true,
 					"fiveHour": map[string]any{"used": 25, "cap": 100, "resetAt": reset},
-					"weekly":   map[string]any{"used": 30, "cap": 300, "resetAt": time.Now().Add(72 * time.Hour).Format(time.RFC3339)},
+					"weekly":   map[string]any{"used": 30, "cap": 300, "resetAt": time.Now().Add(72 * time.Hour).UnixMilli()},
 				},
 			})
 		default:
@@ -123,16 +128,21 @@ func TestCommandCodePlan(t *testing.T) {
 	}
 
 	q := LoginUsage(context.Background(), CommandCodePlanID)["two"]
-	if q.Error != "" || q.Plan != "Max" || len(q.Windows) != 2 || q.Windows[0].Name != "5 hours" || q.Windows[0].Used != 25 ||
+	if q.Error != "" || q.Plan != "Max" || len(q.Windows) != 3 || q.Windows[0].Name != "5 hours" || q.Windows[0].Used != 25 ||
 		q.Windows[1].Name != "Weekly" || q.Windows[1].Used != 10 || q.Windows[0].ResetsAt == nil || q.Windows[1].ResetsAt == nil ||
-		q.Windows[0].ResetsAt.Unix() != reset {
+		q.Windows[0].ResetsAt.UnixMilli() != reset {
 		t.Fatalf("usage: %+v", q)
 	}
-	if !strings.Contains(q.Balance, "160.5") || q.Until == nil || q.Until.Format("2006-01-02") != "2026-10-28" || q.Renew != "off" {
-		t.Fatalf("balance, period: %q %v", q.Balance, q.Until)
+	// the credits are a window too, not a Balance, which every view shows
+	// in place of the windows: Max's $150 a month, $100.50 of it left
+	if q.Balance != "" || q.Windows[2].Name != "Credits" || q.Windows[2].Display != "$49.50 / $160.00" {
+		t.Fatalf("credits: %q %+v", q.Balance, q.Windows[2])
 	}
-	// an account with no subscription says so
-	if q := LoginUsage(context.Background(), CommandCodePlanID)["ownuser"]; q.Error != "" || q.Plan != "No plan" || q.Balance == "" {
+	if q.Until == nil || q.Until.Format("2006-01-02") != "2026-10-28" || q.Renew != "off" {
+		t.Fatalf("period: %v %q", q.Until, q.Renew)
+	}
+	// an account with no subscription says so, and shows what it bought
+	if q := LoginUsage(context.Background(), CommandCodePlanID)["ownuser"]; q.Error != "" || q.Plan != "No plan" || q.Balance != "$7.25" {
 		t.Fatalf("no plan: %+v", q)
 	}
 

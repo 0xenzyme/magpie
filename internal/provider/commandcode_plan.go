@@ -184,26 +184,51 @@ func cmdProvider(who, plan string, a cmdAuth) Provider {
 
 // ---- allowance ----------------------------------------------------------------
 
-// cmdPlans names the plans as the CLI does, by their id's start.
-var cmdPlans = []struct{ id, name string }{
-	{"individual-provider", "Provider"}, {"individual-goat", "GOAT"}, {"individual-ultra", "Ultra"},
-	{"individual-max", "Max"}, {"individual-pro", "Pro"}, {"individual-go", "Go"}, {"teams-pro", "Teams Pro"},
+// cmdPlans names the plans as the CLI does, by their id's start, longest
+// first, with the dollars of credits each gives a month (its getPlanInfo;
+// "individual-pro-v1" is the old Pro, $80 of them).
+var cmdPlans = []struct {
+	id, name string
+	monthly  float64
+}{
+	{"individual-provider", "Provider", 15}, {"individual-pro-v1", "Pro", 80}, {"individual-goat", "GOAT", 70},
+	{"individual-ultra", "Ultra", 300}, {"individual-max", "Max", 150}, {"individual-pro", "Pro", 30},
+	{"individual-go", "Go", 10}, {"teams-pro", "Teams Pro", 40},
 }
 
-func cmdPlanName(id string) string {
+func cmdPlanOf(id string) (name string, monthly float64) {
 	id = strings.ReplaceAll(strings.ToLower(id), "_", "-")
 	for _, p := range cmdPlans {
 		if strings.HasPrefix(id, p.id) {
-			return p.name
+			return p.name, p.monthly
 		}
 	}
-	return ""
+	return "", 0
 }
 
+func cmdPlanName(id string) string {
+	name, _ := cmdPlanOf(id)
+	return name
+}
+
+// cmdCredits is /alpha/billing/credits as the CLI's /usage reads it
+// (projectUsageView): the dollars left of the month's credits, and of the
+// bought and free ones beside them, under "credits"; the plan's windows
+// next to it, not in it —
+//
+//	{"credits":{"planId":"individual-goat-monthly","monthlyCredits":41.2,
+//	            "purchasedCredits":5,"freeCredits":0},
+//	 "windowLimits":{"limited":true,
+//	   "fiveHour":{"used":3.1,"cap":10,"resetAt":1790000000000},
+//	   "weekly":{"used":12,"cap":40,"resetAt":1790400000000}},
+//	 "sandboxMinutes":{…},"sandboxAccess":false}
+//
+// resetAt is in milliseconds (the CLI compares it with Date.now()); used
+// and cap are only ever divided, one by the other.
 type cmdWindow struct {
 	Used    any `json:"used"`
 	Cap     any `json:"cap"`
-	ResetAt any `json:"resetAt"` // unix seconds or ms, or a time
+	ResetAt any `json:"resetAt"` // unix ms (seconds or a time taken too)
 }
 
 type cmdCredits struct {
@@ -237,39 +262,71 @@ func cmdTime(v any) *time.Time {
 	return &t
 }
 
+// cmdWindows is the plan's 5-hour and weekly windows in a credits reply,
+// those it gives a cap.
+func cmdWindows(c cmdCredits) []QuotaWindow {
+	out := []QuotaWindow{}
+	if c.Windows == nil {
+		return out
+	}
+	for _, w := range []struct {
+		name string
+		span time.Duration
+		w    *cmdWindow
+	}{{"5 hours", 5 * time.Hour, c.Windows.FiveHour}, {"Weekly", 7 * 24 * time.Hour, c.Windows.Weekly}} {
+		if w.w == nil {
+			continue
+		}
+		used, ok1 := number(w.w.Used)
+		limit, ok2 := number(w.w.Cap)
+		if !ok1 || !ok2 || limit <= 0 {
+			continue
+		}
+		out = append(out, QuotaWindow{Name: w.name, Used: min(100, 100*max(0, used)/limit), Span: w.span,
+			ResetsAt: cmdTime(w.w.ResetAt)})
+	}
+	return out
+}
+
+// cmdLeft is the dollars left on the account, the month's credits and the
+// bought and free ones together (the CLI's totalRemaining), and the
+// month's alone; ok is false when the reply tells none of them.
+func cmdLeft(c cmdCredits) (monthly, left float64, ok bool) {
+	for i, v := range []any{c.Credits.Monthly, c.Credits.Purchased, c.Credits.Free} {
+		if n, is := number(v); is {
+			n = max(0, n)
+			if i == 0 {
+				monthly = n
+			}
+			left += n
+			ok = true
+		}
+	}
+	return monthly, left, ok
+}
+
 // cmdQuotaOf makes the credits reply into the plan's windows: the 5-hour
-// and weekly limits, and what is left of the month's credits.
+// and weekly limits, and the month's credits as one more. A card's
+// Balance is shown instead of its windows — it is a key's money, not an
+// allowance — so, set beside them, it hid both limits on the Usage page,
+// the panel and the TUI. The dollars are a window when the plan is known,
+// used of the CLI's pool (the plan's month of credits, or what is left of
+// it if more, and the bought and free ones) as its /usage bar is; a reply
+// with neither windows nor a plan is a Balance still.
 func cmdQuotaOf(q SubscriptionQuota, c cmdCredits) SubscriptionQuota {
-	if n := cmdPlanName(c.Credits.PlanID); n != "" {
-		q.Plan = n
+	name, planMonthly := cmdPlanOf(c.Credits.PlanID)
+	if name != "" {
+		q.Plan = name
 	}
-	if c.Windows != nil {
-		for _, w := range []struct {
-			name string
-			span time.Duration
-			w    *cmdWindow
-		}{{"5 hours", 5 * time.Hour, c.Windows.FiveHour}, {"Weekly", 7 * 24 * time.Hour, c.Windows.Weekly}} {
-			if w.w == nil {
-				continue
-			}
-			used, ok1 := number(w.w.Used)
-			limit, ok2 := number(w.w.Cap)
-			if !ok1 || !ok2 || limit <= 0 {
-				continue
-			}
-			q.Windows = append(q.Windows, QuotaWindow{Name: w.name, Used: min(100, 100*used/limit), Span: w.span,
-				ResetsAt: cmdTime(w.w.ResetAt)})
-		}
-	}
-	var left float64
-	var known bool
-	for _, v := range []any{c.Credits.Monthly, c.Credits.Purchased, c.Credits.Free} {
-		if n, ok := number(v); ok {
-			left += max(0, n)
-			known = true
-		}
-	}
-	if known {
+	q.Windows = cmdWindows(c)
+	monthly, left, known := cmdLeft(c)
+	switch {
+	case !known:
+	case planMonthly > 0:
+		pool := max(planMonthly, monthly) + left - monthly
+		q.Windows = append(q.Windows, QuotaWindow{Name: "Credits", Used: min(100, 100*(pool-left)/pool),
+			Display: money("$", pool-left) + " / " + money("$", pool)})
+	case len(q.Windows) == 0:
 		q.Balance = money("$", left)
 	}
 	return q
@@ -279,11 +336,16 @@ func cmdQuota(ctx context.Context, l Login, a cmdAuth) SubscriptionQuota {
 	q := SubscriptionQuota{Provider: CommandCodePlanID, Name: "Command Code", Icon: "commandcode", Plan: l.Plan, User: l.User, Windows: []QuotaWindow{}}
 	// the plan is said even while the credits can't be read (Command Code
 	// answers 503, "Couldn't verify your credit balance just now", at times)
-	plan, until, renew, planOK := cmdSubscription(ctx, a)
+	id, plan, until, renew, planOK := cmdSubscription(ctx, a)
 	var c cmdCredits
 	if err := accountJSON(ctx, cmdAPI+"/alpha/billing/credits", a.APIKey, nil, &c); err != nil {
 		q.Error = err.Error()
 	} else {
+		// billing/credits leaves the plan out: the month of credits the pool
+		// is made of is the subscription's plan's
+		if c.Credits.PlanID == "" {
+			c.Credits.PlanID = id
+		}
 		q = cmdQuotaOf(q, c)
 	}
 	if planOK {
@@ -296,10 +358,10 @@ func cmdQuota(ctx context.Context, l Login, a cmdAuth) SubscriptionQuota {
 // billed against the credits it bought, if any.
 const cmdNoPlan = "No plan"
 
-// cmdSubscription is the account's plan, when its period ends and whether
+// cmdSubscription is the account's plan (its id, and its name), when its period ends and whether
 // it renews then, as billing/subscriptions says; cmdNoPlan when it has
 // none. ok is false when that can't be read.
-func cmdSubscription(ctx context.Context, a cmdAuth) (plan string, until *time.Time, renew string, ok bool) {
+func cmdSubscription(ctx context.Context, a cmdAuth) (id, plan string, until *time.Time, renew string, ok bool) {
 	var r struct {
 		Data *struct {
 			PlanID           string `json:"planId"`
@@ -309,15 +371,15 @@ func cmdSubscription(ctx context.Context, a cmdAuth) (plan string, until *time.T
 		} `json:"data"`
 	}
 	if accountJSON(ctx, cmdAPI+"/alpha/billing/subscriptions", a.APIKey, nil, &r) != nil {
-		return "", nil, "", false
+		return "", "", nil, "", false
 	}
 	if d := r.Data; d != nil && d.PlanID != "" && d.Status != "canceled" && d.Status != "incomplete_expired" {
 		if d.CancelAtEnd != nil {
 			renew = map[bool]string{true: "off", false: "auto"}[*d.CancelAtEnd]
 		}
-		return firstNonEmpty(cmdPlanName(d.PlanID), d.PlanID), cmdTime(d.CurrentPeriodEnd), renew, true
+		return d.PlanID, firstNonEmpty(cmdPlanName(d.PlanID), d.PlanID), cmdTime(d.CurrentPeriodEnd), renew, true
 	}
-	return cmdNoPlan, nil, "", true
+	return "", cmdNoPlan, nil, "", true
 }
 
 func cmdLoginQuota(ctx context.Context, l Login) SubscriptionQuota {
@@ -496,7 +558,7 @@ func cmdSignedIn(ctx context.Context, a cmdAuth) (who, plan string, err error) {
 	if who == "" {
 		return "", "", fmt.Errorf("Command Code didn't say which account signed in")
 	}
-	if p, _, _, ok := cmdSubscription(ctx, a); ok {
+	if _, p, _, _, ok := cmdSubscription(ctx, a); ok {
 		plan = p
 	}
 	return who, plan, nil
