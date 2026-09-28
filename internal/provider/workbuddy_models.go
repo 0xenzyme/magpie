@@ -38,8 +38,8 @@ type wbProductConfig struct {
 
 // wbFetchModels asks WorkBuddy's product config for the plan's models,
 // with sign signing the request as the account's chats are.
-func wbFetchModels(ctx context.Context, sign func(context.Context, *http.Request, []byte) error) ([]catalog.Model, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wbAPI()+"/v3/config", nil)
+func wbFetchModels(ctx context.Context, w *wbSite, sign func(context.Context, *http.Request, []byte) error) ([]catalog.Model, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.api()+"/v3/config", nil)
 	if err != nil {
 		return nil, err
 	}

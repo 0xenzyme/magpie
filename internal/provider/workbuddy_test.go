@@ -87,7 +87,7 @@ func TestWorkBuddyAccounts(t *testing.T) {
 	defer func() { wbEndpoint, wbPollInterval = oldEnd, oldInt }()
 
 	// WorkBuddy's own, named by its nickname
-	who, c, ok := wbOwn()
+	who, c, ok := wbOwn(wbCN)
 	if !ok || who != "旅行者" || c.Access != "own-access" || c.UID != "u1" {
 		t.Fatalf("own: %v %q %+v", ok, who, c)
 	}
@@ -251,7 +251,7 @@ func TestWorkBuddyEncryptedOwn(t *testing.T) {
 			"domain":      "www.codebuddy.cn",
 		},
 	})
-	if _, _, ok := wbOwn(); ok {
+	if _, _, ok := wbOwn(wbCN); ok {
 		t.Fatal("read an encrypted own account")
 	}
 }

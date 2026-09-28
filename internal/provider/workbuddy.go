@@ -17,6 +17,12 @@ package provider
 //
 // The plan's models are WorkBuddy's CLI agent's, from its product config
 // (workbuddy_models.go); wbModels are them before that is read.
+//
+// WorkBuddy AI, the international build (www.workbuddy.ai, the CodeBuddy
+// plan sold at www.codebuddy.ai), is its own subscription, workbuddy-ai: the
+// same API and sign-in at its own endpoint, its own models, and its own
+// account file (workbuddy-desktop-ai.info) beside the other. A wbSite is
+// which of the two an account belongs to.
 
 import (
 	"bytes"
@@ -44,6 +50,8 @@ import (
 // elsewhere.
 var (
 	wbEndpoint = "https://copilot.tencent.com"
+	// wbAIEndpoint is WorkBuddy AI's, the international build's.
+	wbAIEndpoint = "https://www.workbuddy.ai"
 	// wbAppVersion is the plugin version the sign-in page is told.
 	wbAppVersion = "2.0.0"
 	// wbUAVersion is the WorkBuddy desktop version the User-Agent carries.
@@ -75,6 +83,60 @@ var wbModels = []catalog.Model{
 	{ID: "deepseek-v4-pro", Name: "Deepseek-V4-Pro", Context: 1_000_000, Efforts: []string{"none", "high", "xhigh"}},
 }
 
+// wbAIModels are WorkBuddy AI's, from its product config: its tiers and
+// the models of its picker.
+var wbAIModels = []catalog.Model{
+	{ID: "default-model", Name: "Default", Context: 176_000},
+	{ID: "fast-model", Name: "Fast", Context: 200_000},
+	{ID: "balanced-model", Name: "Balanced", Context: 256_000},
+	{ID: "primary-model", Name: "Primary", Context: 272_000},
+	{ID: "deep-model", Name: "Deep", Context: 176_000},
+	{ID: "gpt-5.5", Name: "GPT-5.5", Context: 1_000_000},
+	{ID: "gpt-5.4", Name: "GPT-5.4", Context: 272_000},
+	{ID: "gpt-5.3-codex", Name: "GPT-5.3-Codex", Context: 272_000},
+	{ID: "gemini-3.1-pro", Name: "Gemini-3.1-Pro", Context: 400_000},
+	{ID: "gemini-3.5-flash", Name: "Gemini-3.5-Flash", Context: 1_000_000},
+	{ID: "glm-5.3", Name: "GLM-5.3", Context: 1_000_000, Efforts: []string{"low", "high", "max"}},
+	{ID: "glm-5.2", Name: "GLM-5.2", Context: 1_000_000, Efforts: []string{"high", "xhigh"}},
+	{ID: "hy3", Name: "Hy3", Context: 192_000, Efforts: []string{"low", "high"}},
+	{ID: "kimi-k3", Name: "Kimi-K3", Context: 1_000_000},
+	{ID: "kimi-k2.6", Name: "Kimi-K2.6", Context: 256_000},
+	{ID: "minimax-m3", Name: "MiniMax-M3", Context: 512_000},
+}
+
+// wbSite is one WorkBuddy build: the Chinese one or WorkBuddy AI.
+type wbSite struct {
+	id, name, website string
+	authID            string  // its account file, <authID>.info
+	platform          string  // what its sign-in says it is
+	endpoint          *string // its API root
+	models            []catalog.Model
+}
+
+var (
+	wbCN = &wbSite{id: "workbuddy", name: "WorkBuddy", website: "https://www.codebuddy.cn",
+		authID: "workbuddy-desktop", platform: "workbuddy", endpoint: &wbEndpoint, models: wbModels}
+	wbAI = &wbSite{id: WorkBuddyAIID, name: "WorkBuddy AI", website: "https://www.workbuddy.ai",
+		authID: "workbuddy-desktop-ai", platform: "workbuddy-ai", endpoint: &wbAIEndpoint, models: wbAIModels}
+)
+
+// WorkBuddyAIID is WorkBuddy AI's subscription, the international build's.
+const WorkBuddyAIID = "workbuddy-ai"
+
+// wbSiteOf is the site of a subscription id, nil for neither.
+func wbSiteOf(id string) *wbSite {
+	switch id {
+	case wbCN.id:
+		return wbCN
+	case wbAI.id:
+		return wbAI
+	}
+	return nil
+}
+
+// api is the site's API root: auth and billing sit under it.
+func (w *wbSite) api() string { return strings.TrimRight(*w.endpoint, "/") }
+
 // wbCreds is a WorkBuddy account's tokens and where they are served, as the
 // auth store and the sign-in name them.
 type wbCreds struct {
@@ -92,20 +154,17 @@ type wbCreds struct {
 // WorkBuddy's own sign-in (read-only) or one magpie added (in logins.json).
 type wbAccount struct {
 	Login
+	site  *wbSite
 	creds wbCreds
 	own   bool
 }
-
-// wbAPI is the API root for a domain: auth and billing sit under it. The
-// account's domain (www.codebuddy.cn) names the site; requests otherwise go
-// to the product endpoint.
-func wbAPI() string { return strings.TrimRight(wbEndpoint, "/") }
 
 // ---- WorkBuddy's own account --------------------------------------------------
 
 // wbAuthPath is where WorkBuddy keeps the signed-in session, per platform,
 // as its file-authentication-storage does: <shared data>/auth/<id>.info.
-func wbAuthPath() string {
+// Both builds share the folder, each with its own file.
+func wbAuthPath(w *wbSite) string {
 	home, _ := os.UserHomeDir()
 	var base string
 	switch runtime.GOOS {
@@ -116,7 +175,7 @@ func wbAuthPath() string {
 	default:
 		base = filepath.Join(home, ".local", "share", "CodeBuddyExtension")
 	}
-	return filepath.Join(base, "Data", "Public", "auth", "workbuddy-desktop.info")
+	return filepath.Join(base, "Data", "Public", "auth", w.authID+".info")
 }
 
 // wbStoredSession is the shape of the auth store's session: the account and
@@ -153,9 +212,9 @@ func wbString(raw json.RawMessage) string {
 
 // wbOwn is the account WorkBuddy is signed in to and its tokens; ok is
 // false when it has none, or they are encrypted at rest.
-func wbOwn() (who string, c wbCreds, ok bool) {
+func wbOwn(w *wbSite) (who string, c wbCreds, ok bool) {
 	var s wbStoredSession
-	if !readJSON(wbAuthPath(), &s) {
+	if !readJSON(wbAuthPath(w), &s) {
 		return "", wbCreds{}, false
 	}
 	access, refresh := wbString(s.Auth.AccessToken), wbString(s.Auth.RefreshToken)
@@ -196,18 +255,18 @@ func wbSavedCreds(l savedLogin) (wbCreds, bool) {
 	return c, true
 }
 
-// wbLogins is every WorkBuddy account signed in, the first in use first.
-func wbLogins() []wbAccount {
-	ownUser, own, hasOwn := wbOwn()
+// wbLogins is every account of w signed in, the first in use first.
+func wbLogins(w *wbSite) []wbAccount {
+	ownUser, own, hasOwn := wbOwn(w)
 	if !hasOwn {
 		ownUser = ""
 	}
 	var out []wbAccount
-	for _, l := range sideLogins("workbuddy", ownUser, func(l savedLogin) bool {
+	for _, l := range sideLogins(w.id, ownUser, func(l savedLogin) bool {
 		_, ok := wbSavedCreds(l)
 		return ok
 	}) {
-		a := wbAccount{Login: l.Login, own: l.saved.own()}
+		a := wbAccount{Login: l.Login, site: w, own: l.saved.own()}
 		if a.own {
 			a.creds = own
 		} else {
@@ -218,40 +277,40 @@ func wbLogins() []wbAccount {
 	return out
 }
 
-func wbSide() []sideLogin {
+func wbSide(w *wbSite) []sideLogin {
 	var out []sideLogin
-	for _, a := range wbLogins() {
+	for _, a := range wbLogins(w) {
 		out = append(out, sideLogin{Login: a.Login})
 	}
 	return out
 }
 
-func wbLoginList() []Login { return loginsOf(wbSide()) }
+func wbLoginList(w *wbSite) []Login { return loginsOf(wbSide(w)) }
 
-func switchWorkBuddyLogin(user string) error {
-	return switchSideLogin("workbuddy", user, wbSide())
+func switchWorkBuddyLogin(w *wbSite, user string) error {
+	return switchSideLogin(w.id, user, wbSide(w))
 }
 
-func setWorkBuddyLoginOn(user string, on bool) error {
-	return setSideLoginOn("workbuddy", user, on, wbSide())
+func setWorkBuddyLoginOn(w *wbSite, user string, on bool) error {
+	return setSideLoginOn(w.id, user, on, wbSide(w))
 }
 
-func forgetWorkBuddyLogin(user string) error {
-	return forgetSideLogin("workbuddy", user, "WorkBuddy's own sign-in; sign out in WorkBuddy", wbSide(), nil)
+func forgetWorkBuddyLogin(w *wbSite, user string) error {
+	return forgetSideLogin(w.id, user, w.name+"'s own sign-in; sign out in "+w.name, wbSide(w), nil)
 }
 
-func workBuddyAccount() (Provider, bool) {
-	ls := wbLogins()
+func workBuddyAccount(w *wbSite) (Provider, bool) {
+	ls := wbLogins(w)
 	if len(ls) == 0 {
 		return Provider{}, false
 	}
 	return wbProvider(ls[0]), true
 }
 
-// workBuddyAlsoOn is the WorkBuddy accounts in use behind the first.
-func workBuddyAlsoOn() []Provider {
+// workBuddyAlsoOn is w's accounts in use behind the first.
+func workBuddyAlsoOn(w *wbSite) []Provider {
 	var out []Provider
-	for _, a := range wbLogins() {
+	for _, a := range wbLogins(w) {
 		if !a.Active && a.On {
 			out = append(out, wbProvider(a))
 		}
@@ -260,7 +319,8 @@ func workBuddyAlsoOn() []Provider {
 }
 
 func wbProvider(a wbAccount) Provider {
-	acct := &Account{Agent: "workbuddy", User: a.User, Plan: a.Plan}
+	w := a.site
+	acct := &Account{Agent: w.id, User: a.User, Plan: a.Plan}
 	acct.sign = func(ctx context.Context, req *http.Request, body []byte) error {
 		c, err := wbFresh(ctx, a)
 		if err != nil {
@@ -269,30 +329,30 @@ func wbProvider(a wbAccount) Provider {
 		req.Header.Del("Authorization")
 		req.Header.Set("Authorization", "Bearer "+c.Access)
 		req.Header.Set("X-User-Id", c.UID)
-		req.Header.Set("X-Domain", wbDomain(c))
+		req.Header.Set("X-Domain", wbDomain(w, c))
 		req.Header.Set("X-Product", "SaaS")
 		req.Header.Set("X-IDE-Type", "WorkBuddy")
 		req.Header.Set("User-Agent", "WorkBuddy/"+wbUAVersion)
 		return nil
 	}
-	acct.models = func() []catalog.Model { return wbModels }
+	acct.models = func() []catalog.Model { return w.models }
 	acct.fetch = func(ctx context.Context) ([]catalog.Model, error) {
-		ms, err := wbFetchModels(ctx, acct.sign)
+		ms, err := wbFetchModels(ctx, w, acct.sign)
 		if err != nil {
 			return nil, err
 		}
-		return ms, catalog.SaveLive("workbuddy", wbAPI()+"/v2", ms)
+		return ms, catalog.SaveLive(w.id, w.api()+"/v2", ms)
 	}
-	return Provider{ID: "workbuddy", Name: "WorkBuddy", Icon: "workbuddy-color", Chat: wbAPI() + "/v2", Website: "https://www.codebuddy.cn", Account: acct}
+	return Provider{ID: w.id, Name: w.name, Icon: "workbuddy-color", Chat: w.api() + "/v2", Website: w.website, Account: acct}
 }
 
 // wbDomain is the X-Domain a request carries: the account's own domain, or
 // the endpoint's authority.
-func wbDomain(c wbCreds) string {
+func wbDomain(w *wbSite, c wbCreds) string {
 	if c.Domain != "" {
 		return c.Domain
 	}
-	if u, err := url.Parse(wbAPI()); err == nil && u.Host != "" {
+	if u, err := url.Parse(w.api()); err == nil && u.Host != "" {
 		return u.Host
 	}
 	return ""
@@ -300,7 +360,7 @@ func wbDomain(c wbCreds) string {
 
 // ---- tokens -------------------------------------------------------------------
 
-// wbTokens caches each account's freshest tokens (by uid), so a token
+// wbTokens caches each account's freshest tokens (by site and uid), so a token
 // refreshed for one request is used by the next; WorkBuddy's own file is
 // never written, and a magpie-added account's refresh goes to logins.json.
 var wbTokens = struct {
@@ -312,7 +372,7 @@ var wbTokens = struct {
 func wbFresh(ctx context.Context, a wbAccount) (wbCreds, error) {
 	wbTokens.Lock()
 	c := a.creds
-	if cached, ok := wbTokens.m[a.creds.UID]; ok && cached.ExpiresAt >= c.ExpiresAt {
+	if cached, ok := wbTokens.m[a.site.id+"|"+a.creds.UID]; ok && cached.ExpiresAt >= c.ExpiresAt {
 		c = cached
 	}
 	wbTokens.Unlock()
@@ -326,7 +386,7 @@ func wbFresh(ctx context.Context, a wbAccount) (wbCreds, error) {
 		}
 		return wbCreds{}, errors.New("this WorkBuddy account is signed out; sign in again")
 	}
-	refreshed, err := wbRefresh(ctx, c)
+	refreshed, err := wbRefresh(ctx, a.site, c)
 	if err != nil {
 		if c.Access != "" {
 			return c, nil // a refresh hiccup: the current token may still work
@@ -334,10 +394,10 @@ func wbFresh(ctx context.Context, a wbAccount) (wbCreds, error) {
 		return wbCreds{}, err
 	}
 	wbTokens.Lock()
-	wbTokens.m[refreshed.UID] = refreshed
+	wbTokens.m[a.site.id+"|"+refreshed.UID] = refreshed
 	wbTokens.Unlock()
 	if !a.own {
-		wbSaveCreds(a.User, refreshed)
+		wbSaveCreds(a.site, a.User, refreshed)
 	}
 	return refreshed, nil
 }
@@ -353,12 +413,12 @@ func wbNearExpiry(expiresAt int64) bool {
 // wbRefresh trades a refresh token for a fresh access token, as WorkBuddy's
 // auth provider does: POST /v2/plugin/auth/token/refresh with the refresh
 // token in a header.
-func wbRefresh(ctx context.Context, c wbCreds) (wbCreds, error) {
+func wbRefresh(ctx context.Context, w *wbSite, c wbCreds) (wbCreds, error) {
 	var got wbRefreshed
-	err := wbCall(ctx, http.MethodPost, wbAPI()+"/v2/plugin/auth/token/refresh", map[string]string{
+	err := wbCall(ctx, http.MethodPost, w.api()+"/v2/plugin/auth/token/refresh", map[string]string{
 		"X-Refresh-Token":       c.Refresh,
 		"X-Auth-Refresh-Source": "plugin",
-		"X-Domain":              wbDomain(c),
+		"X-Domain":              wbDomain(w, c),
 	}, map[string]any{}, &got)
 	if err != nil {
 		return wbCreds{}, fmt.Errorf("WorkBuddy token refresh: %w", err)
@@ -410,8 +470,8 @@ func wbMergeRefreshed(c wbCreds, got wbRefreshed) wbCreds {
 
 // wbSaveCreds writes a magpie-added account's refreshed tokens back to
 // logins.json, so the next run starts from them.
-func wbSaveCreds(user string, c wbCreds) {
-	_ = editSideLogin("workbuddy", user, func(ls []savedLogin, i int) ([]savedLogin, error) {
+func wbSaveCreds(w *wbSite, user string, c wbCreds) {
+	_ = editSideLogin(w.id, user, func(ls []savedLogin, i int) ([]savedLogin, error) {
 		if ls[i].own() {
 			return ls, nil // never write WorkBuddy's own file
 		}
@@ -430,7 +490,7 @@ func wbSaveCreds(user string, c wbCreds) {
 // wbQuota is a WorkBuddy account's credit allowance, from its resource
 // summary: the plan's credits used against what the cycle grants.
 func wbQuota(ctx context.Context, a wbAccount) SubscriptionQuota {
-	q := SubscriptionQuota{Provider: "workbuddy", Name: "WorkBuddy", Icon: "workbuddy-color", Plan: a.Plan, User: a.User, Windows: []QuotaWindow{}}
+	q := SubscriptionQuota{Provider: a.site.id, Name: a.site.name, Icon: "workbuddy-color", Plan: a.Plan, User: a.User, Windows: []QuotaWindow{}}
 	c, err := wbFresh(ctx, a)
 	if err != nil {
 		q.Error = err.Error()
@@ -440,7 +500,7 @@ func wbQuota(ctx context.Context, a wbAccount) SubscriptionQuota {
 	// no /v2 gateway prefix — WorkBuddy asks it at /billing/meter/... on
 	// both desktop and web.
 	var sum wbResourceSummary
-	if err := wbCall(ctx, http.MethodPost, wbAPI()+"/billing/meter/get-user-resource-summary", wbAuthHeaders(c), map[string]any{}, &sum); err != nil {
+	if err := wbCall(ctx, http.MethodPost, a.site.api()+"/billing/meter/get-user-resource-summary", wbAuthHeaders(a.site, c), map[string]any{}, &sum); err != nil {
 		q.Error = err.Error()
 		return q
 	}
@@ -491,23 +551,23 @@ func (n *wbNum) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func wbAuthHeaders(c wbCreds) map[string]string {
+func wbAuthHeaders(w *wbSite, c wbCreds) map[string]string {
 	return map[string]string{
 		"Authorization": "Bearer " + c.Access,
 		"X-User-Id":     c.UID,
-		"X-Domain":      wbDomain(c),
+		"X-Domain":      wbDomain(w, c),
 		"X-Product":     "SaaS",
 		"X-IDE-Type":    "WorkBuddy",
 	}
 }
 
-func wbLoginQuota(ctx context.Context, l Login) SubscriptionQuota {
-	for _, a := range wbLogins() {
+func wbLoginQuota(ctx context.Context, w *wbSite, l Login) SubscriptionQuota {
+	for _, a := range wbLogins(w) {
 		if strings.EqualFold(a.User, l.User) {
 			return wbQuota(ctx, a)
 		}
 	}
-	return SubscriptionQuota{Provider: "workbuddy", Plan: l.Plan, Windows: []QuotaWindow{}, Error: "not signed in"}
+	return SubscriptionQuota{Provider: w.id, Plan: l.Plan, Windows: []QuotaWindow{}, Error: "not signed in"}
 }
 
 // ---- WorkBuddy's API ----------------------------------------------------------
@@ -583,10 +643,10 @@ func wbCall(ctx context.Context, method, u string, headers map[string]string, bo
 
 // ---- signing in ---------------------------------------------------------------
 
-// startWorkBuddySignIn is WorkBuddy's own external-link sign-in: the app
-// asks for a state and a page, opens the page for the user to sign in, then
-// polls for the token and the account.
-func startWorkBuddySignIn(s *signInFlow) error {
+// startWorkBuddySignIn is WorkBuddy's own external-link sign-in, at w: the
+// app asks for a state and a page, opens the page for the user to sign in,
+// then polls for the token and the account.
+func startWorkBuddySignIn(s *signInFlow, w *wbSite) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	var state struct {
 		State   string `json:"state"`
@@ -598,7 +658,7 @@ func startWorkBuddySignIn(s *signInFlow) error {
 		"X-No-Enterprise-Id":   "true",
 		"X-No-Department-Info": "true",
 	}
-	if err := wbCall(ctx, http.MethodPost, wbAPI()+"/v2/plugin/auth/state?platform=workbuddy", stateHeaders, map[string]any{}, &state); err != nil {
+	if err := wbCall(ctx, http.MethodPost, w.api()+"/v2/plugin/auth/state?platform="+url.QueryEscape(w.platform), stateHeaders, map[string]any{}, &state); err != nil {
 		cancel()
 		return fmt.Errorf("WorkBuddy sign-in: %w", err)
 	}
@@ -622,7 +682,7 @@ func startWorkBuddySignIn(s *signInFlow) error {
 		defer cancel()
 		fail := func(msg string) { s.finish(SignInState{State: "failed", Error: msg}) }
 		deadline := time.Now().Add(5 * time.Minute)
-		token, ok := wbPoll(ctx, deadline, "/v2/plugin/auth/token?state="+url.QueryEscape(state.State), nil, wbRetryToken, fail)
+		token, ok := wbPoll(ctx, w, deadline, "/v2/plugin/auth/token?state="+url.QueryEscape(state.State), nil, wbRetryToken, fail)
 		if !ok {
 			return
 		}
@@ -634,11 +694,11 @@ func startWorkBuddySignIn(s *signInFlow) error {
 		c := wbMergeRefreshed(wbCreds{}, tok)
 		acctHeaders := map[string]string{
 			"Authorization":      "Bearer " + c.Access,
-			"X-Domain":           wbDomain(c),
+			"X-Domain":           wbDomain(w, c),
 			"X-No-User-Id":       "true",
 			"X-No-Enterprise-Id": "true",
 		}
-		account, ok := wbPoll(ctx, deadline, "/v2/plugin/login/account?state="+url.QueryEscape(state.State), acctHeaders, wbRetryAccount, fail)
+		account, ok := wbPoll(ctx, w, deadline, "/v2/plugin/login/account?state="+url.QueryEscape(state.State), acctHeaders, wbRetryAccount, fail)
 		if !ok {
 			return
 		}
@@ -654,16 +714,16 @@ func startWorkBuddySignIn(s *signInFlow) error {
 		c.UID = acc.UID
 		who := wbWho(acc.Nickname, acc.PhoneNumber, acc.UID)
 		auth, _ := json.Marshal(c)
-		ownUser, _, hasOwn := wbOwn()
+		ownUser, _, hasOwn := wbOwn(w)
 		if !hasOwn {
 			ownUser = ""
 		}
-		if err := addSideLogin(savedLogin{Agent: "workbuddy", User: who, Auth: auth}, ownUser, func(savedLogin) {}); err != nil {
+		if err := addSideLogin(savedLogin{Agent: w.id, User: who, Auth: auth}, ownUser, func(savedLogin) {}); err != nil {
 			fail(err.Error())
 			return
 		}
 		wbTokens.Lock()
-		wbTokens.m[c.UID] = c
+		wbTokens.m[w.id+"|"+c.UID] = c
 		wbTokens.Unlock()
 		s.finish(SignInState{State: "done", User: who, Using: hasOwn && strings.EqualFold(ownUser, who)})
 	}()
@@ -673,7 +733,7 @@ func startWorkBuddySignIn(s *signInFlow) error {
 // wbPoll asks path every second until it answers with data, giving up at
 // the deadline. A retry code (the answer isn't ready) waits and asks again;
 // any other error ends the sign-in through fail.
-func wbPoll(ctx context.Context, deadline time.Time, path string, headers map[string]string, retryCode int, fail func(string)) (json.RawMessage, bool) {
+func wbPoll(ctx context.Context, w *wbSite, deadline time.Time, path string, headers map[string]string, retryCode int, fail func(string)) (json.RawMessage, bool) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -685,7 +745,7 @@ func wbPoll(ctx context.Context, deadline time.Time, path string, headers map[st
 			return nil, false
 		}
 		var raw json.RawMessage
-		err := wbCall(ctx, http.MethodGet, wbAPI()+path, headers, nil, &raw)
+		err := wbCall(ctx, http.MethodGet, w.api()+path, headers, nil, &raw)
 		switch {
 		case ctx.Err() != nil:
 			return nil, false

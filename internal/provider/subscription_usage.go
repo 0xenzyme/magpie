@@ -231,8 +231,10 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 	if !hidden["zcode"] {
 		fetches = append(fetches, perLogin(ctx, zcodeLoginList(), "ZCode", "zcode")...)
 	}
-	if !hidden["workbuddy"] {
-		fetches = append(fetches, perLogin(ctx, wbLoginList(), "WorkBuddy", "workbuddy-color")...)
+	for _, w := range []*wbSite{wbCN, wbAI} {
+		if !hidden[w.id] {
+			fetches = append(fetches, perLogin(ctx, wbLoginList(w), w.name, "workbuddy-color")...)
+		}
 	}
 	if !hidden[CommandCodePlanID] {
 		fetches = append(fetches, perLogin(ctx, cmdLoginList(), "Command Code", "commandcode")...)

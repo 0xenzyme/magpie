@@ -291,6 +291,7 @@ const I18N = {
     "Key added — it takes over when the ones before it run out": "已添加密钥，前面的密钥用完时由它接上",
     "Use": "使用",
     "Add another {name} account": "添加另一个 {name} 账号",
+    "WorkBuddy AI (international)": "WorkBuddy 国际版 (WorkBuddy AI)",
     "Sign in to another {name} account": "换一个 {name} 账号登录",
     "{agent} keeps one account; the gateway runs it for every request. Signing in to another replaces it.": "{agent} 只保存一个账号，网关的每个请求都通过它运行。登录另一个账号会替换它。",
     "signed in · switch account": "已登录 · 切换账号",

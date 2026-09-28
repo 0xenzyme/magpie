@@ -208,6 +208,9 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 			out.Account.Name, out.Account.Icon = "Kiro", "kiro-color"
 		} else if a.Agent == "antigravity" {
 			out.Account.Name, out.Account.Icon = "Antigravity", "antigravity-color"
+		} else if a.Agent == provider.WorkBuddyAIID {
+			// WorkBuddy AI, the international build, isn't an agent magpie configures
+			out.Account.Name, out.Account.Icon = "WorkBuddy AI", "workbuddy-color"
 		} else if a.Agent == provider.CommandCodePlanID {
 			// Command Code's CLI keeps the key its sign-in made
 			out.Account.Name, out.Account.Icon = "Command Code", "commandcode"

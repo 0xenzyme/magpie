@@ -703,8 +703,10 @@ func Accounts() []Provider {
 	if p, ok := zcodeAccount(); ok {
 		out = append(out, p)
 	}
-	if p, ok := workBuddyAccount(); ok {
-		out = append(out, p)
+	for _, w := range []*wbSite{wbCN, wbAI} {
+		if p, ok := workBuddyAccount(w); ok {
+			out = append(out, p)
+		}
 	}
 	if p, ok := commandCodeAccount(); ok {
 		out = append(out, p)

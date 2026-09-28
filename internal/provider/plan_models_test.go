@@ -115,7 +115,7 @@ func TestWorkBuddyFetchModels(t *testing.T) {
 		req.Header.Set("User-Agent", "WorkBuddy/"+wbUAVersion)
 		return nil
 	}
-	ms, err := wbFetchModels(context.Background(), sign)
+	ms, err := wbFetchModels(context.Background(), wbCN, sign)
 	if err != nil {
 		t.Fatal(err)
 	}

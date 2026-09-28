@@ -38,8 +38,8 @@ func LoginUsage(ctx context.Context, agent string) map[string]SubscriptionQuota 
 		logins = copilotLoginList()
 	case "zcode":
 		logins = zcodeLoginList()
-	case "workbuddy":
-		logins = wbLoginList()
+	case "workbuddy", WorkBuddyAIID:
+		logins = wbLoginList(wbSiteOf(agent))
 	case CommandCodePlanID:
 		logins = cmdLoginList()
 	case "gemini", "antigravity":
@@ -97,8 +97,8 @@ func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
 	if l.Agent == "zcode" {
 		return zcodeLoginQuota(ctx, l)
 	}
-	if l.Agent == "workbuddy" {
-		return wbLoginQuota(ctx, l)
+	if w := wbSiteOf(l.Agent); w != nil {
+		return wbLoginQuota(ctx, w, l)
 	}
 	if l.Agent == CommandCodePlanID {
 		return cmdLoginQuota(ctx, l)

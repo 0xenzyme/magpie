@@ -1594,6 +1594,7 @@ function accountPlan(a) {
   if (a.agent === "gemini" || a.agent === "antigravity") return a.plan || "Google";
   if (a.agent === "zcode") return a.plan || "GLM Coding Plan";
   if (a.agent === "workbuddy") return a.plan || "WorkBuddy";
+  if (a.agent === "workbuddy-ai") return a.plan || "WorkBuddy AI";
   if (a.agent === "commandcode-plan") return "Command Code" + (a.plan ? " " + t(a.plan) : "");
   return t("signed in");
 }
@@ -3541,6 +3542,8 @@ const SUBS = [
   { agent: "zcode", name: "ZCode (GLM Coding Plan)", icon: "zcode", plans: "Lite · Pro · Max", own: true },
   // Tencent's CodeBuddy plan, signed in as WorkBuddy does; WorkBuddy's own account is read too
   { agent: "workbuddy", name: "WorkBuddy (CodeBuddy)", icon: "workbuddy-color", plans: "Free · Pro", own: true },
+  // the same plan sold abroad, WorkBuddy AI (workbuddy.ai / codebuddy.ai), its accounts its own
+  { agent: "workbuddy-ai", get name() { return t("WorkBuddy AI (international)"); }, icon: "workbuddy-color", plans: "Free · Pro", own: true },
   // a commandcode.ai plan, signed in as its CLI does; the CLI's own key is read too
   { agent: "commandcode-plan", name: "Command Code", icon: "commandcode", plans: "Pro · GOAT · Max · Ultra", own: true },
   // devin's credentials.toml keeps one account too
