@@ -5,6 +5,9 @@
   --card-2: #f9f9fb;      /* expanded editor */
   --pill: #f1f1f4;
   --pill-hover: #e9e9ee;
+  --seg-track: var(--pill);   /* the header's view switch: its track and the thumb on the view shown */
+  --seg-thumb: var(--card);
+  --seg-edge: 0 1px 2px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .06);
   --line: #e3e3e8;
   --line-2: #ececf0;
   --fg: #1c1c21;
@@ -38,6 +41,9 @@
     --card-2: #1f1f23;
     --pill: #2d2d33;
     --pill-hover: #36363d;
+    --seg-track: rgba(255, 255, 255, .045);
+    --seg-thumb: rgba(255, 255, 255, .1);
+    --seg-edge: inset 0 .5px 0 rgba(255, 255, 255, .08), 0 1px 2px rgba(0, 0, 0, .3);
     --line: #333339;
     --line-2: #2c2c32;
     --fg: #ededf1;
@@ -64,6 +70,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #1a1a1e; --card: #232327; --card-2: #1f1f23; --pill: #2d2d33; --pill-hover: #36363d;
+  --seg-track: rgba(255, 255, 255, .045); --seg-thumb: rgba(255, 255, 255, .1); --seg-edge: inset 0 .5px 0 rgba(255, 255, 255, .08), 0 1px 2px rgba(0, 0, 0, .3);
   --line: #333339; --line-2: #2c2c32; --fg: #ededf1; --fg-2: #b9b9c1; --muted: #8b8b94; --faint: #56565f;
   --accent: #a5b4fc; --accent-soft: #2b2c47; --accent-fg: #14142a; --sel: #33345a;
   --green: #6fd99b; --green-soft: #1e3a2b; --red: #f28b82; --red-soft: #45272a; --amber: #f2b544; --amber-soft: #3f3220;
@@ -179,12 +186,12 @@ body.window:not(.mac):not(.linux) .brand { display: none; } /* Windows' title ba
 .logo { color: var(--fg); display: inline-flex; } /* ink, like the wordmark; the accent blue fought the text in light mode */
 .seg {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  display: inline-flex; padding: 2px; border-radius: 9px;
-  background: var(--pill);
+  display: inline-flex; padding: 2px; border-radius: 8px;
+  background: var(--seg-track);
 }
-.seg > .thumb { border-radius: 7px; }
+.seg > .thumb { border-radius: 6px; background: var(--seg-thumb); box-shadow: var(--seg-edge); }
 body.panel .seg { display: none; }
-.seg button { position: relative; z-index: 1; white-space: nowrap; height: 30px; padding: 0 14px; border-radius: 7px; font-size: 13.5px; color: var(--muted); transition: color .18s var(--ease), transform .14s var(--ease); }
+.seg button { position: relative; z-index: 1; white-space: nowrap; height: 24px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; color: var(--muted); transition: color .18s var(--ease), transform .14s var(--ease); }
 .seg button.on { color: var(--fg); }
 .seg button:hover:not(.on) { color: var(--fg-2); }
 .actions { margin-left: auto; display: flex; gap: 2px; }
@@ -218,7 +225,7 @@ body.panel .seg { display: none; }
 .top.tight .brand > span:not(.logo), .top.tight .update span { display: none; }
 .top.tight .update { width: 22px; padding: 0; justify-content: center; margin-right: 4px; }
 body.window .top.cramped .seg { position: relative; left: auto; top: auto; transform: none; margin: 0 auto; } /* relative still: its thumb sits in it, not over the whole header */
-.top.cramped .seg button { padding: 0 10px; }
+.top.cramped .seg button { padding: 0 8px; }
 @keyframes update-in { from { opacity: 0; transform: translateY(-3px) scale(.94); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
