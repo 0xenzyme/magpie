@@ -117,6 +117,11 @@ type Provider struct {
 	// it serves only through the routing groups it is in, and by its
 	// "provider/model" ids.
 	Unlisted bool `json:"unlisted,omitempty"`
+	// Off switches the provider off without removing it: its keys and
+	// settings stay, but agents aren't given its models, no request,
+	// routing group or fallback goes to it, and its balance isn't asked,
+	// until it is switched on again (#163) — for a key out of quota.
+	Off bool `json:"off,omitempty"`
 	// Contexts is how long a request the user says a model takes, in
 	// tokens, over what the vendor or models.dev says: by model id, "*"
 	// for all the provider's models. Agents are told it.
@@ -209,7 +214,7 @@ func All() []Provider {
 			continue
 		}
 		pk := picks[a.ID]
-		a.Models, a.Unlisted, a.Fallback, a.Routing, a.Affinity, a.Contexts, a.Family = pk.Models, pk.Unlisted, pk.Fallback, pk.Routing, pk.Affinity, pk.Contexts, pk.Family
+		a.Models, a.Unlisted, a.Off, a.Fallback, a.Routing, a.Affinity, a.Contexts, a.Family = pk.Models, pk.Unlisted, pk.Off, pk.Fallback, pk.Routing, pk.Affinity, pk.Contexts, pk.Family
 		if a.ID == "cursor" { // picked before its efforts were one model
 			a.Models = cursorPicks(a.Models)
 		}
@@ -297,7 +302,7 @@ func Save(p Provider) error {
 		if p.ID == "kiro" {
 			key = p.Key
 		}
-		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Contexts: p.Contexts, Family: p.Family, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID)}
+		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Contexts: p.Contexts, Family: p.Family, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID)}
 	} else {
 		if slices.Contains(accountIDs, p.ID) && !stored(p.ID) {
 			// taken, it would hide that subscription once signed in
@@ -680,3 +685,38 @@ func Mask(s string) string {
 // Ready reports whether the provider can be used: it has a key, needs
 // none, or is a signed-in agent.
 func (p Provider) Ready() bool { return p.Account != nil || p.Key != "" || keyOptional(p) }
+
+// On is whether the provider takes requests: ready, and not switched off.
+func (p Provider) On() bool { return p.Ready() && !p.Off }
+
+// SetOff switches a provider off, or on again (see Provider.Off). Saving
+// it brings the model lists written into agents' files up to date.
+func SetOff(id string, off bool) error {
+	p, err := Find(id)
+	if err != nil {
+		return err
+	}
+	p.Off = off
+	return Save(*p)
+}
+
+// SwitchedOff is the provider switched off in magpie that a model id
+// names: as "provider/model", or a model only switched-off providers list.
+// A request for it is refused as that, not as a model magpie doesn't know.
+func SwitchedOff(id string) (Provider, bool) {
+	id = strings.TrimSuffix(strings.TrimSpace(id), "[1m]")
+	if pid, _, ok := strings.Cut(id, "/"); ok {
+		if p, err := Find(pid); err == nil && p.Off {
+			return *p, true
+		}
+	}
+	for _, p := range All() {
+		if !p.Off || !p.Ready() {
+			continue
+		}
+		if slices.ContainsFunc(p.Exposed(), func(m catalog.Model) bool { return m.ID == id }) {
+			return p, true
+		}
+	}
+	return Provider{}, false
+}

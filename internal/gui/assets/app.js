@@ -1521,11 +1521,12 @@ function renderProviders() {
   let dialog = null; // the editor, if one is open
   for (const p of providers.providers) {
     const open = editing === p.id;
-    const row = el("div", "row provider" + (open ? " selected" : ""));
+    const row = el("div", "row provider" + (open ? " selected" : "") + (p.off ? " off" : ""));
     row.dataset.id = p.id;
     const who = el("div", "who");
     const name = el("div", "name", p.name);
     if (p.sponsored) name.append(el("span", "badge", t("sponsored")));
+    if (p.off) name.append(el("span", "badge off", t("Switched off")));
     const n = p.models.filter((m) => m.on).length;
     const models = n ? t(n === 1 ? "{n} model" : "{n} models", { n }) : t("no models exposed");
     who.append(name, el("div", "sub", (p.account ? t("signed in as {user}", { user: p.account.user }) : p.host) + " · " + models));
@@ -1554,7 +1555,7 @@ function renderProviders() {
     if (!key.title.includes(label)) key.title = label + " · " + key.title;
     const chev = el("span", "chev");
     chev.append(svg(CHEV_R, 11, 1.7));
-    row.append(icon(p.icon || "generic"), who, uses, key, chev);
+    row.append(icon(p.icon || "generic"), who, uses, key, providerSwitch(p), chev);
     row.onclick = () => { editing = open ? null : p.id; draft = null; renderProviders(); }; // the preset sheet stays as it is under the dialog
     list.append(row);
     if (open) dialog = renderEditor(p);
@@ -1565,6 +1566,37 @@ function renderProviders() {
   if (importingApps) dialog = renderImportApps(importingApps);
   if (dialog) openModal(dialog); else closeModal();
   view.scrollTop = top;
+}
+
+// providerSwitch turns a provider off and on (#163): off, it stays with its
+// keys and settings, but agents are given none of its models and no request
+// goes to it (a key out of quota, say), without removing it.
+function providerSwitch(p) {
+  const on = !p.off;
+  const s = el("button", "lib-switch pswitch" + (on ? " on" : ""));
+  s.setAttribute("role", "switch");
+  s.setAttribute("aria-checked", on ? "true" : "false");
+  s.setAttribute("aria-label", t("Use {name}", { name: p.name }));
+  s.title = on ? t("On · switch it off and agents no longer get its models; its keys and settings are kept") : t("Off · switch it on and agents get its models again");
+  s.append(el("i"));
+  s.onclick = (e) => { e.stopPropagation(); switchProvider(p, !on, s); };
+  return s;
+}
+
+// switchProvider saves it on or off at once, leaving an editor open as it
+// was; the agents' own model lists follow.
+async function switchProvider(p, on, s) {
+  s?.classList.toggle("on", on);
+  try {
+    providers = await api("provider/" + (on ? "on" : "off"), { id: p.id });
+    renderProviders();
+    state = await api("state");
+    renderAgents();
+    status(t(on ? "{name} is on" : "{name} is off: agents no longer get its models", { name: p.name }), "ok");
+  } catch (e) {
+    s?.classList.toggle("on", !on);
+    status(e.message, "err");
+  }
 }
 
 // Sign-ins magpie found but leaves alone, so nobody wonders why an agent that
@@ -2530,7 +2562,9 @@ function renderEditor(p, presetID) {
     h.append(el("span", "grow"));
     const site = pr?.website || p?.website || (p?.host ? "https://" + p.host : "");
     if (site) { const b = el("button", "link", hostOf(site) + " ↗"); b.onclick = () => api("open", { url: site }); h.append(b); }
+    if (p) h.append(providerSwitch(p));
     ed.append(h);
+    if (p?.off) ed.append(el("div", "hint off-note", t("Switched off: agents aren't given its models and no request goes to it. Its keys and settings are kept; switch it on to use it again.")));
   }
 
   // who uses it: just the agents already pointed here, so a click changes

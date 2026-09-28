@@ -97,6 +97,12 @@ func unserved(asked string) bool {
 	return true
 }
 
+// switchedOff says a request for model went nowhere because p, which
+// serves it, is switched off in magpie (provider.Provider.Off).
+func switchedOff(p provider.Provider, model string) string {
+	return fmt.Sprintf("%s is switched off in Magpie, so %q is not served; switch it on again in Magpie's Providers to use it", p.Name, model)
+}
+
 // Version is set by main.
 var Version = "dev"
 
@@ -650,6 +656,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	p, model, ok := provider.Resolve(asked)
 	if !ok {
 		call.Status, call.Error = 404, "unknown model"
+		if off, isOff := provider.SwitchedOff(asked); isOff {
+			call.Error = "provider switched off"
+			writeError(w, from, 404, switchedOff(off, call.Model))
+			finishCapture()
+			s.record(call)
+			return
+		}
 		msg := fmt.Sprintf("magpie knows no model %q", call.Model)
 		if ids := provider.IDs(); len(ids) > 0 {
 			msg += "; it has " + strings.Join(ids, ", ")

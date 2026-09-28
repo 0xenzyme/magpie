@@ -961,6 +961,12 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .provider .name .badge { margin-left: 6px; }
 .badge { font-size: 9.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; background: var(--amber-soft); color: var(--amber); vertical-align: 1px; }
 .provider.selected { background: var(--card-2); }
+/* switched off (#163): kept, dimmed, and said so by its name */
+.provider.off > .ic, .provider.off .who .sub, .provider.off .uses, .provider.off .key { opacity: .45; }
+.provider.off .name { color: var(--muted); }
+.badge.off { background: var(--pill); color: var(--muted); }
+.provider .pswitch { margin-left: 8px; }
+.editor .off-note { grid-column: 1 / -1; }
 .uses { display: flex; align-items: center; gap: 4px; margin-left: auto; flex: none; }
 .use {
   width: 26px; height: 26px; border-radius: 8px;

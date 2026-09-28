@@ -33,6 +33,7 @@ const providerUsage = `usage:
   magpie provider fallback <id> <provider/model>…   where requests go when it's out of quota or down (none clears)
   magpie provider models <id> [ids…]      fetch the vendor's model list, or choose which models to expose
   magpie provider listed <id> yes|no      no: its models serve only through routing groups, not in the list
+  magpie provider off|on <id>             switch it off (kept, but no agent or request uses it), or on again
   magpie provider test <id> [model…]      send a tiny request through each endpoint, or to each model
   magpie provider rm <id>                 remove a provider
 
@@ -72,6 +73,8 @@ func providers() error {
 			r.name += " " + faint.Render("custom")
 		}
 		switch {
+		case p.Off:
+			r.key = faint.Render("○ switched off")
 		case p.Account != nil:
 			r.key = green.Render("●") + " " + muted.Render("signed in as "+p.Account.User)
 		case p.Key != "":
@@ -398,6 +401,25 @@ func providerCmd(args []string) error {
 			fmt.Println(green.Render("✓"), p.Name, muted.Render("serves only through routing groups"))
 		} else {
 			fmt.Println(green.Render("✓"), p.Name, muted.Render("its models are listed"))
+		}
+		return nil
+	case "off", "on":
+		// off: kept with its keys, but agents are given none of its
+		// models and no request goes to it
+		if len(rest) != 1 {
+			return fmt.Errorf("magpie provider %s <id>", verb)
+		}
+		p, err := provider.Find(rest[0])
+		if err != nil {
+			return err
+		}
+		if err := provider.SetOff(p.ID, verb == "off"); err != nil {
+			return err
+		}
+		if verb == "off" {
+			fmt.Println(green.Render("✓"), p.Name, muted.Render("is switched off: agents are given none of its models"))
+		} else {
+			fmt.Println(green.Render("✓"), p.Name, muted.Render("is switched on"))
 		}
 		return nil
 	case "models":

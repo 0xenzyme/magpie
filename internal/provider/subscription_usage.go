@@ -117,7 +117,7 @@ func SubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 func visibleQuotas(all []SubscriptionQuota) []SubscriptionQuota {
 	hidden := map[string]bool{}
 	for _, p := range load().Providers {
-		hidden[p.ID] = p.Hidden
+		hidden[p.ID] = p.Hidden || p.Off // switched off: not asked either
 	}
 	var chosen map[string]map[string]bool
 	out := []SubscriptionQuota{}
@@ -188,7 +188,7 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 	defer cancel()
 	hidden := map[string]bool{}
 	for _, p := range load().Providers {
-		hidden[p.ID] = p.Hidden
+		hidden[p.ID] = p.Hidden || p.Off // switched off: not asked either
 	}
 	var fetches []func() SubscriptionQuota
 	if p, ok := claudeAccount(); ok && !hidden["claude"] {

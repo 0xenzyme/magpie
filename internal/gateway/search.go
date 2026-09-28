@@ -93,7 +93,7 @@ func searcher() (provider.Provider, string, bool) {
 	top := -1
 	for _, p := range provider.All() {
 		r := rank(p)
-		if r < 0 || !p.Ready() || (top >= 0 && r >= top) {
+		if r < 0 || !p.On() || (top >= 0 && r >= top) {
 			continue
 		}
 		if m := smallModel(p, nil); m != "" {

@@ -88,7 +88,7 @@ func AutoVision() string {
 	}
 	best, bestTier, bestCost := "", 0, 0.0
 	for _, p := range provider.All() {
-		if !p.Ready() || p.Decides() {
+		if !p.On() || p.Decides() {
 			continue
 		}
 		t := tier(p)

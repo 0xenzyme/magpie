@@ -70,6 +70,7 @@ type providerJSON struct {
 	Models    []modelJSON        `json:"models"`             // everything the vendor lists, exposed ones flagged
 	Exposed   int                `json:"exposed"`            // how many reach the agents
 	Unlisted  bool               `json:"unlisted"`           // its models serve only through routing groups
+	Off       bool               `json:"off"`                // switched off: kept, but agents get none of its models
 	Contexts  map[string]int     `json:"contexts,omitempty"` // the windows the user set, "*" for all its models
 	Fetched   string             `json:"fetched"`            // "3h ago" when the list came from the vendor
 	Agents    []providerAgent    `json:"agents"`             // detected agents, current ones flagged
@@ -174,7 +175,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		Catalog: p.Catalog, Website: p.Website, KeysURL: p.KeysURL,
 		Headers: p.Headers, BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, ModelsURL: p.ModelsURL,
 		Ready: p.Ready(), Chosen: p.Models, Models: []modelJSON{}, Agents: []providerAgent{},
-		Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Unlisted: p.Unlisted, Contexts: p.Contexts,
+		Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
 	}
 	if out.Fallback == nil {
 		out.Fallback = []string{}
@@ -486,6 +487,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 					// the other keys are kept apart, in the Accounts list
 					in.Keys = old.Keys
 					in.Routing = old.Routing // set on its own, with route
+					in.Off = old.Off         // and this with off and on
 					if in.Contexts == nil {
 						in.Contexts = old.Contexts // a save that doesn't say
 					}
@@ -541,6 +543,15 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				fail(rw, err)
 				return
 			}
+		case "off", "on":
+			// switched off, it stays with its keys, but agents are given
+			// none of its models; the files they keep them in follow,
+			// through catalog.Changed
+			if err := provider.SetOff(in.ID, r.PathValue("action") == "off"); err != nil {
+				fail(rw, err)
+				return
+			}
+			provider.ForgetBalances()
 		case "affinity":
 			if err := provider.SetAffinity(in.ID, in.Affinity); err != nil {
 				fail(rw, err)

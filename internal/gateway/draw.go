@@ -123,7 +123,7 @@ func Drawers(p provider.Provider) []catalog.Model {
 func AutoDrawer() string {
 	best, bestCost, bestDate := "", 0.0, ""
 	for _, p := range provider.All() {
-		if !p.Ready() || p.Decides() {
+		if !p.On() || p.Decides() {
 			continue
 		}
 		for _, m := range Drawers(p) {
@@ -202,6 +202,10 @@ func (s *Server) images(edit bool) http.HandlerFunc {
 		}
 		p, model, ok := provider.Resolve(d.Model)
 		if !ok {
+			if off, isOff := provider.SwitchedOff(d.Model); isOff {
+				fail(404, switchedOff(off, d.Model))
+				return
+			}
 			fail(404, fmt.Sprintf("magpie knows no model %q to draw with", d.Model))
 			return
 		}

@@ -407,7 +407,7 @@ type Entry struct {
 }
 
 // Catalog lists the routing groups, then every exposed model of every ready
-// provider not kept unlisted.
+// provider not kept unlisted. A provider switched off has none in it.
 func Catalog() []Entry {
 	entries := providerEntries()
 	out := groupEntries(entries)
@@ -431,7 +431,7 @@ func providerEntries() []Entry {
 	var out []Entry
 	s := settings.Load()
 	for _, p := range All() {
-		if !p.Ready() || p.Decides() { // a decision API only routes
+		if !p.On() || p.Decides() { // a decision API only routes
 			continue
 		}
 		for _, m := range p.Exposed() {
@@ -490,7 +490,7 @@ func resolveIn(entries []Entry, id string) (Provider, string, bool) {
 		}
 	}
 	if pid, model, ok := strings.Cut(id, "/"); ok {
-		if p, err := Find(pid); err == nil && p.Ready() {
+		if p, err := Find(pid); err == nil && p.On() {
 			return *p, model, true
 		}
 	}
@@ -506,7 +506,7 @@ func resolveIn(entries []Entry, id string) (Provider, string, bool) {
 	// not exposed, but some provider lists it
 	var found []Provider
 	for _, p := range All() {
-		if !p.Ready() || p.Decides() {
+		if !p.On() || p.Decides() {
 			continue
 		}
 		for _, m := range p.Available() {
