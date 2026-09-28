@@ -120,6 +120,9 @@ type model struct {
 	smodel    string                       // the model the sessions are narrowed to, "" for all
 	sfolder   string                       // the folder, "" for all
 	scost     bool                         // the chart shows cost, not tokens
+	slist     []sessions.Session           // the latest sessions, the most recently active first
+	ssel      int                          // the session picked among those shown
+	sstat     bool                         // the page shows the range's stats, not its sessions
 	lib       []libRow
 	lrow      int
 	libView   *library.View
@@ -235,6 +238,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.quotas = msg
 		return m, nil
 	case sessFilterMsg:
+		m.ssel = 0
 		if msg.folder {
 			m.sfolder = msg.value
 		} else {
@@ -668,7 +672,11 @@ func (m model) View() string {
 			footer = hints("↑↓", "item", "↵", "agents", "a", "add", "e", "edit", "u", "update skill", "i", "bring in", "d", "remove", "s", "sync", "r", "reload", "1–6", "pages", "q", "quit")
 		case pageSessions:
 			body = m.viewSessions()
-			footer = hints("←→", "range", "M", "model", "f", "folder", "x", "clear", "c", "tokens / cost", "r", "reload", "1–6", "pages", "q", "quit")
+			if m.sstat {
+				footer = hints("←→", "range", "M", "model", "f", "folder", "x", "clear", "c", "tokens / cost", "s", "sessions", "r", "reload", "1–6", "pages", "q", "quit")
+			} else {
+				footer = hints("↑↓", "session", "↵", "resume", "←→", "range", "M", "model", "f", "folder", "x", "clear", "s", "stats", "r", "reload", "1–6", "pages", "q", "quit")
+			}
 		case pageUsage:
 			body = m.viewUsage()
 			footer = hints("←→", "period", "t w m A", "today · 7 days · 30 days · all", "u", "used / left", "r", "reload", "1–6", "pages", "q", "quit")
