@@ -86,6 +86,15 @@ var (
 	creditWords = regexp.MustCompile(`(?i)insufficient.?(balance|credit|fund)|balance|credit|billing|payment|arrear|overdue|suspended|余额|欠费|充值|账户.*(不足|停)`)
 	// quotaWords: it has used up what its plan allows for now.
 	usedUpWords = regexp.MustCompile(`(?i)quota|usage.?limit|limit.?reached|hit your .*limit|limit.{0,24}resets|exceeded.*(plan|limit)|额度|用量|套餐|上限`)
+	// rateWords: a 429 that is a short rate limit — requests or tokens per
+	// minute — which usedUpWords took for a used-up plan ("Rate limit
+	// exceeded", "reached"): as magpie words an upstream error, with
+	// "rate_limit_error" for its type, every such 429 was, and rested a
+	// quarter of an hour rather than a minute (#153).
+	rateWords = regexp.MustCompile(`(?i)rate.?limit|too many requests|per.?(second|sec|minute|min)\b|\b[rt]pm\b|频率|太频繁`)
+	// plannedWords: a 429 that says the plan's own allowance is used, rate
+	// words or not — a day's free requests, say.
+	plannedWords = regexp.MustCompile(`(?i)quota|usage.?limit|hit your .*limit|limit.{0,24}resets|per.?(day|week|month)|daily|weekly|monthly|额度|用量|套餐`)
 	// resetsWords: Claude Code's "usage limit reached|<when it resets>".
 	resetsWords = regexp.MustCompile(`(?i)limit reached\|(\d{10})\b`)
 )
@@ -117,7 +126,9 @@ func failure(status int, body []byte) string {
 	switch {
 	case status == 402, creditWords.Match(body) && status != 429 || strings.Contains(string(body), "insufficient_quota"):
 		return failCredit
-	case usedUpWords.Match(body):
+	case status == 429 && rateWords.Match(body) && !plannedWords.Match(body):
+		return failRate
+	case usedUpWords.Match(body), status == 429 && plannedWords.Match(body):
 		return failQuota
 	case status == 429:
 		return failRate
