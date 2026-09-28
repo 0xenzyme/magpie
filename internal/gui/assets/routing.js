@@ -146,7 +146,7 @@
   // decided for the story of a request
   function restWhen(rest, from = now()) {
     const left = at(rest.until) - from;
-    return left < 3600e3 ? t("back in {d}", { d: dur(left) }) : t("back at {time}", { time: clock(rest.until) });
+    return left < 3600e3 ? t("back in {d}", { d: dur(left) }) : t("back at {time} · in {d}", { time: clock(rest.until), d: dur(left) });
   }
   // restHow says how long a failed account sits out, and what said so.
   function restHow(rest, from) {
@@ -155,7 +155,7 @@
       case "retry-after": return t("It rests {d}, as the vendor's Retry-After says", { d });
       case "credit": return t("It sits out half an hour, until someone tops it up");
       case "window": return t("Its allowance is used up: it rests until that renews, at {time}", { time });
-      case "resets": return t("It rests until {time}, when Claude Code says the limit resets", { time });
+      case "resets": return t("It rests until {time}, when the vendor says the limit resets", { time });
       case "quota": return t("It rests 15 minutes: out of quota, with no word of when it resets");
       case "backoff": return rest.failures > 1
         ? t("It has failed {n} times in a row: it rests {d}, longer each time", { n: rest.failures, d })

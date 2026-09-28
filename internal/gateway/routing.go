@@ -8,7 +8,8 @@ package gateway
 // half an hour, out of quota until it says it resets — or, for a
 // subscription, until the window it filled does — rate limited until it
 // says to try again, and otherwise a minute, longer each time it fails
-// again.
+// again. A rest's length and what set it go into the trace as they are, so
+// what the Routing page says is when the account really comes back.
 
 import (
 	"encoding/json"
@@ -64,9 +65,12 @@ func served(rest, key string, tokens int) {
 
 // How long a candidate sits out, by why it failed.
 const (
-	creditRest   = 30 * time.Minute // out of credit: until someone tops it up
-	quotaRest    = 15 * time.Minute // out of quota, with no word of when it resets
-	longestWait  = time.Hour        // the most a vendor's own "try again at" is trusted
+	creditRest  = 30 * time.Minute // out of credit: until someone tops it up
+	quotaRest   = 15 * time.Minute // out of quota, with no word of when it resets
+	longestWait = time.Hour        // the most a vendor's own "try again at" is trusted
+	// longestQuota is the most an account out of quota sits out, when it
+	// says when it's back: a week's window, and a day over
+	longestQuota = 8 * 24 * time.Hour
 	longestRetry = 10 * time.Minute // failing again and again
 )
 
@@ -119,7 +123,24 @@ type Rest struct {
 	// "cooldown" (a minute), "backoff" (longer each time it fails again).
 	By       string `json:"by"`
 	Failures int    `json:"failures,omitempty"` // in a row, for a backoff
+
+	agent, user string // the subscription account resting, when it is one
 }
+
+// renewed lifts the rests of a subscription account whose windows were
+// just started again (a Codex reset spent): out of quota no longer.
+func renewed(agent, user string) {
+	restingUntil.Lock()
+	defer restingUntil.Unlock()
+	for k, r := range restingUntil.note {
+		if r.agent == agent && strings.EqualFold(r.user, user) {
+			delete(restingUntil.m, k)
+			delete(restingUntil.note, k)
+		}
+	}
+}
+
+func init() { provider.OnRenewed(renewed) }
 
 // resetsIn is how long until a used-up ChatGPT account is back, as its
 // refusal says: {"error":{"type":"usage_limit_reached","resets_at":<unix>,
@@ -140,6 +161,18 @@ func resetsIn(body []byte, now time.Time) time.Duration {
 	return time.Duration(max(e.Error.In, 0)) * time.Second
 }
 
+// resetsAt is how long until a used-up subscription is back, as its
+// refusal says: Claude Code's "usage limit reached|<unix>", or ChatGPT's
+// resets_at / resets_in_seconds. Zero when it doesn't say.
+func resetsAt(body []byte, now time.Time) time.Duration {
+	if m := resetsWords.FindSubmatch(body); m != nil {
+		if n, _ := strconv.ParseInt(string(m[1]), 10, 64); time.Unix(n, 0).After(now) {
+			return time.Unix(n, 0).Sub(now)
+		}
+	}
+	return resetsIn(body, now)
+}
+
 // restAfter sets a failed candidate aside for as long as its failure says.
 func (s *Server) restAfter(c candidate, status int, header http.Header, body []byte) Rest {
 	now := time.Now()
@@ -150,18 +183,25 @@ func (s *Server) restAfter(c candidate, status int, header http.Header, body []b
 	case failCredit:
 		d, r.By = creditRest, "credit"
 	case failQuota:
+		// out of quota is out until the quota comes back: when the refusal
+		// says (Claude Code's time, ChatGPT's resets_at — noted by
+		// keepRetry once the error is put in words), else when the window
+		// it filled renews, else as long as the vendor's headers ask — and
+		// only a header is held to the longest wait, as a rate limit's
+		// would be (#147: a ChatGPT account out until 21:34 read as back
+		// "in 59 minutes", the resets_at turned Retry-After and cut to an
+		// hour, then was tried, refused and benched again)
 		d, r.By = quotaRest, "quota"
-		if w := retryAfter(header, now); w > 0 {
-			d, r.By = w, "retry-after"
-		} else if m := resetsWords.FindSubmatch(body); m != nil {
-			if n, _ := strconv.ParseInt(string(m[1]), 10, 64); time.Unix(n, 0).After(now) {
-				d, r.By = time.Unix(n, 0).Sub(now), "resets"
-			}
-		} else if w := resetsIn(body, now); w > 0 {
+		if w := resetsAt(body, now); w > 0 {
+			d, r.By = w, "resets"
+		} else if w := resetsNoted(header, now); w > 0 {
 			d, r.By = w, "resets"
 		} else if t := c.full(now); !t.IsZero() {
 			d, r.By = t.Sub(now), "window"
+		} else if w := retryAfter(header, now); w > 0 {
+			d, r.By = w, "retry-after"
 		}
+		d = min(d, longestQuota)
 	case failRate:
 		if w := retryAfter(header, now); w > 0 {
 			d, r.By = w, "retry-after"
@@ -182,6 +222,9 @@ func (s *Server) restAfter(c candidate, status int, header http.Header, body []b
 		provider.StaleAllowance(a.Agent, a.User) // ask again what it has left
 	}
 	r.Until = now.Add(d)
+	if a := c.p.Account; a != nil {
+		r.agent, r.user = a.Agent, a.User
+	}
 	restingUntil.Lock()
 	restingUntil.m[c.restKey()] = r.Until
 	restingUntil.note[c.restKey()] = r
@@ -209,11 +252,29 @@ func keepRetry(dst, src http.Header, body []byte) {
 			dst[k] = vs
 		}
 	}
-	if dst.Get("Retry-After") == "" {
-		if d := resetsIn(body, time.Now()); d > 0 {
+	now := time.Now()
+	if d := resetsAt(body, now); d > 0 {
+		// the error the agent gets says it in words, not resets_at: the
+		// time goes on beside it, for restAfter to rest it that long
+		dst.Set(resetsHeader, strconv.FormatInt(now.Add(d).Unix(), 10))
+		if dst.Get("Retry-After") == "" {
 			dst.Set("Retry-After", strconv.Itoa(int(d.Seconds())))
 		}
 	}
+}
+
+// resetsHeader carries, from keepRetry to restAfter, when a subscription
+// out of quota said it's back. A held error that is passed on after all
+// leaves it out; one written straight to the agent carries it, harmlessly.
+const resetsHeader = "X-Magpie-Resets-At"
+
+// resetsNoted is how long until the time keepRetry noted, if it did.
+func resetsNoted(h http.Header, now time.Time) time.Duration {
+	n, err := strconv.ParseInt(h.Get(resetsHeader), 10, 64)
+	if err != nil || !time.Unix(n, 0).After(now) {
+		return 0
+	}
+	return time.Unix(n, 0).Sub(now)
 }
 
 // retryAfter is when a vendor says to try again: Retry-After, in seconds

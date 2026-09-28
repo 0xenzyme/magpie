@@ -464,7 +464,9 @@ func (h *holdWriter) WriteHeader(code int) {
 func (h *holdWriter) pass() {
 	dst := h.w.Header()
 	for k, v := range h.header {
-		dst[k] = v
+		if k != resetsHeader { // magpie's own note, for restAfter
+			dst[k] = v
+		}
 	}
 	h.w.WriteHeader(h.status)
 	h.passing = true

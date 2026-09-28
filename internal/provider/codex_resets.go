@@ -139,6 +139,9 @@ func UseCodexReset(ctx context.Context, user string) (ResetOutcome, error) {
 		return out, err
 	}
 	StaleAllowance("codex", user)
+	if out.Code == "reset" {
+		renewedNow("codex", user)
+	}
 	subscriptionUsageCache.Lock()
 	subscriptionUsageCache.at = time.Time{}
 	subscriptionUsageCache.data = nil
