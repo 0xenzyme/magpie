@@ -126,6 +126,15 @@ func buildCodeAssist(r *Request, model, agent string) []byte {
 					res["id"] = id
 				}
 				parts = append(parts, map[string]any{"functionResponse": res})
+				// the images a tool returned follow its response, as Gemini
+				// CLI sends a file it read
+				for _, im := range p.Images {
+					if im.Data != "" {
+						parts = append(parts, map[string]any{"inlineData": map[string]any{"mimeType": im.MediaType, "data": im.Data}})
+					} else if im.URL != "" {
+						parts = append(parts, map[string]any{"fileData": map[string]any{"mimeType": im.MediaType, "fileUri": im.URL}})
+					}
+				}
 			}
 			// thinking isn't sent back: its signatures belong to whoever
 			// made them, and Google turns away ones it didn't

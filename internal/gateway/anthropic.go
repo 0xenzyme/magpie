@@ -105,7 +105,8 @@ func parseAnthropic(body []byte) (*Request, error) {
 				case "tool_use":
 					msg.Parts = append(msg.Parts, Part{Kind: ToolCall, ID: b.ID, Name: b.Name, Args: b.Input})
 				case "tool_result":
-					msg.Parts = append(msg.Parts, Part{Kind: ToolResult, CallID: b.ToolUseID, Text: stringOrText(b.Content), IsError: b.IsError})
+					out, images := toolOutput(b.Content)
+					msg.Parts = append(msg.Parts, Part{Kind: ToolResult, CallID: b.ToolUseID, Text: out, Images: images, IsError: b.IsError})
 				case "thinking":
 					msg.Parts = append(msg.Parts, Part{Kind: Thinking, Text: b.Thinking, Signature: b.Signature})
 				}
@@ -235,6 +236,23 @@ func withOutputEffort(body []byte, levels []string) []byte {
 	return withFields(body, map[string]any{"output_config": oc})
 }
 
+// imageBlock is an image as an Anthropic block: inline, or by its URL.
+func imageBlock(p Part) aBlock {
+	b := aBlock{Type: "image"}
+	b.Source = &struct {
+		Type      string `json:"type"`
+		MediaType string `json:"media_type"`
+		Data      string `json:"data"`
+		URL       string `json:"url"`
+	}{}
+	if p.URL != "" && p.Data == "" {
+		b.Source.Type, b.Source.URL = "url", p.URL
+	} else {
+		b.Source.Type, b.Source.MediaType, b.Source.Data = "base64", p.MediaType, p.Data
+	}
+	return b
+}
+
 // buildAnthropic renders a request for an Anthropic-style upstream.
 func buildAnthropic(r *Request, model string) []byte {
 	type msg struct {
@@ -263,23 +281,22 @@ func buildAnthropic(r *Request, model string) []byte {
 			case File:
 				rest = append(rest, aBlock{Type: "text", Text: attachmentText(p)})
 			case Image:
-				b := aBlock{Type: "image"}
-				b.Source = &struct {
-					Type      string `json:"type"`
-					MediaType string `json:"media_type"`
-					Data      string `json:"data"`
-					URL       string `json:"url"`
-				}{}
-				if p.URL != "" && p.Data == "" {
-					b.Source.Type, b.Source.URL = "url", p.URL
-				} else {
-					b.Source.Type, b.Source.MediaType, b.Source.Data = "base64", p.MediaType, p.Data
-				}
-				rest = append(rest, b)
+				rest = append(rest, imageBlock(p))
 			case ToolCall:
 				rest = append(rest, aBlock{Type: "tool_use", ID: p.ID, Name: p.Name, Input: argsOf(p)})
 			case ToolResult:
 				c, _ := json.Marshal(p.Text)
+				if len(p.Images) > 0 {
+					// a tool_result holds images beside its text
+					var blocks []aBlock
+					if strings.TrimSpace(p.Text) != "" {
+						blocks = append(blocks, aBlock{Type: "text", Text: p.Text})
+					}
+					for _, im := range p.Images {
+						blocks = append(blocks, imageBlock(im))
+					}
+					c, _ = json.Marshal(blocks)
+				}
 				results = append(results, aBlock{Type: "tool_result", ToolUseID: p.CallID, Content: c, IsError: p.IsError})
 			case Thinking:
 				if p.Signature != "" {
