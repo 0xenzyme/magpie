@@ -5372,6 +5372,7 @@ function renderSettings() {
     (v) => savePrefs({ ...keep, claudeWarmAt: v }));
   renderTrayUsage(s, keep);
   renderProxy(s, keep);
+  renderImages(s, keep);
   renderRedact(s, keep);
   renderLAN(s);
   renderSync();
@@ -5716,6 +5717,43 @@ function renderWarmAt(box, sub, at, onReset, what, save) {
   box.append(segs([["off", t("Off")], ["on", t("On")]], at ? "on" : "off", (v) => save(v === "on" ? at || "06:00" : "")));
 }
 
+// renderImages: the model that describes images to a model that can't see
+// them — the one magpie picks, one named, or none, and then such an image
+// is turned away.
+function renderImages(s, keep) {
+  const box = $("#imagesList");
+  box.replaceChildren();
+  const models = s.visionModels || [];
+  const named = (id) => {
+    const m = models.find((x) => x.id === id);
+    return m ? `${m.name || m.id} · ${m.providerName}` : id;
+  };
+  const r = el("div", "row pref");
+  const who = el("div", "who");
+  const v = s.vision || "";
+  who.append(el("div", "name", t("Image recognition")), el("div", "sub",
+    v === "off" ? t("A model that can't see images is sent none: a request with one in its latest message is turned away")
+    : t("When the model in use can't see images, this one describes them to it, once for each image")));
+  const b = el("button", "rt-cond on");
+  const icOf = (id) => models.find((x) => x.id === id)?.icon;
+  if (v === "off") b.append(el("span", "", t("Off")));
+  else if (v) b.append(icon(icOf(v) || "generic"), el("span", "", named(v)));
+  else {
+    if (s.visionAuto) b.append(icon(icOf(s.visionAuto) || "generic"));
+    b.append(el("span", "", s.visionAuto ? t("Automatic") + " · " + named(s.visionAuto) : t("Automatic") + " · " + t("no model that sees")));
+  }
+  const opt = (x) => ({ value: x.id, label: x.name || x.id, note: x.providerName, icon: x.icon, group: x.providerName, ref: x.id });
+  b.onclick = (ev) => openPicker({ id: "", name: "", fields: [] }, { key: "vision", label: "model", value: v, options: [
+    { value: "", label: t("Automatic"), note: s.visionAuto ? named(s.visionAuto) : t("no model that sees"), reset: true },
+    { value: "off", label: t("Off"), note: t("images turned away") },
+    ...models.map(opt)],
+  onPick: (id) => { if (id !== v) savePrefs({ ...keep, vision: id }); } }, b, ev);
+  const val = el("div", "val");
+  val.append(b);
+  r.append(who, val);
+  box.append(r);
+}
+
 // renderRedact: what the gateway masks before a request goes to a vendor —
 // secrets, personal data, the user's own words — and puts back in what the
 // vendor answers.
@@ -5842,7 +5880,7 @@ function prefsKeep(s) {
   return { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, proxy: s.proxy || "",
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", noStats: !!s.noStats,
-    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3 };
+    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, vision: s.vision || "" };
 }
 
 // savePrefs sends what the page was drawn with (prefsBase) and the choice

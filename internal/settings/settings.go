@@ -66,6 +66,10 @@ type Settings struct {
 	// NoStats stops the one event a day that counts magpie's users (see
 	// internal/stats).
 	NoStats bool `json:"noStats,omitempty"`
+	// Vision is the model that describes an image to a model that can't see
+	// it: a model's id (provider/model, group/<id>), "off" to turn such an
+	// image away, or empty for one magpie picks (see gateway.seer).
+	Vision string `json:"vision,omitempty"`
 	// TrayUsage is the subscription or plan whose windows are shown beside
 	// the tray icon, by its provider and account ("claude|a@b.c"); "" none.
 	TrayUsage string `json:"trayUsage,omitempty"`
@@ -202,6 +206,10 @@ func Save(s Settings) error {
 		if err != nil || u.Host == "" || !slices.Contains([]string{"http", "https", "socks5", "socks5h"}, u.Scheme) {
 			return fmt.Errorf("proxy must look like http://127.0.0.1:7890 or socks5://127.0.0.1:1080, not %q", s.Proxy)
 		}
+	}
+	s.Vision = strings.TrimSpace(s.Vision)
+	if s.Vision != "" && s.Vision != "off" && !strings.Contains(s.Vision, "/") {
+		return fmt.Errorf("the vision model must be a model's id such as openai/gpt-5-mini, or off, not %q", s.Vision)
 	}
 	s.AgentOrder, s.AgentsHidden, s.AgentsShown = ids(s.AgentOrder), ids(s.AgentsHidden), ids(s.AgentsShown)
 	if err := os.MkdirAll(Dir(), 0o755); err != nil {

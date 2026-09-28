@@ -177,6 +177,10 @@ type Server struct {
 	// taken off it (see Relisten)
 	lnMu sync.Mutex
 	ln   net.Listener
+	// the images described for models that can't see them (vision.go)
+	sightMu    sync.Mutex
+	sights     map[string]*sight
+	sightOrder []string
 }
 
 // New makes a gateway.
@@ -693,9 +697,28 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 		}
 	}
+	// Unless a model that sees describes them to it (vision.go).
+	seeing := sync.OnceValues(func() (string, bool) {
+		if describing(r.Context()) {
+			return "", false
+		}
+		return seer()
+	})
 	if imageInput != nil && !*imageInput {
 		var currentImage bool
-		body, currentImage = textOnlyBody(from, body)
+		if see, ok := seeing(); ok && hasImage(from, body) {
+			seen, err := s.seenBody(r.Context(), from, body, see)
+			if err != nil {
+				call.Status, call.Error = 502, "image not described"
+				writeError(w, from, 502, fmt.Sprintf("model %q can't see images, and %s couldn't describe the image for it: %v", call.Model, see, err))
+				finishCapture()
+				s.record(call)
+				return
+			}
+			body = seen
+		} else {
+			body, currentImage = textOnlyBody(from, body)
+		}
 		if req, err := parse(from, body); err == nil && !currentImage {
 			for _, msg := range req.Messages {
 				if slices.ContainsFunc(msg.Parts, func(part Part) bool { return part.Kind == Image }) {
@@ -780,7 +803,17 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	// text-only fallbacks. A failure must not send a current user image to
 	// one of them. Historical images and tool results are omitted per
 	// candidate below, so a text-only fallback can still answer those.
-	if isGroup {
+	// With a model to describe them, a text-only member is given the images
+	// described instead.
+	// Described only when such a member is tried: a rule that sends the
+	// images to a model that sees asks for no description.
+	var seenGroup func() ([]byte, error)
+	if isGroup && hasImage(from, body) {
+		if see, ok := seeing(); ok {
+			seenGroup = sync.OnceValues(func() ([]byte, error) { return s.seenBody(r.Context(), from, body, see) })
+		}
+	}
+	if isGroup && seenGroup == nil {
 		_, currentImage := textOnlyBody(from, body)
 		if currentImage {
 			var kept []candidate
@@ -831,7 +864,24 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		}
 		if isGroup {
 			if in := membersImageInput([]provider.Member{{Provider: c.p, Model: c.model}}, nil); in != nil && !*in {
-				attemptBody, _ = textOnlyBody(from, body) // omit images in prior turns and tool results
+				if seenGroup != nil {
+					b, err := seenGroup()
+					if err != nil {
+						// only an image of the latest turn fails to be described
+						call.Error = "image not described"
+						if !last {
+							skipped = append(skipped, c.label()+": "+call.Error)
+							continue
+						}
+						see, _ := seeing()
+						call.Status = 502
+						writeError(w, from, 502, fmt.Sprintf("model %q can't see images, and %s couldn't describe the image for it: %v", c.p.ID+"/"+c.model, see, err))
+						break
+					}
+					attemptBody = b
+				} else {
+					attemptBody, _ = textOnlyBody(from, body) // omit images in prior turns and tool results
+				}
 			}
 		}
 		picked := false // the effort asked for in place of the agent's

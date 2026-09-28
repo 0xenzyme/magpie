@@ -8,6 +8,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"mime"
 	"net/http"
 	"os"
@@ -119,6 +120,10 @@ type settingsJSON struct {
 	ProxySource string `json:"proxySource"`
 	// whether magpie opens at login: the system's record, not a setting
 	Login bool `json:"login"`
+	// the model that describes images when Vision names none, and those
+	// that can be named
+	VisionAuto   string     `json:"visionAuto,omitempty"`
+	VisionModels []modelRef `json:"visionModels"`
 	// where other machines reach the gateway while it is shared
 	LANURLs []string `json:"lanURLs,omitempty"`
 	// when the Codex warm-up last started an account's window
@@ -135,6 +140,16 @@ func settingsState() settingsJSON {
 		s.LANURLs = gateway.LANURLs()
 	}
 	s.CodexWarmed, s.ClaudeWarmed = latest(provider.CodexWarmed()), latest(provider.ClaudeWarmed())
+	s.VisionAuto, s.VisionModels = gateway.AutoVision(), []modelRef{}
+	for _, e := range provider.Served() {
+		if e.Images && (e.ImageInput == nil || *e.ImageInput) && (e.Group != "" || e.Provider.Ready()) {
+			m := modelRef{ID: e.ID, Name: e.Name, Provider: e.Provider.ID, PName: e.Provider.Name, Icon: e.Provider.Icon}
+			if e.Group != "" {
+				m.Provider, m.PName = "", e.Group
+			}
+			s.VisionModels = append(s.VisionModels, m)
+		}
+	}
 	return s
 }
 
@@ -334,6 +349,12 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		in.LAN, in.LANKey = cur.LAN, cur.LANKey
 		// used or left is the Usage page's toggle as much as Settings', set on its own
 		in.QuotaLeft = cur.QuotaLeft
+		if v := strings.TrimSpace(in.Vision); v != "" && v != "off" && v != cur.Vision {
+			if _, _, ok := provider.Resolve(v); !ok {
+				fail(rw, fmt.Errorf("no model %s to describe images", v))
+				return
+			}
+		}
 		if err := settings.Save(in); err != nil {
 			fail(rw, err)
 			return
