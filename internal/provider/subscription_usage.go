@@ -208,6 +208,9 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 	if !hidden["zcode"] {
 		fetches = append(fetches, perLogin(ctx, zcodeLoginList(), "ZCode", "zcode")...)
 	}
+	if !hidden["workbuddy"] {
+		fetches = append(fetches, perLogin(ctx, wbLoginList(), "WorkBuddy", "workbuddy-color")...)
+	}
 	for _, agent := range []string{"gemini", "antigravity"} {
 		if hidden[agent] {
 			continue

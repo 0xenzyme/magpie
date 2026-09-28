@@ -1392,6 +1392,7 @@ function accountPlan(a) {
   if (a.agent === "grok") return a.plan || "SuperGrok";
   if (a.agent === "gemini" || a.agent === "antigravity") return a.plan || "Google";
   if (a.agent === "zcode") return a.plan || "GLM Coding Plan";
+  if (a.agent === "workbuddy") return a.plan || "WorkBuddy";
   return t("signed in");
 }
 
@@ -3322,6 +3323,8 @@ const SUBS = [
   { agent: "copilot", name: "Copilot", icon: "githubcopilot", plans: "Pro · Pro+ · Business", own: true },
   // Z.ai's GLM Coding Plan, signed in as ZCode does; ZCode's own account is read too
   { agent: "zcode", name: "ZCode (GLM Coding Plan)", icon: "zcode", plans: "Lite · Pro · Max", own: true },
+  // Tencent's CodeBuddy plan, signed in as WorkBuddy does; WorkBuddy's own account is read too
+  { agent: "workbuddy", name: "WorkBuddy (CodeBuddy)", icon: "workbuddy-color", plans: "Free · Pro", own: true },
   // devin's credentials.toml keeps one account too
   { agent: "devin", name: "Devin", icon: "devin", plans: "Pro · Enterprise", single: true },
   // Google's sign-ins; Gemini CLI's own account is read too

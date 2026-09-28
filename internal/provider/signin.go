@@ -233,6 +233,11 @@ func (s *signInFlow) begin() error {
 		if err := startCopilotSignIn(s); err != nil {
 			return err
 		}
+	case "workbuddy":
+		// Tencent's sign-in, as WorkBuddy (CodeBuddy) makes it
+		if err := startWorkBuddySignIn(s); err != nil {
+			return err
+		}
 	case "zcode":
 		// Z.ai's sign-in, as ZCode makes it
 		if err := startZCodeSignIn(s); err != nil {

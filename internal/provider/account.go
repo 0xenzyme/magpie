@@ -703,6 +703,9 @@ func Accounts() []Provider {
 	if p, ok := zcodeAccount(); ok {
 		out = append(out, p)
 	}
+	if p, ok := workBuddyAccount(); ok {
+		out = append(out, p)
+	}
 	for _, agent := range []string{"gemini", "antigravity"} {
 		if p, ok := googleAccountOf(agent); ok {
 			out = append(out, p)
