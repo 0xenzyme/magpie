@@ -12,8 +12,8 @@ package provider
 // accounts are signed in by magpie with ZCode's own polling sign-in
 // (zcode.z.ai/api/v1/oauth/cli/…), and their key is kept in logins.json.
 //
-// The plan has no model list to ask; the models are ZCode's, as its
-// built-in config lists them for the coding plan.
+// The plan's models are ZCode's, as its built-in config lists them for the
+// coding plan (zcode_models.go); zcodeModels are them before that is read.
 
 import (
 	"bytes"
@@ -268,6 +268,13 @@ func zcodeProvider(who, plan string, k zcodeKey) Provider {
 		return nil
 	}
 	acct.models = func() []catalog.Model { return zcodeModels }
+	acct.fetch = func(ctx context.Context) ([]catalog.Model, error) {
+		ms, err := zcodeFetchModels(ctx, k.Base)
+		if err != nil {
+			return nil, err
+		}
+		return ms, catalog.SaveLive("zcode", k.Base, ms)
+	}
 	return Provider{ID: "zcode", Name: "ZCode", Icon: "zcode", Anthropic: k.Base, Website: "https://zcode.z.ai", Account: acct}
 }
 

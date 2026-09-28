@@ -15,8 +15,8 @@ package provider
 // kept in logins.json. A near-expired token is refreshed as WorkBuddy does,
 // and a magpie-signed-in one's refresh is written back beside it.
 //
-// The plan has no small model list to ask; the models are WorkBuddy's, its
-// CLI agent's coding picks.
+// The plan's models are WorkBuddy's CLI agent's, from its product config
+// (workbuddy_models.go); wbModels are them before that is read.
 
 import (
 	"bytes"
@@ -276,6 +276,13 @@ func wbProvider(a wbAccount) Provider {
 		return nil
 	}
 	acct.models = func() []catalog.Model { return wbModels }
+	acct.fetch = func(ctx context.Context) ([]catalog.Model, error) {
+		ms, err := wbFetchModels(ctx, acct.sign)
+		if err != nil {
+			return nil, err
+		}
+		return ms, catalog.SaveLive("workbuddy", wbAPI()+"/v2", ms)
+	}
 	return Provider{ID: "workbuddy", Name: "WorkBuddy", Icon: "workbuddy-color", Chat: wbAPI() + "/v2", Website: "https://www.codebuddy.cn", Account: acct}
 }
 
