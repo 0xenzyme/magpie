@@ -871,7 +871,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 		}
 		if !last && hw.failed() {
-			rest := s.restAfter(c, hw.code(), hw.header, hw.errBody())
+			rest := s.restAfterMarked(c, hw.code(), hw.header, hw.errBody(), hw.sharedPool)
 			try.Fail, try.Rest = rest.Why, &rest
 			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
 			skipped = append(skipped, c.label()+": "+call.Error)
@@ -895,7 +895,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		hw.release()
 		model = c.model
 		if call.Status < 400 {
-			served(c.rest, c.restKey(), call.Usage.Input+call.Usage.Output+call.Usage.CacheRead+call.Usage.CacheWrite)
+			servedCandidate(c, call.Usage.Input+call.Usage.Output+call.Usage.CacheRead+call.Usage.CacheWrite)
 			answered(stuck, c, aff.Turn, call.Usage.CacheRead)
 			if hit != nil {
 				ruleAnswered(ruleAt, call.Usage)
@@ -986,6 +986,14 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	return s.translate(w, r, p, from, to[0], model, body, &call.Usage)
 }
 
+// markOpenRouterSharedPool keeps an upstream routing fact in the held attempt,
+// rather than exposing it as a response header.
+func markOpenRouterSharedPool(w http.ResponseWriter) {
+	if h, ok := w.(*holdWriter); ok {
+		h.sharedPool = true
+	}
+}
+
 // forward sends a request to the provider.
 func (s *Server) forward(ctx context.Context, p provider.Provider, to provider.Protocol, path string, body []byte, in http.Header) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Base(to)+path, bytes.NewReader(body))
@@ -1074,6 +1082,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			if len(s.usable(p, model)) > 0 {
 				return res.StatusCode, msg, false
 			}
+		}
+		if p.Preset == "openrouter" && openRouterSharedPool(b) {
+			markOpenRouterSharedPool(w)
 		}
 		keepRetry(w.Header(), res.Header, b)
 		return writeError(w, proto, res.StatusCode, msg), msg, true
@@ -1314,6 +1325,9 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 	if res.StatusCode >= 400 {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 		msg := p.Name + ": " + provider.APIError(b, res.Status)
+		if p.Preset == "openrouter" && openRouterSharedPool(b) {
+			markOpenRouterSharedPool(w)
+		}
 		keepRetry(w.Header(), res.Header, b)
 		return writeError(w, from, res.StatusCode, msg), msg
 	}

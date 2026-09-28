@@ -56,7 +56,21 @@ func served(rest, key string, tokens int) {
 	routed.used[rest] = tokenUse{routed.used[rest].now(now) + float64(tokens), now}
 	delete(routed.failures, rest)
 	routed.Unlock()
-	// one that answered — tried all the same, or again — rests no longer
+	clearRest(key)
+}
+
+// servedCandidate records an answer and ends both the provider's rest and,
+// when it has one, the candidate's model-specific rest.
+func servedCandidate(c candidate, tokens int) {
+	served(c.rest, c.restKey(), tokens)
+	if id := c.restID(); id != c.restKey() {
+		clearRest(id)
+	}
+}
+
+// clearRest wakes a candidate that just answered, whether it was tried after
+// a provider rest or after a model-specific rest.
+func clearRest(key string) {
 	restingUntil.Lock()
 	delete(restingUntil.m, key)
 	delete(restingUntil.note, key)
@@ -134,6 +148,19 @@ func failure(status int, body []byte) string {
 		return failRate
 	}
 	return failOther
+}
+
+// openRouterSharedPool says an OpenRouter free model was refused by the
+// provider's shared pool, rather than by OpenRouter's account-wide free tier.
+func openRouterSharedPool(body []byte) bool {
+	var reply struct {
+		Error struct {
+			Metadata struct {
+				LimitSource string `json:"limit_source"`
+			} `json:"metadata"`
+		} `json:"error"`
+	}
+	return json.Unmarshal(body, &reply) == nil && reply.Error.Metadata.LimitSource == "upstream_provider_shared_pool"
 }
 
 // Rest is why a candidate sits out after a failure, and until when.
@@ -227,6 +254,12 @@ func resetsAt(body []byte, now time.Time) time.Duration {
 
 // restAfter sets a failed candidate aside for as long as its failure says.
 func (s *Server) restAfter(c candidate, status int, header http.Header, body []byte) Rest {
+	return s.restAfterMarked(c, status, header, body, openRouterSharedPool(body))
+}
+
+// restAfterMarked keeps an upstream routing fact through gateway error
+// translation without putting it in the response sent to the client.
+func (s *Server) restAfterMarked(c candidate, status int, header http.Header, body []byte, sharedPool bool) Rest {
 	now := time.Now()
 	d := fallbackCooldown
 	why := failure(status, body)
@@ -282,13 +315,20 @@ func (s *Server) restAfter(c candidate, status int, header http.Header, body []b
 	if a := c.p.Account; a != nil && why != failOther && why != failVerify {
 		provider.StaleAllowance(a.Agent, a.User) // ask again what it has left
 	}
-	r.Until, r.Key = now.Add(d), c.restKey()
+	r.Until = now.Add(d)
 	if a := c.p.Account; a != nil {
 		r.agent, r.user = a.Agent, a.User
 	}
+	id := c.restKey()
+	// OpenRouter identifies a provider's shared pool separately from its
+	// account-wide free-tier limit. Only the former leaves sibling models ready.
+	if why == failRate && c.isOpenRouterFree() && sharedPool {
+		id = c.restID()
+	}
+	r.Key = id
 	restingUntil.Lock()
-	restingUntil.m[c.restKey()] = r.Until
-	restingUntil.note[c.restKey()] = r
+	restingUntil.m[id] = r.Until
+	restingUntil.note[id] = r
 	restingUntil.Unlock()
 	return r
 }
