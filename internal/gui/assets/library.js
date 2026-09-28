@@ -112,10 +112,16 @@
       if (blocked) { c.classList.add("blocked"); c.disabled = true; tip = blocked; }
       c.title = a.aside && !problem && !blocked ? tip + "\n" + a.aside : tip;
       c.setAttribute("aria-pressed", has ? "true" : "false");
+      // What's lit is read off the chips clicked, not the list they were
+      // drawn with: a row's chips change in place, several clicks before
+      // magpie has answered the first, and take on the handlers of chips
+      // drawn for them (morphChips). An agent not shown keeps what it has.
       c.onclick = (e) => {
         e.stopPropagation();
-        const next = has ? on.filter((x) => x !== a.id) : [...on, a.id];
-        onChange(next, c);
+        const me = e.currentTarget;
+        const lit = [...me.parentElement.children].filter((x) => x.getAttribute("aria-pressed") === "true").map((x) => x.dataset.agent);
+        const kept = on.filter((id) => !all.some((x) => x.id === id));
+        onChange([...kept, ...(lit.includes(a.id) ? lit.filter((x) => x !== a.id) : [...lit, a.id])], me);
       };
       box.append(c);
     }
@@ -125,28 +131,59 @@
   // A row's chips switched in place: the page isn't drawn again, which
   // lost the chips' hover (they folded back together and spread again under
   // the pointer) and blinked their icons (#69). The chip shows the click at
-  // once; what magpie wrote is then painted onto the same buttons, and the
-  // page is drawn again only when more than this row changed.
+  // once and the next click needn't wait: a row writes one list at a time,
+  // and clicks made meanwhile are sent together once it's answered, so the
+  // last click is what the agents end up with. What magpie wrote is then
+  // painted onto the same buttons — or, when it couldn't, what it has, which
+  // takes back the clicks it refused. Nothing else on the page is drawn
+  // again for it: the rest is drawn from the new answer when the page next is.
+  const writing = new Map(); // path + name → { list, name, want, box } while a row's agents are written
+  let refused = 0;           // when a row's write last failed, whose error another row's "Written" doesn't cover
   function chipsChange(path, name, list, rowOf) {
     return async (next, c) => {
-      const box = c.parentElement;
-      c.classList.toggle("on", next.includes(c.dataset.agent));
+      const on = next.includes(c.dataset.agent);
+      c.classList.toggle("on", on);
       c.classList.remove("via");
-      const before = rest(list);
+      c.setAttribute("aria-pressed", on ? "true" : "false");
+      const key = path + "\n" + name;
+      const w = writing.get(key);
+      if (w) { w.want = next; w.box = c.parentElement; take(lib); return; }
+      const me = { list, name, want: next, box: c.parentElement };
+      writing.set(key, me);
+      take(lib);
+      let sent = null, failed = false;
       try {
-        const v = await api("library/" + path, { name, agents: next });
-        lib = v;
-        report(v.result);
+        // clicks that came back to what was sent aren't sent again
+        const same = () => [...sent].sort().join() === [...me.want].sort().join();
+        while (!sent || !same()) {
+          sent = me.want;
+          const v = await api("library/" + path, { name, agents: sent });
+          take(v);
+          if (same() && Date.now() - refused > 6000) report(v.result);
+        }
       } catch (e) {
+        failed = true;
+        refused = Date.now();
         status(e.message, "err", 6000);
       }
+      writing.delete(key);
+      // the page held the clicks: what magpie really has is read again
+      if (failed) await api("library").then(take, () => {});
       const x = lib[list].find((y) => y.name === name);
       const fresh = x && rowOf(x).querySelector(":scope > .lib-agents");
-      if (!fresh || rest(list) !== before || !box.isConnected || !morphChips(box, fresh)) render();
+      if (!me.box.isConnected) { if (failed) render(); } // drawn again meanwhile, from the clicks
+      else if (fresh && !morphChips(me.box, fresh)) me.box.replaceWith(fresh);
     };
   }
-  // what the page shows besides a row's chips
-  const rest = (list) => JSON.stringify([lib[list].map((y) => y.name), lib.foundServers, lib.foundSkills, lib.instructions.agents.map((a) => a.on)]);
+  // take is the page as magpie answered it, with the rows still being
+  // written kept as they were last clicked
+  function take(v) {
+    lib = v;
+    for (const w of writing.values()) {
+      const x = lib[w.list].find((y) => y.name === w.name);
+      if (x) x.agents = w.want;
+    }
+  }
   function morphChips(box, fresh) {
     const was = [...box.children], now = [...fresh.children];
     if (was.length !== now.length || was.some((c, i) => c.dataset.agent !== now[i].dataset.agent)) return false;
@@ -163,23 +200,31 @@
 
   // ---------- loading and changing ----------
 
-  async function load() {
+  // quiet is a read on coming back to the window: the page is drawn again
+  // only when the library changed meanwhile, so a click that brings the
+  // window forward doesn't redraw what it clicked on.
+  async function load(quiet) {
     if (!lib) renderLoading();
-    rtk = null; // asked again when its tab is drawn: an agent may have been installed since
     try {
-      lib = await api("library");
+      const v = await api("library");
+      const was = lib && seen(lib);
+      take(v);
+      if (quiet === true && seen(lib) === was) return;
+      rtk = null; // asked again when its tab is drawn: an agent may have been installed since
       render();
     } catch (e) {
       status(e.message, "err");
     }
   }
   window.loadLibrary = load;
+  // the library as the page shows it: what a change did is said once, not shown
+  const seen = (v) => JSON.stringify({ ...v, result: undefined });
 
   // Every change answers with the page as it is after it, and what it did.
   async function change(path, body, done) {
     try {
       const v = await api("library/" + path, body);
-      lib = v;
+      take(v);
       report(v.result, done);
       render();
       return true;
@@ -1570,7 +1615,7 @@
   async function quietLoad() {
     if (page.hidden || modal || dirty() || probing) return;
     const was = shelf();
-    await load();
+    await load(true);
     if (shelf() !== was) for (const kind of ["mcp", "skills"]) if (market[kind].items) fetchMarket(kind);
   }
   const shelf = () => JSON.stringify([lib?.servers?.map((x) => x.name), lib?.skills?.map((x) => x.name)]);
