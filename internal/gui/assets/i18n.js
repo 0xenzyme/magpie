@@ -735,7 +735,6 @@ const I18N = {
     "Rules": "规则",
     "Add a rule": "添加规则",
     "When": "当",
-    "tokens": "tokens",
     "has an image": "带图片",
     "any reasoning": "不限推理",
     "reasoning on": "开启推理",
