@@ -1,13 +1,19 @@
 package gateway
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/settings"
 )
 
 // Claude Desktop, pointed at a third-party gateway, keeps a model only when
@@ -119,4 +125,80 @@ func aliased(id string) (string, bool) {
 func isClaudeDesktop(r *http.Request) bool {
 	ua := r.Header.Get("User-Agent")
 	return strings.HasPrefix(ua, "Mozilla/") && strings.Contains(ua, " Claude/")
+}
+
+// Claude Desktop sends some requests on a model of its own choosing rather
+// than the one its session is on. A session's title (and branch name) is
+// asked for by one tool-less request whose model is its "small_fast" pick
+// from the gateway's list — the first id with haiku in it, else sonnet,
+// else opus (_$n in its app.asar, 2.7032), the session's model only when
+// none has one — so {"model":"claude-sonnet-5-thinking","max_tokens":200,
+// "system":"You write short session titles. …"} went to a Claude model the
+// user never picked. Claude Code in its Code tab asks for its own
+// claude-haiku-… by name for small tasks too.
+//
+// A session's turns carry tools; the model the latest one is for is the one
+// the user picked. A small tool-less request (a title's max_tokens is 200,
+// a turn's tens of thousands) for a model whose id reads as Claude's, and
+// any request for a model magpie doesn't serve, goes to that model instead,
+// so a chat the user started on a Claude model of their own stays on it. It is kept on disk, so a title asked for before the first
+// turn after a restart goes there too.
+var desktopPicked struct {
+	sync.Mutex
+	model string
+	from  string // the file it was read from
+}
+
+func desktopPickedPath() string { return filepath.Join(settings.Dir(), "claude-desktop.model") }
+
+// desktopTurn is the model a Claude Desktop request for asked is served by.
+func desktopTurn(asked string, body []byte) string {
+	if asked == "" {
+		return asked
+	}
+	tools := hasTools(body)
+	desktopPicked.Lock()
+	defer desktopPicked.Unlock()
+	if path := desktopPickedPath(); desktopPicked.from != path {
+		b, _ := os.ReadFile(path)
+		desktopPicked.model, desktopPicked.from = strings.TrimSpace(string(b)), path
+	}
+	picked := desktopPicked.model
+	if asked == picked {
+		return asked
+	}
+	if unserved(asked) || !tools && small(body) && desktopAccepts(asked) {
+		if picked != "" {
+			return picked
+		}
+		return asked
+	}
+	if tools {
+		desktopPicked.model = asked
+		if os.MkdirAll(settings.Dir(), 0o755) == nil {
+			os.WriteFile(desktopPickedPath(), []byte(asked+"\n"), 0o600)
+		}
+	}
+	return asked
+}
+
+// small: the request asks for a short answer (max_tokens at most 4096), as
+// Desktop's title does, not a session's turn.
+func small(body []byte) bool {
+	var v struct {
+		MaxTokens int `json:"max_tokens"`
+	}
+	return json.Unmarshal(body, &v) == nil && v.MaxTokens > 0 && v.MaxTokens <= 4096
+}
+
+// hasTools: the request offers the model tools (Anthropic's, Chat's and
+// Responses' "tools" alike).
+func hasTools(body []byte) bool {
+	if !bytes.Contains(body, []byte(`"tools"`)) {
+		return false
+	}
+	var v struct {
+		Tools []json.RawMessage `json:"tools"`
+	}
+	return json.Unmarshal(body, &v) == nil && len(v.Tools) > 0
 }

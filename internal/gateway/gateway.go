@@ -63,25 +63,38 @@ var StandIn func(agent, model string) string
 // standIn is StandIn's model for one magpie shows no entry for: not a
 // catalog id or model, nor a ready provider's "provider/model".
 func standIn(agent, asked string) string {
-	if StandIn == nil || asked == "" || strings.HasPrefix(asked, provider.GroupPrefix) {
+	if StandIn == nil || !unserved(asked) {
 		return ""
-	}
-	id := strings.TrimSuffix(asked, "[1m]")
-	for _, e := range provider.Catalog() {
-		if e.ID == id || e.Model == id {
-			return ""
-		}
-	}
-	if pid, _, ok := strings.Cut(id, "/"); ok {
-		if p, err := provider.Find(pid); err == nil && p.Ready() {
-			return ""
-		}
 	}
 	m := StandIn(agent, asked)
 	if m == asked {
 		return ""
 	}
 	return m
+}
+
+// unserved: magpie shows no entry for the model — not a catalog id or
+// model, nor a ready provider's "provider/model" (a routing group's id is
+// taken as served).
+func unserved(asked string) bool {
+	if asked == "" || strings.HasPrefix(asked, provider.GroupPrefix) {
+		return false
+	}
+	if _, ok := provider.GroupFor(asked); ok {
+		return false
+	}
+	id := strings.TrimSuffix(asked, "[1m]")
+	for _, e := range provider.Catalog() {
+		if e.ID == id || e.Model == id {
+			return false
+		}
+	}
+	if pid, _, ok := strings.Cut(id, "/"); ok {
+		if p, err := provider.Find(pid); err == nil && p.Ready() {
+			return false
+		}
+	}
+	return true
 }
 
 // Version is set by main.
@@ -617,6 +630,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	// the group's, as "group/<id>" is, rather than one provider's that
 	// serves it: the Routing view shows the group it went to
 	asked := call.Model
+	if call.Agent == "claude-desktop" {
+		asked = desktopTurn(asked, body)
+	}
 	if id, ok := provider.GroupFor(asked); ok {
 		asked = id
 	} else if m := standIn(call.Agent, asked); m != "" {
