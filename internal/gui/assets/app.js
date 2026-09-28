@@ -872,6 +872,8 @@ function openPicker(agent, field, anchor, ev, only) {
   const pop = $("#pop");
   pop.classList.toggle("model-picker", modelPicker);
   pop.classList.toggle("effort-picker", effortPicker);
+  // a choice explained in a sentence (Codex's sign-in) shows all of it
+  pop.classList.toggle("explained", field.label === "sign-in");
   pop.hidden = false;
   $("#effortControl").hidden = !effortPicker;
   pop.querySelector(".search").hidden = effortPicker;
@@ -1138,7 +1140,7 @@ function closePicker() {
   pick.groupAnimation?.cancel();
   pick.anchor.classList.remove("open");
   $("#pop").hidden = true;
-  $("#pop").classList.remove("model-picker", "effort-picker");
+  $("#pop").classList.remove("model-picker", "effort-picker", "explained");
   $("#pop .search").hidden = false;
   $("#pop .picker-body").hidden = false;
   $("#effortControl").hidden = true;

@@ -648,6 +648,9 @@ body.window .foot { padding-left: 18px; }
 .pop li:hover .favorite, .pop li .favorite.on { display: inline-flex; }
 .pop li .favorite:hover { color: var(--amber); background: var(--pill-hover); }
 .pop li .favorite.on { color: var(--amber); }
+.pop.explained li { height: auto; padding: 7px 8px; white-space: normal; align-items: flex-start; }
+.pop.explained li .option-words { flex-direction: column; align-items: flex-start; gap: 2px; }
+.pop.explained li .n { flex: none; overflow: visible; line-height: 1.4; }
 .pop.model-picker { max-height: 420px; border: 1px solid var(--line); }
 .pop.model-picker .search { min-height: 39px; }
 .pop.model-picker .search input { height: 38px; }
