@@ -4199,7 +4199,7 @@ function renderQuotas() {
   // balance is only ever what is left)
   $("#quotaHead").hidden = !!quotas && !quotas.length;
   const mode = $("#quotaMode");
-  mode.hidden = !quotas?.some((q) => !q.balance && !q.error && q.windows?.length);
+  mode.hidden = !quotas?.some((q) => !q.error && q.windows?.length);
   if (!mode.hidden) {
     mode.replaceChildren();
     for (const [left, name] of [[false, "Used"], [true, "Left"]]) {
@@ -4243,6 +4243,8 @@ function renderQuotas() {
         card.append(who);
       }
       card.append(quotaWindows(sub));
+      // what is left besides the windows, under them
+      if (sub.balance && sub.windows?.length && !sub.error) card.append(balanceRow(sub, "What is left on the account besides its windows"));
       if (sub.resets?.count) {
         const r = el("div", "quota-resets");
         r.append(resetsWords(sub.resets));
@@ -4344,7 +4346,9 @@ function renderPanelQuota() {
   const groups = new Map();
   const bals = [];
   for (const q of subs) {
-    if (q.balance) { bals.push(q); continue; }
+    // a balance with windows (Command Code's credits beside its 5-hour and
+    // weekly windows) is the windows' card; a balance alone, a figure
+    if (q.balance && !q.windows?.length) { bals.push(q); continue; }
     if (!groups.has(q.name)) groups.set(q.name, []);
     groups.get(q.name).push(q);
   }
@@ -4359,7 +4363,7 @@ function renderPanelQuota() {
       n.title = t("{n} accounts", { n: qs.length });
       head.append(n);
     } else {
-      const note = [qs[0].plan, qs[0].until ? planTerm(qs[0]) : ""].filter(Boolean).join(" · ");
+      const note = [qs[0].plan, qs[0].until ? planTerm(qs[0]) : "", qs[0].balance].filter(Boolean).join(" · ");
       head.append(el("span", "pq-gnote" + (qs[0].renew === "off" ? " ends" : ""), note));
     }
     g.append(head);
@@ -4403,7 +4407,7 @@ function shortWindow(name) {
 function panelQuotaCard(q) {
   const card = el("div", "pq-card");
   card.append(el("span", "pq-user", q.user || q.name));
-  card.title = [q.name, q.user, q.plan, q.until ? planTerm(q) : ""].filter(Boolean).join(" · ");
+  card.title = [q.name, q.user, q.plan, q.until ? planTerm(q) : "", q.balance && t("Balance") + " " + q.balance].filter(Boolean).join(" · ");
   if (q.error) {
     card.classList.add("err");
     card.append(el("span", "pq-sub err", quotaError(q.error)));
@@ -4556,14 +4560,17 @@ const quotaFit = new ResizeObserver((es) => {
   }
 });
 
+// balanceRow: what is left on an account, as a figure.
+function balanceRow(sub, why) {
+  const b = el("div", "quota-balance");
+  b.title = t(why);
+  b.append(el("span", "", t("Balance")), el("b", "", sub.balance));
+  return b;
+}
+
 // quotaWindows: one account's allowance as meters, or why there are none.
 function quotaWindows(sub) {
-  if (sub.balance) {
-    const b = el("div", "quota-balance");
-    b.title = t("What is left on the account: the vendor tells only this, so Used / Left leaves it as it is");
-    b.append(el("span", "", t("Balance")), el("b", "", sub.balance));
-    return b;
-  }
+  if (sub.balance && !sub.windows?.length) return balanceRow(sub, "What is left on the account: the vendor tells only this, so Used / Left leaves it as it is");
   if (sub.error) {
     const e = el("div", "subscription-error", quotaError(sub.error));
     e.title = sub.error;

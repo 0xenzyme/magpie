@@ -420,6 +420,7 @@ const I18N = {
     "that reset was already used": "这次重置已经用过了",
     "Allowances": "额度",
     "What is left on the account: the vendor tells only this, so Used / Left leaves it as it is": "账户里剩下的金额：供应商只提供这个数，所以「已用 / 剩余」不会改变它",
+    "What is left on the account besides its windows": "账户里除用量窗口外剩下的额度",
     "Headers": "请求头",
     "Extra HTTP headers sent to the vendor, applied after auth. For gateways that need a private scheme.": "发送给供应商的额外 HTTP 请求头，在鉴权之后应用。适用于需要私有鉴权方案的网关。",
     "Header-Name": "请求头名称",
