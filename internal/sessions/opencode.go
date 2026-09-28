@@ -58,8 +58,10 @@ type ocInfo struct {
 
 // ocMessage is a message, a JSON document in either store.
 type ocMessage struct {
-	ID      string `json:"id"`
-	Role    string `json:"role"`
+	ID   string `json:"id"`
+	Role string `json:"role"`
+	// ZCode's newer messages say modelId, which the key matches too (the
+	// decoder takes a key in any case when none is spelt as it is)
 	ModelID string `json:"modelID"`
 	Time    struct {
 		Created   int64 `json:"created"`
@@ -77,6 +79,10 @@ type ocMessage struct {
 			Write int `json:"write"`
 		} `json:"cache"`
 	} `json:"tokens"`
+	// ZCode: who a message is from; a prompt someone typed is a real_user's
+	Semantics *struct {
+		Origin string `json:"origin"`
+	} `json:"semantics"`
 }
 
 // ocPart is a part of a message: only its text is looked at, for a title.
@@ -107,7 +113,7 @@ func ms(n int64) time.Time {
 // its own file's path, the sum of its messages' sizes and the latest time.
 func openCodeFiles() []file {
 	if db := openCodeDB(); fileExists(db) {
-		return openCodeDBFiles(db)
+		return openCodeDBFiles("opencode", db)
 	}
 	return openCodeJSONFiles(filepath.Join(OpenCodeDir(), "storage"))
 }
@@ -125,7 +131,7 @@ func ocRoots(out []file, parent map[string]string) []file {
 		for n := 0; parent[root] != "" && n < 64; n++ {
 			root = parent[root]
 		}
-		out[i].key = "opencode:" + root
+		out[i].key = out[i].agent + ":" + root
 		out[i].main = parent[out[i].sid] == ""
 	}
 	return out
@@ -159,7 +165,8 @@ func closeDBs() {
 
 type ocDB struct{ db *sql.DB }
 
-func openCodeDBFiles(path string) []file {
+// openCodeDBFiles are the sessions in OpenCode's database, or ZCode's.
+func openCodeDBFiles(agent, path string) []file {
 	db := openDB(path)
 	if db == nil {
 		return nil
@@ -170,7 +177,10 @@ func openCodeDBFiles(path string) []file {
 		return nil
 	}
 	defer rows.Close()
-	store := ocDB{db}
+	var store ocStore = ocDB{db}
+	if agent == "zcode" {
+		store = zcDB{ocDB{db}}
+	}
 	var out []file
 	parent := map[string]string{}
 	for rows.Next() {
@@ -180,7 +190,7 @@ func openCodeDBFiles(path string) []file {
 			continue
 		}
 		parent[id] = par
-		out = append(out, file{agent: "opencode", path: path + "#" + id, sid: id, oc: store, size: n, mod: ms(max(updated, last))})
+		out = append(out, file{agent: agent, path: path + "#" + id, sid: id, oc: store, size: n, mod: ms(max(updated, last))})
 	}
 	return ocRoots(out, parent)
 }
@@ -315,7 +325,7 @@ func parseOpenCode(f file) *state {
 		s.saw(at, f.main)
 		switch m.Role {
 		case "user":
-			if f.main && s.Title == "" && s.First == "" {
+			if typed := m.Semantics == nil || m.Semantics.Origin == "" || m.Semantics.Origin == "real_user"; typed && f.main && s.Title == "" && s.First == "" {
 				ocTitle(s, f.oc.parts(m.ID))
 			}
 		case "assistant":
@@ -327,7 +337,12 @@ func parseOpenCode(f file) *state {
 				s.Cwd = m.Path.Cwd
 			}
 			if t := m.Tokens; t != nil && m.ModelID != "" {
-				s.use(dateOf(at), m.ModelID, Tokens{Input: t.Input, Output: t.Output + t.Reasoning, CacheRead: t.Cache.Read, CacheWrite: t.Cache.Write})
+				u := Tokens{Input: t.Input, Output: t.Output + t.Reasoning, CacheRead: t.Cache.Read, CacheWrite: t.Cache.Write}
+				if f.agent == "zcode" {
+					// the AI SDK's counts: input with the cache, output with the reasoning
+					u.Input, u.Output = max(0, t.Input-t.Cache.Read-t.Cache.Write), t.Output
+				}
+				s.use(dateOf(at), m.ModelID, u)
 			}
 		}
 	}

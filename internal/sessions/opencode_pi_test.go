@@ -99,21 +99,7 @@ func TestOpenCodeFiles(t *testing.T) {
 // own migration does.
 func ocMakeDB(t *testing.T, path string) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	for _, q := range []string{
-		"PRAGMA journal_mode=WAL",
-		"CREATE TABLE session (id text PRIMARY KEY, project_id text NOT NULL, parent_id text, slug text NOT NULL, directory text NOT NULL, title text NOT NULL, version text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, time_archived integer, tokens_input integer DEFAULT 0 NOT NULL)",
-		"CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)",
-		"CREATE TABLE part (id text PRIMARY KEY, message_id text NOT NULL, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)",
-	} {
-		if _, err := db.Exec(q); err != nil {
-			t.Fatal(err)
-		}
-	}
+	db := ocMakeEmpty(t, path, "")
 	root := "testdata/opencode/storage"
 	infos, _ := filepath.Glob(filepath.Join(root, "session", "*", "*.json"))
 	for _, p := range infos {
@@ -144,6 +130,30 @@ func ocMakeDB(t *testing.T, path string) *sql.DB {
 					t.Fatal(err)
 				}
 			}
+		}
+	}
+	return db
+}
+
+// ocMakeEmpty makes OpenCode's tables, the session's with more columns.
+func ocMakeEmpty(t *testing.T, path, more string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if more != "" {
+		more = ", " + more
+	}
+	for _, q := range []string{
+		"PRAGMA journal_mode=WAL",
+		"CREATE TABLE session (id text PRIMARY KEY, project_id text NOT NULL, parent_id text, slug text NOT NULL, directory text NOT NULL, title text NOT NULL, version text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, time_archived integer, tokens_input integer DEFAULT 0 NOT NULL" + more + ")",
+		"CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)",
+		"CREATE TABLE part (id text PRIMARY KEY, message_id text NOT NULL, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)",
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
 		}
 	}
 	return db

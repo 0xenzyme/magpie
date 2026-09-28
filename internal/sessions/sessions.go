@@ -1,7 +1,8 @@
 // Package sessions lists the agents' recent sessions from their own session
-// files — Claude Code's projects/*/<id>.jsonl, Codex's rollout files,
-// OpenCode's database (or its older JSON files), Pi's session files — with
-// the tokens each spent, what that cost at list price, and the command that
+// files — Claude Code's projects/*/<id>.jsonl (and Qoder's, the same kind),
+// Codex's rollout files, OpenCode's database (or its older JSON files) and
+// ZCode's, Pi's session files, DeepSeek Harness's and Cline's — with the
+// tokens each spent, what that cost at list price, and the command that
 // resumes it. It only ever reads the agents' folders.
 //
 // The files grow long (hundreds of MB), so each one's parse is kept by path,
@@ -63,7 +64,7 @@ type Model struct {
 
 // Session is one agent session.
 type Session struct {
-	Agent  string    `json:"agent"` // magpie agent id: claude, codex, opencode, pi
+	Agent  string    `json:"agent"` // magpie agent id: claude, codex, opencode, pi, zcode, dsh, cline, qoder, qoder-cn
 	ID     string    `json:"id"`
 	Cwd    string    `json:"cwd"`
 	Title  string    `json:"title"` // the first prompt, else the agent's own title
@@ -228,9 +229,11 @@ type file struct {
 	main  bool // the session's own file, not a subagent's
 	size  int64
 	mod   time.Time
-	// OpenCode: the session, and where it is kept
+	// OpenCode and ZCode: the session, and where it is kept
 	sid string
 	oc  ocStore
+	// Cline: the session's manifest, beside its messages
+	manifest string
 }
 
 // ClaudeDir is Claude Code's folder: $CLAUDE_CONFIG_DIR, else ~/.claude.
@@ -260,19 +263,24 @@ func stat(f *file) bool {
 	return true
 }
 
-func claudeFiles() []file {
-	projects := filepath.Join(ClaudeDir(), "projects")
+func claudeFiles() []file { return ccFiles("claude", ClaudeDir()) }
+
+// ccFiles are the session files of an agent that keeps them as Claude Code
+// does, under its folder's projects/: a session's own <id>.jsonl in its
+// project's folder, and its subagents' in <id>/subagents/.
+func ccFiles(agent, dir string) []file {
+	projects := filepath.Join(dir, "projects")
 	var out []file
 	mains, _ := filepath.Glob(filepath.Join(projects, "*", "*.jsonl"))
 	for _, p := range mains {
-		f := file{agent: "claude", key: "claude:" + strings.TrimSuffix(filepath.Base(p), ".jsonl"), path: p, main: true}
+		f := file{agent: agent, key: agent + ":" + strings.TrimSuffix(filepath.Base(p), ".jsonl"), path: p, main: true}
 		if stat(&f) {
 			out = append(out, f)
 		}
 	}
 	subs, _ := filepath.Glob(filepath.Join(projects, "*", "*", "subagents", "*.jsonl"))
 	for _, p := range subs {
-		f := file{agent: "claude", key: "claude:" + filepath.Base(filepath.Dir(filepath.Dir(p))), path: p}
+		f := file{agent: agent, key: agent + ":" + filepath.Base(filepath.Dir(filepath.Dir(p))), path: p}
 		if stat(&f) {
 			out = append(out, f)
 		}
@@ -283,19 +291,28 @@ func claudeFiles() []file {
 // allFiles are every agent's session files.
 func allFiles() []file {
 	var out []file
-	for _, fs := range [][]file{claudeFiles(), codexFiles(), openCodeFiles(), piFiles()} {
+	for _, fs := range [][]file{claudeFiles(), codexFiles(), openCodeFiles(), piFiles(),
+		zcodeFiles(), dshFiles(), clineFiles(), ccFiles("qoder", QoderDir("qoder")), ccFiles("qoder-cn", QoderDir("qoder-cn"))} {
 		out = append(out, fs...)
 	}
 	return out
 }
 
 // Dirs are the folders the sessions are read from: Claude Code's and
-// Codex's, and OpenCode's and Pi's where they are on this computer.
+// Codex's, and the other agents' where they keep sessions on this computer.
 func Dirs() []string {
 	out := []string{ClaudeDir(), CodexDir()}
-	for _, d := range []string{OpenCodeDir(), PiDir()} {
-		if fi, err := os.Stat(d); err == nil && fi.IsDir() {
-			out = append(out, d)
+	for _, d := range []struct{ dir, sessions string }{
+		{OpenCodeDir(), OpenCodeDir()},
+		{PiDir(), PiDir()},
+		{ZCodeDir(), zcodeDB()},
+		{DshDir(), filepath.Join(DshDir(), "sessions")},
+		{ClineSessionDir(), ClineSessionDir()},
+		{QoderDir("qoder"), filepath.Join(QoderDir("qoder"), "projects")},
+		{QoderDir("qoder-cn"), filepath.Join(QoderDir("qoder-cn"), "projects")},
+	} {
+		if _, err := os.Stat(d.sessions); err == nil {
+			out = append(out, d.dir)
 		}
 	}
 	return out
@@ -550,7 +567,7 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 			if first == "" {
 				first = st.First
 			}
-			if (s.Agent == "codex" || s.Agent == "pi") && st.ID != "" && f.path == fs[0].path {
+			if (s.Agent == "codex" || s.Agent == "pi" || s.Agent == "dsh") && st.ID != "" && f.path == fs[0].path {
 				s.ID = st.ID
 			}
 		}
@@ -604,8 +621,13 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 
 // parse reads a file on from where old left it, or from the start.
 func parse(f file, old *state) *state {
-	if f.agent == "opencode" {
+	switch f.agent {
+	case "opencode", "zcode":
 		return parseOpenCode(f)
+	case "dsh":
+		return parseDsh(f)
+	case "cline":
+		return parseCline(f)
 	}
 	var s *state
 	if old != nil && f.size >= old.Size && old.Off <= f.size {
@@ -786,6 +808,12 @@ func ResumeCommand(agent, id, cwd string) string {
 		run = "opencode --session " + id
 	case "pi":
 		run = "pi --session " + id
+	case "cline":
+		run = "cline --id " + id
+	case "qoder":
+		run = "qodercli --resume " + id
+	case "qoder-cn":
+		run = "qoderclicn --resume " + id
 	default:
 		return ""
 	}
