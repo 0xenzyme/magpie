@@ -453,7 +453,7 @@ func state() stateJSON {
 	}
 	for _, a := range agent.Detected() {
 		vals := a.Values()
-		aj := agentJSON{ID: a.ID, Name: a.Name, Icon: a.Icon, Path: tilde(a.Path)}
+		aj := agentJSON{ID: a.ID, Name: a.Name, Icon: a.Icon, Path: tilde(a.Path), Fields: []fieldJSON{}}
 		for _, f := range a.Fields {
 			opts := f.Options(vals)
 			if opts == nil {
