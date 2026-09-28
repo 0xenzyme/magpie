@@ -753,7 +753,12 @@ async function load() {
   if (view === "providers" && !providers) renderProvidersLoading();
   if (view === "gateway" && !providers) renderGatewayLoading();
   try {
-    state = await api("state");
+    const since = prefsWrites;
+    const next = await api("state");
+    // a setting changed while this was on its way (it can take seconds):
+    // what came back is from before it, and would put the old theme back
+    if (!prefsSettled(since) && load.done) next.settings = state.settings;
+    state = next;
     load.done = true;
     // the library may have drawn itself before the saved language was known
     if (applyPrefs(state.settings) && view === "library") window.loadLibrary?.();
@@ -3566,7 +3571,7 @@ async function setQuotaLeft(on) {
   quotaLeft = on;
   renderQuotas();
   try {
-    prefs = await api("settings/quota-left", { on });
+    prefs = await writingPrefs(api("settings/quota-left", { on }));
     state.settings = prefs;
     if (view === "settings") renderSettings();
   } catch (e) {
@@ -4750,18 +4755,32 @@ function applyPrefs(s) {
 }
 
 async function loadSettings() {
-  prefs = await api("settings");
+  const since = prefsWrites;
+  const s = await api("settings");
+  if (!prefsSettled(since) && prefs) return; // the save draws the page when it's in
+  prefs = s;
   renderSettings();
 }
+
+// Writes of the settings, counted as they start and end: a read of them
+// (the state, the settings) that one overlapped is from before it, and is
+// not to undo it (a theme picked while the window's state was being read
+// went back to the old one when the read came in, the picker showing the
+// new).
+let prefsWrites = 0, prefsBusy = 0;
+async function writingPrefs(p) {
+  prefsWrites++;
+  prefsBusy++;
+  try { return await p; } finally { prefsBusy--; prefsWrites++; }
+}
+const prefsSettled = (since) => !prefsBusy && since === prefsWrites;
 
 const DISCORD_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>';
 
 function renderSettings() {
   const s = prefs;
-  const keep = { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, proxy: s.proxy || "",
-    redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
-    claudeWarmup: s.claudeWarmup || "",
-    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3 };
+  const keep = prefsKeep(s);
+  prefsBase = keep;
   $("#themeSegs").replaceChildren(segs(THEMES.map(([id, name]) => [id, t(name)]), s.theme, (theme) => savePrefs({ ...keep, theme })));
   $("#langSegs").replaceChildren(segs(LOCALES.map(([id, name]) => [id, t(name)]), s.lang, (lang) => savePrefs({ ...keep, lang })));
   $("#traySegs").replaceChildren(segs(TRAYS.map(([id, name]) => [id, t(name)]), s.tray || "panel", (tray) => savePrefs({ ...keep, tray })));
@@ -4772,7 +4791,7 @@ function renderSettings() {
     s.dock ? "on" : s.dockWindow ? "window" : "off", (v) => savePrefs({ ...keep, dock: v === "on", dockWindow: v === "window" })));
   // the system's record, set on its own, not with the other choices
   $("#loginSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.login ? "on" : "off", (v) =>
-    api("settings/login", { on: v === "on" }).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
+    writingPrefs(api("settings/login", { on: v === "on" })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
   // a ChatGPT account's next window started as soon as the last resets
   $("#warmSegs").replaceChildren(segs([["off", t("Off")], ["week", t("Weekly")], ["all", t("Weekly and 5-hour")]],
     s.codexWarmup || "off", (v) => savePrefs({ ...keep, codexWarmup: v === "off" ? "" : v })));
@@ -5157,7 +5176,7 @@ function renderLAN(s) {
     r.append(who, val);
     box.append(r);
   };
-  const set = (body) => api("settings/lan", body).then((ns) => { prefs = ns; renderSettings(); })
+  const set = (body) => writingPrefs(api("settings/lan", body)).then((ns) => { prefs = ns; renderSettings(); })
     .catch((e) => { status(t(e.message), "err"); renderSettings(); });
   row(t("Share on local network"), t("Agents on other computers on this network can use magpie’s models, with the API key below"), "",
     segs([["off", t("Off")], ["on", t("On")]], s.lan ? "on" : "off", (v) => set({ on: v === "on" })));
@@ -5227,17 +5246,42 @@ async function renderUpdate(r, u) {
   }
 }
 
-async function savePrefs(body) {
-  try {
-    prefs = await api("settings", body);
-    state.settings = prefs;
+// prefsKeep is what the settings page sends of s, all of it each time.
+function prefsKeep(s) {
+  return { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, proxy: s.proxy || "",
+    redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
+    claudeWarmup: s.claudeWarmup || "",
+    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3 };
+}
+
+// savePrefs sends what the page was drawn with (prefsBase) and the choice
+// made on it. The saves go one after another, each with the choices before
+// it: two made quickly (a theme, then a language) each sent the page as it
+// was drawn, the second undoing the first, and their answers could come
+// back in either order. The page is painted and drawn again once the last
+// is in.
+let prefsBase = {}, prefsQueue = Promise.resolve(), prefsQueued = 0;
+function savePrefs(body) {
+  const change = Object.fromEntries(Object.entries(body).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(prefsBase[k])));
+  prefsQueued++;
+  // a save waiting its turn counts as under way
+  prefsQueue = writingPrefs(prefsQueue.catch(() => {}).then(async () => {
+    let failed = false;
+    try {
+      prefs = await api("settings", { ...prefsKeep(prefs), ...change });
+      if (state) state.settings = prefs;
+    } catch (e) {
+      failed = true;
+      status(e.message, "err");
+    }
+    if (--prefsQueued) return;
+    // what is saved, a choice that failed put back
     const spoke = applyPrefs(prefs);
     renderSettings();
     if (spoke) { renderAgents(); providers = null; usage = null; }
-    status(t("Saved"), "ok", 1500);
-  } catch (e) {
-    status(e.message, "err");
-  }
+    if (!failed) status(t("Saved"), "ok", 1500);
+  }));
+  return prefsQueue;
 }
 
 // ---------- header / footer ----------
