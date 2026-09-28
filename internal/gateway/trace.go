@@ -212,6 +212,11 @@ func (t *trace) changed() {
 func (t *trace) begin(r Route) *Route {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.ids == 0 {
+		// ids go on from one run to the next, the history keeping them
+		// all: counted on from the time the gateway began
+		t.ids = time.Now().UnixMilli()
+	}
 	t.ids++
 	r.ID = t.ids
 	if r.Tries == nil {
@@ -246,6 +251,11 @@ func (t *trace) update(r *Route, f func(r *Route)) {
 		if r.Status >= 400 {
 			t.totals.Errors++
 		}
+		c := *r
+		c.Order = append([]Weighed(nil), r.Order...)
+		c.Left = append([]Weighed(nil), r.Left...)
+		c.Tries = append([]Try{}, r.Tries...)
+		go saveRoute(c)
 	}
 	t.changed()
 	r.Seq = t.seq

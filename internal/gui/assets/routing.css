@@ -304,3 +304,11 @@
 .rp-mark.on { opacity: 1; transform: scaleY(1.5); }
 .rp-head { position: absolute; top: 1px; width: 2px; height: 14px; margin-left: -1px; border-radius: 1px; background: var(--fg); pointer-events: none; }
 @media (max-width: 520px) { .rp-req .rp-at { display: none; } }
+
+/* the days the routing history keeps: live, then each day, newest first */
+.rt-days { display: flex; gap: 4px; overflow-x: auto; padding: 0 2px 6px; scrollbar-width: none; }
+.rt-days::-webkit-scrollbar { display: none; }
+.rt-day { flex: none; display: inline-flex; align-items: baseline; gap: 5px; font-size: 12px; color: var(--muted); padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: none; white-space: nowrap; }
+.rt-day small { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.rt-day:hover { color: var(--fg); }
+.rt-day.on { color: var(--fg); border-color: var(--fg); }

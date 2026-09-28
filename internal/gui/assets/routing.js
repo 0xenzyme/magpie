@@ -81,11 +81,13 @@
   const more = $("#rtMore");
   const reqHead = el("div", "row-head"), reqNote = el("span", "note");
   const reqs = el("div", "list rt-reqs");
+  // the days the history keeps on disk, to look back at one: see listed
+  const dayBar = el("div", "rt-days");
   const actHead = el("div", "row-head"), actNote = el("span", "note");
   const acts = el("div", "list rt-acts");
   const hist = el("div", "rt-cols");
   const colA = el("div", "rt-col"), colB = el("div", "rt-col");
-  colA.append(reqHead, reqs);
+  colA.append(reqHead, dayBar, reqs);
   colB.append(actHead, acts);
   hist.append(colA, colB);
   more.append(hist);
@@ -442,7 +444,7 @@
   // ---------- state ----------
 
   const routes = new Map(); // id → the latest of each route
-  let seq = 0, mine = true, loaded = false;
+  let seq = 0, mine = true, loaded = false, daysAt = 0;
   let cur = null;           // the route the header and the log tell of: the newest played
   let pinned = null;        // a past route picked from the strip
   let rows = new Map();     // id → { li, wire, st, bi, tg, w, rid, up }
@@ -451,6 +453,7 @@
   let sets = [];            // the account sets on the stage, in the order they came
   const playing = new Map(); // the routes being played → the gen playing each
   let rp = null;            // a replay playing: see replay
+  let day = "", days = [], past = [], pastCut = false; // a kept day looked at ("" for live), the days kept, its routes
   const src = () => rp ? rp.routes : routes; // the routes the stage plays from
   const LINGER = 12e3;      // how long an agent's last request stays on the stage
   let gen = 0, trips = [], waiters = [];
@@ -851,10 +854,17 @@
       const again = el("button", "text", t("Replay"));
       again.onclick = () => replay([r], pinned);
       logHead.append(again);
+      // and on from it: the requests listed after it, as they came
+      const on = listed().filter((x) => x.id >= r.id);
+      if (pinned && on.length > 1) {
+        const from = el("button", "text", t("Replay from here"));
+        from.onclick = () => replay(on, pinned);
+        logHead.append(from);
+      }
     }
     if (pinned && !rp) {
       const live = el("button", "text", t("Back to live"));
-      live.onclick = () => { pinned = null; cur = newest(); sync(true); renderAll(); };
+      live.onclick = () => { if (day) lookAt(""); else { pinned = null; cur = newest(); sync(true); renderAll(); } };
       logHead.append(live);
     }
     const items = [];
@@ -896,16 +906,59 @@
   }
 
   // the requests the gateway keeps, newest first: pick one to see how it was routed
+  // listed: the requests the list shows, newest first — the gateway's last
+  // few, or a day the history keeps
+  const listed = () => (day ? past : [...routes.values()]).slice().sort((a, b) => b.id - a.id);
+  const dayName = (d) => {
+    const x = new Date(d + "T12:00:00"), n = new Date(), y = new Date(n.getTime() - 864e5);
+    return x.toDateString() === n.toDateString() ? t("today") : x.toDateString() === y.toDateString() ? t("yesterday")
+      : x.toLocaleDateString([], { month: "short", day: "numeric", weekday: "short" });
+  };
+  async function loadDays(d) {
+    try {
+      const res = await (await fetch("/api/gateway/history?day=" + encodeURIComponent(d || ""))).json();
+      days = res.days || [];
+      if (d && d === day) { past = res.routes || []; pastCut = !!res.cut; }
+    } catch {}
+    renderDays();
+  }
+  async function lookAt(d) {
+    if (rp) endReplay(true);
+    day = d;
+    past = [];
+    if (d) await loadDays(d);
+    pinned = null;
+    const r = d ? listed()[0] : newest();
+    if (r && d) pick(r);
+    else if (r) { stopPlays(); cur = r; sync(true); say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r)); }
+    renderAll();
+  }
+  function renderDays() {
+    const b = (d, label, n) => {
+      const x = el("button", "rt-day" + (d === day ? " on" : ""));
+      x.append(el("span", "", label), ...(n != null ? [el("small", "", String(n))] : []));
+      x.setAttribute("aria-pressed", String(d === day));
+      x.onclick = () => { if (d !== day) lookAt(d); };
+      return x;
+    };
+    const key = day + "|" + days.map((d) => d.day + ":" + d.requests).join(",");
+    if (dayBar.dataset.key === key) return;
+    dayBar.dataset.key = key;
+    dayBar.replaceChildren(b("", t("Live")), ...days.map((d) => b(d.day, dayName(d.day), d.requests)));
+    dayBar.hidden = !days.length && !day;
+  }
   function renderHist() {
-    const rs = [...routes.values()].sort((a, b) => b.id - a.id);
-    hist.hidden = !rs.length;
+    const rs = listed();
+    hist.hidden = !rs.length && !day && !days.length;
     reqHead.replaceChildren(el("span", "label", t("Requests")), el("span", "grow"), reqNote);
     if (rs.filter((r) => r.done).length > 1 && !rp) {
       const all = el("button", "text", t("Replay them all"));
       all.onclick = () => replay(rs, pinned);
       reqHead.append(all);
     }
-    reqNote.textContent = t("the last {n} the gateway keeps", { n: rs.length });
+    reqNote.textContent = day ? t(pastCut ? "the last {n} of {day}" : "{n} on {day}", { n: rs.length, day: dayName(day) })
+      : t("the last {n} the gateway keeps", { n: rs.length });
+    renderDays();
     reqs.replaceChildren(...rs.map((r) => {
       const [said, how, tr] = outcome(r);
       const b = el("button", "rt-req " + how);
@@ -1319,7 +1372,7 @@
     rp = null;
     rbar.hidden = true;
     if (stop) stopPlays();
-    const b = p.back && routes.get(p.back.id);
+    const b = p.back && (routes.get(p.back.id) || (day && past.find((x) => x.id === p.back.id)));
     pinned = b || null;
     cur = b || newest();
     if (cur) { sync(true); renderAll(); }
@@ -1383,7 +1436,7 @@
     requestAnimationFrame(frame);
   }
   // countdowns tick once a second
-  setInterval(() => { if (shown()) { if (!pinned && loaded && cur) sync(); render(); renderActs([...routes.values()].sort((a, b) => b.id - a.id)); } }, 1000);
+  setInterval(() => { if (shown()) { if (!pinned && loaded && cur) sync(); render(); renderActs(listed()); } }, 1000);
 
   function offline(msg) {
     off.textContent = msg;
@@ -1446,6 +1499,8 @@
         }
         for (const id of [...routes.keys()].sort((a, b) => a - b).slice(0, -60)) routes.delete(id);
         loaded = true;
+        // a request done is a day's count grown: heard of now and then
+        if (first || (d.routes.some((r) => r.done) && performance.now() - daysAt > 15e3)) { daysAt = performance.now(); loadDays(); }
         if (first) {
           offline("");
           // the agents' names come with the app's state, which may not be here yet
