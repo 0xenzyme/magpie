@@ -248,16 +248,23 @@ func magpieProviderJSONFor(shape, catalog string) any {
 		for _, m := range models {
 			// reasoning lets Pi offer its thinking levels for the model
 			e := map[string]any{"id": m.ID, "name": m.Name, "reasoning": len(m.Efforts) > 0}
-			// a model its provider serves on OpenAI's Responses API alone,
+			// each model is asked on the API its provider speaks natively,
+			// so the gateway relays what Pi sent as it is instead of
+			// translating Chat. One served on OpenAI's Responses API alone,
 			// or best there (a ChatGPT sign-in, GPT on OpenAI's API or
-			// Copilot's), is asked there — Pi posts it to baseUrl/responses
-			// — so the gateway relays it as Pi sent it instead of
-			// translating Chat. One served on Anthropic's API stays on
-			// Chat: Pi's anthropic-messages picks thinking by the Claude
-			// ids it knows and asks a newer Claude for a thinking budget,
-			// which it turns away; magpie's translation knows its levels.
-			if slices.Contains(m.APIs, string(provider.Responses)) {
+			// Copilot's), goes to baseUrl/responses; one on Anthropic's
+			// Messages API alone to the gateway's /v1/messages (Anthropic's
+			// SDK adds the /v1). A Claude that thinks only adaptively is
+			// told so: Pi would otherwise ask it for a thinking budget,
+			// which it turns away.
+			switch {
+			case slices.Contains(m.APIs, string(provider.Responses)):
 				e["api"] = "openai-responses"
+			case slices.Contains(m.APIs, string(provider.Anthropic)):
+				e["api"], e["baseUrl"] = "anthropic-messages", gateway.URL()
+				if gateway.AdaptiveThinking(m.ID) {
+					e["compat"] = map[string]any{"forceAdaptiveThinking": true}
+				}
 			}
 			if m.Images {
 				e["input"] = []string{"text", "image"}
@@ -466,20 +473,28 @@ func pi(home string) *Agent {
 		Fields: []Field{
 			{
 				Key: "model", Label: "model",
-				Get: pairGet(get, "defaultProvider", "defaultModel"),
+				// what a new session starts on, which enabledModels decides
+				Get: func() string { return piStartup(path, pairGet(get, "defaultProvider", "defaultModel")()) },
 				Set: func(v string) error {
 					if v == "" {
 						if err := edit.DelJSON(path, "defaultProvider", "defaultModel"); err != nil {
 							return err
 						}
-						return edit.DelJSON(modelsPath, "providers."+magpieID)
+						if err := edit.DelJSON(modelsPath, "providers."+magpieID); err != nil {
+							return err
+						}
+						return piScopeWithout(path)
 					}
 					if ref, ok := strings.CutPrefix(v, magpieID+"/"); ok && isMagpie(ref) {
 						if err := writeMagpie(); err != nil {
 							return err
 						}
 					}
-					return pair(v)
+					if err := pair(v); err != nil {
+						return err
+					}
+					// a model outside the user's Ctrl+P list would never start
+					return piScopeWith(path, v)
 				},
 				Options: func(cur map[string]string) []Option {
 					return append(ownOptions(auth, cur["model"]), viaMagpie("pi", magpieID+"/")...)

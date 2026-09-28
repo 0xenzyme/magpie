@@ -207,6 +207,10 @@ func adaptiveOnly(model string) bool {
 	return major > 4 || major == 4 && minor >= 6
 }
 
+// AdaptiveThinking is adaptiveOnly for agents told how to ask a model: a
+// Claude that takes thinking.type=adaptive and an effort, never a budget.
+func AdaptiveThinking(model string) bool { return adaptiveOnly(model) }
+
 // effortInOutputConfig is a model that takes how hard it thinks from
 // output_config.effort, beside thinking turned on, as ZCode asks it: Z.ai's
 // GLM-5.2 and GLM-5.3 on their Anthropic endpoints. A budget alone leaves
@@ -323,9 +327,14 @@ func buildAnthropic(r *Request, model string) []byte {
 			}
 			out["output_config"] = map[string]any{"effort": e}
 		}
-	} else if r.Thinking || r.Effort != "" {
-		budget := budgetOf(r.Effort)
-		if maxTokens < budget+4096 {
+	} else if think, budget := r.Thinking || r.Effort != "", budgetOf(r.Effort); think && (r.MaxTokens <= 0 || r.MaxTokens > 2048) {
+		if r.MaxTokens > 0 {
+			// the client's cap is what the model can write (Pi sends the
+			// model's own output limit): the budget fits under it, leaving
+			// room for the answer, as a raised max_tokens past what the
+			// model takes is refused with a 400
+			budget = min(budget, maxTokens-1024)
+		} else if maxTokens < budget+4096 {
 			maxTokens = budget + 4096
 		}
 		out["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}

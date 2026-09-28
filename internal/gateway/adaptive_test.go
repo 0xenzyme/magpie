@@ -5,6 +5,48 @@ import (
 	"testing"
 )
 
+// A Chat client's max tokens is what the model can write — Pi sends the
+// model's own output limit — so the thinking budget fits under it rather
+// than max_tokens raised past it, which the upstream refuses with a 400.
+// With no cap asked, max_tokens still makes room for the budget.
+func TestThinkingBudgetFitsTheClientsCap(t *testing.T) {
+	for _, c := range []struct {
+		max         int
+		effort      string
+		wantMax     float64
+		wantBudget  float64
+		wantNoThink bool
+	}{
+		{16384, "high", 16384, 15360, false},
+		{32000, "high", 32000, 24000, false},
+		{8192, "xhigh", 8192, 7168, false},
+		{0, "high", 28096, 24000, false},
+		{2048, "high", 2048, 0, true},
+	} {
+		body, _ := json.Marshal(map[string]any{"model": "k", "max_completion_tokens": c.max, "reasoning_effort": c.effort,
+			"messages": []map[string]any{{"role": "user", "content": "hi"}}})
+		r, err := parseChat(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out map[string]any
+		json.Unmarshal(buildAnthropic(r, "kimi-k3"), &out)
+		if out["max_tokens"] != c.wantMax {
+			t.Errorf("%d %s: max_tokens %v, want %v", c.max, c.effort, out["max_tokens"], c.wantMax)
+		}
+		th, _ := out["thinking"].(map[string]any)
+		if c.wantNoThink {
+			if th != nil {
+				t.Errorf("%d %s: thinking %v with no room for it", c.max, c.effort, th)
+			}
+			continue
+		}
+		if th["budget_tokens"] != c.wantBudget {
+			t.Errorf("%d %s: budget %v, want %v", c.max, c.effort, th["budget_tokens"], c.wantBudget)
+		}
+	}
+}
+
 func TestAdaptiveThinking(t *testing.T) {
 	for model, want := range map[string]bool{
 		"claude-opus-5-5": true, "claude-opus-5": true, "claude-sonnet-4-6": true,

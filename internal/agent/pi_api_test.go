@@ -5,19 +5,21 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
 )
 
 // Pi asks each model on the API its provider serves it on, so the gateway
 // relays the request as it is: a Responses-only provider's models and GPT
-// on OpenAI's API go on openai-responses; a Chat provider's, an Anthropic
-// one's and a group's stay on the provider's openai-completions.
+// on OpenAI's API go on openai-responses; a Messages-only provider's on
+// anthropic-messages at the gateway; a Chat provider's and a group's stay
+// on the provider's openai-completions.
 func TestPiModelsAskedOnTheirNativeAPI(t *testing.T) {
 	home := syncHome(t)
 	for _, p := range []provider.Provider{
 		{ID: "resp", Name: "Resp", Key: "k", Responses: "http://127.0.0.1:1/v1", Models: []string{"grok-5", "gpt-5.5"}},
 		{ID: "openai", Name: "OpenAI", Key: "k", Chat: "https://api.openai.com/v1", Responses: "https://api.openai.com/v1", Models: []string{"gpt-5.5", "whisper-x"}},
-		{ID: "anth", Name: "Anth", Key: "k", Anthropic: "http://127.0.0.1:1", Models: []string{"claude-sonnet-5"}},
+		{ID: "anth", Name: "Anth", Key: "k", Anthropic: "http://127.0.0.1:1", Models: []string{"claude-sonnet-5", "kimi-k3"}},
 	} {
 		if err := provider.Save(p); err != nil {
 			t.Fatal(err)
@@ -34,10 +36,10 @@ func TestPiModelsAskedOnTheirNativeAPI(t *testing.T) {
 	if pm["api"] != "openai-completions" || pm["baseUrl"] != gatewayV1() {
 		t.Fatalf("provider: %v", pm)
 	}
-	apis := map[string]any{}
+	apis, entries := map[string]any{}, map[string]map[string]any{}
 	for _, raw := range pm["models"].([]any) {
 		m := raw.(map[string]any)
-		apis[m["id"].(string)] = m["api"]
+		apis[m["id"].(string)], entries[m["id"].(string)] = m["api"], m
 	}
 	for id, want := range map[string]any{
 		"resp/grok-5":          "openai-responses",
@@ -45,7 +47,8 @@ func TestPiModelsAskedOnTheirNativeAPI(t *testing.T) {
 		"openai/gpt-5.5":       "openai-responses",
 		"openai/whisper-x":     nil,
 		"relay/glm-4.6":        nil,
-		"anth/claude-sonnet-5": nil,
+		"anth/claude-sonnet-5": "anthropic-messages",
+		"anth/kimi-k3":         "anthropic-messages",
 		"group/auto-gpt-5-5":   nil,
 	} {
 		got, ok := apis[id]
@@ -54,5 +57,20 @@ func TestPiModelsAskedOnTheirNativeAPI(t *testing.T) {
 		} else if got != want {
 			t.Errorf("%s: api %v, want %v", id, got, want)
 		}
+	}
+	// Anthropic's SDK posts to baseUrl + /v1/messages; only the Claude
+	// that refuses a thinking budget is told to think adaptively
+	for id, adaptive := range map[string]bool{"anth/claude-sonnet-5": true, "anth/kimi-k3": false} {
+		e := entries[id]
+		if e["baseUrl"] != gateway.URL() {
+			t.Errorf("%s: baseUrl %v, want %s", id, e["baseUrl"], gateway.URL())
+		}
+		c, _ := e["compat"].(map[string]any)
+		if got := c["forceAdaptiveThinking"] == true; got != adaptive {
+			t.Errorf("%s: compat %v", id, e["compat"])
+		}
+	}
+	if _, ok := entries["resp/grok-5"]["baseUrl"]; ok {
+		t.Errorf("a Responses model keeps the provider's baseUrl: %v", entries["resp/grok-5"])
 	}
 }
