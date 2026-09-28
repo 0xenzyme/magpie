@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -402,6 +403,18 @@ func readClaudeWindows(ctx context.Context, token string) ([]QuotaWindow, error)
 		SevenDay       *quotaWire `json:"seven_day"`
 		SevenDayOpus   *quotaWire `json:"seven_day_opus"`
 		SevenDaySonnet *quotaWire `json:"seven_day_sonnet"`
+		// a week's allowance per model (Fable), which the fields above
+		// don't carry; one with no scope is seven_day again
+		Limits []struct {
+			Kind     string   `json:"kind"`
+			Percent  *float64 `json:"percent"`
+			ResetsAt string   `json:"resets_at"`
+			Scope    *struct {
+				Model *struct {
+					DisplayName string `json:"display_name"`
+				} `json:"model"`
+			} `json:"scope"`
+		} `json:"limits"`
 	}
 	err := accountJSON(ctx, claudeBase+"/api/oauth/usage", token, map[string]string{
 		"anthropic-beta": "oauth-2025-04-20", "user-agent": "magpie",
@@ -423,7 +436,27 @@ func readClaudeWindows(ctx context.Context, token string) ([]QuotaWindow, error)
 			out = append(out, w)
 		}
 	}
+	for _, l := range data.Limits {
+		if l.Kind != "weekly_scoped" || l.Scope == nil || l.Scope.Model == nil || l.Percent == nil {
+			continue
+		}
+		name := strings.TrimSpace(l.Scope.Model.DisplayName)
+		model := claudeScopeModel(name)
+		if model == "" || slices.ContainsFunc(out, func(w QuotaWindow) bool { return w.Model == model }) {
+			continue
+		}
+		w := quotaWire{Utilization: *l.Percent, ResetsAt: l.ResetsAt}.window("7 days · " + name)
+		w.Span, w.Model = week, model
+		out = append(out, w)
+	}
 	return out, nil
+}
+
+// claudeScopeModel is the word a model-scoped window counts models by, from
+// the name Anthropic gives it: "Fable" counts claude-fable-*, "Fable 5.1"
+// claude-fable-5-1.
+func claudeScopeModel(name string) string {
+	return strings.NewReplacer(" ", "-", ".", "-").Replace(strings.ToLower(name))
 }
 
 type quotaWire struct {
