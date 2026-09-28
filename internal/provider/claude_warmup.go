@@ -62,5 +62,5 @@ func ClaudeWarmed() map[string]time.Time { return codexWarmedIn(claudeWarmPath()
 // while settings say to, each with one request send makes.
 func KeepClaudeWindowsWarm(ctx context.Context, send func(ctx context.Context, oauth string) error) {
 	w := codexWarmer{path: claudeWarmPath(), now: time.Now, usage: claudeWarmUsage, send: warmClaudeLogin(send)}
-	keepWarm(ctx, "claude", w, func() string { return settings.Load().ClaudeWarmup })
+	keepWarm(ctx, "claude", w, func() (string, string) { s := settings.Load(); return s.ClaudeWarmup, s.ClaudeWarmAt })
 }

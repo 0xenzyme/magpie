@@ -5196,6 +5196,13 @@ function renderSettings() {
     s.claudeWarmup || "off", (v) => savePrefs({ ...keep, claudeWarmup: v === "off" ? "" : v })));
   $("#claudeWarmSub").textContent = t("When a Claude account's window resets, send it one tiny request through Claude Code (Haiku) so the next one starts counting at once")
     + (s.claudeWarmed ? " · " + t("last started {when}", { when: syncWhen(s.claudeWarmed) }) : "");
+  // and the 5-hour windows started at a time of day, so they line up with it
+  renderWarmAt($("#warmAtSegs"), $("#warmAtSub"), s.codexWarmAt, s.codexWarmup,
+    t("Start each ChatGPT account's 5-hour window at this time every day: 06:00 gives three by 21:00"),
+    (v) => savePrefs({ ...keep, codexWarmAt: v }));
+  renderWarmAt($("#claudeWarmAtSegs"), $("#claudeWarmAtSub"), s.claudeWarmAt, s.claudeWarmup,
+    t("Start each Claude account's 5-hour window at this time every day, through Claude Code: 06:00 gives three by 21:00"),
+    (v) => savePrefs({ ...keep, claudeWarmAt: v }));
   renderTrayUsage(s, keep);
   renderProxy(s, keep);
   renderRedact(s, keep);
@@ -5521,6 +5528,27 @@ function renderProxy(s, keep) {
   box.append(segs([["auto", t("Auto")], ["off", t("Off")], ["custom", t("Custom")]], mode, pick));
 }
 
+// renderWarmAt draws a daily warm-up's control: Off, or a time of day in
+// a time field, saved as it is changed; On picks 06:00 to begin with.
+function renderWarmAt(box, sub, at, onReset, what, save) {
+  // the fine print, too long for the line: what is left be, and how it
+  // goes with the warm-up on reset
+  sub.textContent = what;
+  sub.title = [what, t("One tiny request, sent only to an account whose 5-hour window isn't running then."),
+    t("A computer asleep then sends it on waking, up to an hour late; later than that, the day is left be."),
+    onReset === "all" ? t("With Weekly and 5-hour on, a window that would still be running then isn't started on its reset: the windows follow one another from this time.") : ""].filter(Boolean).join("\n");
+  box.replaceChildren();
+  if (at) {
+    const i = input(at, "06:00", "time");
+    i.className = "at";
+    i.setAttribute("aria-label", t("Time of day"));
+    i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") i.blur(); };
+    i.onchange = () => { if (i.value && i.value !== at) save(i.value); };
+    box.append(i);
+  }
+  box.append(segs([["off", t("Off")], ["on", t("On")]], at ? "on" : "off", (v) => save(v === "on" ? at || "06:00" : "")));
+}
+
 // renderRedact: what the gateway masks before a request goes to a vendor —
 // secrets, personal data, the user's own words — and puts back in what the
 // vendor answers.
@@ -5646,7 +5674,7 @@ async function renderUpdate(r, u) {
 function prefsKeep(s) {
   return { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, proxy: s.proxy || "",
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
-    claudeWarmup: s.claudeWarmup || "", noStats: !!s.noStats,
+    claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", noStats: !!s.noStats,
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3 };
 }
 

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Settings is what the user chose. "" and "system" both mean "follow the OS".
@@ -54,6 +55,14 @@ type Settings struct {
 	// ClaudeWarmup is CodexWarmup for the Claude accounts, the request
 	// sent through Claude Code.
 	ClaudeWarmup string `json:"claudeWarmup,omitempty"`
+	// CodexWarmAt starts each ChatGPT account's 5-hour window at a time of
+	// day of the user's choosing, local "15:04", with the same tiny
+	// request: an account whose 5-hour window isn't running then gets one,
+	// so the windows line up with the day (06:00 gives three by 21:00, where
+	// the first use at 9 gives two by the end of it); "" off. It works
+	// with CodexWarmup or without it. ClaudeWarmAt is the Claude accounts'.
+	CodexWarmAt  string `json:"codexWarmAt,omitempty"`
+	ClaudeWarmAt string `json:"claudeWarmAt,omitempty"`
 	// NoStats stops the one event a day that counts magpie's users (see
 	// internal/stats).
 	NoStats bool `json:"noStats,omitempty"`
@@ -175,6 +184,11 @@ func Save(s Settings) error {
 	if !slices.Contains(Warmups, s.ClaudeWarmup) {
 		return fmt.Errorf("claude warm-up must be off, week or all, not %q", s.ClaudeWarmup)
 	}
+	for _, at := range []string{s.CodexWarmAt, s.ClaudeWarmAt} {
+		if _, _, ok := Clock(at); at != "" && !ok {
+			return fmt.Errorf("a warm-up's time of day must look like 06:00, not %q", at)
+		}
+	}
 	if !slices.Contains(TrayEvery, s.TrayUsageEvery) {
 		return fmt.Errorf("the menu bar's usage is refreshed every %v minutes, not %d", TrayEvery, s.TrayUsageEvery)
 	}
@@ -219,7 +233,25 @@ func (s Settings) normal() Settings {
 	if s.TrayUsageEvery == 0 {
 		s.TrayUsageEvery = 3
 	}
+	// a time of day as 06:00 whichever way it came (6:00, 06:00:00)
+	for _, at := range []*string{&s.CodexWarmAt, &s.ClaudeWarmAt} {
+		*at = strings.TrimSpace(*at)
+		if h, m, ok := Clock(*at); ok {
+			*at = fmt.Sprintf("%02d:%02d", h, m)
+		}
+	}
 	return s
+}
+
+// Clock reads a time of day, "06:00" (seconds, as a time field may send
+// them, are dropped), as its hour and minute.
+func Clock(at string) (hour, min int, ok bool) {
+	for _, layout := range []string{"15:04", "15:04:05"} {
+		if t, err := time.Parse(layout, at); err == nil {
+			return t.Hour(), t.Minute(), true
+		}
+	}
+	return 0, 0, false
 }
 
 // ids trims, drops empties and repeats, and keeps the first of each.

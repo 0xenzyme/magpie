@@ -50,6 +50,9 @@ type warmWindow struct {
 	// until warmTries have failed.
 	Pending bool `json:"pending,omitempty"`
 	Failed  int  `json:"failed,omitempty"`
+	// Daily is the day ("2006-01-02") the time of day last started this
+	// window for (warmup_daily.go).
+	Daily string `json:"daily,omitempty"`
 }
 
 // warmState is every account's windows, by lower-cased user and window name.
@@ -84,8 +87,9 @@ type codexWarmer struct {
 
 // warmNow reads each account's windows, the weekly ones or with which
 // "all" the 5-hour ones too, sends a request to each account one of them
-// has started over on, and keeps what it saw.
-func (c codexWarmer) warmNow(ctx context.Context, which string) []CodexWarm {
+// has started over on — or whose 5-hour window isn't running at the time
+// of day at ("06:00", "" none) — and keeps what it saw.
+func (c codexWarmer) warmNow(ctx context.Context, which, at string) []CodexWarm {
 	st := readWarmState(c.path)
 	now := c.now()
 	usage := c.usage(ctx)
@@ -104,18 +108,39 @@ func (c codexWarmer) warmNow(ctx context.Context, which string) []CodexWarm {
 		key := strings.ToLower(user)
 		prev, next := st[key], map[string]warmWindow{}
 		var due []string
+		onReset, days := map[string]bool{}, map[string]string{}
 		for _, w := range q.Windows {
-			if w.Span <= 0 || w.Aside || w.Model != "" || w.Span < 24*time.Hour && which != "all" {
+			// the weekly windows on their reset while it is on, the 5-hour
+			// ones with "all" and for the day's start
+			short := w.Span < 24*time.Hour
+			onItsReset := which == "all" || which != "" && !short
+			if w.Span <= 0 || w.Aside || w.Model != "" || !onItsReset && !(short && at != "") {
 				continue
 			}
 			cur := asOf(w, now)
 			p, seen := prev[w.Name]
-			n := warmWindow{Used: cur.Used, Warmed: p.Warmed}
+			n := warmWindow{Used: cur.Used, Warmed: p.Warmed, Daily: p.Daily}
 			if cur.ResetsAt != nil {
 				n.ResetsAt = *cur.ResetsAt
 			}
-			if warmDue(p, seen, cur, now) {
+			reset := onItsReset && warmDue(p, seen, cur, now)
+			held := reset && short && heldForDay(at, w.Span, now)
+			day, daily := "", false
+			if short {
+				day, daily = dailyDue(at, p.Daily, cur, now)
+			}
+			if held && !daily {
+				// it waits for the day's start, kept as it was till then
+				reset = false
+			}
+			if reset || daily {
 				due = append(due, w.Name)
+				onReset[w.Name] = reset
+				if daily {
+					days[w.Name] = day
+				}
+			}
+			if reset || held {
 				// kept as it was until a request goes, so it is due again
 				n = p
 			}
@@ -129,9 +154,15 @@ func (c codexWarmer) warmNow(ctx context.Context, which string) []CodexWarm {
 				switch {
 				case err == nil:
 					n = windowSeen(q, name, now)
-					n.Warmed = now
+					n.Warmed, n.Daily = now, p.Daily
+					if day, ok := days[name]; ok {
+						n.Daily = day
+					}
+				case !onReset[name]:
+					// the day's start only: tried again while it is due
 				case p.Failed+1 >= warmTries: // given up on this reset
 					n = windowSeen(q, name, now)
+					n.Daily = p.Daily
 				default:
 					n.Pending, n.Failed = true, p.Failed+1
 				}
@@ -177,7 +208,7 @@ func mapsEqual(a, b map[string]warmWindow) bool {
 	}
 	for k, x := range a {
 		y, ok := b[k]
-		if !ok || !x.ResetsAt.Equal(y.ResetsAt) || x.Used != y.Used || !x.Warmed.Equal(y.Warmed) || x.Failed != y.Failed || x.Pending != y.Pending {
+		if !ok || !x.ResetsAt.Equal(y.ResetsAt) || x.Used != y.Used || !x.Warmed.Equal(y.Warmed) || x.Failed != y.Failed || x.Pending != y.Pending || x.Daily != y.Daily {
 			return false
 		}
 	}
@@ -335,23 +366,31 @@ func codexWarmedIn(path string) map[string]time.Time {
 // codexWarmEvery after that, until ctx ends.
 func KeepCodexWindowsWarm(ctx context.Context) {
 	w := codexWarmer{path: codexWarmPath(), now: time.Now, usage: codexWarmUsage, send: warmCodexLogin}
-	keepWarm(ctx, "codex", w, func() string { return settings.Load().CodexWarmup })
+	keepWarm(ctx, "codex", w, func() (string, string) { s := settings.Load(); return s.CodexWarmup, s.CodexWarmAt })
 }
 
-// keepWarm runs w while which (the setting) says to: two minutes after it
-// starts and every codexWarmEvery after that, until ctx ends.
-func keepWarm(ctx context.Context, name string, w codexWarmer, which func() string) {
+// keepWarm runs w while prefs (the settings: which windows on their
+// reset, and the time of day to start the 5-hour one at) say to: two
+// minutes after it starts and every codexWarmEvery after that, and as soon
+// as the time of day comes, until ctx ends. The time is the wall clock's,
+// looked at every minute: a machine that slept through it notices on
+// waking.
+func keepWarm(ctx context.Context, name string, w codexWarmer, prefs func() (which, at string)) {
 	t := time.NewTimer(2 * time.Minute)
 	defer t.Stop()
+	var last time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 		}
-		if which := which(); which != "" {
+		// the wall clock, which goes on while the machine sleeps
+		now := w.now().Round(0)
+		if which, at := prefs(); (which != "" || at != "") && (last.IsZero() || now.Sub(last) >= codexWarmEvery || dayStartPassed(at, last, now)) {
+			last = now
 			c, cancel := context.WithTimeout(ctx, 2*time.Minute)
-			for _, r := range w.warmNow(c, which) {
+			for _, r := range w.warmNow(c, which, at) {
 				if r.Err != "" {
 					log.Printf("%s warm-up: %s's %s window: %s", name, r.User, strings.Join(r.Windows, ", "), r.Err)
 				} else {
@@ -360,6 +399,6 @@ func keepWarm(ctx context.Context, name string, w codexWarmer, which func() stri
 			}
 			cancel()
 		}
-		t.Reset(codexWarmEvery)
+		t.Reset(time.Minute)
 	}
 }

@@ -1256,6 +1256,13 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .proxy-segs input.proxy:focus, input.words:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
 .proxy-segs input.proxy::placeholder, input.words::placeholder { color: var(--faint); }
 input.words { width: 240px; max-width: 100%; }
+.warm-at { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
+.warm-at input.at { width: auto; height: 27px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums; outline: none; transition: border-color .12s, box-shadow .12s; }
+.warm-at input.at:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.warm-at input.at::-webkit-calendar-picker-indicator { opacity: .55; }
+/* the field's clock and picker in the page's own palette */
+:root[data-theme="dark"] .warm-at input.at { color-scheme: dark; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .warm-at input.at { color-scheme: dark; } }
 @media (max-width: 520px) { .proxy-segs { flex-wrap: wrap; justify-content: flex-end; } }
 .prefs .val { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; min-width: 0; max-width: 60%; flex: none; }
 .prefs .val code { font-size: 12px; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; padding: 0 6px; }
