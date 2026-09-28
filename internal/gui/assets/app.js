@@ -168,11 +168,15 @@ function renderAgentsLoading() {
     const row = el("div", "row agent ag-sk-row");
     const who = el("div", "who");
     who.append(el("span", "skeleton ag-sk-name"));
-    const fields = el("div", "fields");
-    fields.append(el("span", "skeleton ag-sk-field"), el("span", "skeleton ag-sk-field"));
-    row.append(el("span", "skeleton ag-sk-icon"), who, fields);
+    // the panel says what is set in words at the right; the window has two
+    // setting columns
+    const rest = el("div", mode === "panel" ? "ag-sk-sum" : "fields");
+    if (mode === "panel") rest.append(el("span", "skeleton ag-sk-value"), el("span", "skeleton ag-sk-bars"));
+    else rest.append(el("span", "skeleton ag-sk-field"), el("span", "skeleton ag-sk-field"));
+    row.append(el("span", "skeleton ag-sk-icon"), who, rest);
     list.append(row);
   }
+  fit(); // the panel as tall as the rows, not as it was
 }
 
 function renderAgents() {
