@@ -413,7 +413,8 @@ func TestCursorFailureWords(t *testing.T) {
 }
 
 // A model magpie offers goes to Cursor as the id its effort picks; one of
-// Cursor's own ids goes as it is.
+// Cursor's own ids at an effort goes at the effort asked for, where Cursor
+// has that one, else as it is.
 func TestCursorModelID(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	var raw []catalog.Model
@@ -459,7 +460,13 @@ claude-4.5-sonnet - Claude Sonnet 4.5`), "\n") {
 		{"claude-4.6-opus", "medium", false, "claude-4.6-opus-high"},
 		{"claude-4.6-opus-thinking", "xhigh", false, "claude-4.6-opus-max-thinking"},
 		{"gpt-5.5", "xhigh", false, "gpt-5.5-extra-high"},
-		{"grok-4.7-low-fast", "high", false, "grok-4.7-low-fast"}, // Cursor's own id
+		{"grok-4.7-low-fast", "high", false, "grok-4.7-high-fast"}, // Cursor's own id: the effort asked for wins
+		{"grok-4.7-low", "high", false, "grok-4.7-high"},
+		{"grok-4.7-low", "", false, "grok-4.7-low"},
+		{"grok-4.7-low", "", true, "grok-4.7-low-fast"},
+		{"grok-4.7-low", "minimal", false, "grok-4.7-low"}, // Cursor has none at minimal
+		{"gpt-5.2-high", "low", true, "gpt-5.2-low"},       // no fast one
+		{"claude-4.6-opus-high-thinking", "max", false, "claude-4.6-opus-max-thinking"},
 		{"claude-4.5-sonnet", "high", false, "claude-4.5-sonnet"},
 		{"auto", "", false, "auto"},
 	} {

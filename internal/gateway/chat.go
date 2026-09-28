@@ -46,6 +46,7 @@ type cRequest struct {
 	Stream              bool            `json:"stream,omitempty"`
 	ReasoningEffort     string          `json:"reasoning_effort,omitempty"`
 	ParallelToolCalls   *bool           `json:"parallel_tool_calls,omitempty"`
+	ServiceTier         string          `json:"service_tier,omitempty"`
 }
 
 func parseChat(body []byte) (*Request, error) {
@@ -54,7 +55,7 @@ func parseChat(body []byte) (*Request, error) {
 		return nil, fmt.Errorf("invalid request: %v", err)
 	}
 	r := &Request{Model: c.Model, MaxTokens: c.MaxCompletionTokens, Temp: c.Temperature, TopP: c.TopP,
-		Stream: c.Stream, Effort: effortOf(c.ReasoningEffort), Parallel: c.ParallelToolCalls}
+		Stream: c.Stream, Effort: effortOf(c.ReasoningEffort), Parallel: c.ParallelToolCalls, Fast: c.ServiceTier == "priority"}
 	if r.MaxTokens == 0 {
 		r.MaxTokens = c.MaxTokens
 	}

@@ -210,6 +210,9 @@ func All() []Provider {
 		}
 		pk := picks[a.ID]
 		a.Models, a.Unlisted, a.Fallback, a.Routing, a.Affinity, a.Contexts, a.Family = pk.Models, pk.Unlisted, pk.Fallback, pk.Routing, pk.Affinity, pk.Contexts, pk.Family
+		if a.ID == "cursor" { // picked before its efforts were one model
+			a.Models = cursorPicks(a.Models)
+		}
 		out = append(out, a)
 	}
 	return out

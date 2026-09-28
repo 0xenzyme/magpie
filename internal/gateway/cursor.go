@@ -41,13 +41,15 @@ import (
 // cursorToken and cursorVersion are the sign-in and the CLI version the
 // API is told of, cursorAPI the API that says where a team's agent API is,
 // cursorAgent the one used when it can't say, and cursorVariants the ids a
-// model magpie offers stands for; vars so tests can stand in for them.
+// model magpie offers stands for, cursorBaseOf the other way round; vars
+// so tests can stand in for them.
 var (
 	cursorToken    = provider.CursorToken
 	cursorVersion  = provider.CursorClientVersion
 	cursorAPI      = "https://api2.cursor.sh"
 	cursorAgent    = "https://agentn.global.api5.cursor.sh"
 	cursorVariants = provider.CursorVariants
+	cursorBaseOf   = provider.CursorBase
 )
 
 // cursorEndpoint is the agent API last picked, for the token (by its
@@ -137,8 +139,24 @@ func cursorRegional(msg string) bool {
 // asked for: the family's variant at it; else, for an effort between the
 // ones it has, the one Cursor picks by default (gpt-5.2 is low, high and
 // one without an effort); else the nearest. Fast, when asked, is from the
-// family's fast one. An id of Cursor's own goes as it is.
+// family's fast one. An id of Cursor's own at an effort (grok-4.7-low, one
+// an agent was set to before) is at the effort asked for, and fast, where
+// Cursor has that id; else it goes as it is.
 func cursorModelID(model, effort string, fast bool) string {
+	if base, at, ok := cursorBaseOf(model); ok {
+		if effort == "" {
+			effort = at
+		}
+		if fast && !strings.HasSuffix(base, "-fast") {
+			if _, ok := cursorVariants(base + "-fast"); ok {
+				base += "-fast"
+			}
+		}
+		if vs, ok := cursorVariants(base); ok && vs[effort] != "" && effort != "" {
+			return vs[effort]
+		}
+		return model
+	}
 	if fast && !strings.HasSuffix(model, "-fast") {
 		if _, ok := cursorVariants(model + "-fast"); ok {
 			model += "-fast"

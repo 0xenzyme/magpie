@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yetone/magpie/internal/catalog"
 )
 
 func TestParseCursorModels(t *testing.T) {
@@ -82,6 +84,53 @@ func TestCollapseCursorModels(t *testing.T) {
 		if _, ok := cursorVariantsIn(raw, id); ok {
 			t.Errorf("%s stands for a family", id)
 		}
+	}
+}
+
+// Picks saved before Cursor's efforts were one model name Cursor's own
+// ids: each is the model magpie offers for it now, once, where it was,
+// with its efforts; ids of a family of one, or none, stay.
+func TestCursorLegacyPicks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	was := cursorStatus
+	defer func() { cursorStatus = was }()
+	cursorStatus = &cliIdentity{name: "cursor-test", exe: func() string { return "/bin/sh" }, ask: func() (string, string, bool) { return "me@example.com", "Pro", true }}
+	raw := withCursorContexts(parseCursorModels(cursorListed))
+	if err := catalog.SaveLive("cursor", "", raw); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]string{"grok-4.7-low": "grok-4.7|low", "grok-4.7-xhigh-fast": "grok-4.7-fast|xhigh",
+		"claude-4.6-opus-high-thinking": "claude-4.6-opus-thinking|high", "gpt-5.5-extra-high": "gpt-5.5|xhigh"} {
+		if b, e, ok := cursorBaseIn(raw, id); !ok || b+"|"+e != want {
+			t.Errorf("%s: %s|%s %v, want %s", id, b, e, ok, want)
+		}
+	}
+	for _, id := range []string{"grok-4.7", "gpt-5.3-codex-high-fast", "composer-2.5", "claude-4.6-sonnet-medium-thinking", "grok-4.7-high", "nope-low"} {
+		if b, _, ok := cursorBaseIn(raw, id); ok {
+			t.Errorf("%s taken for %s", id, b)
+		}
+	}
+	legacy := []string{"grok-4.7-low", "composer-2.5", "grok-4.7-medium", "grok-4.7-low-fast", "grok-4.7-xhigh", "grok-4.7-xhigh-fast", "gpt-5.3-codex-high-fast", "gone-model"}
+	if err := Save(Provider{ID: "cursor", Models: legacy}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Find("cursor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"grok-4.7", "composer-2.5", "grok-4.7-fast", "gpt-5.3-codex-high-fast", "gone-model"}
+	if strings.Join(p.Models, ",") != strings.Join(want, ",") {
+		t.Fatalf("picks %v, want %v", p.Models, want)
+	}
+	var got []string
+	for _, m := range p.Exposed() {
+		got = append(got, m.ID+"|"+strings.Join(m.Efforts, ","))
+	}
+	if strings.Join(got, " ") != "grok-4.7|low,medium,xhigh composer-2.5| grok-4.7-fast|low,medium,xhigh gpt-5.3-codex-high-fast| gone-model|" {
+		t.Fatalf("exposed %v", got)
 	}
 }
 

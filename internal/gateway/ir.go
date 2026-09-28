@@ -97,7 +97,7 @@ type Request struct {
 	Thinking   bool   // the client asked for visible reasoning
 	Parallel   *bool  // parallel tool calls allowed
 	WebSearch  bool   // the client offered its provider's own web search
-	Fast       bool   // the client asked for priority processing (Codex's Fast mode)
+	Fast       bool   // the client asked for priority processing: service_tier priority (Codex's Fast mode)
 	// Namespaced are the tools a Responses client offered inside a
 	// namespace, by the flat name the model is offered them under.
 	Namespaced map[string]nsTool

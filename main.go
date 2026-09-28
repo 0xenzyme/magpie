@@ -104,6 +104,7 @@ func main() {
 func run(args []string) error {
 	settings.Migrate()
 	agent.RenameLegacy()
+	agent.MoveCursorEfforts()
 	// a provider added, edited or removed, or a list fetched anew, reaches
 	// the model lists agents keep in files of their own
 	catalog.Changed = agent.SyncCatalog

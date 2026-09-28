@@ -188,3 +188,49 @@ func cursorVariantsIn(raw []catalog.Model, model string) (map[string]string, boo
 	}
 	return nil, false
 }
+
+// CursorBase is the model magpie offers for one of Cursor's ids at an
+// effort ("grok-4.7-low" is grok-4.7 at low, "grok-4.7-low-fast"
+// grok-4.7-fast at low), and that effort; ok is false for an id that is
+// itself a model magpie offers, or that no family has. Picks and agents'
+// models saved before the families were one model still name these ids.
+func CursorBase(id string) (base, effort string, ok bool) {
+	raw, _, live := catalog.Live("cursor")
+	if !live {
+		return "", "", false
+	}
+	return cursorBaseIn(raw, id)
+}
+
+func cursorBaseIn(raw []catalog.Model, id string) (string, string, bool) {
+	family, effort := splitCursorID(id)
+	if family == id {
+		return "", "", false
+	}
+	for _, f := range cursorFamilies(raw) {
+		if f.id == family && len(f.variants) > 1 && slices.ContainsFunc(f.variants, func(m catalog.Model) bool { return m.ID == id }) {
+			return family, effort, true
+		}
+	}
+	return "", "", false
+}
+
+// cursorPicks are the user's picks of Cursor's models with each of
+// Cursor's own ids the model magpie offers for it, in the order picked,
+// each once.
+func cursorPicks(ids []string) []string {
+	raw, _, live := catalog.Live("cursor")
+	if !live {
+		return ids
+	}
+	var out []string
+	for _, id := range ids {
+		if base, _, ok := cursorBaseIn(raw, id); ok {
+			id = base
+		}
+		if !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
