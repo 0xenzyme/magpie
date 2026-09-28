@@ -1580,15 +1580,27 @@ function gatewayModels() {
   return out;
 }
 
+let segsMade = 0;
 function segs(items, current, onPick) {
   const box = el("div", "segs");
-  const key = items.map(([id]) => id).join("|");
+  const kind = items.map(([id]) => id).join("|");
+  box.dataset.kind = kind;
+  // where its thumb was is remembered per control, not per set of options:
+  // every Off/On on the settings page has the same, and each would slide in
+  // from where the one clicked was as the page redraws. A control is known
+  // by its place: the nearest element with an id, and which of the same
+  // options it is there; one not in the page yet by itself only.
+  let key = kind + "#" + ++segsMade;
   for (const [id, name] of items) {
     const b = el("button", "opt" + (id === current ? " on" : ""), name);
     b.onclick = () => { for (const x of box.querySelectorAll(".opt")) x.classList.toggle("on", x === b); slide(box, key); onPick(id); };
     box.append(b);
   }
-  queueMicrotask(() => slide(box, key)); // once it is in the page
+  queueMicrotask(() => { // once it is in the page
+    const home = box.isConnected && box.parentElement.closest("[id]");
+    if (home) key = kind + "@" + home.id + ":" + [...home.querySelectorAll(".segs")].filter((x) => x.dataset.kind === kind).indexOf(box);
+    slide(box, key);
+  });
   return box;
 }
 
