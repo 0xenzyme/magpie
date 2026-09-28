@@ -1146,20 +1146,10 @@ func (s *Server) usable(p provider.Provider, model string) []provider.Protocol {
 			out = append(out, proto)
 		}
 	}
-	if responsesFirst(p, model) {
+	if p.ResponsesFirst(model) {
 		sort.SliceStable(out, func(i, j int) bool { return out[i] == provider.Responses && out[j] != provider.Responses })
 	}
 	return out
-}
-
-// responsesFirst: an OpenAI model on OpenAI's API or Copilot's.
-func responsesFirst(p provider.Provider, model string) bool {
-	if p.Responses == "" || (p.ID != "copilot" && provider.HostOf(p.Responses) != "api.openai.com") {
-		return false
-	}
-	m := strings.ToLower(model[strings.LastIndex(model, "/")+1:])
-	return strings.HasPrefix(m, "gpt-") || strings.HasPrefix(m, "codex") ||
-		len(m) > 1 && m[0] == 'o' && m[1] >= '0' && m[1] <= '9'
 }
 
 // forwardTranslated sends one translated, streaming request upstream. A

@@ -582,6 +582,46 @@ func (p Provider) Speaks() []Protocol {
 	return out
 }
 
+// ResponsesFirst: an OpenAI model on OpenAI's API or Copilot's, which is
+// best asked on the Responses API though Chat serves it too.
+func (p Provider) ResponsesFirst(model string) bool {
+	if p.Responses == "" || (p.ID != "copilot" && HostOf(p.Responses) != "api.openai.com") {
+		return false
+	}
+	m := strings.ToLower(model[strings.LastIndex(model, "/")+1:])
+	return strings.HasPrefix(m, "gpt-") || strings.HasPrefix(m, "codex") ||
+		len(m) > 1 && m[0] == 'o' && m[1] >= '0' && m[1] <= '9'
+}
+
+// Native is the API model is best asked on at this provider: one it serves
+// the model on itself, so a request on it is relayed as it is rather than
+// translated — Responses for a ChatGPT sign-in, or an OpenAI model on
+// OpenAI's API or Copilot's; Chat where that is served. "" when every
+// request is translated anyway: a sign-in served through its agent's own
+// API (Claude Code's binary, Cursor, Devin, Kiro, Code Assist).
+func (p Provider) Native(model string) Protocol {
+	if p.Account != nil {
+		switch p.Account.Agent {
+		case "claude", "cursor", "devin", "kiro":
+			return ""
+		}
+	}
+	apis := p.APIs(model)
+	var out []Protocol
+	for _, pr := range p.Speaks() {
+		if slices.Contains(Protocols, pr) && (apis == nil || slices.Contains(apis, pr)) {
+			out = append(out, pr)
+		}
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	if p.ResponsesFirst(model) && slices.Contains(out, Responses) {
+		return Responses
+	}
+	return out[0]
+}
+
 // Host is the vendor's API host, for display.
 func (p Provider) Host() string {
 	for _, pr := range p.Speaks() {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 
@@ -246,6 +247,17 @@ func magpieProviderJSONFor(shape, catalog string) any {
 		for _, m := range models {
 			// reasoning lets Pi offer its thinking levels for the model
 			e := map[string]any{"id": m.ID, "name": m.Name, "reasoning": len(m.Efforts) > 0}
+			// a model its provider serves on OpenAI's Responses API alone,
+			// or best there (a ChatGPT sign-in, GPT on OpenAI's API or
+			// Copilot's), is asked there — Pi posts it to baseUrl/responses
+			// — so the gateway relays it as Pi sent it instead of
+			// translating Chat. One served on Anthropic's API stays on
+			// Chat: Pi's anthropic-messages picks thinking by the Claude
+			// ids it knows and asks a newer Claude for a thinking budget,
+			// which it turns away; magpie's translation knows its levels.
+			if slices.Contains(m.APIs, string(provider.Responses)) {
+				e["api"] = "openai-responses"
+			}
 			if m.Images {
 				e["input"] = []string{"text", "image"}
 			}

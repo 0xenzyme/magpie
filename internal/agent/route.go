@@ -73,7 +73,15 @@ func magpieModels(agent string) []catalog.Model {
 	var out []catalog.Model
 	shown, _ := provider.CatalogFor(agent)
 	for _, e := range shown {
-		out = append(out, catalog.Model{ID: e.ID, Name: e.Label(), Provider: firstOf(e.Provider.Catalogs()), Efforts: e.Efforts, Images: e.Images, Context: e.Context, Output: e.Output})
+		m := catalog.Model{ID: e.ID, Name: e.Label(), Provider: firstOf(e.Provider.Catalogs()), Efforts: e.Efforts, Images: e.Images, Context: e.Context, Output: e.Output}
+		// APIs is the one to ask it on for the gateway to relay the request
+		// as it is; none for a group, whose members may each want another
+		if e.Group == "" {
+			if n := e.Provider.Native(e.Model); n != "" {
+				m.APIs = []string{string(n)}
+			}
+		}
+		out = append(out, m)
 	}
 	return out
 }
