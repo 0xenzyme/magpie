@@ -61,6 +61,7 @@ func All() []*Agent {
 		crush(home, cfg),
 		dsh(home),
 		commandCode(home),
+		fx(home),
 		omp(home),
 		devin(home, cfg),
 		hermes(home),
