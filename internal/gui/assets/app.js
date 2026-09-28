@@ -244,6 +244,11 @@ function renderAgents() {
         mi.setAttribute("aria-hidden", "true");
         mi.append(el("span", "mi-in"));
         mi.firstChild.append(optionIcon(opt));
+        // its width to open to, read as the pointer comes onto the row:
+        // before :hover is styled, so the box eases open from nothing
+        row.addEventListener("pointerenter", () => {
+          if (!mi.style.getPropertyValue("--w")) mi.style.setProperty("--w", mi.firstChild.offsetWidth + "px");
+        });
         v.append(mi);
       }
       v.append(el("span", "vt", main ? (opt?.label || main.value || t("default")) : ""));

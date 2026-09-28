@@ -555,15 +555,19 @@ body.panel .row.agent.open { background: var(--card-2); }
 .ag-sum { display: grid; grid-template-columns: auto 12px 10px; align-items: center; gap: 10px; min-width: 0; max-width: 100%; font-size: 12px; color: var(--muted); }
 .ag-sum .v { display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
 .ag-sum .vt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
-/* the logo comes in as its column opens from nothing to its own width, so
-   a stack of three is as whole as one; the clip is padded out past the
-   discs' rings, which it would otherwise shave */
-.ag-sum .mi { display: inline-grid; grid-template-columns: 0fr; flex: none; margin-right: 0; opacity: 0; transform: scale(.7); transition: grid-template-columns .22s var(--ease), margin-right .22s var(--ease), opacity .18s var(--ease), transform .22s var(--ease); }
-.ag-sum .mi-in { display: inline-flex; align-items: center; min-width: 0; overflow: hidden; margin: -2px; padding: 2px; }
+/* the logo comes in as its box opens from nothing to its own width (a
+   real width, --w, measured on the way in, which every engine lays out
+   frame by frame), the words easing aside on the row's spring; the logo
+   sits against them, fading and growing in a beat behind, and goes
+   first on the way out. The clip is padded past the discs' rings. */
+.ag-sum .mi { display: flex; justify-content: flex-end; align-items: center; flex: none; width: 0; padding: 2px; margin: -2px -2px -2px -2px; overflow: hidden; transition: width .36s var(--row-spring), margin-right .36s var(--row-spring); }
+.ag-sum .mi-in { display: flex; align-items: center; flex: none; width: max-content; opacity: 0; transform: scale(.6); transform-origin: 100% 50%; transition: opacity .14s ease, transform .3s var(--row-spring); }
 .row.agent .ag-sum .mi .ic { width: 14px; height: 14px; }
 .row.agent .ag-sum .mi .ic-stack .disc { width: 16px; height: 16px; }
 .row.agent .ag-sum .mi .ic-stack .disc > .ic { width: 10px !important; height: 10px !important; }
-.row.agent:hover .ag-sum .mi { grid-template-columns: 1fr; margin-right: 6px; opacity: 1; transform: none; }
+.row.agent:hover .ag-sum .mi { width: calc(var(--w, 16px) + 4px); margin-right: 4px; transition: width .46s var(--row-spring), margin-right .46s var(--row-spring); }
+.row.agent:hover .ag-sum .mi-in { opacity: 1; transform: none; transition: opacity .28s ease .08s, transform .52s var(--row-spring) .04s; }
+@media (prefers-reduced-motion: reduce) { .ag-sum .mi, .ag-sum .mi-in, .row.agent:hover .ag-sum .mi, .row.agent:hover .ag-sum .mi-in { transition: none; } }
 #addSheet { scroll-margin-top: 12px; }
 .ag-sum .v.empty { color: var(--muted); }
 .ag-sum .chev { display: inline-flex; width: 10px; color: var(--faint); transform: rotate(-90deg); transition: transform .4s var(--row-spring); }
