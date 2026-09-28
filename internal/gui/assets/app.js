@@ -2376,9 +2376,22 @@ function openModal(content) {
   clearTimeout(modalTimer);
   m.classList.remove("out");
   d.classList.remove("swap");
+  const top = m.hidden ? 0 : d.querySelector(".ebody")?.scrollTop || 0;
   if (!m.hidden) { void d.offsetWidth; d.classList.add("swap"); } // content changed: a soft refresh, not a re-entrance
+  frame(content);
   d.replaceChildren(content);
   m.hidden = false;
+  const body = content.querySelector(":scope > .ebody");
+  if (body) body.scrollTop = top; // a re-render keeps the place
+}
+// frame holds an editor's head and its buttons still while the fields
+// between them scroll.
+function frame(ed) {
+  if (!ed.matches(".editor") || ed.querySelector(":scope > .ebody")) return;
+  const body = el("div", "ebody");
+  body.append(...[...ed.children].filter((c) => !c.matches(".ehead, .bar")));
+  ed.querySelector(":scope > .bar") ? ed.querySelector(":scope > .bar").before(body) : ed.append(body);
+  ed.classList.add("framed");
 }
 function closeModal() {
   const m = $("#modal");

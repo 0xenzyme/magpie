@@ -1274,6 +1274,20 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .modal .dialog.swap { animation: content-in .22s var(--ease); }
 .modal.out .dialog { animation: dialog-out .16s var(--ease) forwards; }
 .modal .dialog::-webkit-scrollbar { width: 0; }
+/* In a dialog the editor's head and buttons stay put and only the fields
+   between them scroll; both bars are the same height, their contents
+   centred in it. */
+.modal .dialog { display: flex; flex-direction: column; }
+.modal .editor.framed { display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 0; min-height: 0; overflow: hidden; }
+.modal .editor.framed > .ebody {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: grid; grid-template-columns: inherit; gap: 10px 14px; align-items: start; padding: 14px 18px;
+}
+.modal .editor.framed > .ebody::-webkit-scrollbar { width: 0; }
+.modal .editor.framed > .ehead, .modal .editor.framed > .bar { flex: none; min-height: 48px; margin: 0; padding: 0 18px; }
+.modal .editor.framed > .ehead { border-bottom: 1px solid var(--line-2); }
+.modal .editor.framed > .bar { border-top: 1px solid var(--line-2); }
+.modal .editor.framed > .editor-error { flex: none; padding: 8px 18px; border-top: 1px solid var(--line-2); }
 /* Keep native window chrome outside the scrim and dialog. In particular, the
    macOS traffic lights must never sit on top of modal content. */
 body.window.mac .modal { top: 50px; padding: 16px 24px 24px; }
