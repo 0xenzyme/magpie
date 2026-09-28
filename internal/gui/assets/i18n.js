@@ -315,6 +315,7 @@ const I18N = {
     "Try again": "重试",
     "Signed in as {user}": "已登录 {user}",
     "{user} added — switch to it any time": "已添加 {user}，随时可以切换",
+    "{user} signed in, but magpie can't list it — please report this": "{user} 已登录，但 magpie 无法列出它，请反馈此问题",
     "{user} removed": "已移除 {user}",
     "magpie forgets this account's sign-in; the account itself is untouched": "magpie 忘掉这个账号的登录信息；账号本身不受影响",
     "Sign {agent} in to this account": "让 {agent} 登录到这个账号",

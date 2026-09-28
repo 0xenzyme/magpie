@@ -282,7 +282,11 @@ func forgetGoogleLogin(agent, user string) error {
 // addGoogleLogin keeps an account magpie just signed in.
 func addGoogleLogin(agent, user, plan string, a googleAuth) error {
 	auth, _ := json.Marshal(a)
-	return addSideLogin(savedLogin{Agent: agent, User: user, Plan: plan, Auth: auth, Project: a.Project}, func(savedLogin) {})
+	ownUser := ""
+	if own, ok := geminiOwnLogin(); ok && agent == "gemini" {
+		ownUser = own.user
+	}
+	return addSideLogin(savedLogin{Agent: agent, User: user, Plan: plan, Auth: auth, Project: a.Project}, ownUser, func(savedLogin) {})
 }
 
 // SetGoogleProject names the Google Cloud project an account's requests

@@ -94,7 +94,8 @@ func addGrokLogin(home string) (string, error) {
 		removeGrokHome(home)
 		return "", errors.New("grok login finished without an account")
 	}
-	return c.Email, addSideLogin(savedLogin{Agent: "grok", User: c.Email, Home: home},
+	own, _ := readGrokCredential(GrokHome())
+	return c.Email, addSideLogin(savedLogin{Agent: "grok", User: c.Email, Home: home}, own.Email,
 		func(l savedLogin) { removeGrokHome(l.Home) })
 }
 

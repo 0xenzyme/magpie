@@ -589,11 +589,14 @@ func startZCodeSignIn(s *signInFlow) error {
 				return
 			}
 			auth, _ := json.Marshal(k)
-			if err := addSideLogin(savedLogin{Agent: "zcode", User: who, Plan: plan, Auth: auth}, func(savedLogin) {}); err != nil {
+			ownUser, _, ok := zcodeOwn()
+			if !ok {
+				ownUser = ""
+			}
+			if err := addSideLogin(savedLogin{Agent: "zcode", User: who, Plan: plan, Auth: auth}, ownUser, func(savedLogin) {}); err != nil {
 				fail(err.Error())
 				return
 			}
-			ownUser, _, ok := zcodeOwn()
 			s.finish(SignInState{State: "done", User: who, Plan: plan, Using: ok && strings.EqualFold(ownUser, who)})
 			return
 		}

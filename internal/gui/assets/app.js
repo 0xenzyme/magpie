@@ -3592,7 +3592,9 @@ async function followSignIn(id) {
       const p = providers.providers.find((x) => x.account?.agent === st.agent);
       if (p) { editing = p.id; draft = null; adding = false; presetQuery = ""; }
       renderProviders();
-      status(st.using ? t("Signed in as {user}", { user: st.user }) : t("{user} added — switch to it any time", { user: st.user }), "ok");
+      // signed in but listed nowhere (#155): say so rather than "added"
+      if (!p) status(t("{user} signed in, but magpie can't list it — please report this", { user: st.user }), "err");
+      else status(st.using ? t("Signed in as {user}", { user: st.user }) : t("{user} added — switch to it any time", { user: st.user }), "ok");
       state = await api("state");
       renderAgents();
       setTimeout(() => { justAdded = ""; }, 2000);

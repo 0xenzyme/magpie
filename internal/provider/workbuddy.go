@@ -654,14 +654,17 @@ func startWorkBuddySignIn(s *signInFlow) error {
 		c.UID = acc.UID
 		who := wbWho(acc.Nickname, acc.PhoneNumber, acc.UID)
 		auth, _ := json.Marshal(c)
-		if err := addSideLogin(savedLogin{Agent: "workbuddy", User: who, Auth: auth}, func(savedLogin) {}); err != nil {
+		ownUser, _, hasOwn := wbOwn()
+		if !hasOwn {
+			ownUser = ""
+		}
+		if err := addSideLogin(savedLogin{Agent: "workbuddy", User: who, Auth: auth}, ownUser, func(savedLogin) {}); err != nil {
 			fail(err.Error())
 			return
 		}
 		wbTokens.Lock()
 		wbTokens.m[c.UID] = c
 		wbTokens.Unlock()
-		ownUser, _, hasOwn := wbOwn()
 		s.finish(SignInState{State: "done", User: who, Using: hasOwn && strings.EqualFold(ownUser, who)})
 	}()
 	return nil
