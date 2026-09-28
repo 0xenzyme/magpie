@@ -274,8 +274,15 @@ func devShell(h *host) http.Handler {
 	}()
 	p := httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: os.Getenv("MAGPIE_DEV_BACKEND")})
 	p.Transport = backendClient.Transport
-	// a restart cuts off whatever was in flight; the page asks again
+	// A restart cuts off whatever was in flight. A read is asked again, of
+	// the backend that comes up (the dial waits for it), so the page never
+	// sees the cut; a write may have landed, so it fails as it is.
 	p.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, err error) {
+		n, _ := r.Context().Value(retryKey{}).(int)
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && n < 3 && r.Context().Err() == nil {
+			p.ServeHTTP(rw, r.WithContext(context.WithValue(r.Context(), retryKey{}, n+1)))
+			return
+		}
 		rw.WriteHeader(http.StatusBadGateway)
 	}
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
@@ -303,3 +310,7 @@ func stash(link string) string {
 	b, _ := io.ReadAll(res.Body)
 	return strings.TrimSpace(string(b))
 }
+
+// retryKey counts how often a read cut off by a backend restart was asked
+// again.
+type retryKey struct{}
