@@ -2,7 +2,8 @@ package tui
 
 // The pages beside the agents: providers (keys, models, balances) and
 // usage — what the app's Providers and Usage views do, in the terminal.
-// Routing is in routing.go, the library in library.go.
+// Routing is in routing.go, sessions in sessions.go, the library in
+// library.go.
 
 import (
 	"context"
@@ -29,10 +30,11 @@ const (
 	pageProviders
 	pageGroups
 	pageUsage
+	pageSessions
 	pageLibrary
 )
 
-var pageNames = []string{"agents", "providers", "routing", "usage", "library"}
+var pageNames = []string{"agents", "providers", "routing", "usage", "sessions", "library"}
 
 // ask is a line to type: a key, a family, a group's name.
 type ask struct {

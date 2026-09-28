@@ -235,7 +235,7 @@ func TestPutRule(t *testing.T) {
 
 func TestLibraryPage(t *testing.T) {
 	h := home(t)
-	m := press(t, model{w: 120, h: 40}, "5")
+	m := press(t, model{w: 120, h: 40}, "6")
 	if m.page != pageLibrary || m.libErr != "" {
 		t.Fatalf("page %d: %s", m.page, m.libErr)
 	}
