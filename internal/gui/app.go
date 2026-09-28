@@ -391,8 +391,8 @@ func abs(n int) int {
 	return n
 }
 
-// flap plays trayFlap on the tray icon, about half a second, and ends on the
-// still bird.
+// flap plays trayFlap on the tray icon, a frame every 30ms as they were
+// drawn — the .9s of the header logo's flap — and ends on the still bird.
 func (h *host) flap() {
 	if !h.flapping.CompareAndSwap(false, true) {
 		return
@@ -405,7 +405,7 @@ func (h *host) flap() {
 			break
 		}
 		h.tray.SetTemplateIcon(b)
-		time.Sleep(28 * time.Millisecond)
+		time.Sleep(30 * time.Millisecond)
 	}
 	h.tray.SetTemplateIcon(trayIcon)
 }
