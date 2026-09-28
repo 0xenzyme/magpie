@@ -141,6 +141,9 @@ func quotaResetCmd(args []string) error {
 		if held.Resets != nil {
 			n = "one of its " + plural(held.Resets.Count, "reset")
 		}
+		if held.Resets != nil && held.Resets.Until != nil {
+			n += " (the one that runs out first, " + provider.ResetClock(*held.Resets.Until, time.Now()) + ")"
+		}
 		fmt.Printf("Spend %s on %s, starting its current windows again? It can't be undone. [y/N] ", n, who)
 		line, _ := stdin.ReadString('\n')
 		if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {

@@ -132,36 +132,53 @@ func TestConsumeCodexReset(t *testing.T) {
 		{"already_redeemed", 0, "that reset was already used"},
 	} {
 		answer = map[string]any{"code": c.code, "windows_reset": c.windows}
-		out, err := consumeCodexReset(context.Background(), base, "tok", "acct-1", newRedeemID())
+		out, err := consumeCodexReset(context.Background(), base, "tok", "acct-1", "cr-1", newRedeemID())
 		if err != nil || out.Code != c.code || out.Windows != c.windows || out.Text() != c.text {
 			t.Fatalf("%s: %+v %q %v", c.code, out, out.Text(), err)
 		}
 	}
-	// each spend its own idempotency key, a UUID
-	if len(got) != 5 || got[0]["redeem_request_id"] == got[1]["redeem_request_id"] || len(got[0]["redeem_request_id"]) != 36 || got[0]["credit_id"] != "" {
+	// each spend its own idempotency key, a UUID, and names the credit
+	if len(got) != 5 || got[0]["redeem_request_id"] == got[1]["redeem_request_id"] || len(got[0]["redeem_request_id"]) != 36 || got[0]["credit_id"] != "cr-1" {
 		t.Fatalf("requests %v", got)
 	}
 	status = 401
-	if _, err := consumeCodexReset(context.Background(), base, "tok", "acct-1", newRedeemID()); err == nil {
+	if _, err := consumeCodexReset(context.Background(), base, "tok", "acct-1", "cr-1", newRedeemID()); err == nil {
 		t.Fatal("a refused spend said nothing")
 	}
 	status, answer = 200, map[string]any{}
-	if _, err := consumeCodexReset(context.Background(), base, "tok", "acct-1", newRedeemID()); err == nil {
+	if _, err := consumeCodexReset(context.Background(), base, "tok", "acct-1", "cr-1", newRedeemID()); err == nil {
 		t.Fatal("an empty answer taken for an outcome")
 	}
 }
 
-// UseCodexReset spends a reset of the account asked for, and the next look
-// at the usage reads it afresh.
+// UseCodexReset spends a reset of the account asked for — the one that
+// runs out first — and the next look at the usage reads it afresh.
 func TestUseCodexReset(t *testing.T) {
 	signIn(t)
 	var consumed atomic.Int32
+	var spent atomic.Value
+	credits := map[string]any{"available_count": 3, "credits": []any{
+		map[string]any{"id": "never", "status": "available", "expires_at": nil},
+		map[string]any{"id": "late", "status": "available", "expires_at": "2026-12-01T00:00:00Z"},
+		map[string]any{"id": "used", "status": "redeemed", "expires_at": "2026-10-01T00:00:00Z"},
+		map[string]any{"id": "soon", "status": "available", "expires_at": "2026-10-05T00:00:00Z"},
+	}}
+	listed := true
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/backend-api/wham/rate-limit-reset-credits":
+			if !listed {
+				w.WriteHeader(500)
+				return
+			}
+			json.NewEncoder(w).Encode(credits)
 		case "/backend-api/wham/rate-limit-reset-credits/consume":
 			if r.Header.Get("chatgpt-account-id") != "acct-1" {
 				t.Errorf("spent on account %q", r.Header.Get("chatgpt-account-id"))
 			}
+			var body map[string]string
+			json.NewDecoder(r.Body).Decode(&body)
+			spent.Store(body["credit_id"])
 			consumed.Add(1)
 			json.NewEncoder(w).Encode(map[string]any{"code": "reset", "windows_reset": 2})
 		default:
@@ -183,10 +200,31 @@ func TestUseCodexReset(t *testing.T) {
 	if err != nil || out.Code != "reset" || out.Windows != 2 || consumed.Load() != 1 {
 		t.Fatalf("%+v %v", out, err)
 	}
+	if got := spent.Load(); got != "soon" {
+		t.Fatalf("spent %v, not the one that runs out first", got)
+	}
 	subscriptionUsageCache.Lock()
 	stale := subscriptionUsageCache.data == nil && subscriptionUsageCache.at.IsZero()
 	subscriptionUsageCache.Unlock()
 	if !stale {
 		t.Fatal("usage cached from before the reset")
+	}
+
+	// only one that never runs out left: that one
+	credits = map[string]any{"available_count": 1, "credits": []any{
+		map[string]any{"id": "never", "status": "available", "expires_at": nil},
+	}}
+	if _, err := UseCodexReset(context.Background(), "me@example.com"); err != nil || spent.Load() != "never" {
+		t.Fatalf("spent %v: %v", spent.Load(), err)
+	}
+	// none left: nothing is asked to be spent
+	credits = map[string]any{"available_count": 0, "credits": []any{}}
+	if out, err := UseCodexReset(context.Background(), "me@example.com"); err != nil || out.Code != "no_credit" || consumed.Load() != 2 {
+		t.Fatalf("%+v %v, %d spent", out, err, consumed.Load())
+	}
+	// which runs out first unknown: none is spent, rather than any
+	listed = false
+	if _, err := UseCodexReset(context.Background(), "me@example.com"); err == nil || consumed.Load() != 2 {
+		t.Fatalf("spent blind: %v", err)
 	}
 }

@@ -42,23 +42,32 @@ type codexResetCreditsWire struct {
 	} `json:"credits"`
 }
 
+// first is the credit still to be used that runs out first, and when:
+// one that never runs out comes after all that do. id is "" when none is
+// left.
+func (w codexResetCreditsWire) first() (id string, at *time.Time) {
+	for _, c := range w.Credits {
+		if c.Status != "available" || c.ID == "" {
+			continue
+		}
+		var t *time.Time
+		if c.ExpiresAt != nil {
+			if p, err := time.Parse(time.RFC3339, *c.ExpiresAt); err == nil {
+				t = &p
+			}
+		}
+		if id == "" || t != nil && (at == nil || t.Before(*at)) {
+			id, at = c.ID, t
+		}
+	}
+	return id, at
+}
+
 // soonest is when the first of the credits still to be used runs out, nil
 // when none of them does.
 func (w codexResetCreditsWire) soonest() *time.Time {
-	var out *time.Time
-	for _, c := range w.Credits {
-		if c.Status != "available" || c.ExpiresAt == nil {
-			continue
-		}
-		t, err := time.Parse(time.RFC3339, *c.ExpiresAt)
-		if err != nil {
-			continue
-		}
-		if out == nil || t.Before(*out) {
-			out = &t
-		}
-	}
-	return out
+	_, at := w.first()
+	return at
 }
 
 // codexResets is the resets an account holds, from the count its usage
@@ -106,14 +115,26 @@ func (o ResetOutcome) Text() string {
 
 // UseCodexReset spends one of the rate-limit resets of the Codex account
 // user (the one Codex is signed in to when ""), starting its current
-// usage windows again. It can't be undone: callers ask first. The account's
-// usage is read afresh after.
+// usage windows again: the one that runs out first, so none that would
+// last longer goes before it. It can't be undone: callers ask first. The
+// account's usage is read afresh after.
 func UseCodexReset(ctx context.Context, user string) (ResetOutcome, error) {
 	user, tok, accountID, err := codexUserToken(ctx, user)
 	if err != nil {
 		return ResetOutcome{}, err
 	}
-	out, err := consumeCodexReset(ctx, strings.TrimSuffix(CodexBase, "/codex"), tok, accountID, newRedeemID())
+	base := strings.TrimSuffix(CodexBase, "/codex")
+	// which of them to spend is named, as Codex itself does: left to the
+	// vendor, it may be one that lasts longer
+	var w codexResetCreditsWire
+	if err := accountJSON(ctx, base+"/wham/rate-limit-reset-credits", tok, map[string]string{"chatgpt-account-id": accountID}, &w); err != nil {
+		return ResetOutcome{}, fmt.Errorf("couldn't read which reset runs out first, so none was used: %w", err)
+	}
+	credit, _ := w.first()
+	if credit == "" {
+		return ResetOutcome{Code: "no_credit"}, nil
+	}
+	out, err := consumeCodexReset(ctx, base, tok, accountID, credit, newRedeemID())
 	if err != nil {
 		return out, err
 	}
@@ -143,11 +164,11 @@ func codexUserToken(ctx context.Context, user string) (who, tok, accountID strin
 	return "", "", "", fmt.Errorf("no Codex account %q", user)
 }
 
-// consumeCodexReset spends a reset; id makes a retry of the same request
-// spend it once.
-func consumeCodexReset(ctx context.Context, base, token, accountID, id string) (ResetOutcome, error) {
+// consumeCodexReset spends the reset credit; id makes a retry of the same
+// request spend it once.
+func consumeCodexReset(ctx context.Context, base, token, accountID, credit, id string) (ResetOutcome, error) {
 	var out ResetOutcome
-	body, _ := json.Marshal(map[string]string{"redeem_request_id": id})
+	body, _ := json.Marshal(map[string]string{"credit_id": credit, "redeem_request_id": id})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/wham/rate-limit-reset-credits/consume", bytes.NewReader(body))
 	if err != nil {
 		return out, err

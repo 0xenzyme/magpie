@@ -4222,7 +4222,7 @@ function renderQuotas() {
         const r = el("div", "quota-resets");
         r.append(resetsWords(sub.resets));
         const use = el("button", "text", t("Use a reset"));
-        use.title = t("Start this account's windows again now, with one of its resets");
+        use.title = resetUseTitle(sub.resets);
         use.onclick = () => askCodexReset(sub);
         r.append(use);
         card.append(r);
@@ -4411,7 +4411,7 @@ function panelQuotaCard(q) {
     const r = el("div", "pq-resets");
     r.append(resetsWords(q.resets));
     const use = el("button", "pq-use", t("Use one…"));
-    use.title = t("Start this account's windows again now, with one of its resets");
+    use.title = resetUseTitle(q.resets);
     use.onclick = () => askCodexReset(q);
     r.append(use);
     card.append(r);
@@ -4432,6 +4432,15 @@ function resetsWords(r) {
   return w;
 }
 
+// resetUseTitle says which reset a use spends: the one that runs out
+// first, so no one hesitates for fear of losing one that lasts longer.
+function resetUseTitle(r) {
+  return (r.until
+    ? t("Uses the reset that runs out first ({when}), never one that lasts longer.", { when: new Date(r.until).toLocaleString() })
+    : t("Uses one of its resets; none of them runs out."))
+    + "\n" + t("This account's windows start again at once, as if none had been used. You're asked before anything is spent.");
+}
+
 // askCodexReset: spending a reset can't be taken back, so it asks first;
 // then it says what came of it and reads the usage again.
 let resetAsk = null;
@@ -4444,6 +4453,7 @@ function askCodexReset(q) {
   ed.append(el("p", "lib-confirm", t(q.resets.count === 1
     ? "{who} has 1 reset. Using it starts its windows again at once, as if none of them had been used. It can't be undone."
     : "{who} has {n} resets. Using one starts its windows again at once, as if none of them had been used. It can't be undone.", { who, n: q.resets.count })));
+  if (q.resets.until) ed.append(el("p", "lib-confirm", t("The one used is the one that runs out first, {when}.", { when: new Date(q.resets.until).toLocaleString() })));
   // nothing used yet: a reset would start nothing again
   if (!q.windows?.some((w) => w.used > 0)) ed.append(el("p", "lib-confirm reset-idle", t("None of its windows has been used yet, so there is nothing to start again.")));
   const bar = el("div", "bar");
