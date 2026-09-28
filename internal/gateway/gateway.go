@@ -211,11 +211,13 @@ func (s *Server) record(c Call) {
 // two at once.
 var WhileServing []func(context.Context)
 
-// ListenAndServe runs the gateway until ctx ends. A bind error means
-// another magpie is already serving, which is fine for the caller to ignore.
+// ListenAndServe runs the gateway until ctx ends, and returns once the
+// requests in flight then have finished: within 2s, or, handing over, as
+// long as a stream takes. A bind error means another magpie is already
+// serving, which is fine for the caller to ignore.
 func (s *Server) ListenAndServe(ctx context.Context) error {
 	loadLANKey()
-	ln, err := net.Listen("tcp", listenAddr())
+	ln, err := Listen(listenAddr())
 	if err != nil {
 		return err
 	}
@@ -234,9 +236,15 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	for _, f := range WhileServing {
 		go f(ctx)
 	}
+	drained := make(chan struct{})
 	go func() {
+		defer close(drained)
 		<-ctx.Done()
-		c, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		wait := 2 * time.Second
+		if Handover {
+			wait = 15 * time.Minute
+		}
+		c, cancel := context.WithTimeout(context.Background(), wait)
 		defer cancel()
 		srv.Shutdown(c)
 		s.subscription.abortAll()
@@ -244,6 +252,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	for {
 		err := srv.Serve(ln)
 		if err == nil || errors.Is(err, http.ErrServerClosed) {
+			<-drained
 			return nil
 		}
 		// Relisten closed it to move the gateway: serve the one it opened
