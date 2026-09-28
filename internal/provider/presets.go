@@ -134,6 +134,19 @@ var presets = []PresetDef{
 		Website: "https://cloud.tencent.com/document/product/1823/130060", KeysURL: "https://console.cloud.tencent.com/tokenhub/tokenplan",
 		Models: []string{"tc-code-latest", "glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-5.1", "glm-5", "kimi-k3", "kimi-k2.7-code",
 			"deepseek-v4-pro-202606", "deepseek-v4-flash-202605", "minimax-m3", "minimax-m2.7", "hy4-preview", "hy3"}},
+	// Huawei Cloud MaaS's Token Plan: personal accounts in 西南-贵阳一, its
+	// quota spent only at the plan's own endpoints under /plan (v2 for chat
+	// completions, anthropic for messages; its Claude Code, OpenClaw, Cherry
+	// Studio and CodeArts pages), a MaaS key to either. No Responses.
+	{ID: "huaweicloud", Name: "Huawei Cloud MaaS", Icon: "huaweicloud-color", Kind: KindVendor,
+		Chat: "https://api.modelarts-maas.com/plan/v2", Anthropic: "https://api.modelarts-maas.com/plan/anthropic",
+		Note:    "Token Plan · 西南-贵阳一",
+		Website: "https://support.huaweicloud.com/Token-plan-maas/tokenplan-maas-0001.html", KeysURL: "https://console.huaweicloud.com/modelarts/?#/model-studio/authmanage",
+		RegionLabel: "Plan", Regions: []Region{
+			{ID: "plan", Name: "Token Plan", Chat: "https://api.modelarts-maas.com/plan/v2", Anthropic: "https://api.modelarts-maas.com/plan/anthropic"},
+			{ID: "api", Name: "Pay as you go", Chat: "https://api.modelarts-maas.com/openai/v1", Anthropic: "https://api.modelarts-maas.com/anthropic"},
+		},
+		Models: []string{"glm-5.3", "glm-5.1", "kimi-k2.6", "deepseek-v4.1-flash", "deepseek-v4-flash"}},
 	{ID: "qwen", Name: "Qwen", Icon: "qwen-color", Kind: KindVendor, Catalog: "alibaba",
 		Chat: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", Anthropic: "https://dashscope-intl.aliyuncs.com/apps/anthropic",
 		Note:    "DashScope · intl",
