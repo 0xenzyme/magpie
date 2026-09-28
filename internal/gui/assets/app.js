@@ -1823,15 +1823,6 @@ function renderConnect() {
   wrap.append(pre, copyBtn(code, t("Snippet")));
   ex.append(wrap);
   box.append(...field(t("Example"), ex, lang === "shell" ? t("Put these in the shell (or the tool's settings) and the tool talks to magpie instead of the vendor.") : ""));
-
-  // apps that take a provider only through their own import link
-  if (g.cindy) {
-    const apps = el("div", "val");
-    const b = el("button", "link", t("Add to Cindy ↗"));
-    b.onclick = () => { if (web) location.href = g.cindy; else api("open", { url: g.cindy }); };
-    apps.append(b);
-    box.append(...field(t("Apps"), apps, t("Cindy asks before adding magpie as a provider, for Claude Code, Codex and Pi alike.")));
-  }
 }
 
 // A small highlighter for the four snippet dialects: strings, comments,

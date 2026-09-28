@@ -109,7 +109,6 @@ type gatewayJSON struct {
 	Models  int            `json:"models"`
 	Calls   []gateway.Call `json:"calls"`
 	Groups  []gwGroupJSON  `json:"groups"` // the catalog's routing groups, listed before the models
-	Cindy   string         `json:"cindy"`  // the link that adds the gateway to Cindy
 }
 
 // gwGroupJSON is a routing group as the Gateway view lists it.
@@ -292,7 +291,7 @@ func providersState() providersJSON {
 		s.Presets = append(s.Presets, presetJSON{PresetDef: pr, Added: have[pr.ID]})
 	}
 	cat := provider.Catalog()
-	s.Gateway = gatewayJSON{URL: gateway.URL(), Cindy: CindyLink(gateway.URL()), Models: len(cat), Calls: []gateway.Call{}, Groups: []gwGroupJSON{}}
+	s.Gateway = gatewayJSON{URL: gateway.URL(), Models: len(cat), Calls: []gateway.Call{}, Groups: []gwGroupJSON{}}
 	for _, e := range cat {
 		if e.Group == "" {
 			continue
@@ -716,7 +715,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 	mux.HandleFunc("POST /api/open", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct{ URL string }
 		_ = json.NewDecoder(r.Body).Decode(&in)
-		if strings.HasPrefix(in.URL, "https://") || strings.HasPrefix(in.URL, "http://") || strings.HasPrefix(in.URL, CindyScheme) {
+		if strings.HasPrefix(in.URL, "https://") || strings.HasPrefix(in.URL, "http://") {
 			w.OpenURL(in.URL)
 		}
 		rw.WriteHeader(http.StatusNoContent)
