@@ -81,7 +81,7 @@ func readLogins() []savedLogin {
 	if err == nil {
 		_ = json.Unmarshal(b, &out)
 	}
-	return out
+	return dedupeLogins(out)
 }
 
 func writeLogins(ls []savedLogin) error {
@@ -132,6 +132,42 @@ func upsertLogin(ls []savedLogin, l savedLogin) []savedLogin {
 		}
 	}
 	return append(ls, l)
+}
+
+// dedupeLogins keeps one record per Claude or Codex account, which
+// sameLogin tells by email and organization or workspace. Other agents'
+// accounts are told by name alone: a Grok account magpie signed in and the
+// CLI's own sign-in to the same one are two records (side_logins.go), and
+// folding them would lose the first's sign-in at the next write.
+func dedupeLogins(ls []savedLogin) []savedLogin {
+	out := make([]savedLogin, 0, len(ls))
+	for _, l := range ls {
+		if !slices.Contains(loginAgents, l.Agent) {
+			out = append(out, l)
+			continue
+		}
+		found := -1
+		for i := range out {
+			if sameLogin(out[i], l) {
+				found = i
+				break
+			}
+		}
+		if found < 0 {
+			out = append(out, l)
+			continue
+		}
+		// keep the one seen later, and if either is on or first, keep that too.
+		previous := out[found]
+		keep := previous
+		if l.Seen.After(previous.Seen) {
+			keep = l
+		}
+		keep.On = previous.On || l.On
+		keep.First = previous.First || l.First
+		out[found] = keep
+	}
+	return out
 }
 
 // sameLogin says whether two saved logins are one account. A Claude
