@@ -95,14 +95,23 @@ func TestDecideGateways(t *testing.T) {
 		switch r.URL.Path {
 		case "/v1/credits":
 			w.Write([]byte(`{"balance":"5.00","total_used":"0.00"}`))
+		case "/typesafe/v1/models":
+			w.Write([]byte(`{"models":[{"name":"typesafe-ai/jev"}]}`))
 		case "/client/v4/accounts":
 			w.Write([]byte(`{"success":true,"result":[{"id":"acc9"}]}`))
+		case "/client/v4/accounts/acc7/ai/models/search":
+			w.Write([]byte(`{"success":true,"result":[{"name":"typesafe/jev"}]}`))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer up.Close()
-	for _, c := range []struct{ decide, bad string }{{up.URL + "/v4/ai", "Invalid API key"}, {up.URL + "/client/v4/", "Authentication error"}} {
+	for _, c := range []struct{ decide, bad string }{
+		{up.URL + "/typesafe", "Invalid API key"},
+		{up.URL + "/v4/ai", "Invalid API key"},
+		{up.URL + "/client/v4/", "Authentication error"},
+		{up.URL + "/client/v4/accounts/acc7/ai/run", "Authentication error"},
+	} {
 		p := Provider{ID: "g", Name: "G", Key: "good", Decide: c.decide}
 		if r := p.Test(context.Background()); len(r) != 1 || !r[0].OK || r[0].Model != p.Jev() {
 			t.Errorf("%s: %+v", c.decide, r)
@@ -112,8 +121,36 @@ func TestDecideGateways(t *testing.T) {
 			t.Errorf("%s bad key: %+v", c.decide, r)
 		}
 	}
-	p := Provider{ID: "g", Name: "G", Key: "good", Decide: up.URL + "/client/v4"}
-	if u, err := p.DecideURL(context.Background()); err != nil || u != up.URL+"/client/v4/accounts/acc9/ai/run" {
-		t.Fatalf("%s %v", u, err)
+	for decide, want := range map[string]string{
+		// Vercel's TypeSafe API as its docs give it, or near it; /v4/ai as before
+		"https://ai-gateway.vercel.sh/typesafe":              "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+		"https://ai-gateway.vercel.sh/typesafe/v1/":          "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+		"https://ai-gateway.vercel.sh/typesafe/v1/systemone": "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+		"https://ai-gateway.vercel.sh/v1":                    "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+		"https://ai-gateway.vercel.sh":                       "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+		"https://ai-gateway.vercel.sh/v4/ai":                 "https://ai-gateway.vercel.sh/v4/ai/evaluation-model",
+		// Workers AI with the account in it, as Cloudflare's docs give it
+		"https://api.cloudflare.com/client/v4/accounts/acc7/ai/run": "https://api.cloudflare.com/client/v4/accounts/acc7/ai/run",
+		"https://api.cloudflare.com/client/v4/accounts/acc7/":       "https://api.cloudflare.com/client/v4/accounts/acc7/ai/run",
+		up.URL + "/client/v4": up.URL + "/client/v4/accounts/acc9/ai/run",
+		up.URL + "/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run": up.URL + "/client/v4/accounts/acc9/ai/run",
+	} {
+		p := Provider{ID: "g", Name: "G", Key: "good", Decide: decide}
+		if u, err := p.DecideURL(context.Background()); err != nil || u != want {
+			t.Errorf("%s: %s %v", decide, u, err)
+		}
+	}
+}
+
+// A token Cloudflare won't list accounts for is told to name its account
+// in the endpoint.
+func TestCloudflareNoAccount(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"success":false,"errors":[{"code":9109,"message":"Unauthorized to access requested resource"}]}`, 403)
+	}))
+	defer up.Close()
+	p := Provider{ID: "g", Name: "G", Key: "workers-ai-only", Decide: up.URL + "/client/v4"}
+	if _, err := p.DecideURL(context.Background()); err == nil || !strings.Contains(err.Error(), "/accounts/<account ID>/ai/run") {
+		t.Fatal(err)
 	}
 }

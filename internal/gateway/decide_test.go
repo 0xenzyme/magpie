@@ -292,9 +292,29 @@ func jevAt(t *testing.T, decide, classifier string, rules ...provider.Rule) *Ser
 	return s
 }
 
-// Vercel's AI Gateway is asked as the AI SDK asks it — the model in a
-// header, a noul as a boolean — and its probabilities stand for System
-// One's confidence.
+// Vercel's AI Gateway at its TypeSafe API (…/typesafe, its docs' base) is
+// asked as System One is, at /v1/systemone, with Vercel's name for Jev.
+func TestJevOnVercelTypeSafe(t *testing.T) {
+	// an intent of its own: what Jev said of a set of intents is kept
+	j := &jevUp{choice: "crashes", sure: 0.9, score: 2}
+	up := httptest.NewServer(http.StripPrefix("/typesafe", j))
+	defer up.Close()
+	s := jevAt(t, up.URL+"/typesafe", "jv/typesafe-ai/jev", provider.Rule{Use: "b/big", Intent: "crashes"})
+	out, r := postOK(t, s, "s1", chat("why does this crash?", nil, 0, `,"reasoning_effort":"low"`))
+	if c := r.Rule.Classified; !strings.Contains(out, "from kb") || c.Intent != "crashes" || c.Sure != 0.9 || r.Rule.Pick != "high" {
+		t.Fatalf("%s %+v %+v", out, r.Rule, c)
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if len(j.asked) != 2 || j.auth != "Bearer kj" || j.asked[1]["model"] != "typesafe-ai/jev" ||
+		j.asked[0]["questions"].(map[string]any)["levels"].(map[string]any)["type"] != "noul" {
+		t.Fatalf("asked %v as %q", j.asked, j.auth)
+	}
+}
+
+// Vercel's AI Gateway at /v4/ai, where the preset once pointed, is asked
+// as the AI SDK asks it — the model in a header, a noul as a boolean — and
+// its probabilities stand for System One's confidence.
 func TestJevOnVercel(t *testing.T) {
 	var mu sync.Mutex
 	var asked []map[string]any
@@ -382,6 +402,37 @@ func TestJevOnCloudflare(t *testing.T) {
 	}
 	if accounts != 1 || j.n() != 3 {
 		t.Fatalf("accounts looked up %d times, Jev asked %d", accounts, j.n())
+	}
+}
+
+// Workers AI at the address Cloudflare's docs give, the account in it, is
+// asked there as it is: a token for Workers AI alone, which may not list
+// accounts, works.
+func TestJevOnCloudflareAccount(t *testing.T) {
+	j := &jevUp{choice: "crashes", sure: 0.9, score: 1}
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/client/v4/accounts/acc7/ai/run" || r.Header.Get("Authorization") != "Bearer kj" {
+			http.Error(w, `{"success":false,"errors":[{"code":9109,"message":"Unauthorized to access requested resource"}]}`, 403)
+			return
+		}
+		var q struct {
+			Model string          `json:"model"`
+			Input json.RawMessage `json:"input"`
+		}
+		json.NewDecoder(r.Body).Decode(&q)
+		if q.Model != "typesafe/jev" {
+			http.Error(w, `{"success":false,"errors":[{"message":"no such model"}]}`, 400)
+			return
+		}
+		rec := httptest.NewRecorder()
+		j.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/systemone", strings.NewReader(string(q.Input))))
+		w.Write([]byte(`{"success":true,"errors":[],"messages":[],"result":` + rec.Body.String() + `}`))
+	}))
+	defer up.Close()
+	s := jevAt(t, up.URL+"/client/v4/accounts/acc7/ai/run", "jv/typesafe/jev", provider.Rule{Use: "b/big", Intent: "crashes"})
+	out, r := postOK(t, s, "s1", chat("why does this crash?", nil, 0, `,"reasoning_effort":"low"`))
+	if c := r.Rule.Classified; !strings.Contains(out, "from kb") || c.Intent != "crashes" || c.Sure != 0.9 || r.Rule.Pick != "medium" {
+		t.Fatalf("%s %+v %+v", out, r.Rule, c)
 	}
 }
 

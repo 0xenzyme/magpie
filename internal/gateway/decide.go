@@ -249,7 +249,7 @@ func (s *Server) systemOne(ctx context.Context, p provider.Provider, model strin
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", RouterAgent)
-	if via == provider.ViaVercel {
+	if via == provider.ViaVercelEval {
 		// what the AI SDK's gateway provider sends with an evaluation
 		req.Header.Set("ai-gateway-protocol-version", "0.0.1")
 		req.Header.Set("ai-gateway-auth-method", "api-key")
@@ -284,17 +284,18 @@ func (s *Server) systemOne(ctx context.Context, p provider.Provider, model strin
 	return b, nil
 }
 
-// decideAsk is a System One request (body) as via takes it: Vercel names
-// the model in a header and asks a noul as a boolean; Workers AI takes the
-// state and questions as the input of a run of the model.
+// decideAsk is a System One request (body) as via takes it: Vercel's
+// TypeSafe API takes it as it is; its evaluation models name the model in
+// a header and ask a noul as a boolean; Workers AI takes the state and
+// questions as the input of a run of the model.
 func decideAsk(via, model string, body []byte) []byte {
 	var q map[string]any
-	if via == provider.ViaSystemOne || json.Unmarshal(body, &q) != nil {
+	if via == provider.ViaSystemOne || via == provider.ViaVercel || json.Unmarshal(body, &q) != nil {
 		return body
 	}
 	delete(q, "model")
 	switch via {
-	case provider.ViaVercel:
+	case provider.ViaVercelEval:
 		qs, _ := q["questions"].(map[string]any)
 		for _, v := range qs {
 			if x, ok := v.(map[string]any); ok && x["type"] == "noul" {
@@ -311,7 +312,8 @@ func decideAsk(via, model string, body []byte) []byte {
 }
 
 // decideAnswer is a gateway's answer as System One gives it: out of
-// Cloudflare's envelope, or, from Vercel, a boolean's probability as a
+// Cloudflare's envelope, or, from Vercel's evaluation models (its TypeSafe
+// API answers as System One does), a boolean's probability as a
 // noul, a confidence from the probabilities where there is none, and its
 // usage named as System One names it.
 func decideAnswer(via string, b []byte) []byte {
@@ -323,7 +325,7 @@ func decideAnswer(via string, b []byte) []byte {
 		if json.Unmarshal(b, &env) == nil && len(env.Result) > 0 && env.Result[0] == '{' {
 			return env.Result
 		}
-	case provider.ViaVercel:
+	case provider.ViaVercelEval:
 		var v struct {
 			Model   string                    `json:"model"`
 			Answers map[string]map[string]any `json:"answers"`

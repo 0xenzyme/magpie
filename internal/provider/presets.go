@@ -216,7 +216,7 @@ var presets = []PresetDef{
 		Website: "https://typesafe.ai", KeysURL: "https://console.typesafe.ai/keys"},
 	// Jev as the gateways serve it, to a key made there
 	{ID: "vercel-jev", Name: "Jev · Vercel AI Gateway", Icon: "vercel", Kind: KindRelay,
-		Decide:  "https://ai-gateway.vercel.sh/v4/ai",
+		Decide:  "https://ai-gateway.vercel.sh/typesafe",
 		Note:    "routes groups · picks model and effort",
 		Website: "https://vercel.com/ai-gateway/models/jev", KeysURL: "https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Fapi-keys"},
 	{ID: "cloudflare-jev", Name: "Jev · Cloudflare Workers AI", Icon: "cloudflare-color", Kind: KindRelay,
