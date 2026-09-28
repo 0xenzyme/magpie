@@ -213,6 +213,7 @@ func magpieProviderJSONFor(shape, catalog string) any {
 			if m.Context > 0 {
 				e["limit"] = map[string]any{"context": m.Context, "output": m.Output}
 			}
+			e["variants"] = openCodeVariants(m.Efforts)
 			ms[m.ID] = e
 		}
 		return map[string]any{"npm": "@ai-sdk/openai-compatible", "name": "magpie",
@@ -260,6 +261,24 @@ func magpieProviderJSONFor(shape, catalog string) any {
 		return map[string]any{"name": "magpie", "baseUrl": gatewayV1(), "api": "openai-completions", "apiKey": gateway.Token, "models": ms}
 	}
 	return nil
+}
+
+// openCodeVariants are the reasoning levels OpenCode offers for a model of
+// magpie's, each asking the gateway for that effort as reasoning_effort
+// (@ai-sdk/openai-compatible's reasoningEffort). OpenCode 1.x offers none
+// for a model the config doesn't mark as reasoning, and adds these. OpenCode
+// 2 makes low, medium and high for every model of an openai-compatible
+// provider whose config names no variants (packages/core/src/variant.ts,
+// config/plugin/provider.ts), so a model whose levels are none/high/max, or
+// go past high to xhigh and max, or that has none, was offered levels it
+// doesn't have and not the ones it has. A model without levels gets an
+// empty set, which OpenCode 2 takes as none rather than guessing.
+func openCodeVariants(efforts []string) map[string]any {
+	out := map[string]any{}
+	for _, e := range efforts {
+		out[e] = map[string]any{"reasoningEffort": e}
+	}
+	return out
 }
 
 // piThinkingLevels is the thinkingLevelMap for a model's efforts. Pi offers
