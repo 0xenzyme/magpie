@@ -401,8 +401,13 @@
       row.append(icon(a.icon), who, el("span", "grow"));
       // its hook calls an rtk that isn't there: switching it off still works
       if (a.on && !rtk.path) row.append(tag(t("RTK missing"), "warn", t("{agent}'s hook calls rtk, which isn't installed, so its shell commands fail. Install RTK, or switch this off.", { agent: a.name })));
+      // OpenCode 2 won't load rtk's plugin (written for OpenCode 1): it can't
+      // be switched on, and one already there can be switched off
+      if (a.blocked) row.append(tag(t("Not for OpenCode 2"), "warn", a.on
+        ? t("RTK's plugin is written for OpenCode 1, and OpenCode 2 refuses to load it. Switch this off until RTK supports OpenCode 2.")
+        : t("RTK's plugin is written for OpenCode 1, and OpenCode 2 refuses to load it. It can be switched on once RTK supports OpenCode 2.")));
       const sw = toggle(a.on, t("{agent} runs its commands through RTK", { agent: a.name }), (on) => setRTK(a, on));
-      if ((!rtk.path && !a.on) || rtkBusy.has(a.id) || rtkInstalling) sw.disabled = true;
+      if ((!rtk.path && !a.on) || (a.blocked && !a.on) || rtkBusy.has(a.id) || rtkInstalling) sw.disabled = true;
       row.append(sw);
       list.append(row);
     }

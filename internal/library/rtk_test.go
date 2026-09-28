@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -205,6 +206,72 @@ func TestRTKRemove(t *testing.T) {
 		if got := read(t, p); got != want {
 			t.Errorf("%s = %q, want %q", p, got, want)
 		}
+	}
+}
+
+// TestRTKOpenCode2: rtk's OpenCode plugin is written for OpenCode 1, and
+// OpenCode 2 refuses to load it (rtk-ai/rtk#4311), so with an OpenCode 2
+// here rtk isn't given to OpenCode; one given before can still be taken out.
+// An OpenCode 1 still gets it.
+func TestRTKOpenCode2(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fakes are shell scripts")
+	}
+	h := sandbox(t)
+	bin := filepath.Join(h, "bin")
+	write(t, filepath.Join(bin, "rtk"), fakeRTK)
+	opencode := func(version string) {
+		t.Helper()
+		write(t, filepath.Join(bin, "opencode"), "#!/bin/sh\necho "+version+"\n")
+		for _, f := range []string{"rtk", "opencode"} {
+			if err := os.Chmod(filepath.Join(bin, f), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	t.Setenv("PATH", bin)
+	plugin := filepath.Join(h, ".config", "opencode", "plugins", "rtk.ts")
+	blocked := func() string {
+		t.Helper()
+		for _, a := range ReadRTK().Agents {
+			if a.ID == "opencode" {
+				return a.Blocked
+			}
+		}
+		t.Fatal("opencode isn't listed")
+		return ""
+	}
+
+	// what each prints for --version
+	opencode("opencode v2.0.18")
+	if b := blocked(); !strings.Contains(b, "OpenCode 2.0.18") {
+		t.Fatalf("blocked: %q", b)
+	}
+	_, err := SetRTK("opencode", true)
+	if err == nil || !strings.Contains(err.Error(), "doesn't support OpenCode 2") {
+		t.Fatalf("switched on for OpenCode 2: %v", err)
+	}
+	if exists(plugin) {
+		t.Fatal("rtk's plugin was written for OpenCode 2")
+	}
+	// one written before (by an older magpie, or rtk init by hand) goes
+	write(t, plugin, "x")
+	if _, err := SetRTK("opencode", false); err != nil {
+		t.Fatal(err)
+	}
+	if exists(plugin) {
+		t.Fatal("rtk's plugin is still there")
+	}
+
+	opencode("1.18.32")
+	if b := blocked(); b != "" {
+		t.Fatalf("OpenCode 1 blocked: %q", b)
+	}
+	if _, err := SetRTK("opencode", true); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(plugin) {
+		t.Fatal("OpenCode 1 didn't get rtk's plugin")
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -54,6 +55,9 @@ type rtkSpec struct {
 	// withClaude: the installer gives it to Claude Code too, which is
 	// pointed at a folder thrown away after
 	withClaude bool
+	// blocked says why rtk's installer mustn't be run for the agent as it
+	// is on this machine, "" when it can be
+	blocked func() string
 }
 
 func contains(path, s string) bool {
@@ -130,7 +134,7 @@ var rtkSpecs = map[string]rtkSpec{
 		dir: func(*agent.Agent) string { return filepath.Join(home(), ".gemini") },
 	},
 	"opencode": {
-		flags: []string{"--opencode"}, patch: true, withClaude: true,
+		flags: []string{"--opencode"}, patch: true, withClaude: true, blocked: openCodeBlocked,
 		has:    func(a *agent.Agent) bool { return exists(opencodePlugin(a)) },
 		files:  func(a *agent.Agent) []string { return []string{opencodePlugin(a)} },
 		remove: func(a *agent.Agent) error { return rm(opencodePlugin(a)) },
@@ -179,6 +183,57 @@ var rtkSpecs = map[string]rtkSpec{
 
 func opencodePlugin(a *agent.Agent) string {
 	return filepath.Join(filepath.Dir(a.Path), "plugins", "rtk.ts")
+}
+
+// openCodeBlocked: rtk's OpenCode plugin (hooks/opencode/rtk.ts, which
+// rtk init --opencode writes to plugins/rtk.ts, up to rtk 0.50 and its
+// develop branch) is written for OpenCode 1's plugin API — a named export
+// of a function. OpenCode 2 reads the same plugins folder but takes only a
+// default export of {id, setup|effect}, and turns rtk's away: "Plugin must
+// export a default definition with an id and an effect or setup function"
+// (rtk-ai/rtk#4311, #3898; the fix, #4187, isn't merged). So with an
+// OpenCode 2 here, rtk isn't given to OpenCode: it would only add a plugin
+// that fails to load.
+func openCodeBlocked() string {
+	v := openCodeVersion()
+	if major, _, _ := strings.Cut(v, "."); major != "" && major != "0" && major != "1" {
+		return fmt.Sprintf("RTK doesn't support OpenCode 2 yet: its plugin is written for OpenCode 1, and OpenCode %s refuses to load it (\"Plugin must export a default definition with an id and an effect or setup function\", github.com/rtk-ai/rtk/issues/4311)", v)
+	}
+	return ""
+}
+
+// semver finds the version in what opencode --version prints: OpenCode 1
+// prints "1.18.32", OpenCode 2 "opencode v2.0.18".
+var semver = regexp.MustCompile(`(?:^|[^\w.])v?(\d+\.\d+\.\d+\S*)`)
+
+// openCodeVersion is the version the opencode on this machine says it is,
+// "" when there's none or it doesn't say; a test sets it. OpenCode 2's
+// installer puts it in ~/.opencode/bin as opencode, with opencode2 beside
+// it running it.
+var openCodeVersion = func() string {
+	name := "opencode"
+	if runtime.GOOS == "windows" {
+		name = "opencode.exe"
+	}
+	bin, err := exec.LookPath("opencode")
+	if err != nil {
+		bin = filepath.Join(home(), ".opencode", "bin", name)
+		if !exists(bin) {
+			return ""
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := proc.CommandContext(ctx, bin, "--version")
+	cmd.Stdin = nil
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	if m := semver.FindStringSubmatch(string(out)); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 func hermesPlugin() string { return filepath.Join(home(), ".hermes", "plugins", "rtk-rewrite") }
@@ -355,6 +410,9 @@ type RTKAgent struct {
 	Name string `json:"name"`
 	Icon string `json:"icon"`
 	On   bool   `json:"on"`
+	// Blocked says why rtk can't be switched on for it here (OpenCode 2);
+	// one that has it can still be switched off
+	Blocked string `json:"blocked,omitempty"`
 }
 
 // RTKGain is what rtk says it saved, over every command it has recorded.
@@ -454,7 +512,12 @@ func ReadRTK() *RTKView {
 		}
 	}
 	for _, a := range rtkAgents() {
-		v.Agents = append(v.Agents, RTKAgent{ID: a.ID, Name: a.Name, Icon: a.Icon, On: rtkSpecs[a.ID].has(a)})
+		sp := rtkSpecs[a.ID]
+		ra := RTKAgent{ID: a.ID, Name: a.Name, Icon: a.Icon, On: sp.has(a)}
+		if sp.blocked != nil {
+			ra.Blocked = sp.blocked()
+		}
+		v.Agents = append(v.Agents, ra)
 	}
 	if v.Path == "" {
 		return v
@@ -499,6 +562,11 @@ func SetRTK(id string, on bool) (*RTKView, error) {
 		return nil, fmt.Errorf("%s isn't installed", id)
 	case sp.has(a) == on:
 		return ReadRTK(), nil
+	}
+	if on && sp.blocked != nil {
+		if why := sp.blocked(); why != "" {
+			return nil, errors.New(why)
+		}
 	}
 	bin := rtkPath()
 	if on && bin == "" {
