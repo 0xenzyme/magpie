@@ -75,6 +75,9 @@ func accountsCmd(args []string) error {
 		if err != nil {
 			return err
 		}
+		if args[3], err = accountNamed(id, args[3]); err != nil {
+			return err
+		}
 		if args[1] == "forget" {
 			if err := provider.ForgetLogin(id, args[3]); err != nil {
 				return err
@@ -334,8 +337,44 @@ func refreshAccounts(asJSON bool) error {
 	if !asJSON && len(rs) == 0 {
 		fmt.Println(muted.Render("no saved Claude or ChatGPT accounts besides the ones the agents are signed in to"))
 	}
+	if !asJSON {
+		for _, a := range []string{"claude", "codex"} {
+			for _, l := range provider.Logins(a) {
+				if l.Active {
+					fmt.Println(muted.Render("·"), a, l.User, muted.Render("signed in now · "+a+" renews it itself"))
+				}
+			}
+		}
+	}
 	if failed > 0 {
 		return fmt.Errorf("%d of %d accounts couldn't be renewed", failed, len(rs))
 	}
 	return nil
+}
+
+// accountNamed is the saved account of agent that user names: its name as
+// magpie lists it ("a@b.com · Team"), or the email alone when only one of
+// the agent's accounts has it.
+func accountNamed(agent, user string) (string, error) {
+	user = strings.TrimSpace(user)
+	ls := provider.Logins(agent)
+	var names, same []string
+	for _, l := range ls {
+		if strings.EqualFold(l.User, user) {
+			return l.User, nil
+		}
+		names = append(names, l.User)
+		if email, _, _ := strings.Cut(l.User, " · "); strings.EqualFold(strings.TrimSpace(email), user) {
+			same = append(same, l.User)
+		}
+	}
+	switch {
+	case len(same) == 1:
+		return same[0], nil
+	case len(same) > 1:
+		return "", fmt.Errorf("%s has %d accounts of %s: %q — name one in full", agent, len(same), user, same)
+	case len(names) == 0:
+		return "", fmt.Errorf("no saved %s accounts · add one: magpie accounts add %s", agent, agent)
+	}
+	return "", fmt.Errorf("no saved %s account %q · its accounts: %q", agent, user, names)
 }
