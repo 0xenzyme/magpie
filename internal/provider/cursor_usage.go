@@ -122,10 +122,13 @@ func cursorWindows(ctx context.Context, token string) ([]QuotaWindow, error) {
 	}
 	u := data.PlanUsage
 	inCursorPool := func(model string) bool {
+		model = cursorPoolBase(model)
 		if model == "auto" {
 			model = "default" // the CLI's Auto is default in Cursor's API
 		}
-		return slices.Contains(data.AutoBucketModels, model) || cursorFirstPartyModel(model)
+		// the server names a family (grok-4.8); the CLI asks for one at an
+		// effort or speed (grok-4.8-high-fast)
+		return slices.ContainsFunc(data.AutoBucketModels, func(m string) bool { return cursorPoolBase(m) == model }) || cursorFirstPartyModel(model)
 	}
 	// the two pools fit the line; the total goes in its tooltip
 	return []QuotaWindow{
@@ -135,13 +138,26 @@ func cursorWindows(ctx context.Context, token string) ([]QuotaWindow, error) {
 	}, nil
 }
 
+// cursorPoolBase names a model's family: lower case, without cursor- and
+// the effort and speed the CLI adds to it.
+func cursorPoolBase(model string) string {
+	model = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "cursor-")
+	for {
+		b := cursorVariant.ReplaceAllString(model, "")
+		if b == model {
+			return model
+		}
+		model = b
+	}
+}
+
 // Cursor's autoBucketModels can lag model releases: it still omitted Grok
 // 4.6/4.7 when the published Cursor Models pool already included them.
 // Keep those documented families alongside the server's exact model list.
 // See https://cursor.com/docs/models-and-pricing.
 func cursorFirstPartyModel(model string) bool {
 	model = strings.TrimPrefix(model, "cursor-")
-	if model == "default" || strings.HasPrefix(model, "composer-") {
+	if model == "default" || model == "composer" || strings.HasPrefix(model, "composer-") {
 		return true
 	}
 	for _, base := range []string{"grok-4.5", "grok-4.6", "grok-4.7"} {

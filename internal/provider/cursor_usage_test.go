@@ -53,7 +53,7 @@ func TestCursorAllowanceUsesModelPool(t *testing.T) {
 		cursor, other, total float64
 		models               []string
 	}{
-		{"other pool full", 25, 100, 100, []string{"default", "composer-2.5", "cursor-grok-4.5-high", "future-first-party"}},
+		{"other pool full", 25, 100, 100, []string{"default", "composer-2.5", "cursor-grok-4.5-high", "future-first-party", "Grok-4.8"}},
 		{"cursor pool full", 100, 25, 100, nil},
 		{"only aggregate full", 25, 40, 100, nil},
 	} {
@@ -74,16 +74,16 @@ func TestCursorAllowanceUsesModelPool(t *testing.T) {
 				t.Fatal(err)
 			}
 			a := allowanceOf(ws, now)
-			firstParty := []string{"grok-4.7-xhigh-fast", "cursor-grok-4.7-high-fast", "cursor-grok-4.6-high-fast", "grok-4.5-fast-high", "auto", "default", "composer-2.5", "COMPOSER-2.5-FAST"}
+			firstParty := []string{"grok-4.7-xhigh-fast", "cursor-grok-4.7-high-fast", "cursor-grok-4.6-high-fast", "grok-4.5-fast-high", "auto", "default", "composer-2.5", "COMPOSER-2.5-FAST", "composer"}
 			if tc.models != nil {
-				firstParty = append(firstParty, "future-first-party")
+				firstParty = append(firstParty, "future-first-party", "grok-4.8-high", "cursor-grok-4.8-xhigh-fast")
 			}
 			for _, pool := range []struct {
 				models []string
 				used   float64
 			}{
 				{firstParty, tc.cursor},
-				{[]string{"claude-opus-5-5", "gpt-5.6-sol", "gemini-3.1-pro", "grok-3", "grok-4.70", "unknown-model"}, tc.other},
+				{[]string{"claude-opus-5-5", "gpt-5.6-sol", "gemini-3.1-pro", "grok-3", "grok-4.70", "grok-4.80-high", "unknown-model"}, tc.other},
 			} {
 				for _, model := range pool.models {
 					if used, renews := a.For(model, now); used != pool.used || len(renews) != 1 || !renews[0].Equal(resets) {
