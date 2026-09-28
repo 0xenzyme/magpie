@@ -612,10 +612,12 @@ const FOLLOWS_MODEL = [...TIERS, "subagents"];
 // A field that follows the model unless set — Codex's subagents, Claude
 // Code's tiers — is a small square after the pickers rather than a third
 // picker, which a row has no room for: it wrapped onto a line of its own.
-const extra = (f) => f.key === "tiers" || FOLLOWS_MODEL.includes(f.label);
+// So is Codex's sign-in, ChatGPT or magpie as its provider.
+const extra = (f) => f.key === "tiers" || FOLLOWS_MODEL.includes(f.label) || f.label === "sign-in";
 const EXTRA_GLYPH = {
   subagents: "M4.5 2.75v10.5M4.5 9.25c0-2.2 1.6-3.75 3.9-3.75h3.35M9.9 3.6l1.9 1.9-1.9 1.9",
   tiers: "M8 2.6 2.75 5.4 8 8.2l5.25-2.8zM2.75 8.1 8 10.9l5.25-2.8M2.75 10.8 8 13.6l5.25-2.8",
+  "sign-in": "M8 2.5a2.75 2.75 0 1 1 0 5.5 2.75 2.75 0 0 1 0-5.5zM3 13.5c.4-2.4 2.4-3.9 5-3.9s4.6 1.5 5 3.9",
 };
 function extraField(a, f) {
   const set = !!(f.value || f.custom);
@@ -624,7 +626,7 @@ function extraField(a, f) {
   const opt = optionFor(f, f.value);
   b.title = f.menu
     ? t("{label}: {value}", { label: t(f.label), value: f.summary }) + "\n" + f.options.map((o) => `${o.label}: ${o.note}`).join("\n")
-    : t("{label}: {value}", { label: t(f.label), value: opt?.label || f.value || t("same as model") });
+    : t("{label}: {value}", { label: t(f.label), value: t(opt?.label || f.value || "same as model") }) + (opt?.note && !FOLLOWS_MODEL.includes(f.label) ? "\n" + t(opt.note) : "");
   b.setAttribute("aria-label", b.title);
   b.dataset.key = f.key;
   b.onclick = (ev) => openPicker(a, f, b, ev);
@@ -857,7 +859,7 @@ function openPicker(agent, field, anchor, ev, only) {
   if (FOLLOWS_MODEL.includes(field.label)) {
     const main = agent.fields.find((f) => f.key === "model");
     options.unshift({ value: "", label: t("Same as model"), note: optionFor(main, main.value)?.label || main.value, icon: optionFor(main, main.value)?.icon, reset: true });
-  } else if (!only && !field.menu && !field.onPick) options.unshift({ value: "", label: t("Default"), note: t("what {agent} ships with", { agent: agent.name }), icon: agent.icon, reset: true });
+  } else if (!only && !field.menu && !field.onPick && !options.some((o) => o.value === "")) options.unshift({ value: "", label: t("Default"), note: t("what {agent} ships with", { agent: agent.name }), icon: agent.icon, reset: true });
   const modelPicker = ["model", "small", "large", ...FOLLOWS_MODEL].includes(field.label) && !only;
   pick = { agent, field, options, anchor, cursor: 0, free: !only && !field.menu, modelPicker, effortPicker, groupFilter: "all" };
   anchor.classList.add("open");
@@ -1062,8 +1064,10 @@ function renderList() {
     li.dataset.i = idx;
     if (hasIcons) li.append(optionIcon(o));
     const words = el("span", "option-words");
-    words.append(el("span", "v", o.label || o.value));
-    let note = o.note && o.note !== (o.label || o.value) ? o.note : "";
+    // a choice of magpie's own (Codex's sign-in) reads in the page's language
+    const own = pick.field.label === "sign-in";
+    words.append(el("span", "v", own ? t(o.label || o.value) : o.label || o.value));
+    let note = o.note && o.note !== (o.label || o.value) ? (own ? t(o.note) : o.note) : "";
     if (q && o.group && !note) note = o.group;
     if (note) words.append(el("span", "n", note));
     li.append(words);

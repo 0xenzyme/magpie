@@ -38,7 +38,8 @@ func codexHome(t *testing.T, auth, config string) (home string, read func() stri
 
 // Signed in, a magpie model points Codex's built-in OpenAI provider at
 // magpie and leaves the provider as it is; one of Codex's own models takes
-// the base URL away again and brings back what was there.
+// the base URL away again and brings back what was there. magpie's provider
+// table is written all the same, for threads started on it.
 func TestCodexSignedInRoutesByBaseURL(t *testing.T) {
 	home, read := codexHome(t, `{"tokens":{"access_token":"x","id_token":"x.e30.x"}}`,
 		"model = \"gpt-5.5\"\nmodel_reasoning_effort = \"xhigh\"\n\n[projects.\"/x\"]\ntrust_level = \"trusted\"\n")
@@ -48,8 +49,8 @@ func TestCodexSignedInRoutesByBaseURL(t *testing.T) {
 	}
 	cfg := read()
 	if !strings.Contains(cfg, `openai_base_url = "http://127.0.0.1:`) || !strings.Contains(cfg, `/backend-api/codex"`) ||
-		!strings.Contains(cfg, `model = "fake/m1"`) || strings.Contains(cfg, "model_provider") ||
-		strings.Contains(cfg, "model_catalog_json") || strings.Contains(cfg, "[model_providers") {
+		!strings.Contains(cfg, `model = "fake/m1"`) || strings.Contains(cfg, "model_provider =") ||
+		strings.Contains(cfg, "model_catalog_json") || !strings.Contains(cfg, "[model_providers.magpie]") {
 		t.Fatalf("magpie model:\n%s", cfg)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".codex", "magpie-models.json")); err == nil {
@@ -66,7 +67,8 @@ func TestCodexSignedInRoutesByBaseURL(t *testing.T) {
 }
 
 // A magpie set up as a provider of Codex's, from before, moves to the base
-// URL the next time a magpie model is picked.
+// URL the next time a magpie model is picked, and its table stays: threads
+// started on it name it, and without it Codex can't open them (#129).
 func TestCodexSignedInLeavesProviderTable(t *testing.T) {
 	home, read := codexHome(t, `{"OPENAI_API_KEY":"sk-x"}`,
 		"model = \"fake/m1\"\nmodel_provider = \"magpie\"\nmodel_catalog_json = \"/x/magpie-models.json\"\n\n[model_providers.magpie]\nname = \"magpie\"\nbase_url = \"http://127.0.0.1:3425/v1\"\nwire_api = \"responses\"\n")
@@ -74,14 +76,16 @@ func TestCodexSignedInLeavesProviderTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := read()
-	if !strings.Contains(cfg, "openai_base_url") || strings.Contains(cfg, "model_provider") || strings.Contains(cfg, "model_catalog_json") {
+	if !strings.Contains(cfg, "openai_base_url") || strings.Contains(cfg, "model_provider =") || strings.Contains(cfg, "model_catalog_json") ||
+		!strings.Contains(cfg, "[model_providers.magpie]") || !strings.Contains(cfg, `experimental_bearer_token = "magpie"`) {
 		t.Fatalf("\n%s", cfg)
 	}
 }
 
 // A provider table the user wrote with spaces around the dots — valid TOML —
-// is the same table to magpie: it is reused in place, and taken away again
-// when Codex steps back to its own models, as if magpie had written it.
+// is the same table to magpie: it is reused in place, and left for the
+// threads started on it when Codex steps back to its own models, as if
+// magpie had written it.
 func TestCodexSpacedProviderTable(t *testing.T) {
 	home, read := codexHome(t, "", "model = \"gpt-5.5\"\n\n[ model_providers . magpie ]\nname = \"magpie\"\nbase_url = \"http://127.0.0.1:1/v1\"\n\n[[skills.config]]\npath = \"/skill\"\n")
 	cx := codex(home)
@@ -95,7 +99,8 @@ func TestCodexSpacedProviderTable(t *testing.T) {
 	if err := cx.Fields[0].Set(""); err != nil {
 		t.Fatal(err)
 	}
-	if cfg = read(); strings.Contains(cfg, "magpie") || !strings.Contains(cfg, "[[skills.config]]") {
+	if cfg = read(); strings.Count(cfg, "model_providers") != 1 || strings.Contains(cfg, "model_provider =") ||
+		strings.Contains(cfg, "model =") || !strings.Contains(cfg, "[[skills.config]]") {
 		t.Fatalf("reset:\n%s", cfg)
 	}
 }
@@ -116,8 +121,12 @@ func TestCodexSignedOutUsesProvider(t *testing.T) {
 	if err := cx.Fields[0].Set(""); err != nil {
 		t.Fatal(err)
 	}
-	if cfg = read(); strings.Contains(cfg, "magpie") || strings.Contains(cfg, "model") {
+	if cfg = read(); strings.Contains(cfg, "model =") || strings.Contains(cfg, "model_provider =") ||
+		strings.Contains(cfg, "model_catalog_json") || !strings.Contains(cfg, "[model_providers.magpie]") {
 		t.Fatalf("reset:\n%s", cfg)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "magpie-models.json")); err == nil {
+		t.Error("catalog file left")
 	}
 }
 
@@ -229,5 +238,85 @@ func TestCodexCheckReportsTOMLParseErrors(t *testing.T) {
 		if read() != input {
 			t.Fatal("check changed the config")
 		}
+	}
+}
+
+// The sign-in field's api puts magpie in as Codex's provider while Codex is
+// signed in to ChatGPT, so the Codex app is in its API state; back to
+// ChatGPT, Codex keeps its sign-in and magpie's table stays for the threads
+// started meanwhile. The choice outlasts a pick of Codex's own models.
+func TestCodexLoginAPI(t *testing.T) {
+	home, read := codexHome(t, `{"tokens":{"access_token":"x","id_token":"x.e30.x"}}`, "model = \"gpt-5.5\"\n")
+	cx := codex(home)
+	login := cx.Field("login")
+	if login == nil {
+		t.Fatal("no login field")
+	}
+	if err := login.Set("chatgpt"); err == nil {
+		t.Error("an unknown sign-in was taken")
+	}
+	if err := login.Set("api"); err != nil {
+		t.Fatal(err)
+	}
+	if cfg := read(); cfg != "model = \"gpt-5.5\"\n" {
+		t.Fatalf("api on Codex's own model changed the config:\n%s", cfg)
+	}
+	if err := cx.Fields[0].Set("fake/m1"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := read()
+	if strings.Contains(cfg, "openai_base_url") || !strings.Contains(cfg, `model_provider = "magpie"`) ||
+		!strings.Contains(cfg, "[model_providers.magpie]") || !strings.Contains(cfg, "model_catalog_json") {
+		t.Fatalf("api:\n%s", cfg)
+	}
+	if err := login.Set(""); err != nil {
+		t.Fatal(err)
+	}
+	cfg = read()
+	if !strings.Contains(cfg, "openai_base_url") || strings.Contains(cfg, "model_provider =") ||
+		strings.Contains(cfg, "model_catalog_json") || !strings.Contains(cfg, "[model_providers.magpie]") ||
+		!strings.Contains(cfg, `model = "fake/m1"`) {
+		t.Fatalf("back to ChatGPT:\n%s", cfg)
+	}
+	if err := login.Set("api"); err != nil {
+		t.Fatal(err)
+	}
+	if cfg = read(); !strings.Contains(cfg, `model_provider = "magpie"`) || strings.Contains(cfg, "openai_base_url") {
+		t.Fatalf("api again:\n%s", cfg)
+	}
+	if err := cx.Fields[0].Set(""); err != nil {
+		t.Fatal(err)
+	}
+	if got := login.Get(); got != "api" {
+		t.Fatalf("login after default = %q", got)
+	}
+	if err := cx.Fields[0].Set("fake/m1"); err != nil {
+		t.Fatal(err)
+	}
+	if cfg = read(); !strings.Contains(cfg, `model_provider = "magpie"`) {
+		t.Fatalf("api after default:\n%s", cfg)
+	}
+}
+
+// A Codex routed by base URL whose provider table an older magpie took away
+// gets it back at the next sync, so its threads started on magpie open.
+func TestCodexSyncPutsProviderTableBack(t *testing.T) {
+	home, read := codexHome(t, `{"tokens":{"access_token":"x","id_token":"x.e30.x"}}`,
+		"model = \"fake/m1\"\nopenai_base_url = \""+codexGatewayURL()+"\"\n")
+	if err := codex(home).Sync(); err != nil {
+		t.Fatal(err)
+	}
+	cfg := read()
+	if !strings.Contains(cfg, "[model_providers.magpie]") || !strings.Contains(cfg, `wire_api = "responses"`) ||
+		strings.Contains(cfg, "model_provider =") {
+		t.Fatalf("\n%s", cfg)
+	}
+	// Codex on its own model, not through magpie: nothing is added
+	home, read = codexHome(t, `{"tokens":{"access_token":"x","id_token":"x.e30.x"}}`, "model = \"gpt-5.5\"\n")
+	if err := codex(home).Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg := read(); cfg != "model = \"gpt-5.5\"\n" {
+		t.Fatalf("own model:\n%s", cfg)
 	}
 }
