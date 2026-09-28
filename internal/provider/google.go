@@ -131,10 +131,21 @@ func geminiDir() string {
 	return filepath.Join(home, ".gemini")
 }
 
-// geminiOwnLogin reads Gemini CLI's own Google sign-in.
+// geminiOwnLogin reads Gemini CLI's own Google sign-in. One another app's
+// OAuth client minted there isn't Gemini CLI's: Google refreshes a token
+// only for the client that minted it, so it is left alone. (Antigravity's
+// CLI, agy, keeps its sign-in in the system keyring, not here.)
 func geminiOwnLogin() (googleAccount, bool) {
+	path := filepath.Join(geminiDir(), "oauth_creds.json")
 	var a googleAuth
-	if !readJSON(filepath.Join(geminiDir(), "oauth_creds.json"), &a) || a.RefreshToken == "" {
+	if !readJSON(path, &a) || a.RefreshToken == "" {
+		return googleAccount{}, false
+	}
+	var id struct {
+		IDToken string `json:"id_token"`
+	}
+	readJSON(path, &id)
+	if c := googleClientOf(id.IDToken); c != "" && c != geminiApp.clientID {
 		return googleAccount{}, false
 	}
 	var accts struct {
@@ -152,6 +163,16 @@ func geminiOwnLogin() (googleAccount, bool) {
 	}
 	app, _ := googleAppOf("gemini")
 	return googleAccount{app: app, user: user, auth: a, own: true}, true
+}
+
+// googleClientOf is the OAuth client a Google ID token was minted for, ""
+// when there is none to tell.
+func googleClientOf(idToken string) string {
+	c := jwtClaims(idToken)
+	if azp := claimString(c, "azp"); azp != "" {
+		return azp
+	}
+	return claimString(c, "aud")
 }
 
 // envFileValue is one KEY=value of a dotenv file.
@@ -579,6 +600,7 @@ func (g googleAccount) needsProject(why string) error {
 	if g.own {
 		msg += " or GOOGLE_CLOUD_PROJECT in ~/.gemini/.env"
 	}
+	msg += ". A personal Google account is served to Antigravity instead: add it under Antigravity in magpie"
 	if why != "" {
 		msg = why + " — " + msg
 	}
