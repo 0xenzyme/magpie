@@ -77,6 +77,7 @@ func All() []*Agent {
 		qoderCN(home),
 		grok(home),
 		zcode(home),
+		workbuddy(home),
 		hanako(home),
 		alma(),
 		cindy(),
