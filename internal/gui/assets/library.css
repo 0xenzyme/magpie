@@ -137,8 +137,11 @@ input.lib-setname:focus { border-color: var(--accent); box-shadow: 0 0 0 3px col
 .lib-ag.on .ic { filter: none; opacity: 1; }
 /* an icon made grey once rather than through the filter on every paint
    (library.js, greyIcon): a picture's grey copy stands in for it, and one
-   drawn in the text's colour takes that colour grey — the same pixels */
-.lib-ag .ic > img.grey { display: none; }
+   drawn in the text's colour takes that colour grey — the same pixels.
+   The copy is hidden wherever the icon goes, not only in a chip: an
+   agent's icon is copied from one made once (agentIcon), grey copy and
+   all, into the rows of what agents have of their own too */
+.ic > img.grey { display: none; }
 .lib-ag:not(.on) .ic.baked { filter: none; }
 .lib-ag:not(.on) .ic.baked > img:not(.grey) { display: none; }
 .lib-ag:not(.on) .ic.baked > img.grey { display: block; }
