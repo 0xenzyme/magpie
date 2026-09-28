@@ -2,6 +2,7 @@ package davsync
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -48,5 +49,36 @@ func TestDAVForbidden(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v, want %q", c.dir, err, c.want)
 		}
+	}
+}
+
+// OpenList's and Alist's /dav/ lists their storages: a folder can't be made
+// there (MKCOL 405, as if it were) and a file can't be put (404). The error
+// says to put a storage in the address, naming them.
+func TestDAVStorageRoot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "PROPFIND" && r.URL.Path == "/dav/" && r.Header.Get("Depth") == "1":
+			w.WriteHeader(http.StatusMultiStatus)
+			io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><D:multistatus xmlns:D="DAV:">`+
+				`<D:response><D:href>/dav/</D:href><D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype></D:prop></D:propstat></D:response>`+
+				`<D:response><D:href>/dav/local/</D:href><D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype></D:prop></D:propstat></D:response>`+
+				`<D:response><D:href>/dav/aliyun/</D:href><D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype></D:prop></D:propstat></D:response>`+
+				`<D:response><D:href>/dav/readme.txt</D:href><D:propstat><D:prop><D:resourcetype/></D:prop></D:propstat></D:response>`+
+				`</D:multistatus>`)
+		case r.Method == "MKCOL":
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	d, err := newDAV(Config{URL: srv.URL + "/dav/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = d.put(context.Background(), []byte("x"), "")
+	if err == nil || !strings.Contains(err.Error(), "(local, aliyun), like "+srv.URL+"/dav/local") {
+		t.Fatalf("%v", err)
 	}
 }

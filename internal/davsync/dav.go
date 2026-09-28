@@ -3,11 +3,13 @@ package davsync
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	pathpkg "path"
 	"strings"
 )
 
@@ -148,6 +150,8 @@ func (d *dav) put(ctx context.Context, data []byte, etag string) error {
 				return err
 			}
 			continue
+		case res.StatusCode == http.StatusNotFound || res.StatusCode == http.StatusConflict:
+			return d.nowhere(ctx, res.StatusCode)
 		}
 		return fmt.Errorf("writing %s to the WebDAV server: HTTP %d", file, res.StatusCode)
 	}
@@ -167,4 +171,71 @@ func (d *dav) mkcol(ctx context.Context) error {
 		return fmt.Errorf("making the folder %s on the WebDAV server: HTTP %d", folder, res.StatusCode)
 	}
 	return nil
+}
+
+// nowhere is a folder made, or said to be there, that a file still can't be
+// put in: OpenList's and Alist's /dav/ is a list of their storages, where
+// MKCOL answers 405 and PUT 404 — the address has to go into one of them.
+func (d *dav) nowhere(ctx context.Context, code int) error {
+	dir := d.base.Path
+	if dir == "" {
+		dir = "/"
+	}
+	subs, status := d.folders(ctx)
+	if status == http.StatusNotFound || status == http.StatusConflict || status == http.StatusGone {
+		return fmt.Errorf("there is no folder %s on the WebDAV server (HTTP %d): make it there first, or leave it out of the address", dir, code)
+	}
+	msg := fmt.Sprintf("the WebDAV server has nowhere to put the folder %s in %s (HTTP %d): the address has to be a folder files can be written in", folder, dir, code)
+	if len(subs) > 0 {
+		u := *d.base
+		u.Path = strings.TrimRight(u.Path, "/") + "/" + subs[0]
+		msg += fmt.Sprintf(" — on OpenList or Alist, one of its storages (%s), like %s", strings.Join(subs, ", "), u.String())
+	}
+	return errors.New(msg)
+}
+
+// folders are the folders in the address's folder, as PROPFIND lists them,
+// and what it answered.
+func (d *dav) folders(ctx context.Context) ([]string, int) {
+	req, err := http.NewRequestWithContext(ctx, "PROPFIND", d.url(), nil)
+	if err != nil {
+		return nil, 0
+	}
+	req.Header.Set("Depth", "1")
+	if d.user != "" || d.pass != "" {
+		req.SetBasicAuth(d.user, d.pass)
+	}
+	res, err := d.client.Do(req)
+	if err != nil {
+		return nil, 0
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusMultiStatus {
+		return nil, res.StatusCode
+	}
+	var ms struct {
+		Responses []struct {
+			Href       string    `xml:"href"`
+			Collection *struct{} `xml:"propstat>prop>resourcetype>collection"`
+		} `xml:"response"`
+	}
+	if xml.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&ms) != nil {
+		return nil, res.StatusCode
+	}
+	self := strings.TrimRight(d.base.Path, "/")
+	var out []string
+	for _, r := range ms.Responses {
+		h := r.Href
+		if u, err := url.Parse(h); err == nil {
+			h = u.Path
+		}
+		h = strings.TrimRight(h, "/")
+		if r.Collection == nil || h == self || pathpkg.Dir(h) != self && !(self == "" && pathpkg.Dir(h) == "/") {
+			continue
+		}
+		if len(out) < 5 {
+			out = append(out, pathpkg.Base(h))
+		}
+	}
+	return out, res.StatusCode
 }
