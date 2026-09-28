@@ -290,3 +290,58 @@ func TestDropHermesPlugin(t *testing.T) {
 		}
 	}
 }
+
+// TestRTKCodexOld: rtk has a hook for Codex from 0.50 on; an older one's
+// rtk init --codex only puts @RTK.md in AGENTS.md, so it isn't run for
+// Codex, and the Library says to update it. A newer one is.
+func TestRTKCodexOld(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake rtk is a shell script")
+	}
+	h := sandbox(t)
+	codex := filepath.Join(h, ".codex")
+	bin := filepath.Join(h, "bin")
+	rtk := func(version, init string) {
+		t.Helper()
+		write(t, filepath.Join(bin, "rtk"), "#!/bin/sh\ncase \"$1\" in\n--version) echo \"rtk "+version+"\"; exit 0 ;;\ngain) exit 1 ;;\nesac\n"+init+"\n")
+		if err := os.Chmod(filepath.Join(bin, "rtk"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
+	write(t, filepath.Join(codex, "config.toml"), "")
+	blocked := func() string {
+		t.Helper()
+		for _, a := range ReadRTK().Agents {
+			if a.ID == "codex" {
+				return a.Blocked
+			}
+		}
+		t.Fatal("codex isn't listed")
+		return ""
+	}
+
+	rtk("0.49.0", `echo "@$CODEX_HOME/RTK.md" > "$HOME/.codex/AGENTS.md"`)
+	if b := blocked(); !strings.Contains(b, "0.49.0") {
+		t.Fatalf("blocked: %q", b)
+	}
+	if _, err := SetRTK("codex", true); err == nil || !strings.Contains(err.Error(), "RTK 0.50 or newer") {
+		t.Fatalf("switched on with rtk 0.49: %v", err)
+	}
+	if exists(filepath.Join(codex, "AGENTS.md")) {
+		t.Fatal("rtk 0.49's installer was run")
+	}
+
+	rtk("0.50.0", `echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"rtk hook codex"}]}]}}' > "$HOME/.codex/hooks.json"`)
+	if b := blocked(); b != "" {
+		t.Fatalf("rtk 0.50 blocked: %q", b)
+	}
+	if _, err := SetRTK("codex", true); err != nil {
+		t.Fatal(err)
+	}
+	for v, want := range map[string]bool{"0.49.9": true, "0.28.2": true, "0.50.0": false, "0.51.0-rc.473": false, "1.0.0": false, "x": false} {
+		if older(v, 0, 50) != want {
+			t.Errorf("older(%q) = %v", v, !want)
+		}
+	}
+}

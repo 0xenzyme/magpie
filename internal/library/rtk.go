@@ -97,8 +97,9 @@ var rtkSpecs = map[string]rtkSpec{
 		dir: func(*agent.Agent) string { return claudeDir() },
 	},
 	"codex": {
-		flags: []string{"--codex"},
-		has:   func(*agent.Agent) bool { return contains(filepath.Join(codexDir(), "hooks.json"), "rtk hook codex") },
+		flags:   []string{"--codex"},
+		blocked: codexBlocked,
+		has:     func(*agent.Agent) bool { return contains(filepath.Join(codexDir(), "hooks.json"), "rtk hook codex") },
 		files: func(*agent.Agent) []string {
 			d := codexDir()
 			return []string{filepath.Join(d, "hooks.json"), filepath.Join(d, "AGENTS.md"), filepath.Join(d, "RTK.md")}
@@ -198,6 +199,43 @@ func openCodeBlocked() string {
 	v := openCodeVersion()
 	if major, _, _ := strings.Cut(v, "."); major != "" && major != "0" && major != "1" {
 		return fmt.Sprintf("RTK doesn't support OpenCode 2 yet: its plugin is written for OpenCode 1, and OpenCode %s refuses to load it (\"Plugin must export a default definition with an id and an effect or setup function\", github.com/rtk-ai/rtk/issues/4311)", v)
+	}
+	return ""
+}
+
+// codexBlocked: rtk has a hook for Codex from 0.50.0 on (rtk hook codex in
+// hooks.json); before that rtk init --codex only puts @RTK.md in AGENTS.md,
+// which rewrites no command, so an older rtk isn't run for Codex.
+func codexBlocked() string {
+	v := rtkVersion()
+	if v == "" || !older(v, 0, 50) {
+		return ""
+	}
+	return fmt.Sprintf("Codex's hook needs RTK 0.50 or newer, and this RTK is %s: older ones only add @RTK.md to AGENTS.md, which rewrites no command. Update RTK (brew upgrade rtk, or its installer again), then switch it on", v)
+}
+
+// older says whether version v is before major.minor.
+func older(v string, major, minor int) bool {
+	var a, b int
+	if n, _ := fmt.Sscanf(v, "%d.%d", &a, &b); n < 2 {
+		return false
+	}
+	return a < major || a == major && b < minor
+}
+
+// rtkVersion is the version the rtk here says it is, "" when there's none
+// or it doesn't say; a test sets it.
+var rtkVersion = func() string {
+	bin := rtkPath()
+	if bin == "" {
+		return ""
+	}
+	out, err := rtkRun(bin, "--version")
+	if err != nil {
+		return ""
+	}
+	if m := semver.FindStringSubmatch(out); m != nil {
+		return m[1]
 	}
 	return ""
 }

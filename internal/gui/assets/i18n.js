@@ -1026,6 +1026,8 @@ const I18N = {
     "RTK missing": "RTK 缺失",
     "{agent}'s hook calls rtk, which isn't installed, so its shell commands fail. Install RTK, or switch this off.": "{agent} 的 hook 会调用 rtk，但 rtk 没有安装，它的 shell 命令会失败。请安装 RTK，或关掉这个开关。",
     "Not for OpenCode 2": "不支持 OpenCode 2",
+    "Update RTK": "需更新 RTK",
+    "{agent}'s hook needs RTK 0.50 or newer: older ones only add @RTK.md to AGENTS.md, which rewrites no command. Update RTK (brew upgrade rtk, or its installer again), then switch it on.": "{agent} 的 hook 需要 RTK 0.50 或更新版本：旧版只会在 AGENTS.md 里加一行 @RTK.md，并不会改写命令。请先更新 RTK（brew upgrade rtk，或重新运行它的安装脚本），再打开。",
     "RTK's plugin is written for OpenCode 1, and OpenCode 2 refuses to load it. Switch this off until RTK supports OpenCode 2.": "RTK 的插件是为 OpenCode 1 写的，OpenCode 2 会拒绝加载它。在 RTK 支持 OpenCode 2 之前，请关掉这个开关。",
     "RTK's plugin is written for OpenCode 1, and OpenCode 2 refuses to load it. It can be switched on once RTK supports OpenCode 2.": "RTK 的插件是为 OpenCode 1 写的，OpenCode 2 会拒绝加载它。等 RTK 支持 OpenCode 2 后才能打开。",
     "Get RTK": "获取 RTK",
