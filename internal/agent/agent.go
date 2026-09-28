@@ -76,6 +76,12 @@ type Agent struct {
 	// newest one since a time: when, the address it went to, and whether
 	// nothing answered there. Zero if there is none.
 	Reached func(since time.Time) (at time.Time, to string, refused bool)
+	// WSL is the distro an agent inside WSL lives in, "" for this
+	// machine's own (see wsl.go).
+	WSL string
+	// detect, when set, says whether the agent is here in place of looking
+	// for its files and binary: a distro's, probed once.
+	detect func() bool
 }
 
 // Running reports whether a process whose command line matches any pattern
@@ -94,6 +100,9 @@ func Running(patterns ...string) bool {
 
 // Detected reports whether the agent seems to be installed or configured.
 func (a *Agent) Detected() bool {
+	if a.detect != nil {
+		return a.detect()
+	}
 	if _, err := os.Stat(a.Path); err == nil {
 		return true
 	}
@@ -151,7 +160,7 @@ func Find(q string) (*Agent, error) {
 	all := All()
 	var prefix []*Agent
 	for _, a := range all {
-		if a.ID == q {
+		if strings.EqualFold(a.ID, q) { // codex@wsl:Ubuntu
 			return a, nil
 		}
 		for _, al := range a.Aliases {

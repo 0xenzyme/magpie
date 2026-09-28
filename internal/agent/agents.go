@@ -38,7 +38,14 @@ var others = []*Agent{
 // agent, detected or not, and the others. It is what the Usage and
 // Routing views draw a request's client with.
 func Clients() []*Agent {
-	return append(All(), others...)
+	var out []*Agent
+	for _, a := range All() {
+		// a WSL agent's requests are its Windows twin's by their UA
+		if a.WSL == "" {
+			out = append(out, a)
+		}
+	}
+	return append(out, others...)
 }
 
 // All returns every agent magpie knows about, detected or not.
@@ -48,7 +55,7 @@ func All() []*Agent {
 	if cfg == "" {
 		cfg = filepath.Join(home, ".config")
 	}
-	return []*Agent{
+	return append([]*Agent{
 		claude(home),
 		codex(home),
 		gemini(home),
@@ -72,7 +79,7 @@ func All() []*Agent {
 		zcode(home),
 		hanako(home),
 		alma(),
-	}
+	}, wslAgents()...)
 }
 
 // ---- accessors -------------------------------------------------------------
