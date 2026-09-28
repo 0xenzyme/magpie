@@ -35,7 +35,7 @@ func testQoder(t *testing.T, mk func(string) *Agent, rel string) {
 	t.Setenv("QODERCN_CONFIG_DIR", "")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
-	if err := provider.Save(provider.Provider{ID: "deepseek", Name: "DeepSeek", Chat: "https://api.deepseek.com/v1", Key: "k", Models: []string{"pro", "flash"}}); err != nil {
+	if err := provider.Save(provider.Provider{ID: "deepseek", Name: "DeepSeek", Chat: "https://api.deepseek.com/v1", Key: "k", Models: []string{"pro", "flash", "v4.1-flash"}}); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(home, rel)
@@ -90,6 +90,44 @@ func testQoder(t *testing.T, mk func(string) *Agent, rel string) {
 	if c.Providers[magpieID]["model"] != "deepseek/flash" || c.Model["reasoningEffort"] != "low" {
 		t.Fatalf("flash:\n%s", raw)
 	}
+	// the effort is the model's own, in model.preferences: Qoder asks
+	// reasoningEffort only of a model with none there
+	pref := func(model string) any {
+		c, _ := read()
+		ps, _ := c.Model["preferences"].(map[string]any)
+		p, _ := ps[model].(map[string]any)
+		r, _ := p["reasoning"].(map[string]any)
+		return r["effort"]
+	}
+	if pref("magpie/deepseek/flash") != "low" {
+		t.Fatalf("flash preference:\n%s", raw)
+	}
+	// Qoder moved reasoningEffort into a preference of the model's own, and
+	// it was turned off: that is the effort shown, and the one set
+	edit.DelJSON(path, "model.reasoningEffort")
+	edit.SetJSON(path, edit.KV{Path: "model.preferences", Value: map[string]any{
+		"magpie/deepseek/flash": map[string]any{"reasoning": map[string]any{"effort": "high", "enabled": false}, "contextWindow": 1000},
+		"performance":           map[string]any{"reasoning": map[string]any{"effort": "max"}}}})
+	if e.Get() != "high" {
+		t.Fatalf("preference get: %q", e.Get())
+	}
+	if err := e.Set("medium"); err != nil {
+		t.Fatal(err)
+	}
+	c, raw = read()
+	if p := c.Model["preferences"].(map[string]any)["magpie/deepseek/flash"].(map[string]any); pref("magpie/deepseek/flash") != "medium" ||
+		p["reasoning"].(map[string]any)["enabled"] != nil || p["contextWindow"] != 1000.0 || pref("performance") != "max" || c.Model["reasoningEffort"] != "medium" {
+		t.Fatalf("preference set:\n%s", raw)
+	}
+	// a model with no effort of its own (a dot in its id) takes the one in use
+	if err := f.Set("magpie/deepseek/v4.1-flash"); err != nil {
+		t.Fatal(err)
+	}
+	if pref("magpie/deepseek/v4.1-flash") != "medium" || e.Get() != "medium" {
+		_, raw = read()
+		t.Fatalf("carried effort:\n%s", raw)
+	}
+	f.Set("magpie/deepseek/flash")
 
 	// reset: magpie's provider goes and the user's model comes back
 	if err := f.Set(""); err != nil {

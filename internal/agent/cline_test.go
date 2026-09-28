@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
 )
@@ -15,6 +17,7 @@ func TestCline(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("CLINE_DIR", "")
+	t.Setenv("CLINE_DATA_DIR", "")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 	if err := provider.Save(provider.Provider{ID: "deepseek", Name: "DeepSeek", Chat: "https://api.deepseek.com/v1", Key: "k", Models: []string{"pro", "flash"}}); err != nil {
@@ -54,6 +57,21 @@ func TestCline(t *testing.T) {
 	os.WriteFile(path, []byte(`{"version":1,"lastUsedProvider":"anthropic","modes":{},"providers":{
   "anthropic":{"settings":{"provider":"anthropic","apiKey":"sk-a","model":"claude-opus-5","reasoning":{"effort":"high"}},"updatedAt":"2026-09-01T00:00:00.000Z","tokenSource":"manual"},
   "openai-compatible":{"settings":{"provider":"openai-compatible","apiKey":"sk-o","model":"mine","baseUrl":"https://x/v1"},"updatedAt":"2026-09-01T00:00:00.000Z","tokenSource":"manual"}}}`), 0o600)
+	// the VS Code extension's state, which it takes its provider from first
+	data := filepath.Join(home, ".cline", "data")
+	statePath, secretsPath := filepath.Join(data, "globalState.json"), filepath.Join(data, "secrets.json")
+	userState := `{"actModeApiProvider":"anthropic","planModeApiProvider":"anthropic","actModeOpenAiModelId":"mine",` +
+		`"actModeOpenAiModelInfo":{"maxTokens":10},"openAiBaseUrl":"https://x/v1","telemetrySetting":"disabled"}`
+	os.WriteFile(statePath, []byte(userState), 0o600)
+	os.WriteFile(secretsPath, []byte(`{"openAiApiKey":"sk-o","anthropicApiKey":"sk-a"}`), 0o600)
+	vscode := func() (map[string]any, map[string]any) {
+		var s, k map[string]any
+		b, _ := os.ReadFile(statePath)
+		json.Unmarshal(b, &s)
+		b, _ = os.ReadFile(secretsPath)
+		json.Unmarshal(b, &k)
+		return s, k
+	}
 
 	a := cline(home)
 	f, e := a.Field("model"), a.Field("effort")
@@ -80,6 +98,12 @@ func TestCline(t *testing.T) {
 	if f.Get() != "magpie/deepseek/pro" || e.Get() != "high" || a.Check() != "" {
 		t.Fatalf("get: %q %q %q", f.Get(), e.Get(), a.Check())
 	}
+	st, sec := vscode()
+	if st["actModeApiProvider"] != "openai" || st["planModeApiProvider"] != "openai" || st["actModeOpenAiModelId"] != "deepseek/pro" ||
+		st["planModeOpenAiModelId"] != "deepseek/pro" || st["openAiBaseUrl"] != gatewayV1() || st["actModeOpenAiModelInfo"] != nil ||
+		st["telemetrySetting"] != "disabled" || sec["openAiApiKey"] != gateway.Token || sec["anthropicApiKey"] != "sk-a" {
+		t.Fatalf("vscode: %v %v", st, sec)
+	}
 	// another magpie model keeps what was stashed first; the effort is set
 	// on magpie's provider
 	if err := f.Set("magpie/deepseek/flash"); err != nil {
@@ -89,9 +113,34 @@ func TestCline(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, raw = read()
-	if s := c.Providers["openai-compatible"].Settings; s["model"] != "deepseek/flash" || s["reasoning"].(map[string]any)["effort"] != "low" {
+	if s := c.Providers["openai-compatible"].Settings; s["model"] != "deepseek/flash" || s["reasoning"].(map[string]any)["effort"] != "low" ||
+		s["reasoning"].(map[string]any)["enabled"] != true {
 		t.Fatalf("flash:\n%s", raw)
 	}
+	if st, _ := vscode(); st["actModeOpenAiModelId"] != "deepseek/flash" {
+		t.Fatalf("vscode flash: %v", st)
+	}
+	// Cline's pickers turn thinking off as enabled false, which drops an
+	// effort beside it: that reads as none, and an effort turns it back on
+	edit.SetJSON(path, edit.KV{Path: "providers.openai-compatible.settings.reasoning", Value: map[string]any{"enabled": false, "effort": "low"}})
+	if e.Get() != "none" {
+		t.Fatalf("off: %q", e.Get())
+	}
+	if err := e.Set("high"); err != nil {
+		t.Fatal(err)
+	}
+	c, raw = read()
+	if r := c.Providers["openai-compatible"].Settings["reasoning"].(map[string]any); r["enabled"] != true || r["effort"] != "high" {
+		t.Fatalf("on again:\n%s", raw)
+	}
+	if err := e.Set("none"); err != nil {
+		t.Fatal(err)
+	}
+	c, raw = read()
+	if r := c.Providers["openai-compatible"].Settings["reasoning"].(map[string]any); r["enabled"] != false || r["effort"] != nil || e.Get() != "none" {
+		t.Fatalf("none:\n%s", raw)
+	}
+	e.Set("low")
 
 	// back to Cline's own: the user's openai-compatible and provider return
 	if err := f.Set("claude-sonnet-5"); err != nil {
@@ -105,6 +154,12 @@ func TestCline(t *testing.T) {
 	if ml, mraw := models(); ml["openai-compatible"].Models["mine"] == nil || ml["openai-compatible"].Models["deepseek/pro"] != nil ||
 		ml["openai-compatible"].Provider["baseUrl"] != "https://x/v1" || ml["ollama"].Models["q"] == nil {
 		t.Fatalf("own models:\n%s", mraw)
+	}
+	// the extension's state is the user's again, key and all
+	var want map[string]any
+	json.Unmarshal([]byte(userState), &want)
+	if st, sec := vscode(); !reflect.DeepEqual(st, want) || sec["openAiApiKey"] != "sk-o" || sec["anthropicApiKey"] != "sk-a" {
+		t.Fatalf("vscode own: %v %v", st, sec)
 	}
 
 	// reset from magpie, with no Cline settings before it: nothing of
@@ -133,5 +188,14 @@ func TestCline(t *testing.T) {
 	}
 	if ml, mraw := models(); len(ml) != 0 || !strings.Contains(mraw, `"version"`) {
 		t.Fatalf("reset models:\n%s", mraw)
+	}
+	if st, sec := vscode(); !reflect.DeepEqual(st, want) || sec["openAiApiKey"] != "sk-o" {
+		t.Fatalf("vscode reset: %v %v", st, sec)
+	}
+
+	// $CLINE_DATA_DIR is where the files are, as for Cline
+	t.Setenv("CLINE_DATA_DIR", filepath.Join(home, "d"))
+	if p := cline(home).Path; p != filepath.Join(home, "d", "settings", "providers.json") {
+		t.Fatalf("CLINE_DATA_DIR: %q", p)
 	}
 }
