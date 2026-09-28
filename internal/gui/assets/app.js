@@ -284,7 +284,7 @@ function renderAgents() {
         }
         row.classList.toggle("open", open);
         row.setAttribute("aria-expanded", String(open));
-        fit(grow, { ms: 260, ease: ".2,.8,.2,1" });
+        fit(grow, open ? ROW_OPEN : ROW_CLOSE);
         const settle = (ev) => {
           if (ev.target !== openBox || ev.propertyName !== "grid-template-rows") return;
           openBox.removeEventListener("transitionend", settle);
@@ -734,6 +734,12 @@ function tierMenu(a) {
 // The agents' scroll unrolls and rolls up on these, in app.css as in the
 // panel's own height.
 const UNROLL = { ms: 620, ease: ".22,1,.36,1" };
+// A row opens and closes on a critically damped spring, as iOS moves things:
+// it sets off gently, not at a jump, and settles without a long tail. The
+// curve is that spring fitted to a cubic-bezier, which the panel's edge can
+// take too; app.css has the same (--row-spring).
+const ROW_OPEN = { ms: 480, ease: ".25,.3,.1,1" };
+const ROW_CLOSE = { ms: 400, ease: ".25,.3,.1,1" };
 const ROLLUP = { ms: 420, ease: ".4,0,.2,1" };
 
 // tintPanel hands the colour the panel's page shows to the system, to paint
@@ -4182,14 +4188,19 @@ if (mode === "panel") {
     b.onclick = () => setPanelTab(b.dataset.ptab);
   }
   setPanelTab(panelTab);
-  // a panel drawn before its window has its width puts the card again, still
-  addEventListener("resize", () => {
+  // the bar drawn before the panel has its width puts the card again, still;
+  // the panel's height moving (a tab's own, a row opening) leaves it gliding
+  let width = 0;
+  new ResizeObserver(([e]) => {
+    const w = Math.round(e.contentRect.width);
+    if (w === width) return;
+    width = w;
     const th = tabs.querySelector(":scope > .thumb");
     th?.classList.add("still");
     slide(tabs, "ptabs");
     void th?.offsetWidth;
     th?.classList.remove("still");
-  });
+  }).observe(tabs);
 }
 
 // The Usage tab: accounts under their vendor, each window a ring with its

@@ -543,10 +543,11 @@ body.panel[data-ptab="agents"] :is(.profiles, #panelQuota) { display: none; }
 /* ---- the panel's agents: one quiet line each, opened in place ------------ */
 /* icon · name · model · effort · chevron, the last three in columns of their
    own so the bars and chevrons line up down the list */
-body.panel .row.agent { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-rows: 36px; align-items: center; column-gap: 10px; min-height: 36px; padding: 0 12px; cursor: default; }
+body.panel .row.agent { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-rows: 36px; align-items: center; column-gap: 10px; row-gap: 0; min-height: 36px; padding: 0 12px; cursor: default; }
 body.panel .row.agent .ag-handle { width: 20px; height: 20px; margin: 0; }
 body.panel .row.agent .ic { width: 18px; height: 18px; }
 body.panel .row.agent .who { display: flex; align-items: center; gap: 6px; min-width: 0; }
+body.panel .row.agent { transition: background-color .3s ease; }
 body.panel .row.agent.open { background: var(--card-2); }
 .ag-sum { display: grid; grid-template-columns: auto 12px 10px; align-items: center; gap: 10px; min-width: 0; max-width: 100%; font-size: 12px; color: var(--muted); }
 .ag-sum .v { display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
@@ -556,7 +557,8 @@ body.panel .row.agent.open { background: var(--card-2); }
 .row.agent:hover .ag-sum .mi { max-width: 48px; margin-right: 6px; opacity: 1; transform: none; }
 #addSheet { scroll-margin-top: 12px; }
 .ag-sum .v.empty { color: var(--muted); }
-.ag-sum .chev { display: inline-flex; width: 10px; color: var(--faint); transform: rotate(-90deg); transition: transform .2s var(--ease); }
+.ag-sum .chev { display: inline-flex; width: 10px; color: var(--faint); transform: rotate(-90deg); transition: transform .4s var(--row-spring); }
+.row.agent.open .ag-sum .chev { transition-duration: .48s; }
 .row.agent.open .ag-sum .chev { transform: none; }
 .eff { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 10px; }
 .eff i { width: 2.5px; border-radius: 1px; background: var(--faint); opacity: .45; }
@@ -564,10 +566,18 @@ body.panel .row.agent.open { background: var(--card-2); }
 .eff i:nth-child(2) { height: 7px; }
 .eff i:nth-child(3) { height: 10px; }
 .eff[data-l="1"] i:nth-child(-n+1), .eff[data-l="2"] i:nth-child(-n+2), .eff[data-l="3"] i { background: var(--fg-2); opacity: 1; }
-.ag-open { grid-column: 1 / -1; display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows .26s var(--ease), opacity .2s var(--ease), visibility 0s .26s; }
-.row.agent.open .ag-open { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows .26s var(--ease), opacity .2s var(--ease) .04s; }
+/* a row opens on a spring (ROW_OPEN / ROW_CLOSE in app.js, which the
+   panel's edge follows): the height sets off gently and settles, and what's
+   inside comes down a few px into place as it clears; closing, it lifts
+   and is gone before the height is, so nothing is left to smear */
+body.panel { --row-spring: cubic-bezier(.25, .3, .1, 1); }
+.ag-open { grid-column: 1 / -1; display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows .4s var(--row-spring), visibility 0s .4s; }
+.row.agent.open .ag-open { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows .48s var(--row-spring); }
+.ag-body { opacity: 0; transform: translateY(-6px); transition: opacity .16s ease, transform .4s var(--row-spring); }
+.row.agent.open .ag-body { opacity: 1; transform: none; transition: opacity .3s ease .06s, transform .48s var(--row-spring); }
 .ag-in { min-height: 0; overflow: hidden; }
-.ag-body { display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px 30px; }
+/* the room over the lines is inside what opens: a shut row is 36px, no more */
+.ag-body { display: flex; flex-direction: column; gap: 8px; padding: 9px 0 12px 30px; transform-origin: 50% 0; }
 .ag-open .field { display: flex; justify-content: flex-start; width: 100%; height: 30px; gap: 8px; padding: 0 10px; border-radius: 8px; background: var(--card); font-size: 12.5px; box-shadow: inset 0 0 0 1px var(--pill-line); }
 body.panel .ag-open .field:hover { background: var(--card); box-shadow: inset 0 0 0 1px var(--pill-line), var(--pill-shadow); }
 body.panel .ag-open .field.open { box-shadow: inset 0 0 0 1px var(--accent); }
@@ -585,7 +595,7 @@ body.panel .ag-open .field.open { box-shadow: inset 0 0 0 1px var(--accent); }
 .eslide.drag .knob { transform: scale(.94); }
 .eslide.drag .knob, .eslide.drag .fill { transition-duration: .14s; }
 .eslide:focus-visible .knob { box-shadow: 0 0 0 .5px rgba(0, 0, 0, .18), 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 3px var(--accent-soft); }
-@media (prefers-reduced-motion: reduce) { .eslide .knob, .eslide .fill, .ag-open { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .eslide .knob, .eslide .fill, .ag-open, .ag-body { transition: none; } }
 .ag-open .effort-head { margin-bottom: 4px; }
 .ag-open .effort-head span { font-size: 11px; color: var(--faint); }
 .ag-open .extras-cell { display: flex; justify-content: flex-start; gap: 6px; }
