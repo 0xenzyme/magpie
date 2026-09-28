@@ -986,8 +986,9 @@ function openPicker(agent, field, anchor, ev, only) {
   closePicker();
   const cur = field.value;
   let options = field.options.filter((o) => !only || only(o));
-  // routing groups come first, before the agent's own models and each provider's
-  options = [...options.filter((o) => o.group === ROUTING_GROUPS), ...options.filter((o) => o.group !== ROUTING_GROUPS)];
+  // routing groups come first, before the agent's own models and each
+  // provider's; only the picker's own choices (Automatic, Off) above them
+  options = [...options.filter((o) => o.reset), ...options.filter((o) => !o.reset && o.group === ROUTING_GROUPS), ...options.filter((o) => !o.reset && o.group !== ROUTING_GROUPS)];
   const effortPicker = !only && (field.key === "effort" || field.label === "effort" || field.label === "thinking");
   // Current model first, then the rest in catalog order. Effort levels keep
   // their natural low → high order because their position is meaningful.
@@ -5801,10 +5802,12 @@ function renderImages(s, keep) {
     if (s.visionAuto) b.append(icon(icOf(s.visionAuto) || "generic"));
     b.append(el("span", "", s.visionAuto ? t("Automatic") + " · " + named(s.visionAuto) : t("Automatic") + " · " + t("no model that sees")));
   }
-  const opt = (x) => ({ value: x.id, label: x.name || x.id, note: x.providerName, icon: x.icon, group: x.providerName, ref: x.id });
+  // a routing group (no provider of its own) goes with the others, as in
+  // an agent's picker, not in a group of its own with its own rail button
+  const opt = (x) => ({ value: x.id, label: x.name || x.id, note: x.providerName, icon: x.icon, group: x.provider ? x.providerName : ROUTING_GROUPS, ref: x.id });
   b.onclick = (ev) => openPicker({ id: "", name: "", fields: [] }, { key: "vision", label: "model", value: v, options: [
     { value: "", label: t("Automatic"), note: s.visionAuto ? named(s.visionAuto) : t("no model that sees"), reset: true },
-    { value: "off", label: t("Off"), note: t("images turned away") },
+    { value: "off", label: t("Off"), note: t("images turned away"), reset: true },
     ...models.map(opt)],
   onPick: (id) => { if (id !== v) savePrefs({ ...keep, vision: id }); } }, b, ev);
   const val = el("div", "val");
@@ -5837,10 +5840,12 @@ function renderImageGen(s, keep, box) {
     if (s.imageGenAuto) b.append(icon(icOf(s.imageGenAuto) || "generic"));
     b.append(el("span", "", s.imageGenAuto ? t("Automatic") + " · " + named(s.imageGenAuto) : t("Automatic") + " · " + t("no model that draws")));
   }
-  const opt = (x) => ({ value: x.id, label: x.name || x.id, note: x.providerName, icon: x.icon, group: x.providerName, ref: x.id });
+  // a routing group (no provider of its own) goes with the others, as in
+  // an agent's picker, not in a group of its own with its own rail button
+  const opt = (x) => ({ value: x.id, label: x.name || x.id, note: x.providerName, icon: x.icon, group: x.provider ? x.providerName : ROUTING_GROUPS, ref: x.id });
   b.onclick = (ev) => openPicker({ id: "", name: "", fields: [] }, { key: "imageGen", label: "model", value: v, options: [
     { value: "", label: t("Automatic"), note: s.imageGenAuto ? named(s.imageGenAuto) : t("no model that draws"), reset: true },
-    { value: "off", label: t("Off"), note: t("no images generated") },
+    { value: "off", label: t("Off"), note: t("no images generated"), reset: true },
     ...models.map(opt)],
   onPick: (id) => { if (id !== v) savePrefs({ ...keep, imageGen: id }); } }, b, ev);
   const val = el("div", "val");
