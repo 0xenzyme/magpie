@@ -119,7 +119,7 @@ func (p Provider) fetchOne(ctx context.Context) ([]catalog.Model, string, error)
 		}
 		return p.planModels(ms), u, nil
 	}
-	var lastErr error
+	var errs []string
 	for _, proto := range p.Speaks() {
 		base := p.Base(proto)
 		ms, at, err := catalog.FetchAt(ctx, base, p.Key, proto == Anthropic, p.Headers)
@@ -129,12 +129,17 @@ func (p Provider) fetchOne(ctx context.Context) ([]catalog.Model, string, error)
 			}
 			return p.planModels(ms), base, nil
 		}
-		lastErr = err
+		// Chat and Responses at one base say the same thing
+		if !slices.Contains(errs, err.Error()) {
+			errs = append(errs, err.Error())
+		}
 	}
-	if lastErr == nil {
-		lastErr = errorf("%s has no endpoint to ask", p.Name)
+	if len(errs) == 0 {
+		return nil, "", errorf("%s has no endpoint to ask", p.Name)
 	}
-	return nil, "", lastErr
+	// the endpoints are kept as they were: a vendor with no list (or one
+	// that wants what the key can't give) still serves the models typed in
+	return nil, "", errorf("%s — type its model ids in by hand, or give the URL its list is at", strings.Join(errs, "; "))
 }
 
 // planModels keeps a plan's own models of a vendor's list (PresetDef.Only),
@@ -174,10 +179,13 @@ func (p Provider) planModels(ms []catalog.Model) []catalog.Model {
 // base/v1/models did. The list is asked for at both, but a request goes
 // to the base as written, so base/chat/completions would miss what
 // base/v1/chat/completions serves. Both OpenAI URLs that were base are
-// set right, and the base the models are at is returned.
+// set right, and the base the models are at is returned. A base with a
+// version in its path (Ark's …/api/plan/v3, Zhipu's …/api/paas/v4) is
+// the vendor's API as written and is never given a /v1: no list is asked
+// for under one there (catalog.FetchAt), and none is added here.
 func (p Provider) fixV1(base, at string) string {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
-	if base == "" || at != base+"/v1/models" {
+	if base == "" || at != base+"/v1/models" || catalog.Versioned(base) {
 		return base
 	}
 	fixed := base + "/v1"
