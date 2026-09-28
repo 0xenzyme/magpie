@@ -161,6 +161,10 @@ func TestJevPicksTheEffort(t *testing.T) {
 	if !strings.Contains(a.last, `"reasoning_effort":"high"`) {
 		t.Fatalf("sent %s", a.last)
 	}
+	// the route shows both: what the agent asked, what the model was sent
+	if len(r.Tries) != 1 || r.Effort != "low" || r.Tries[0].Effort != "high" || !r.Tries[0].Picked {
+		t.Fatalf("traced at %q: %+v", r.Effort, r.Tries)
+	}
 	if qs := j.turns()[0]["questions"].(map[string]any); qs["intent"] != nil || qs["effort"] == nil {
 		t.Fatalf("questions %v", qs)
 	}
@@ -173,6 +177,9 @@ func TestJevPicksTheEffort(t *testing.T) {
 	_, r = postOK(t, s, "s2", chat("title this", nil, 0, ""))
 	if r.Rule.Pick != "" || r.Rule.Classified != nil || j.n() != 1 || strings.Contains(a.last, "reasoning_effort") {
 		t.Fatalf("no reasoning: %+v %s", r.Rule, a.last)
+	}
+	if r.Effort != "" || r.Tries[0].Effort != "" || r.Tries[0].Picked {
+		t.Fatalf("no reasoning traced at %q: %+v", r.Effort, r.Tries)
 	}
 }
 

@@ -372,7 +372,28 @@
     return c;
   }
 
+  // how the reasoning a try was sent at came to be
+  function effortNote(r, tr) {
+    const agent = agentName(r.agent);
+    if (tr.picked) return r.effort && r.effort !== tr.effort
+      ? t("{level} reasoning, picked for the turn; {agent} asked for {asked}", { level: tr.effort, agent, asked: r.effort })
+      : t("{level} reasoning, picked for the turn", { level: tr.effort });
+    return r.effort && r.effort !== tr.effort
+      ? t("{level} reasoning: the model's nearest to the {asked} {agent} asked for", { level: tr.effort, agent, asked: r.effort })
+      : t("{level} reasoning, as {agent} asked", { level: tr.effort, agent });
+  }
+
+  // a try in words, and how its reasoning came to differ from the agent's
   function tryWhy(r, i) {
+    const tr = r.tries[i], said = trySaid(r, i);
+    if (!tr.effort || !r.effort || r.effort === tr.effort) return said;
+    const agent = agentName(r.agent);
+    return said + (/[。！？]$/.test(said) ? "" : " ") + (tr.picked
+      ? t("The turn's pick replaced the {asked} {agent} asked for.", { asked: r.effort, agent })
+      : t("{level} is the model's nearest to the {asked} {agent} asked for.", { level: tr.effort, asked: r.effort, agent }));
+  }
+
+  function trySaid(r, i) {
     const tr = r.tries[i], w = tried(r, tr), agent = agentName(r.agent);
     let name = w ? `${who(w)} (${w.model})` : tr.id;
     if (tr.effort) name += " " + t("at {level} reasoning", { level: tr.effort });
@@ -843,10 +864,10 @@
   function outcome(r) {
     if (!r.done) {
       const tr = r.tries[r.tries.length - 1], w = tr && tried(r, tr);
-      return [w ? t("{who} is answering…", { who: `${who(w)} · ${w.model}` }) : t("routing…"), "wait"];
+      return [w ? t("{who} is answering…", { who: `${who(w)} · ${w.model}` }) : t("routing…"), "wait", tr];
     }
     const ok = r.tries.find((tr) => tr.done && tr.status < 400), w = ok && tried(r, ok);
-    if (r.status < 400) return [w ? `${who(w)} · ${w.model}` : r.provider, r.tries.length > 1 ? "moved" : "ok"];
+    if (r.status < 400) return [w ? `${who(w)} · ${w.model}` : r.provider, r.tries.length > 1 ? "moved" : "ok", ok];
     const last = r.tries[r.tries.length - 1];
     return [last ? `${r.status} · ${failWord(last.fail)}` : `${r.status || ""} ${r.error || ""}`.trim(), "bad"];
   }
@@ -858,7 +879,7 @@
     reqHead.replaceChildren(el("span", "label", t("Requests")), el("span", "grow"), reqNote);
     reqNote.textContent = t("the last {n} the gateway keeps", { n: rs.length });
     reqs.replaceChildren(...rs.map((r) => {
-      const [said, how] = outcome(r);
+      const [said, how, tr] = outcome(r);
       const b = el("button", "rt-req " + how);
       const sel = pinned ? pinned.id === r.id : cur?.id === r.id;
       b.setAttribute("aria-pressed", String(sel));
@@ -868,8 +889,16 @@
       const sw = el("i", "ag");
       sw.style.setProperty("--agent", hueOf(r.agent));
       asked.append(sw, icon(ag?.icon || "generic"), el("span", "m", r.model));
+      // the reasoning the model was sent at — the turn's pick, or the
+      // agent's fitted to the model's levels; what the agent asked for is
+      // in its title and the request's story
       const to = el("span", "to");
       to.append(el("i"), el("span", "", said));
+      if (tr?.effort) {
+        const ef = el("span", "ef" + (tr.picked ? " picked" : ""), tr.effort);
+        ef.title = effortNote(r, tr);
+        to.append(ef);
+      }
       const meta = [];
       if (r.tries.length > 1) meta.push(t("{n} tries", { n: r.tries.length }));
       if (r.done && r.ms) meta.push(took(r.ms));

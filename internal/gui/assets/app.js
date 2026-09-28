@@ -5005,8 +5005,11 @@ function sessionItem(s) {
   r.append(icon(s.icon || "generic"));
   const who = el("div", "who");
   who.append(el("div", "name", s.title || t("(no prompt)")));
-  const sub = el("div", "sub", [s.cwd ? baseName(s.cwd) : "", s.models.slice(0, 2).map((m) => m.model).join(", ") + (s.models.length > 2 ? " +" + (s.models.length - 2) : ""), ago(s.last)].filter(Boolean).join(" · "));
-  sub.title = s.cwd || "";
+  // where magpie's gateway sent its calls, the most first: a routing
+  // group's member and the reasoning it was asked for
+  const via = s.via?.length ? "→ " + [s.via[0].model, s.via[0].effort].filter(Boolean).join(" · ") + (s.via.length > 1 ? " +" + (s.via.length - 1) : "") : "";
+  const sub = el("div", "sub", [s.cwd ? baseName(s.cwd) : "", s.models.slice(0, 2).map((m) => m.model).join(", ") + (s.models.length > 2 ? " +" + (s.models.length - 2) : "") + (via ? " " + via : ""), ago(s.last)].filter(Boolean).join(" · "));
+  sub.title = [s.cwd, ...(s.via || []).map(viaText)].filter(Boolean).join("\n");
   who.append(sub);
   r.append(who);
   const num = el("div", "num");
@@ -5078,8 +5081,15 @@ function sessionDetail(s) {
     }
     d.append(m);
   }
+  // what the gateway sent the session's calls to, at what reasoning
+  (s.via || []).forEach((v, i) => line(i ? "" : t("Routed"), viaText(v) + " · " + t("{n} tokens", { n: fmtN(v.tokens) })));
   line(t("File"), s.path);
   return d;
+}
+
+// one place a session's calls went through magpie, in words
+function viaText(v) {
+  return `${v.provider}/${v.model}` + (v.effort ? " · " + v.effort : "") + " · " + t("{n} calls", { n: v.calls });
 }
 
 $("#sessQ").oninput = (e) => { sessQuery = e.target.value; if (sessions) renderSessions(); };

@@ -434,3 +434,39 @@ func withEffort(proto provider.Protocol, body []byte, effort string) []byte {
 	}
 	return body
 }
+
+// requestEffort is the reasoning a request asks its model for, in its own
+// API's words: reasoning_effort, reasoning.effort, or — for Anthropic, when
+// it asks to think — output_config's effort or thinking's budget as the
+// level it is nearest. "" when it asks for none.
+func requestEffort(proto provider.Protocol, body []byte) string {
+	if proto != provider.Anthropic {
+		return bodyEffort(proto, body)
+	}
+	var v struct {
+		Thinking *struct {
+			Type   string `json:"type"`
+			Budget int    `json:"budget_tokens"`
+		} `json:"thinking"`
+		OutputConfig struct {
+			Effort string `json:"effort"`
+		} `json:"output_config"`
+	}
+	if json.Unmarshal(body, &v) != nil || v.Thinking == nil || v.Thinking.Type != "enabled" && v.Thinking.Type != "adaptive" {
+		return ""
+	}
+	if e := effortOf(v.OutputConfig.Effort); e != "" {
+		return e
+	}
+	return effortOfBudget(v.Thinking.Budget)
+}
+
+// sentEffort is the reasoning a request goes to model at: what it asks
+// for, fitted to the model's levels as it is fitted on the way out.
+func sentEffort(proto provider.Protocol, body []byte, p provider.Provider, model string) string {
+	e := requestEffort(proto, body)
+	if e == "" {
+		return ""
+	}
+	return fitEffort(e, p.Efforts(model))
+}
