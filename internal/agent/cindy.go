@@ -82,20 +82,60 @@ func cindyHas(path, gw string) bool {
 	return err == nil && n > 0
 }
 
+// cindyDirs are where Cindy keeps its data (~/Library/Application
+// Support/Cindy on a Mac, CindyGlobal for its global build), those there
+// first: there once Cindy was installed and opened.
+func cindyDirs() []string {
+	d, err := os.UserConfigDir()
+	if err != nil {
+		return nil
+	}
+	var have, not []string
+	for _, n := range []string{"Cindy", "CindyGlobal"} {
+		p := filepath.Join(d, n)
+		if _, err := os.Stat(p); err == nil {
+			have = append(have, p)
+		} else {
+			not = append(not, p)
+		}
+	}
+	return append(have, not...)
+}
+
+// cindyAdded reports whether any of Cindy's databases in dirs has magpie:
+// one per account (cindy-<account>.db) once signed in, cindy-local-v1.db
+// before.
+func cindyAdded(dirs []string, gw string) bool {
+	for _, d := range dirs {
+		dbs, _ := filepath.Glob(filepath.Join(d, "cindy-*.db"))
+		for _, db := range dbs {
+			if cindyHas(db, gw) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func cindy() *Agent {
-	// where Cindy keeps its data (~/Library/Application Support/Cindy on a
-	// Mac): there once Cindy was installed and opened
+	dirs := cindyDirs()
 	dir := ""
-	if d, err := os.UserConfigDir(); err == nil {
-		dir = filepath.Join(d, "Cindy")
+	if len(dirs) > 0 {
+		dir = dirs[0]
 	}
 	return &Agent{
 		ID: "cindy", Name: "Cindy", Icon: "cindy",
 		UA:  []string{"cindy"},
 		Dir: dir, Path: dir,
-		Import: func() string { return CindyLink(gateway.URL()) },
-		Added: func() bool {
-			return dir != "" && cindyHas(filepath.Join(dir, "cindy-local-v1.db"), gateway.URL())
+		detect: func() bool {
+			for _, d := range dirs {
+				if _, err := os.Stat(d); err == nil {
+					return true
+				}
+			}
+			return false
 		},
+		Import: func() string { return CindyLink(gateway.URL()) },
+		Added:  func() bool { return cindyAdded(dirs, gateway.URL()) },
 	}
 }

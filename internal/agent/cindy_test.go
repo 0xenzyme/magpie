@@ -68,3 +68,25 @@ func TestCindyHas(t *testing.T) {
 		t.Fatal("the gateway's provider not found")
 	}
 }
+
+// Cindy's global build keeps a database per signed-in account in
+// CindyGlobal: magpie added there is added.
+func TestCindyAdded(t *testing.T) {
+	local, global := t.TempDir(), t.TempDir()
+	gw := "http://127.0.0.1:3425"
+	if cindyAdded([]string{local, global}, gw) {
+		t.Fatal("no databases, yet added")
+	}
+	db, err := sql.Open("sqlite", filepath.Join(global, "cindy-cmubb4059023mzr0152yezm4r.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE custom_providers (id text PRIMARY KEY, name text, runtimes text DEFAULT '{}');
+		INSERT INTO custom_providers VALUES ('magpie-73271b6d', 'Magpie', '{}')`); err != nil {
+		t.Fatal(err)
+	}
+	if !cindyAdded([]string{local, global}, gw) {
+		t.Fatal("magpie in an account's database not found")
+	}
+}
