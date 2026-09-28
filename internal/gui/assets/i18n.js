@@ -478,6 +478,7 @@ const I18N = {
     "… {n} more, filter to find them": "…… 还有 {n} 个，用筛选查找",
     "Added by hand": "手动添加",
     "The vendor's list is empty. Refresh, or type a model id.": "供应商列表为空。刷新，或输入一个模型 ID。",
+    "No model here matches “{q}”. Image, embedding and speech models aren't listed, as agents can't chat with them: pick an image model in Settings → Images.": "没有匹配“{q}”的模型。生图、向量和语音模型不在这里列出，因为 Agent 不能和它们对话：生图模型请在 设置 → 图像 里选。",
     "add a model id…": "添加模型 ID…",
     "Refresh": "刷新",
     "Ask the vendor which models it serves": "向供应商询问它提供哪些模型",
