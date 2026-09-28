@@ -229,3 +229,16 @@ func TestIsOpenCode(t *testing.T) {
 		}
 	}
 }
+
+// A plan with no list to ask gives its own models and asks nothing.
+func TestFetchPlanWithoutList(t *testing.T) {
+	for _, p := range []Provider{
+		zcodeProvider("u", "Pro", zcodeKey{Key: "k", Base: "http://127.0.0.1:1"}),
+		{ID: "workbuddy", Chat: "http://127.0.0.1:1/v2", Account: &Account{Agent: "workbuddy", models: func() []catalog.Model { return wbModels }}},
+	} {
+		ms, err := p.Fetch(context.Background())
+		if err != nil || len(ms) == 0 {
+			t.Errorf("%s: %d models, %v", p.ID, len(ms), err)
+		}
+	}
+}

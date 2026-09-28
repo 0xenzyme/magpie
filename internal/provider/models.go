@@ -87,6 +87,11 @@ func (p Provider) Fetch(ctx context.Context) ([]catalog.Model, error) {
 	if p.Account != nil && p.Account.fetch != nil {
 		return p.Account.fetch(ctx)
 	}
+	if p.Account != nil && p.Account.models != nil {
+		// a plan with no list to ask (ZCode's, WorkBuddy's): its models
+		// are the ones it has, and its endpoint's /models isn't one
+		return p.Account.models(), nil
+	}
 	// Only keys in use. An off key is not asked, and its list does not
 	// join the catalog or take capabilities off a key that is on.
 	if keys := p.KeysOn(); len(keys) > 1 {
