@@ -196,8 +196,11 @@ function renderAgents() {
     if (tiers) shownFields.push(tiers);
     const sorted = shownFields.sort((x, y) => wide(y) - wide(x) || extra(x) - extra(y));
     const plain = sorted.filter((f) => !extra(f)).length;
+    // the squares share one cell, side by side: two (Codex's subagents and
+    // sign-in) wrapped the second under the first
+    const extras = el("span", "extras-cell");
     for (const f of sorted) {
-      if (extra(f)) { fields.append(extraField(a, f)); continue; }
+      if (extra(f)) { extras.append(extraField(a, f)); continue; }
       const b = el("button", "field " + (plain === 1 ? "solo" : wide(f) ? "main" : "side"));
       const opt = optionFor(f, f.value);
       b.title = t("{label}: {value}", { label: t(f.label), value: f.value || t("agent default") }) + (opt?.note ? ` · ${opt.note}` : "");
@@ -218,6 +221,7 @@ function renderAgents() {
       b.onclick = (ev) => openPicker(a, f, b, ev);
       fields.append(b);
     }
+    if (extras.childNodes.length) fields.append(extras);
     // one hidden by hand gives its way back in words, rather than being a
     // greyed row whose way back is its menu. One nothing is set on isn't
     // hidden: setting something on it brings it up the list.
@@ -242,6 +246,8 @@ function renderAgents() {
   // the extras column is there for every row once any agent has one, so the
   // pickers keep lining up down the list
   list.classList.toggle("extras", state.agents.some((a) => a.fields.some(extra) || tierMenu(a)));
+  // as wide as the row with the most squares
+  list.style.setProperty("--extras", Math.max(1, ...state.agents.map((a) => a.fields.filter((f) => extra(f) && !TIERS.includes(f.label)).length + (tierMenu(a) ? 1 : 0))));
   if (!folded.length) {
     for (const a of used) list.append(agentRow(a));
   } else {
