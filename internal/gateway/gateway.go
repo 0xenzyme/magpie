@@ -1186,12 +1186,20 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	f, _ := w.(http.Flusher)
 	sniff := newSniffer(proto, res.Header.Get("Content-Type"))
 	defer func() { u.add(sniff.usage()) }()
+	var tidy *chatTidy
+	if proto == provider.Chat && sse {
+		tidy = &chatTidy{}
+	}
 	buf := make([]byte, 32<<10)
 	for {
 		n, err := rd.Read(buf)
 		if n > 0 {
 			sniff.write(buf[:n])
-			if _, werr := w.Write(buf[:n]); werr != nil {
+			out := buf[:n]
+			if tidy != nil {
+				out = tidy.write(out)
+			}
+			if _, werr := w.Write(out); werr != nil {
 				return res.StatusCode, "", true
 			}
 			if f != nil {
@@ -1201,6 +1209,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		if err != nil {
 			break
 		}
+	}
+	if tidy != nil {
+		w.Write(tidy.flush())
 	}
 	return res.StatusCode, "", true
 }
