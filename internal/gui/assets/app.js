@@ -2102,7 +2102,7 @@ function renderAdd() {
   head.append(imp);
   if (providers.providers.length) {
     const x = el("button", "text", t("Close"));
-    x.onclick = () => { adding = false; editing = null; draft = null; presetQuery = ""; renderProviders(); };
+    x.onclick = () => rollUpSheet(sheet, () => { adding = false; editing = null; draft = null; presetQuery = ""; renderProviders(); });
     head.append(x);
   }
   sheet.append(head);
@@ -4247,12 +4247,67 @@ function editorError(msg, kind = "err") {
 function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
 function hostOf(u) { try { return new URL(u.includes("://") ? u : "https://" + u).host; } catch { return ""; } }
 
-// the sheet opens below the list: the view goes down to its top with it
+// the sheet opens below the list: it unrolls on the rows' spring and the
+// view goes down with it
 $("#addProvider").onclick = () => {
   adding = true; editing = null; draft = null; renderProviders();
-  const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
-  requestAnimationFrame(() => $("#addSheet").scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" }));
+  unrollSheet($("#view-providers"), $("#addSheet"));
 };
+
+// unrollSheet opens a sheet just drawn at the foot of a view from nothing to
+// its height, what's in it easing down into place, and takes the view down
+// with it until the sheet's top is 12px under the view's. The scroll is led
+// by the height, frame by frame, from when the sheet reaches the view's foot
+// to when it is whole: it scrolls only into room the sheet has made, so it
+// never runs ahead to be held back and jump, nor stops short; and it is
+// the view's own scrollTop, which WebKit animates where it won't a smooth
+// scrollIntoView. The reader scrolling meanwhile has the view from then on.
+function unrollSheet(view, sheet) {
+  const from = view.scrollTop, room = view.scrollHeight - view.clientHeight;
+  const to = Math.max(from, Math.min(from + sheet.getBoundingClientRect().top - view.getBoundingClientRect().top - 12, room));
+  const h = sheet.offsetHeight;
+  // how tall the sheet is when it reaches the view's foot, where the view
+  // can start to move: from there the view goes down as it grows
+  const x0 = Math.max(0, h - (room - from));
+  scrollOnPurpose(ROW_OPEN.ms + 300);
+  if (!h || matchMedia("(prefers-reduced-motion: reduce)").matches) { view.scrollTop = to; return; }
+  const pad = getComputedStyle(sheet);
+  sheet.style.overflow = "hidden";
+  const grow = sheet.animate([
+    { height: "0px", paddingTop: "0px", paddingBottom: "0px" },
+    { height: h + "px", paddingTop: pad.paddingTop, paddingBottom: pad.paddingBottom },
+  ], { duration: ROW_OPEN.ms + 60, easing: `cubic-bezier(${ROW_OPEN.ease})` });
+  for (const c of sheet.children) {
+    c.animate([{ opacity: 0, transform: "translateY(-6px)" }, { opacity: 1, transform: "none" }],
+      { duration: 340, delay: 60, easing: "cubic-bezier(.22, 1, .36, 1)", fill: "backwards" });
+  }
+  let set = from;
+  const follow = () => {
+    if (Math.abs(view.scrollTop - set) > 2) return; // the reader took it
+    const done = grow.playState === "finished";
+    view.scrollTop = Math.round(from + (to - from) * (done ? 1 : Math.min(1, Math.max(0, sheet.offsetHeight - x0) / (h - x0))));
+    set = view.scrollTop; // as far as there was room for
+    if (!done) requestAnimationFrame(follow);
+  };
+  const end = () => { sheet.style.overflow = ""; };
+  grow.finished.then(() => { end(); follow(); }, end);
+  requestAnimationFrame(follow);
+}
+
+// rollUpSheet closes it the other way, quicker, and then does what closing
+// it does.
+function rollUpSheet(sheet, then) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return then();
+  const pad = getComputedStyle(sheet);
+  sheet.style.overflow = "hidden";
+  const a = sheet.animate([
+    { height: sheet.offsetHeight + "px", paddingTop: pad.paddingTop, paddingBottom: pad.paddingBottom, opacity: 1 },
+    { height: "0px", paddingTop: "0px", paddingBottom: "0px", opacity: 0 },
+  ], { duration: ROLLUP.ms - 80, easing: `cubic-bezier(${ROLLUP.ease})`, fill: "forwards" });
+  // held shut until it is hidden, then let go, so it is never seen whole again
+  const done = () => { then(); a.cancel(); sheet.style.overflow = ""; };
+  a.finished.then(done, done);
+}
 
 // ---------- usage ----------
 
