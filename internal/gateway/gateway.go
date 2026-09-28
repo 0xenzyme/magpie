@@ -385,7 +385,8 @@ func (s *Server) model(w http.ResponseWriter, r *http.Request) {
 }
 
 // unprefixed is the model magpie serves by an id Claude Desktop was given
-// for it (claudeLooking): anthropic/magpie-<number>, or, as it listed them
+// for it (claudeLooking): anthropic/magpie-<number>, mythos-magpie-<number>,
+// magpie-<number>.anthropic.<Claude model>, or, as it listed them
 // before, "anthropic/" put in front of magpie's id. An id that is magpie's
 // as it stands (a provider named anthropic) is left alone.
 func unprefixed(id string) string {
@@ -1663,13 +1664,17 @@ func conversationID(in http.Header, body []byte) string {
 // "low"|"medium"|"high"|"xhigh"|"max"`.
 var effortLevelsNamed = regexp.MustCompile(`(?i)\blow\b\W+(?:medium|high)\b`)
 
-// bodyEffort is the reasoning effort a Chat or Responses request asks for.
+// bodyEffort is the reasoning effort a Chat or Responses request asks for,
+// or an Anthropic one in its output_config.
 func bodyEffort(proto provider.Protocol, body []byte) string {
 	var v struct {
 		ReasoningEffort string `json:"reasoning_effort"`
 		Reasoning       *struct {
 			Effort string `json:"effort"`
 		} `json:"reasoning"`
+		OutputConfig *struct {
+			Effort string `json:"effort"`
+		} `json:"output_config"`
 	}
 	if json.Unmarshal(body, &v) != nil {
 		return ""
@@ -1679,14 +1684,27 @@ func bodyEffort(proto provider.Protocol, body []byte) string {
 		return v.ReasoningEffort
 	case proto == provider.Responses && v.Reasoning != nil:
 		return v.Reasoning.Effort
+	case proto == provider.Anthropic && v.OutputConfig != nil:
+		return v.OutputConfig.Effort
 	}
 	return ""
 }
 
-// withBodyEffort asks a Chat or Responses request for effort instead,
-// keeping the rest of its reasoning settings.
+// withBodyEffort asks a Chat, Responses or Anthropic request for effort
+// instead, keeping the rest of its reasoning settings. Anthropic's is
+// output_config.effort, which Claude Desktop sends at any of low…max
+// whatever the model takes.
 func withBodyEffort(proto provider.Protocol, body []byte, effort string) []byte {
 	switch proto {
+	case provider.Anthropic:
+		var v struct {
+			OutputConfig map[string]any `json:"output_config"`
+		}
+		if json.Unmarshal(body, &v) != nil || v.OutputConfig == nil {
+			return body
+		}
+		v.OutputConfig["effort"] = effort
+		return withFields(body, map[string]any{"output_config": v.OutputConfig})
 	case provider.Chat:
 		return withFields(body, map[string]any{"reasoning_effort": effort})
 	case provider.Responses:
