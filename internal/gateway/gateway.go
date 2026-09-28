@@ -302,8 +302,13 @@ func catalogFor(r *http.Request) []provider.Entry {
 
 func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	data := []map[string]any{}
+	desktop := agentOf(r) == "claude-desktop"
 	for _, e := range catalogFor(r) {
-		data = append(data, modelObject(e))
+		m := modelObject(e)
+		if desktop {
+			m["id"] = claudeLooking(e.ID)
+		}
+		data = append(data, m)
 	}
 	out := map[string]any{"object": "list", "data": data, "has_more": false}
 	if len(data) > 0 {
@@ -327,7 +332,8 @@ func (s *Server) model(w http.ResponseWriter, r *http.Request) {
 // front of it. Claude Desktop, pointed at a third-party gateway, takes only
 // models whose id says claude, sonnet, opus, haiku or anthropic, so any of
 // magpie's is asked for there as anthropic/<its id>. An id that is magpie's
-// as it stands (a provider named anthropic) is left alone.
+// as it stands (a provider named anthropic) is left alone. With the key
+// magpie-claude-desktop, /v1/models lists them so.
 func unprefixed(id string) string {
 	rest, ok := strings.CutPrefix(id, "anthropic/")
 	if !ok || rest == "" {
@@ -340,6 +346,20 @@ func unprefixed(id string) string {
 		return id
 	}
 	return rest
+}
+
+// claudeLooking is a model's id as Claude Desktop is shown it, to the key
+// magpie-claude-desktop: it takes only an id that says claude, sonnet, opus,
+// haiku or anthropic, so any other is put after anthropic/ (unprefixed
+// serves it again).
+func claudeLooking(id string) string {
+	l := strings.ToLower(id)
+	for _, w := range []string{"claude", "sonnet", "opus", "haiku", "anthropic"} {
+		if strings.Contains(l, w) {
+			return id
+		}
+	}
+	return "anthropic/" + id
 }
 
 // countTokens answers Anthropic's count_tokens: through the provider when

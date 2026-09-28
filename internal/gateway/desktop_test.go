@@ -38,6 +38,16 @@ func TestAnthropicPrefixedModel(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("HEAD /api/hello: %d", rec.Code)
 	}
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	req.Header.Set("x-api-key", Token+"-claude-desktop")
+	rec = httptest.NewRecorder()
+	New().Handler().ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), `"id":"anthropic/fake/m1"`) {
+		t.Fatalf("Claude Desktop's list: %s", rec.Body)
+	}
+	if claudeLooking("devin/claude-opus-5-5") != "devin/claude-opus-5-5" {
+		t.Fatal("a Claude id was prefixed")
+	}
 	if got := unprefixed("claude-sonnet-4-5"); got != "claude-sonnet-4-5" {
 		t.Fatalf("unprefixed changed %q", got)
 	}
