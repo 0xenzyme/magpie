@@ -262,14 +262,19 @@
 .rt-cond.on { border-style: solid; color: var(--fg); background: var(--card-2); }
 .rt-cond .ic { width: 14px; height: 14px; flex: none; }
 .rt-cond > span { overflow: hidden; text-overflow: ellipsis; }
+/* a group's logos overlap in discs whose rings sit outside them: clipped, the first lost its edge */
+.rt-cond > .ic-stack { overflow: visible; }
 .rt-cond.tk { cursor: text; }
 .rt-cond.in { cursor: text; }
-.rt-cond.in input { width: 24ch; }
+.rt-cond.in input, .editor .rt-cond.in input[type="text"] { width: 24ch; }
 .rt-classifier { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .rt-classifier[hidden] { display: none; }
 .rt-classifier .w { color: var(--muted); font-size: 12px; }
 .rt-classifier .hint { flex-basis: 100%; }
-.rt-cond input { width: 7ch; height: 20px; padding: 0 2px; border: 0; background: transparent; color: inherit; font: inherit; font-variant-numeric: tabular-nums; outline: none; -moz-appearance: textfield; }
+/* the field is the pill: the editor's boxed input (its border and focus ring) stays off it */
+.rt-cond input, .editor .rt-cond input[type="text"], .editor .rt-cond input:focus, .editor .rt-cond input:focus-visible { box-shadow: none; border-radius: 0; }
+.rt-cond:focus-within { border-style: solid; border-color: var(--accent); color: var(--fg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.rt-cond input, .editor .rt-cond input[type="text"] { width: 7ch; height: 20px; padding: 0 2px; border: 0; background: transparent; color: inherit; font: inherit; font-variant-numeric: tabular-nums; outline: none; -moz-appearance: textfield; }
 .rt-cond input::-webkit-outer-spin-button, .rt-cond input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .rt-rwarn { color: var(--amber, var(--muted)); font-size: 11.5px; }
 .rt-rwarn:empty { display: none; }
