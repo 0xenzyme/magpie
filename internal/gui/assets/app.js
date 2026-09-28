@@ -920,10 +920,12 @@ function placePop(anchor, w, h) {
   const pop = $("#pop");
   const r = anchor.getBoundingClientRect(), pad = 8;
   pop.style.width = w + "px";
-  let x = Math.min(r.left, innerWidth - w - pad);
+  let x = Math.max(pad, Math.min(r.left, innerWidth - w - pad));
   let y = r.bottom + 5;
   pop.classList.remove("up");
-  pop.style.left = Math.max(pad, x) + "px";
+  pop.style.left = x + "px";
+  // it grows out of the button's middle, or near the edge it's held to
+  pop.style.setProperty("--ox", Math.max(16, Math.min(w - 16, r.left + r.width / 2 - x)) + "px");
   // h is the most it can be: opened upward, its bottom edge is held to the
   // button, so a short list sits on the button rather than h above it
   if (y + h > innerHeight - pad && r.top - 5 - h >= pad) {
@@ -1314,9 +1316,32 @@ async function commit(value) {
   }
 }
 
+// popGhost leaves a likeness of the picker where it was, to fade and sink
+// away while the real one is already put back for its next opening.
+function popGhost(pop) {
+  if (pop.hidden || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const g = pop.cloneNode(true);
+  g.removeAttribute("id");
+  g.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
+  g.classList.add("leaving");
+  g.setAttribute("aria-hidden", "true");
+  g.inert = true;
+  pop.after(g);
+  // what a clone doesn't carry: where its lists were scrolled, what was typed
+  const from = pop.querySelectorAll("*"), to = g.querySelectorAll("*");
+  from.forEach((e, i) => {
+    if (e.scrollTop) to[i].scrollTop = e.scrollTop;
+    if (e.tagName === "INPUT") to[i].value = e.value;
+  });
+  const done = () => g.remove();
+  g.addEventListener("animationend", done, { once: true });
+  setTimeout(done, 400);
+}
+
 function closePicker() {
   if (!pick) return;
   pick.groupAnimation?.cancel();
+  popGhost($("#pop"));
   pick.anchor.classList.remove("open");
   $("#pop").hidden = true;
   $("#pop").classList.remove("model-picker", "effort-picker", "explained");
@@ -4267,7 +4292,10 @@ function renderPanelQuota() {
     for (const q of bals) {
       const card = el("div", "pq-card bal");
       card.title = [q.name, q.user].filter(Boolean).join(" · ");
-      card.append(el("span", "pq-sub", q.name), el("b", "pq-amt", q.balance));
+      // whose balance, at a glance: the provider's logo before its name
+      const who = el("span", "pq-sub pq-bn");
+      who.append(icon(q.icon || "generic"), el("span", "", q.name));
+      card.append(who, el("b", "pq-amt", q.balance));
       grid.append(card);
     }
     g.append(grid);
