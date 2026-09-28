@@ -19,12 +19,13 @@ func TestWSLCodexLive(t *testing.T) {
 	if name == "" {
 		t.Skip("MAGPIE_WSL_TEST_DISTRO not set")
 	}
+	names, _ := wslList()
 	found := false
-	for _, n := range wslList() {
+	for _, n := range names {
 		found = found || n == name
 	}
 	if !found {
-		t.Fatalf("%s not in %q", name, wslList())
+		t.Fatalf("%s not in %q", name, names)
 	}
 	home := t.TempDir()
 	for _, k := range []string{"HOME", "USERPROFILE"} {
