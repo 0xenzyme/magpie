@@ -70,6 +70,11 @@ func RenameLegacy() {
 // Cursor's id. It runs at start-up; errors are swallowed as RenameLegacy's.
 func MoveCursorEfforts() { moveEfforts("cursor", provider.CursorBase) }
 
+// MoveAntigravityEfforts does the same for Antigravity's ids at a level
+// (antigravity/gemini-3.7-flash-high → antigravity/gemini-3.7-flash, at
+// high when the agent's effort is unset and it has that one).
+func MoveAntigravityEfforts() { moveEfforts("antigravity", provider.AntigravityBase) }
+
 func moveEfforts(pid string, base func(string) (string, string, bool)) {
 	offers := func(opts []Option, v string) bool {
 		return slices.ContainsFunc(opts, func(o Option) bool { return o.Value == v })

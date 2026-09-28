@@ -213,6 +213,9 @@ func All() []Provider {
 		if a.ID == "cursor" { // picked before its efforts were one model
 			a.Models = cursorPicks(a.Models)
 		}
+		if a.ID == "antigravity" { // picked before its levels were one model
+			a.Models = antigravityPicks(a.Models)
+		}
 		out = append(out, a)
 	}
 	return out

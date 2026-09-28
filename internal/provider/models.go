@@ -45,6 +45,10 @@ func (p Provider) Available() []catalog.Model {
 			live = collapseCursorModels(withCursorContexts(live))
 		case "devin":
 			live = withDevinContexts(live)
+		case "antigravity":
+			// after its names are filled in, and so that a family's
+			// levels aren't taken off by a known model of its id
+			return collapseAntigravityModels(catalog.Decorate(live, known))
 		}
 		return catalog.Decorate(live, known)
 	}
