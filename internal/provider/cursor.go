@@ -119,7 +119,9 @@ func parseCursorModels(out string) []catalog.Model {
 		if m == nil {
 			continue
 		}
-		name := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(m[2]), "(default)"))
+		// some names come with zero-width spaces and doubled ones
+		name := strings.Join(strings.Fields(strings.ReplaceAll(m[2], "\u200b", "")), " ")
+		name = strings.TrimSpace(strings.TrimSuffix(name, "(default)"))
 		name = strings.TrimSpace(strings.TrimSuffix(name, "(current)"))
 		ms = append(ms, catalog.Model{ID: m[1], Name: name, Context: cursorContext(m[1], name)})
 	}

@@ -42,7 +42,7 @@ func (p Provider) Available() []catalog.Model {
 	if live, _, ok := catalog.Live(p.ID); ok {
 		switch p.ID {
 		case "cursor":
-			live = withCursorContexts(live)
+			live = collapseCursorModels(withCursorContexts(live))
 		case "devin":
 			live = withDevinContexts(live)
 		}
