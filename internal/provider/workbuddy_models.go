@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/yetone/magpie/internal/catalog"
 )
@@ -108,5 +109,26 @@ func (c wbProductConfig) cliModels() []catalog.Model {
 			out = append(out, m)
 		}
 	}
-	return out
+	return wbDistinctNames(out)
+}
+
+// wbDistinctNames tells apart models the config gives the same name:
+// WorkBuddy AI lists deepseek-v4.1-flash (free) and deepseek-v4.1-flash-sg
+// (Singapore, x0.03 credits) both as "Deepseek-V4.1-Flash". A later one is
+// named for what its id adds to the first's ("… (SG)"), or else its id.
+func wbDistinctNames(ms []catalog.Model) []catalog.Model {
+	first := map[string]string{} // name → the id that has it
+	for i, m := range ms {
+		id, ok := first[m.Name]
+		if !ok {
+			first[m.Name] = m.ID
+			continue
+		}
+		tag := m.ID
+		if rest, ok := strings.CutPrefix(m.ID, id+"-"); ok && rest != "" {
+			tag = strings.ToUpper(rest)
+		}
+		ms[i].Name = m.Name + " (" + tag + ")"
+	}
+	return ms
 }
