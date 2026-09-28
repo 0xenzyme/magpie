@@ -4001,7 +4001,10 @@ function panelQuotaRow(q) {
       line.append(el("span", "pq-n", t(w.name)), track, el("b", "", quotaFill(w) + "%"));
       m.append(line);
       if (w.resetsAt) m.append(el("span", "pq-r", "↻ " + resetClock(new Date(w.resetsAt))));
-      m.title = t(w.name) + " · " + quotaText(w) + (w.resetsAt ? "\n" + t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() }) + " · " + untilText(new Date(w.resetsAt)) : "");
+      m.title = t(w.name) + " · " + quotaText(w) + (w.resetsAt ? "\n" + t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() }) + " · " + untilText(new Date(w.resetsAt)) : "")
+        + "\n" + t(quotaLeft ? "Show how much of each window is used" : "Show how much of each window is left");
+      // used or left turns here too, as on the Usage page (#124)
+      m.onclick = () => setQuotaLeft(!quotaLeft);
       ws.append(m);
     }
   }

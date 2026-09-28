@@ -519,7 +519,7 @@ body.window .field.solo { grid-column: auto; }
 .pq-term { font-size: 10px; color: var(--faint); }
 .pq-term.ends { color: var(--muted); }
 .pq-ws { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 14px; font-size: 10.5px; color: var(--muted); }
-.pq-w { display: inline-flex; flex-direction: column; align-items: stretch; min-width: 0; }
+.pq-w { display: inline-flex; flex-direction: column; align-items: stretch; min-width: 0; cursor: pointer; }
 .pq-line { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; min-width: 0; }
 .pq-r { font-size: 9.5px; line-height: 1.2; color: var(--faint); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pq-n { max-width: 84px; overflow: hidden; text-overflow: ellipsis; }
