@@ -154,6 +154,7 @@ type SkillView struct {
 	Agents      []string          `json:"agents"`
 	Missing     bool              `json:"missing,omitempty"` // its folder is gone
 	Problems    map[string]string `json:"problems,omitempty"`
+	Check       *SkillCheck       `json:"check,omitempty"` // what the last check for updates found
 }
 
 // View is the Library page.
@@ -239,6 +240,7 @@ func Read(problems []Problem) (*View, error) {
 		} else {
 			sv.Missing = true
 		}
+		sv.Check = lastCheck(s.Name)
 		v.Skills = append(v.Skills, sv)
 	}
 	v.FoundServers = foundServers(l)

@@ -28,6 +28,12 @@ type Skill struct {
 	Name   string   `json:"name"`
 	Source *Source  `json:"source,omitempty"`
 	Agents []string `json:"agents"`
+	// Hash is of the skill's files as last fetched from GitHub, and Commit
+	// the last commit to have touched its folder there, once a check has
+	// found the two to agree: together they tell whether GitHub has
+	// changed the skill since.
+	Hash   string `json:"hash,omitempty"`
+	Commit string `json:"commit,omitempty"`
 }
 
 // Source is where a skill came from: a GitHub repository it can be updated
@@ -531,7 +537,12 @@ func InstallSkills(input string, paths, agents []string) (*Result, error) {
 					return err
 				}
 			}
-			l.Skills = append(l.Skills, &Skill{Name: c.Name, Source: &src, Agents: slices.Clone(agents)})
+			sk := &Skill{Name: c.Name, Source: &src, Agents: slices.Clone(agents)}
+			if src.Kind == "github" {
+				sk.Hash = hashDir(skillDir(c.Name))
+			}
+			forgetCheck(c.Name)
+			l.Skills = append(l.Skills, sk)
 		}
 		return nil
 	})
@@ -562,7 +573,18 @@ func UpdateSkill(name string) (*Result, error) {
 // UpdateSkills fetches again every skill that came from GitHub, each
 // repository once, and writes the agents once. A skill that couldn't be
 // fetched is said in Unupdated; the others are updated all the same.
-func UpdateSkills() (*Result, error) {
+func UpdateSkills() (*Result, error) { return updateSkills(nil) }
+
+// UpdateSomeSkills is UpdateSkills for the skills named only: those a
+// check found GitHub to have changed.
+func UpdateSomeSkills(names []string) (*Result, error) {
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no skills to update")
+	}
+	return updateSkills(names)
+}
+
+func updateSkills(names []string) (*Result, error) {
 	mu.Lock()
 	l, err := load()
 	mu.Unlock()
@@ -579,7 +601,7 @@ func UpdateSkills() (*Result, error) {
 		sem    = make(chan struct{}, 4)
 	)
 	for _, s := range l.Skills {
-		if !updatable(s) {
+		if !updatable(s) || names != nil && !slices.Contains(names, s.Name) {
 			continue
 		}
 		wg.Add(1)
@@ -730,6 +752,7 @@ func (up *skillUpdate) apply(l *Library) error {
 		os.RemoveAll(next)
 		return err
 	}
+	hash := hashDir(next)
 	if fi, err := os.Lstat(skillDir(name)); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
 		// a link to CC Switch's folder: only the link goes
 		if err := os.Remove(skillDir(name)); err != nil {
@@ -747,11 +770,15 @@ func (up *skillUpdate) apply(l *Library) error {
 		}
 		return err
 	}
-	if up.adopt {
-		if s := l.skill(name); s != nil {
+	if s := l.skill(name); s != nil {
+		if up.adopt {
 			s.Source = up.src
 		}
+		// the commit it's at is known again once a check finds the files
+		// GitHub has to be these
+		s.Hash, s.Commit = hash, ""
 	}
+	forgetCheck(name)
 	if old == "" {
 		return nil
 	}
@@ -779,6 +806,7 @@ func RemoveSkill(name string) (*Result, error) {
 			return fmt.Errorf("no skill called %s", name)
 		}
 		l.Skills = slices.Delete(l.Skills, i, i+1)
+		forgetCheck(name)
 		p := skillDir(name)
 		if fi, err := os.Lstat(p); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
 			return os.Remove(p) // a folder of the user's: only the link goes

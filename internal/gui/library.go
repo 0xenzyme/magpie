@@ -131,7 +131,21 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 		}
 		writeJSON(rw, p)
 	})
-	// RTK: which agents have its hook, switching one on or off, and
+	// which skills GitHub has changed: the page as it is, each skill from
+	// there carrying what the check found of it
+	mux.HandleFunc("POST /api/library/skills/check", func(rw http.ResponseWriter, r *http.Request) {
+		if _, err := library.CheckSkills(); err != nil {
+			fail(rw, err)
+			return
+		}
+		v, err := libraryView(nil)
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, v)
+	})
+	// RTK:which agents have its hook, switching one on or off, and
 	// installing rtk when the page is asked to
 	mux.HandleFunc("GET /api/library/rtk", func(rw http.ResponseWriter, r *http.Request) {
 		writeJSON(rw, library.ReadRTK())
@@ -204,6 +218,7 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 			Agents []string `json:"agents"`
 			Source string
 			Paths  []string
+			Names  []string // the skills to update, of those a check found changed
 			Server library.Server
 			ID     string            // a market server's, or a market skill's in its repository
 			Values map[string]string // what a market server needs
@@ -236,6 +251,8 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 			res, err = library.UpdateSkill(in.Name)
 		case "skills/update-all":
 			res, err = library.UpdateSkills()
+		case "skills/update-some":
+			res, err = library.UpdateSomeSkills(in.Names)
 		case "skills/agents":
 			res, err = library.SkillAgents(in.Name, in.Agents)
 		case "skills/remove":

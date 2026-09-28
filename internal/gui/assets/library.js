@@ -20,6 +20,7 @@
   const open = new Set(); // agents whose instructions row is open
   let probe = null;      // skills found at a source: { source, candidates, pick:Set, agents:Set }
   let probing = false;
+  let checking = false;  // asking GitHub which skills it has changed
   let modal = null;      // what the library has open in the dialog
 
   const GLYPH = {
@@ -997,7 +998,26 @@
       const rh = el("div", "row-head");
       rh.append(el("span", "label", t("In the library")));
       const fresh = lib.skills.filter((s) => s.kind === "github" || s.origin);
-      if (fresh.length > 1) {
+      if (fresh.length) rh.append(el("span", "grow"));
+      if (lib.skills.some((s) => s.kind === "github")) {
+        const c = button(checking ? t("Checking…") : t("Check for updates"), "lib-updall", () => checkSkills());
+        c.title = t("Ask GitHub which skills changed since they were installed");
+        c.disabled = checking;
+        if (checking) c.classList.add("busy");
+        rh.append(c);
+      }
+      const stale = lib.skills.filter((s) => s.check?.status === "update");
+      if (stale.length) {
+        const n = stale.length;
+        const u = button(t("Update {n}", { n }), "action lib-updall", async (e, b) => {
+          b.classList.add("busy");
+          b.textContent = t("Updating…");
+          await updateAllSkills(stale.map((s) => s.name));
+          b.classList.remove("busy");
+        });
+        u.title = n === 1 ? t("Fetch {name} from GitHub again", { name: stale[0].name }) : t("Fetch the {n} skills GitHub changed again", { n });
+        rh.append(u);
+      } else if (fresh.length > 1) {
         const u = button(t("Update all"), "action lib-updall", async (e, b) => {
           b.classList.add("busy");
           b.textContent = t("Updating…");
@@ -1006,7 +1026,7 @@
           b.textContent = t("Update all");
         });
         u.title = t("Fetch the {n} skills from GitHub again", { n: fresh.length });
-        rh.append(el("span", "grow"), u);
+        rh.append(u);
       }
       body.append(rh);
       const list = el("div", "list lib-list");
@@ -1028,10 +1048,12 @@
 
   // Every skill from GitHub, fetched again; the ones that couldn't be are
   // said, and the rest are updated all the same.
-  async function updateAllSkills() {
+  // names, when given, are the skills to update: those a check found GitHub
+  // to have changed.
+  async function updateAllSkills(names) {
     try {
-      const v = await api("library/skills/update-all", {});
-      lib = v;
+      const v = await api(names ? "library/skills/update-some" : "library/skills/update-all", names ? { names } : {});
+      take(v);
       const res = v.result || {};
       const up = res.updated?.length || 0, no = res.unupdated || [];
       if (no.length) {
@@ -1042,6 +1064,35 @@
     } catch (e) {
       status(e.message, "err", 6000);
     }
+  }
+
+  // Which skills GitHub changed since they were installed: each row says,
+  // and the heading offers to update just those.
+  async function checkSkills() {
+    if (checking) return;
+    checking = true;
+    render();
+    try {
+      take(await api("library/skills/check", {}));
+      const got = lib.skills.filter((s) => s.check);
+      const n = got.filter((s) => s.check.status === "update").length;
+      const unknown = got.filter((s) => s.check.status === "unknown");
+      let msg = n ? (n === 1 ? t("1 skill has an update") : t("{n} skills have updates", { n })) : t("Every skill is up to date");
+      if (unknown.length) {
+        msg += " · " + t("{n} couldn't be checked: {error}", { n: unknown.length, error: unknown[0].check.error });
+        status(msg, "warn", 8000);
+      } else status(msg, "ok");
+    } catch (e) {
+      status(e.message, "err", 6000);
+    }
+    checking = false;
+    render();
+  }
+
+  // what a check found of a skill, for a tooltip: the last commit to it
+  function checkLine(c) {
+    const when = c.date ? new Date(c.date).toLocaleDateString() : "";
+    return [c.message, [when, c.commit?.slice(0, 7)].filter(Boolean).join(" · ")].filter(Boolean).join("\n");
   }
 
   // Claude Code's skills are OpenCode's and Crush's too: a chip for one of
@@ -1162,6 +1213,17 @@
     const row = el("div", "row lib-row click lib-skill" + (s.missing ? " missing" : ""));
     const who = el("div", "who");
     const nm = el("div", "name", s.name);
+    const c = s.check;
+    if (c?.status === "update") {
+      const b = tag(t("Update available"), "lib-new", t("Changed on GitHub since it was installed") + "\n" + checkLine(c));
+      if (c.url) {
+        b.classList.add("link");
+        b.onclick = (e) => { e.stopPropagation(); browse(c.url); };
+      }
+      nm.append(b);
+    } else if (c?.status === "unknown") {
+      nm.append(tag(t("Not checked"), "lib-unchecked", c.error));
+    }
     who.append(nm);
     const sub = el("div", "sub", s.missing ? t("Its folder is gone from the library") : s.description || "");
     sub.title = s.description || "";
@@ -1187,6 +1249,8 @@
       });
       u.append(svg(GLYPH.up, 13, 1.5));
       u.title = s.origin ? t("Update from GitHub ({repo}, as CC Switch installed it)", { repo: s.origin.replace(/^https:\/\/github\.com\//, "") }) : t("Update from GitHub");
+      if (c?.status === "current") u.title += "\n" + t("Up to date with GitHub") + "\n" + checkLine(c);
+      else if (c?.status === "update") u.title += "\n" + checkLine(c);
       acts.append(u);
     }
     const rm = button("", "lib-icon danger", () => confirmRemoveSkill(s));
