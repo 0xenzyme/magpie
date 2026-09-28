@@ -441,6 +441,11 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				if in.ID != "" {
 					pr.ID = in.ID
 				}
+				// a decision API's address the user gave, such as the
+				// Cloudflare one naming the account
+				if d := strings.TrimSpace(in.Decide); d != "" && pr.Decide != "" {
+					pr.Decide = d
+				}
 				in = pr
 			}
 			var old *provider.Provider

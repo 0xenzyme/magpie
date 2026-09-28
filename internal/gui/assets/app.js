@@ -2747,7 +2747,16 @@ function renderEditor(p, presetID) {
     ed.append(...field(t("Models"), ex, t("Optional: magpie asks the vendor for its list after saving.")));
   }
 
-  if (!custom) {
+  // Jev's endpoint can be the one its gateway's docs give — Cloudflare's
+  // names the account, …/accounts/<id>/ai/run — in place of the preset's
+  if (decides) {
+    if (draft.decide === undefined) draft.decide = p?.decide || pr?.decide || "";
+    const du = input(draft.decide, pr?.decide || "https://…", "url");
+    du.oninput = () => { draft.decide = du.value; };
+    ed.append(...field(t("Jev endpoint"), du, t("The address Jev is asked at; paste the one from your gateway's docs, e.g. Cloudflare's …/accounts/<account id>/ai/run")));
+  }
+
+  if (!custom && !(decides && !p)) {
     const ebox = el("div");
     refreshEndpoints = () => {
       const base = p || pr || {};
@@ -2815,6 +2824,7 @@ function renderEditor(p, presetID) {
   const save = () => {
     // new: an Add never replaces a provider that has the id already
     const body = { id: p ? slug(draft.id) || p.id : draft.id, from: p?.id, name: draft.name, preset: draft.preset, key: draft.key || "", chat: draft.chat, responses: draft.responses, anthropic: draft.anthropic, catalog: draft.catalog, models: p ? chosenIds() : draft.extra, headers: headersOf(draft.headers), new: isNew };
+    if (decides) body.decide = (draft.decide || "").trim();
     if (custom) { body.icon = draft.icon || "generic"; body.balanceURL = (draft.balanceURL || "").trim(); body.balancePath = (draft.balancePath || "").trim(); body.modelsURL = (draft.modelsURL || "").trim(); }
     if (p) { body.fallback = draft.fallback; body.unlisted = draft.unlisted; }
     const cx = parseContexts(draft.contexts || "");
