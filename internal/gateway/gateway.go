@@ -805,6 +805,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		where = c.p.Where()
 		began := time.Now()
 		attemptBody := body
+		if from == provider.Responses {
+			// reasoning another sealed, which this one refused earlier in
+			// the conversation, isn't sent to be refused again; its own is
+			if b, ok := withoutRefused(stuck, c.who(), attemptBody); ok {
+				attemptBody = b
+			}
+		}
 		if isGroup {
 			if in := membersImageInput([]provider.Member{{Provider: c.p, Model: c.model}}, nil); in != nil && !*in {
 				attemptBody, _ = textOnlyBody(from, body) // omit images in prior turns and tool results
@@ -849,10 +856,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
 			break
 		}
-		if !resealed && from == provider.Responses && !hw.passing && hw.code() == 400 && foreignReasoning.Match(hw.errBody()) {
-			// the conversation moved here from another account, whose
-			// sealed reasoning this one can't read: asked again without it
+		if !resealed && from == provider.Responses && !hw.passing && hw.code() >= 400 && foreignReasoning.Match(hw.errBody()) {
+			// the conversation moved here from another account or vendor,
+			// whose sealed reasoning this one can't read: asked again
+			// without it, and what it refused isn't sent here again. xAI
+			// says so as a 400, or as the stream's error, which may be
+			// read as another status
 			if b, ok := withoutReasoning(body); ok {
+				refused(stuck, c.who(), attemptBody)
 				resealed, body = true, b
 				try.Fail = failForeign
 				s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
