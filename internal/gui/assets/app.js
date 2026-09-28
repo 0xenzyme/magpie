@@ -61,8 +61,14 @@ async function api(path, body) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (res.status === 204) return null;
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  // a body that isn't JSON (a proxy's or a plain http.Error) is the error
+  // itself, not WebKit's "did not match the expected pattern"
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : null; } catch {
+    throw new Error(text.trim().slice(0, 200) || `${res.status} ${res.statusText}`);
+  }
+  if (!res.ok) throw new Error(data?.error || `${res.status} ${res.statusText}`);
   return data;
 }
 
@@ -231,7 +237,16 @@ function renderAgents() {
       sum = el("span", "ag-sum");
       const main = sorted.find((f) => !extra(f) && !f.menu && !effortOf(f));
       const opt = main && optionFor(main, main.value);
-      sum.append(el("span", "v" + (main?.value ? "" : " empty"), main ? (opt?.label || main.value || t("default")) : ""));
+      // the model in words, its logo coming in beside them on hover
+      const v = el("span", "v" + (main?.value ? "" : " empty"));
+      if (main?.value && (opt?.icon || opt?.icons?.length)) {
+        const mi = el("span", "mi");
+        mi.setAttribute("aria-hidden", "true");
+        mi.append(optionIcon(opt));
+        v.append(mi);
+      }
+      v.append(el("span", "vt", main ? (opt?.label || main.value || t("default")) : ""));
+      sum.append(v);
       // how much effort as three bars, in a column of its own down the list:
       // none lit for the default, or for an agent that has no such setting
       const ef = a.fields.find(effortOf);
@@ -241,27 +256,41 @@ function renderAgents() {
       sum.append(c);
       // opened: each setting on a line of its own, named, and the effort as
       // its levels side by side
+      // .ag-in clips while the row opens or closes, .ag-body holds the lines
       openBox = el("div", "ag-open");
+      const body = el("div", "ag-body");
+      openBox.append(el("div", "ag-in"));
+      openBox.firstChild.append(body);
       for (const b of [...fields.querySelectorAll(":scope > .field")]) {
         const f = sorted.find((x) => x.key === b.dataset.key) || (b.dataset.key === "tiers" ? tiers : null);
-        if (f && effortOf(f)) { openBox.append(effortSeg(a, f)); continue; }
+        if (f && effortOf(f)) { body.append(effortSeg(a, f)); continue; }
         if (f && !b.querySelector(":scope > .k")) b.prepend(el("span", "k", t(f.label)));
-        openBox.append(b);
+        body.append(b);
       }
-      if (extras.childNodes.length) openBox.append(extras);
+      if (extras.childNodes.length) body.append(extras);
       row.classList.toggle("open", panelOpenAgent === a.id);
       row.setAttribute("aria-expanded", String(panelOpenAgent === a.id));
       row.onclick = (ev) => {
         if (ev.target.closest(".ag-open, .ag-handle, .ag-fix, .ag-show")) return;
         const open = panelOpenAgent !== a.id;
         panelOpenAgent = open ? a.id : null;
+        // the rows ease open and shut, and the panel's edge moves with them:
+        // it goes now to where they will be, over the same time and curve
+        let grow = open ? openBox.querySelector(".ag-body").offsetHeight : 0;
         for (const r of $("#agents").querySelectorAll(".row.agent.open")) {
+          grow -= r.querySelector(".ag-in")?.offsetHeight || 0;
           r.classList.remove("open");
           r.setAttribute("aria-expanded", "false");
         }
         row.classList.toggle("open", open);
         row.setAttribute("aria-expanded", String(open));
-        fit();
+        fit(grow, { ms: 260, ease: ".2,.8,.2,1" });
+        const settle = (ev) => {
+          if (ev.target !== openBox || ev.propertyName !== "grid-template-rows") return;
+          openBox.removeEventListener("transitionend", settle);
+          fit();
+        };
+        openBox.addEventListener("transitionend", settle);
       };
     }
     // one hidden by hand gives its way back in words, rather than being a
@@ -972,48 +1001,49 @@ function effortBars(f) {
   return e;
 }
 
-// effortSeg: an opened panel row's effort, as the effort picker's slider.
-// A level shows at once, bars and all; the write follows, in order, so a
-// slow agent config never holds the thumb (巨卡).
+// effortSeg: an opened panel row's effort, as the effort picker's slider,
+// drawn rather than native so the thumb glides from stop to stop. A level
+// shows at once, bars and all; the write follows, in order, so a slow agent
+// config never holds the thumb (巨卡).
 function effortSeg(a, f) {
   const options = f.options;
+  const last = Math.max(1, options.length - 1);
   const box = el("div", "effort-control");
   const head = el("div", "effort-head");
   const value = el("b");
   head.append(el("span", "", t(f.label)), value);
-  const track = el("div", "effort-track");
+  const track = el("div", "eslide");
+  track.tabIndex = 0;
+  track.setAttribute("role", "slider");
+  track.setAttribute("aria-label", t(f.label));
+  track.setAttribute("aria-valuemin", "0");
+  track.setAttribute("aria-valuemax", String(options.length - 1));
+  const rail = el("span", "rail");
+  rail.append(el("span", "fill"));
   const ticks = el("span", "effort-ticks");
   ticks.setAttribute("aria-hidden", "true");
   ticks.append(...options.map((_, i) => {
     const dot = el("i");
-    dot.style.setProperty("--at", options.length > 1 ? i / (options.length - 1) : 0);
+    dot.style.setProperty("--at", i / last);
     return dot;
   }));
-  const range = el("input");
-  range.type = "range";
-  range.min = "0";
-  range.step = "1";
-  range.max = String(Math.max(0, options.length - 1));
-  range.value = String(Math.max(0, options.findIndex((o) => o.value === f.value)));
-  range.setAttribute("aria-label", t(f.label));
-  track.append(ticks, range);
+  track.append(rail, ticks, el("span", "knob"));
   const ends = el("div", "effort-ends");
   ends.setAttribute("aria-hidden", "true");
   ends.append(el("span", "", effortName(options[0])), el("span", "", effortName(options[options.length - 1])));
   box.append(head, track, ends);
-  const update = () => {
-    const i = Number(range.value);
+  let at = Math.max(0, options.findIndex((o) => o.value === f.value));
+  const show = (i) => {
+    at = i;
+    track.style.setProperty("--p", i / last);
     [...ticks.children].forEach((dot, j) => { dot.classList.toggle("on", j < i); dot.classList.toggle("cur", j === i); });
     value.textContent = effortName(options[i]);
-    const fill = `${options.length > 1 ? 100 * i / (options.length - 1) : 0}%`;
-    range.style.setProperty("--fill", fill);
-    track.style.setProperty("--fill", fill);
-    range.setAttribute("aria-valuetext", effortName(options[i]));
+    track.setAttribute("aria-valuenow", String(i));
+    track.setAttribute("aria-valuetext", effortName(options[i]));
   };
-  range.oninput = update;
   let saving = Promise.resolve();
-  range.onchange = () => {
-    const o = options[Number(range.value)];
+  const commit = () => {
+    const o = options[at];
     if (!o || o.value === f.value) return;
     f.value = o.value;
     box.closest(".row")?.querySelector(".ag-sum .eff")?.replaceWith(effortBars(f));
@@ -1022,7 +1052,29 @@ function effortSeg(a, f) {
       status(`${a.name} ${t(f.label)} → ${effortName(o)}`, "ok");
     }).catch((e) => { status(e.message, "err"); renderAgents(); });
   };
-  update();
+  const stopAt = (x) => {
+    const r = rail.getBoundingClientRect();
+    return Math.round(Math.max(0, Math.min(1, (x - r.left) / r.width)) * last);
+  };
+  track.onpointerdown = (ev) => {
+    track.setPointerCapture(ev.pointerId);
+    track.classList.add("drag");
+    show(stopAt(ev.clientX));
+  };
+  track.onpointermove = (ev) => { if (track.classList.contains("drag")) show(stopAt(ev.clientX)); };
+  track.onpointerup = track.onpointercancel = () => {
+    if (!track.classList.contains("drag")) return;
+    track.classList.remove("drag");
+    commit();
+  };
+  track.onkeydown = (ev) => {
+    const to = { ArrowLeft: at - 1, ArrowDown: at - 1, ArrowRight: at + 1, ArrowUp: at + 1, Home: 0, End: options.length - 1 }[ev.key];
+    if (to === undefined) return;
+    ev.preventDefault();
+    show(Math.max(0, Math.min(options.length - 1, to)));
+    commit();
+  };
+  show(at);
   return box;
 }
 
@@ -3952,7 +4004,12 @@ function editorError(msg, kind = "err") {
 function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
 function hostOf(u) { try { return new URL(u.includes("://") ? u : "https://" + u).host; } catch { return ""; } }
 
-$("#addProvider").onclick = () => { adding = true; editing = null; draft = null; renderProviders(); };
+// the sheet opens below the list: the view goes down to its top with it
+$("#addProvider").onclick = () => {
+  adding = true; editing = null; draft = null; renderProviders();
+  const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  requestAnimationFrame(() => $("#addSheet").scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" }));
+};
 
 // ---------- usage ----------
 
@@ -4107,10 +4164,12 @@ function setPanelTab(tab) {
   panelTab = tab;
   try { localStorage.setItem("magpie.panelTab", tab); } catch {}
   document.body.dataset.ptab = tab;
-  for (const b of tabs.children) {
+  for (const b of tabs.querySelectorAll("button")) {
     b.classList.toggle("on", b.dataset.ptab === tab);
     b.setAttribute("aria-selected", String(b.dataset.ptab === tab));
   }
+  // the card under the tab picked glides to it, as on every other pill
+  slide(tabs, "ptabs");
   panelAge();
   fit();
 }
@@ -4118,11 +4177,19 @@ if (mode === "panel") {
   const tabs = $("#ptabs");
   tabs.hidden = false;
   tabs.setAttribute("role", "tablist");
-  for (const b of tabs.children) {
+  for (const b of tabs.querySelectorAll("button")) {
     b.setAttribute("role", "tab");
     b.onclick = () => setPanelTab(b.dataset.ptab);
   }
   setPanelTab(panelTab);
+  // a panel drawn before its window has its width puts the card again, still
+  addEventListener("resize", () => {
+    const th = tabs.querySelector(":scope > .thumb");
+    th?.classList.add("still");
+    slide(tabs, "ptabs");
+    void th?.offsetWidth;
+    th?.classList.remove("still");
+  });
 }
 
 // The Usage tab: accounts under their vendor, each window a ring with its
@@ -4133,7 +4200,12 @@ function renderPanelQuota() {
   if (mode !== "panel" || !box) return;
   const subs = (quotas || []).filter((q) => q.balance || q.error || q.windows?.length);
   const none = !!quotas && !subs.length;
-  $('#ptabs [data-ptab="usage"]').hidden = none;
+  const usageTab = $('#ptabs [data-ptab="usage"]');
+  if (usageTab.hidden !== none) {
+    usageTab.hidden = none;
+    // the tabs part the row anew: the card goes where its tab is now
+    if (!(none && panelTab === "usage")) slide($("#ptabs"), "ptabs");
+  }
   if (none && panelTab === "usage") setPanelTab("agents");
   box.hidden = none;
   box.replaceChildren();

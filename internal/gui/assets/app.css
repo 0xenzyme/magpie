@@ -528,11 +528,12 @@ body.window .field.solo { grid-column: auto; }
 
 /* ---- the panel's tabs: agents, usage, profiles ---------------------------- */
 /* outside the scrolling page, so they stay put under the header */
-.ptabs { display: flex; flex: none; gap: 2px; margin: 0 12px 10px; }
+.ptabs { position: relative; display: flex; flex: none; gap: 2px; margin: 0 12px 10px; }
+.ptabs > .thumb { top: 0; bottom: 0; border-radius: 7px; box-shadow: 0 1px 2px rgba(0, 0, 0, .08), var(--card-edge); }
 .ptabs[hidden] { display: none; }
-.ptabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 3px; height: 26px; border-radius: 7px; font-size: 12px; color: var(--muted); transition: color .15s, background-color .15s; }
+.ptabs button { position: relative; z-index: 1; flex: 1; display: flex; align-items: center; justify-content: center; gap: 3px; height: 26px; border-radius: 7px; font-size: 12px; color: var(--muted); transition: color .15s, background-color .15s; }
 .ptabs button:hover:not(.on) { color: var(--fg-2); }
-.ptabs button.on { color: var(--fg); font-weight: 550; background: var(--card); box-shadow: 0 1px 2px rgba(0, 0, 0, .08), var(--card-edge); }
+.ptabs button.on { color: var(--fg); font-weight: 550; }
 .ptabs button[hidden] { display: none; }
 .ptabs em { font-style: normal; font-weight: 400; color: var(--faint); font-variant-numeric: tabular-nums; }
 body.panel[data-ptab="usage"] :is(#agents, .profiles),
@@ -548,7 +549,12 @@ body.panel .row.agent .ic { width: 18px; height: 18px; }
 body.panel .row.agent .who { display: flex; align-items: center; gap: 6px; min-width: 0; }
 body.panel .row.agent.open { background: var(--card-2); }
 .ag-sum { display: grid; grid-template-columns: auto 12px 10px; align-items: center; gap: 10px; min-width: 0; max-width: 100%; font-size: 12px; color: var(--muted); }
-.ag-sum .v { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.ag-sum .v { display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
+.ag-sum .vt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.ag-sum .mi { display: inline-flex; flex: none; max-width: 0; overflow: hidden; margin-right: 0; opacity: 0; transform: scale(.7); transition: max-width .22s var(--ease), margin-right .22s var(--ease), opacity .18s var(--ease), transform .22s var(--ease); }
+.row.agent .ag-sum .mi .ic { width: 14px; height: 14px; }
+.row.agent:hover .ag-sum .mi { max-width: 48px; margin-right: 6px; opacity: 1; transform: none; }
+#addSheet { scroll-margin-top: 12px; }
 .ag-sum .v.empty { color: var(--muted); }
 .ag-sum .chev { display: inline-flex; width: 10px; color: var(--faint); transform: rotate(-90deg); transition: transform .2s var(--ease); }
 .row.agent.open .ag-sum .chev { transform: none; }
@@ -558,8 +564,10 @@ body.panel .row.agent.open { background: var(--card-2); }
 .eff i:nth-child(2) { height: 7px; }
 .eff i:nth-child(3) { height: 10px; }
 .eff[data-l="1"] i:nth-child(-n+1), .eff[data-l="2"] i:nth-child(-n+2), .eff[data-l="3"] i { background: var(--fg-2); opacity: 1; }
-.ag-open { display: none; }
-.row.agent.open .ag-open { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px 30px; }
+.ag-open { grid-column: 1 / -1; display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows .26s var(--ease), opacity .2s var(--ease), visibility 0s .26s; }
+.row.agent.open .ag-open { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows .26s var(--ease), opacity .2s var(--ease) .04s; }
+.ag-in { min-height: 0; overflow: hidden; }
+.ag-body { display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px 30px; }
 .ag-open .field { display: flex; justify-content: flex-start; width: 100%; height: 30px; gap: 8px; padding: 0 10px; border-radius: 8px; background: var(--card); font-size: 12.5px; box-shadow: inset 0 0 0 1px var(--pill-line); }
 body.panel .ag-open .field:hover { background: var(--card); box-shadow: inset 0 0 0 1px var(--pill-line), var(--pill-shadow); }
 body.panel .ag-open .field.open { box-shadow: inset 0 0 0 1px var(--accent); }
@@ -569,6 +577,15 @@ body.panel .ag-open .field.open { box-shadow: inset 0 0 0 1px var(--accent); }
 .row.agent .ag-open .field .ic { width: 14px; height: 14px; }
 .ag-open .field .chev { order: 3; margin-left: 0; transform: none; }
 .ag-open .effort-control { padding: 2px 4px 0; }
+.eslide { --p: 0; position: relative; height: 20px; cursor: pointer; touch-action: none; outline: none; }
+.eslide .rail { position: absolute; left: 8px; right: 8px; top: 8px; height: 4px; border-radius: 999px; background: var(--line); }
+.eslide .fill { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--p) * 100%); border-radius: inherit; background: var(--fg); transition: width .26s var(--ease); }
+.eslide .knob { position: absolute; z-index: 4; top: 2px; left: calc(8px + var(--p) * (100% - 16px)); width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 .5px rgba(0, 0, 0, .18), 0 1px 3px rgba(0, 0, 0, .22); transition: left .26s var(--ease), transform .14s var(--ease); }
+.eslide:hover .knob { transform: scale(1.08); }
+.eslide.drag .knob { transform: scale(.94); }
+.eslide.drag .knob, .eslide.drag .fill { transition-duration: .14s; }
+.eslide:focus-visible .knob { box-shadow: 0 0 0 .5px rgba(0, 0, 0, .18), 0 1px 3px rgba(0, 0, 0, .22), 0 0 0 3px var(--accent-soft); }
+@media (prefers-reduced-motion: reduce) { .eslide .knob, .eslide .fill, .ag-open { transition: none; } }
 .ag-open .effort-head { margin-bottom: 4px; }
 .ag-open .effort-head span { font-size: 11px; color: var(--faint); }
 .ag-open .extras-cell { display: flex; justify-content: flex-start; gap: 6px; }
