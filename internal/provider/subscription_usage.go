@@ -61,6 +61,10 @@ var subscriptionUsageCache struct {
 	pending chan struct{} // closed when the refresh in flight is done
 }
 
+// OnSubscriptionUsage is told when a refresh has landed, for what shows a
+// stale copy meanwhile (the menu bar's text) to read the new one.
+var OnSubscriptionUsage func()
+
 // subscriptionTimeout bounds one refresh; the vendors' endpoints can be
 // unreachable without a proxy, and then each fetch would hang to it.
 var subscriptionTimeout = 10 * time.Second
@@ -83,6 +87,9 @@ func SubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 			c.at, c.data, c.pending = time.Now(), out, nil
 			c.Unlock()
 			close(done)
+			if f := OnSubscriptionUsage; f != nil {
+				f()
+			}
 		}()
 	}
 	pending := c.pending

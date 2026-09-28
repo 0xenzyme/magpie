@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
 )
 
@@ -19,6 +20,9 @@ func (h *host) watchTrayUsage() {
 		default:
 		}
 	}
+	// a card read while stale is refreshed behind it: read it again once
+	// that lands, not a tick later, so the menu bar says what the panel does
+	provider.OnSubscriptionUsage = onTrayUsage
 	go func() {
 		<-h.ready // the tray is made once the app runs
 		shown := ""

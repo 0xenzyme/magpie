@@ -75,6 +75,23 @@ func TestSubscriptionUsageServesStale(t *testing.T) {
 	if !refreshing {
 		t.Fatal("a stale copy did not start a refresh")
 	}
+	// what showed the stale copy hears when the new one lands
+	landed := make(chan struct{}, 1)
+	OnSubscriptionUsage = func() { landed <- struct{}{} }
+	t.Cleanup(func() { OnSubscriptionUsage = nil })
+	c.Lock()
+	p := c.pending
+	c.at = time.Time{}
+	c.Unlock()
+	if p != nil {
+		<-p
+	}
+	SubscriptionUsage(context.Background())
+	select {
+	case <-landed:
+	case <-time.After(15 * time.Second):
+		t.Fatal("not told the refresh landed")
+	}
 }
 
 func TestChosenWindows(t *testing.T) {
