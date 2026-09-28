@@ -625,10 +625,24 @@ func quotaLines(qs []provider.SubscriptionQuota, asked, left bool, width int, no
 			out = append(out, line+"  "+sMuted.Render("no usage reported"))
 			continue
 		}
-		// the windows follow the name, those that don't fit on lines below it
-		at := tw
+		// the windows follow the name, those that don't fit on lines below
+		// it, and a Codex account's resets after them
+		var cells []string
 		for _, w := range q.Windows {
-			c := quotaCell(w, left, now)
+			cells = append(cells, quotaCell(w, left, now))
+		}
+		if r := q.Resets; r != nil {
+			c := sText.Render("↺ 1 reset")
+			if r.Count != 1 {
+				c = sText.Render(fmt.Sprintf("↺ %d resets", r.Count))
+			}
+			if r.Until != nil {
+				c += sFaint.Render(" until " + provider.ResetClock(*r.Until, now))
+			}
+			cells = append(cells, c)
+		}
+		at := tw
+		for _, c := range cells {
 			cw := lipgloss.Width(c)
 			if at > tw && width > 0 && at+3+cw > width {
 				out = append(out, line)

@@ -76,6 +76,8 @@ type Quota struct {
 	// "auto", over when "off", either when "".
 	Until *time.Time `json:"until,omitempty"`
 	Renew string     `json:"renew,omitempty"`
+	// Resets are a Codex account's rate-limit resets, when it holds any.
+	Resets *ResetCredits `json:"resets,omitempty"`
 }
 
 // QuotaSpan is one window of an allowance: how much of it is used and
@@ -98,7 +100,7 @@ func QuotaReport(ctx context.Context, now time.Time) []Quota {
 	}{{"subscription", subs}, {"plan", plans}, {"balance", balances}} {
 		for _, q := range g.qs {
 			r := Quota{Provider: q.Provider, Name: q.Name, Kind: g.kind, Plan: q.Plan, User: q.User,
-				Windows: []QuotaSpan{}, Balance: q.Balance, Error: q.Error, Until: q.Until, Renew: q.Renew}
+				Windows: []QuotaSpan{}, Balance: q.Balance, Error: q.Error, Until: q.Until, Renew: q.Renew, Resets: q.Resets}
 			for _, w := range q.Windows {
 				s := QuotaSpan{Name: w.Name, Used: w.Used, Remaining: max(0, 100-w.Used), ResetsAt: w.ResetsAt, Display: w.Display}
 				if s.ResetsAt == nil && w.ResetSecs > 0 {

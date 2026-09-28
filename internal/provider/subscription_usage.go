@@ -56,6 +56,9 @@ type SubscriptionQuota struct {
 	// AsOf is when an allowance shown in place of one that couldn't be
 	// read was read (see keepLast); nil for a reading just made.
 	AsOf *time.Time `json:"asOf,omitempty"`
+	// Resets are the rate-limit resets a Codex account holds, nil when
+	// it holds none (codex_resets.go).
+	Resets *ResetCredits `json:"resets,omitempty"`
 }
 
 var subscriptionUsageCache struct {
@@ -482,7 +485,7 @@ func codexSubscriptionUsage(ctx context.Context, path string) SubscriptionQuota 
 		q.Error = err.Error()
 		return q
 	}
-	q.Plan, q.Windows, err = codexWindows(ctx, token, accountID)
+	q.Plan, q.Windows, q.Resets, err = codexWindows(ctx, token, accountID)
 	if b, rerr := os.ReadFile(path); rerr == nil {
 		q.Until = codexUntil(b, time.Now())
 	}
@@ -508,20 +511,26 @@ func codexUntil(auth []byte, now time.Time) *time.Time {
 	return &t
 }
 
-// codexWindows is the plan and allowance of the ChatGPT account token
-// signs in to.
-func codexWindows(ctx context.Context, token, accountID string) (plan string, out []QuotaWindow, err error) {
+// codexWindows is the plan, allowance and rate-limit resets of the
+// ChatGPT account token signs in to.
+func codexWindows(ctx context.Context, token, accountID string) (plan string, out []QuotaWindow, resets *ResetCredits, err error) {
 	var data struct {
 		PlanType  string `json:"plan_type"`
 		RateLimit struct {
 			Primary   *codexWindow `json:"primary_window"`
 			Secondary *codexWindow `json:"secondary_window"`
 		} `json:"rate_limit"`
+		Resets *struct {
+			Available int `json:"available_count"`
+		} `json:"rate_limit_reset_credits"`
 	}
 	base := strings.TrimSuffix(CodexBase, "/codex")
 	out = []QuotaWindow{}
 	if err = accountJSON(ctx, base+"/wham/usage", token, map[string]string{"chatgpt-account-id": accountID}, &data); err != nil {
-		return "", out, err
+		return "", out, nil, err
+	}
+	if data.Resets != nil {
+		resets = codexResets(ctx, base, token, accountID, data.Resets.Available)
 	}
 	if data.RateLimit.Primary != nil {
 		out = append(out, data.RateLimit.Primary.window())
@@ -529,7 +538,7 @@ func codexWindows(ctx context.Context, token, accountID string) (plan string, ou
 	if data.RateLimit.Secondary != nil {
 		out = append(out, data.RateLimit.Secondary.window())
 	}
-	return data.PlanType, out, nil
+	return data.PlanType, out, resets, nil
 }
 
 type codexWindow struct {

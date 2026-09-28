@@ -138,6 +138,9 @@ func accountsCmd(args []string) error {
 		for _, w := range r.Windows {
 			line += "  " + quotaCell(w)
 		}
+		if r.Resets != nil {
+			line += "  " + resetsCell(r.Resets)
+		}
 		if r.Lapsed != "" {
 			line += "  " + muted.Render(r.Lapsed)
 		} else if r.Error != "" {
@@ -159,6 +162,8 @@ type accountRow struct {
 	Windows []quotaSpan `json:"windows"`
 	Error   string      `json:"error,omitempty"`
 	Lapsed  string      `json:"lapsed,omitempty"` // its sign-in has to be made again
+	// Resets are a Codex account's rate-limit resets, when it holds any.
+	Resets *provider.ResetCredits `json:"resets,omitempty"`
 }
 
 type quotaSpan = provider.QuotaSpan
@@ -196,7 +201,7 @@ func accountRows(ls []provider.Login, now time.Time) []accountRow {
 			if r.Plan == "" {
 				r.Plan = q.Plan
 			}
-			r.Error = q.Error
+			r.Error, r.Resets = q.Error, q.Resets
 			for _, w := range q.Windows {
 				s := quotaSpan{Name: w.Name, Used: w.Used, Remaining: max(0, 100-w.Used), ResetsAt: w.ResetsAt, Display: w.Display}
 				if s.ResetsAt == nil && w.ResetSecs > 0 {

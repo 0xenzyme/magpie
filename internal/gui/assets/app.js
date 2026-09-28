@@ -4218,6 +4218,15 @@ function renderQuotas() {
         card.append(who);
       }
       card.append(quotaWindows(sub));
+      if (sub.resets?.count) {
+        const r = el("div", "quota-resets");
+        r.append(resetsWords(sub.resets));
+        const use = el("button", "text", t("Use a reset"));
+        use.title = t("Start this account's windows again now, with one of its resets");
+        use.onclick = () => askCodexReset(sub);
+        r.append(use);
+        card.append(r);
+      }
     }
     subscriptions.append(card);
   }
@@ -4317,9 +4326,17 @@ function renderPanelQuota() {
   for (const [name, qs] of groups) {
     const g = el("div", "pq-group");
     const head = el("div", "pq-gh");
-    // how many accounts, or the one account's plan and until when
-    const note = qs.length > 1 ? t("{n} accounts", { n: qs.length }) : [qs[0].plan, qs[0].until ? planTerm(qs[0]) : ""].filter(Boolean).join(" · ");
-    head.append(icon(qs[0].icon), el("span", "pq-gn", name), el("span", "pq-gnote" + (qs.length === 1 && qs[0].renew === "off" ? " ends" : ""), note));
+    head.append(icon(qs[0].icon), el("span", "pq-gn", name));
+    // several accounts: how many, a quiet count by the name; one: its plan
+    // and until when, at the right
+    if (qs.length > 1) {
+      const n = el("span", "pq-count", String(qs.length));
+      n.title = t("{n} accounts", { n: qs.length });
+      head.append(n);
+    } else {
+      const note = [qs[0].plan, qs[0].until ? planTerm(qs[0]) : ""].filter(Boolean).join(" · ");
+      head.append(el("span", "pq-gnote" + (qs[0].renew === "off" ? " ends" : ""), note));
+    }
     g.append(head);
     for (const q of qs) g.append(panelQuotaCard(q));
     box.append(g);
@@ -4390,7 +4407,93 @@ function panelQuotaCard(q) {
     rings.append(r);
   }
   card.append(rings);
+  if (q.resets?.count) {
+    const r = el("div", "pq-resets");
+    r.append(resetsWords(q.resets));
+    const use = el("button", "pq-use", t("Use one…"));
+    use.title = t("Start this account's windows again now, with one of its resets");
+    use.onclick = () => askCodexReset(q);
+    r.append(use);
+    card.append(r);
+  }
   return card;
+}
+
+// resetsWords: a Codex account's rate-limit resets, "↺ 2 resets · until
+// Sat 22:30", the date only when one of them runs out.
+function resetsWords(r) {
+  const w = el("span", "resets-words");
+  w.append(el("span", "resets-n", "↺ " + t(r.count === 1 ? "1 reset" : "{n} resets", { n: r.count })));
+  if (r.until) {
+    const at = new Date(r.until);
+    w.append(el("span", "resets-until", " · " + t("until {when}", { when: resetClock(at) })));
+    w.title = t("The first runs out {when}", { when: at.toLocaleString() });
+  }
+  return w;
+}
+
+// askCodexReset: spending a reset can't be taken back, so it asks first;
+// then it says what came of it and reads the usage again.
+let resetAsk = null;
+function askCodexReset(q) {
+  const ed = el("div", "editor reset-ask");
+  const head = el("div", "ehead");
+  head.append(icon(q.icon || "codex"), el("b", "", t("Use a Codex reset?")));
+  ed.append(head);
+  const who = q.user || q.name;
+  ed.append(el("p", "lib-confirm", t(q.resets.count === 1
+    ? "{who} has 1 reset. Using it starts its windows again at once, as if none of them had been used. It can't be undone."
+    : "{who} has {n} resets. Using one starts its windows again at once, as if none of them had been used. It can't be undone.", { who, n: q.resets.count })));
+  // nothing used yet: a reset would start nothing again
+  if (!q.windows?.some((w) => w.used > 0)) ed.append(el("p", "lib-confirm reset-idle", t("None of its windows has been used yet, so there is nothing to start again.")));
+  const bar = el("div", "bar");
+  const go = el("button", "text primary", t("Use a reset"));
+  go.onclick = async (e) => {
+    e.stopPropagation();
+    go.disabled = true;
+    go.classList.add("busy");
+    try {
+      const out = await api("usage/codex-reset", { user: q.user || "" });
+      closeResetAsk();
+      status(who + ": " + resetOutcome(out), out.code === "reset" ? "ok" : "err");
+      loadQuotas();
+    } catch (err) {
+      go.disabled = false;
+      go.classList.remove("busy");
+      status(err.message, "err");
+    }
+  };
+  const cancel = el("button", "text", t("Cancel"));
+  cancel.onclick = (e) => { e.stopPropagation(); closeResetAsk(); };
+  bar.append(el("span", "grow"), cancel, go);
+  ed.append(bar);
+  resetAsk = ed;
+  openModal(ed);
+  $("#modal").classList.add("lib");
+  go.focus();
+}
+function closeResetAsk() {
+  if (!resetAsk) return;
+  resetAsk = null;
+  closeModal();
+  setTimeout(() => { if (!resetAsk) $("#modal").classList.remove("lib"); }, 200);
+}
+// the dialog is the providers page's: while this asks, its backdrop and
+// Escape close only this (in the panel, Escape would hide the window)
+$("#modal").addEventListener("click", (e) => {
+  if (resetAsk && e.target === e.currentTarget) { e.stopImmediatePropagation(); closeResetAsk(); }
+}, true);
+document.addEventListener("keydown", (e) => {
+  if (resetAsk && e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); closeResetAsk(); }
+}, true);
+function resetOutcome(out) {
+  switch (out.code) {
+    case "reset": return t(out.windows === 1 ? "1 window started again" : "{n} windows started again", { n: out.windows });
+    case "nothing_to_reset": return t("nothing to start again — no window has been used, and the reset is kept");
+    case "no_credit": return t("no reset left on the account");
+    case "already_redeemed": return t("that reset was already used");
+  }
+  return out.code;
 }
 
 // panelAge: on the Usage tab, the footer says how old what it shows is.
