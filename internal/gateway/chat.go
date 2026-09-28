@@ -398,7 +398,8 @@ func (u Usage) chat() map[string]any {
 // as indexed fragments; it tracks which one is open.
 type chatDecoder struct {
 	started bool
-	tool    int // index of the open tool call, -1 for none
+	tool    int    // index of the open tool call, -1 for none
+	choice  string // index of the first choice seen; an empty string means none yet
 }
 
 func (d *chatDecoder) decode(data string, emit func(Event)) error {
@@ -409,6 +410,7 @@ func (d *chatDecoder) decode(data string, emit func(Event)) error {
 		ID      string `json:"id"`
 		Model   string `json:"model"`
 		Choices []struct {
+			Index json.RawMessage `json:"index"`
 			Delta struct {
 				Content          *string     `json:"content"`
 				ReasoningContent string      `json:"reasoning_content"`
@@ -434,6 +436,17 @@ func (d *chatDecoder) decode(data string, emit func(Event)) error {
 		emit(Event{Kind: KStart, MsgID: ch.ID, Model: ch.Model})
 	}
 	for _, c := range ch.Choices {
+		// Translation has one reply: lock onto the first readable choice
+		// index. A missing, null, or malformed index says nothing about
+		// which choice this chunk belongs to, so it cannot select or reject
+		// one. Passthrough still relays every choice unchanged.
+		if index, ok := chatChoiceIndex(c.Index); ok {
+			if d.choice == "" {
+				d.choice = index
+			} else if index != d.choice {
+				continue
+			}
+		}
 		// Some relays send the same thought under both names; one is enough.
 		t := c.Delta.ReasoningContent
 		if t == "" {
@@ -468,6 +481,35 @@ func (d *chatDecoder) decode(data string, emit func(Event)) error {
 		emit(Event{Kind: KUsage, Usage: ch.Usage.usage()})
 	}
 	return nil
+}
+
+// chatChoiceIndex accepts numeric indexes and numeric strings without
+// changing how a missing or unreadable index is handled. JSON numbers such
+// as 1.0 and 1 are the same choice.
+func chatChoiceIndex(raw json.RawMessage) (string, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", false
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		raw = json.RawMessage(text)
+	}
+	var n json.Number
+	if json.Unmarshal(raw, &n) != nil {
+		return "", false
+	}
+	index, err := n.Int64()
+	if err != nil {
+		var f float64
+		if json.Unmarshal(raw, &f) != nil || f < 0 || f != float64(int64(f)) {
+			return "", false
+		}
+		index = int64(f)
+	}
+	if index < 0 {
+		return "", false
+	}
+	return fmt.Sprint(index), true
 }
 
 func stopFromChat(s string) string {
