@@ -972,30 +972,58 @@ function effortBars(f) {
   return e;
 }
 
-// effortSeg: an opened panel row's effort, every level side by side.
+// effortSeg: an opened panel row's effort, as the effort picker's slider.
+// A level shows at once, bars and all; the write follows, in order, so a
+// slow agent config never holds the thumb (巨卡).
 function effortSeg(a, f) {
-  const seg = el("div", "ag-seg");
-  seg.setAttribute("role", "radiogroup");
-  seg.setAttribute("aria-label", t(f.label));
-  for (const o of f.options) {
-    const b = el("button", o.value === f.value ? "on" : "", effortName(o));
-    b.type = "button";
-    b.setAttribute("role", "radio");
-    b.setAttribute("aria-checked", String(o.value === f.value));
-    if (o.note) b.title = o.note;
-    b.onclick = async () => {
-      if (o.value === f.value) return;
-      try {
-        state = await api("set", { agent: a.id, field: f.key, value: o.value });
-        renderAgents();
-        status(`${a.name} ${t(f.label)} → ${effortName(o)}`, "ok");
-      } catch (e) {
-        status(e.message, "err");
-      }
-    };
-    seg.append(b);
-  }
-  return seg;
+  const options = f.options;
+  const box = el("div", "effort-control");
+  const head = el("div", "effort-head");
+  const value = el("b");
+  head.append(el("span", "", t(f.label)), value);
+  const track = el("div", "effort-track");
+  const ticks = el("span", "effort-ticks");
+  ticks.setAttribute("aria-hidden", "true");
+  ticks.append(...options.map((_, i) => {
+    const dot = el("i");
+    dot.style.setProperty("--at", options.length > 1 ? i / (options.length - 1) : 0);
+    return dot;
+  }));
+  const range = el("input");
+  range.type = "range";
+  range.min = "0";
+  range.step = "1";
+  range.max = String(Math.max(0, options.length - 1));
+  range.value = String(Math.max(0, options.findIndex((o) => o.value === f.value)));
+  range.setAttribute("aria-label", t(f.label));
+  track.append(ticks, range);
+  const ends = el("div", "effort-ends");
+  ends.setAttribute("aria-hidden", "true");
+  ends.append(el("span", "", effortName(options[0])), el("span", "", effortName(options[options.length - 1])));
+  box.append(head, track, ends);
+  const update = () => {
+    const i = Number(range.value);
+    [...ticks.children].forEach((dot, j) => { dot.classList.toggle("on", j < i); dot.classList.toggle("cur", j === i); });
+    value.textContent = effortName(options[i]);
+    const fill = `${options.length > 1 ? 100 * i / (options.length - 1) : 0}%`;
+    range.style.setProperty("--fill", fill);
+    track.style.setProperty("--fill", fill);
+    range.setAttribute("aria-valuetext", effortName(options[i]));
+  };
+  range.oninput = update;
+  let saving = Promise.resolve();
+  range.onchange = () => {
+    const o = options[Number(range.value)];
+    if (!o || o.value === f.value) return;
+    f.value = o.value;
+    box.closest(".row")?.querySelector(".ag-sum .eff")?.replaceWith(effortBars(f));
+    saving = saving.then(async () => {
+      state = await api("set", { agent: a.id, field: f.key, value: o.value });
+      status(`${a.name} ${t(f.label)} → ${effortName(o)}`, "ok");
+    }).catch((e) => { status(e.message, "err"); renderAgents(); });
+  };
+  update();
+  return box;
 }
 
 function renderEffortPicker() {
