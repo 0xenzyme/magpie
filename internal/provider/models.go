@@ -40,8 +40,11 @@ func (p Provider) Available() []catalog.Model {
 		}
 	}
 	if live, _, ok := catalog.Live(p.ID); ok {
-		if p.ID == "cursor" {
+		switch p.ID {
+		case "cursor":
 			live = withCursorContexts(live)
+		case "devin":
+			live = withDevinContexts(live)
 		}
 		return catalog.Decorate(live, known)
 	}

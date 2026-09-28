@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -152,8 +153,45 @@ func devinModelsFlatten(families []DevinFamily) []catalog.Model {
 		if id := strings.ToLower(f.UID); id == "adaptive" || id == "fusion" {
 			continue
 		}
-		out = append(out, catalog.Model{ID: f.UID, Name: f.Label, Provider: "devin"})
-		out = append(out, f.Models...)
+		// a pinned variant (claude-opus-5-5-high) has its family's window:
+		// without it Claude Code takes a 1M model for 200K (no [1m] mark)
+		window, most := catalog.ContextOf(f.UID), catalog.OutputOf(f.UID)
+		out = append(out, catalog.Model{ID: f.UID, Name: f.Label, Provider: "devin", Context: window, Output: most})
+		for _, m := range f.Models {
+			if m.Context == 0 {
+				m.Context = window
+			}
+			if m.Output == 0 {
+				m.Output = most
+			}
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+var devinEffort = regexp.MustCompile(`-(min|low|medium|high|xhigh|max|fast)$`)
+
+// withDevinContexts fills in a saved list's windows, fetched before a
+// variant was given its family's: claude-opus-5-5-high-fast has
+// claude-opus-5-5's.
+func withDevinContexts(ms []catalog.Model) []catalog.Model {
+	out := slices.Clone(ms)
+	for i, m := range out {
+		for base := m.ID; m.Context == 0; {
+			if n := catalog.ContextOf(base); n > 0 {
+				out[i].Context = n
+				if m.Output == 0 {
+					out[i].Output = catalog.OutputOf(base)
+				}
+				break
+			}
+			b := devinEffort.ReplaceAllString(base, "")
+			if b == base {
+				break
+			}
+			base = b
+		}
 	}
 	return out
 }

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"github.com/yetone/magpie/internal/catalog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -59,6 +60,15 @@ func TestParseDevinModels(t *testing.T) {
 	flat := devinModelsFlatten(families)
 	if len(flat) != 5 || flat[0].ID != "swe-2" || flat[1].ID != "swe-2-max" || flat[4].ID != "claude-opus-5-5-high" {
 		t.Fatalf("flat: %v", flat)
+	}
+	if w := catalog.ContextOf("claude-opus-5-5"); flat[3].Context != w || flat[4].Context != w {
+		t.Fatalf("a variant has its family's window %d: %+v", w, flat[3:])
+	}
+	if w := catalog.ContextOf("claude-opus-5-5"); w > 0 {
+		saved := withDevinContexts([]catalog.Model{{ID: "claude-opus-5-5-high-fast"}, {ID: "claude-opus-5-5-max", Context: 7}, {ID: "nobody-high"}})
+		if saved[0].Context != w || saved[1].Context != 7 || saved[2].Context != 0 {
+			t.Fatalf("saved list: %+v", saved)
+		}
 	}
 	for _, m := range flat {
 		if m.Provider != "devin" {
