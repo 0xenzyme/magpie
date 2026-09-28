@@ -17,8 +17,9 @@ const (
 	qoderCNID = "11111111-aaaa-4bbb-8ccc-000000000002"
 )
 
-// setupAgents is setup with ZCode's database made and dsh's, Cline's and
-// Qoder's sessions put in the home folder, where each keeps them.
+// setupAgents is setup with ZCode's database made and dsh's, Cline's,
+// Qoder's, Grok Build's and WorkBuddy's sessions put in the home folder,
+// where each keeps them.
 func setupAgents(t *testing.T) (home string) {
 	claude, _ := setup(t)
 	home = filepath.Join(filepath.Dir(claude), "home")
@@ -26,6 +27,8 @@ func setupAgents(t *testing.T) (home string) {
 	copyTree(t, "testdata/cline", filepath.Join(home, ".cline", "data"))
 	copyTree(t, "testdata/qoder", filepath.Join(home, ".qoder"))
 	copyTree(t, "testdata/qoder-cn", filepath.Join(home, ".qoder-cn"))
+	copyTree(t, "testdata/grok", filepath.Join(home, ".grok"))
+	copyTree(t, "testdata/workbuddy", filepath.Join(home, ".workbuddy"))
 	zcMakeDB(t, filepath.Join(home, ".zcode", "cli", "db", "db.sqlite"))
 	return
 }
@@ -268,7 +271,8 @@ func TestQoder(t *testing.T) {
 func TestDirsMore(t *testing.T) {
 	home := setupAgents(t)
 	d := Dirs()
-	want := []string{filepath.Join(home, ".zcode"), filepath.Join(home, ".dsh"), filepath.Join(home, ".cline", "data", "sessions"), filepath.Join(home, ".qoder"), filepath.Join(home, ".qoder-cn")}
+	want := []string{filepath.Join(home, ".zcode"), filepath.Join(home, ".dsh"), filepath.Join(home, ".cline", "data", "sessions"), filepath.Join(home, ".qoder"), filepath.Join(home, ".qoder-cn"),
+		filepath.Join(home, ".grok"), filepath.Join(home, ".workbuddy")}
 	if len(d) != 2+len(want) {
 		t.Fatalf("dirs %v", d)
 	}

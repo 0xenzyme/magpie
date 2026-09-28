@@ -1,7 +1,8 @@
 // Package sessions lists the agents' recent sessions from their own session
 // files — Claude Code's projects/*/<id>.jsonl (and Qoder's, the same kind),
 // Codex's rollout files, OpenCode's database (or its older JSON files) and
-// ZCode's, Pi's session files, DeepSeek Harness's and Cline's — with the
+// ZCode's, Pi's session files, DeepSeek Harness's, Cline's, Grok Build's and
+// WorkBuddy's — with the
 // tokens each spent, what that cost at list price, and the command that
 // resumes it. It only ever reads the agents' folders.
 //
@@ -64,7 +65,7 @@ type Model struct {
 
 // Session is one agent session.
 type Session struct {
-	Agent  string    `json:"agent"` // magpie agent id: claude, codex, opencode, pi, zcode, dsh, cline, qoder, qoder-cn
+	Agent  string    `json:"agent"` // magpie agent id: claude, codex, opencode, pi, zcode, dsh, cline, qoder, qoder-cn, grok, workbuddy
 	ID     string    `json:"id"`
 	Cwd    string    `json:"cwd"`
 	Title  string    `json:"title"` // the first prompt, else the agent's own title
@@ -232,7 +233,8 @@ type file struct {
 	// OpenCode and ZCode: the session, and where it is kept
 	sid string
 	oc  ocStore
-	// Cline: the session's manifest, beside its messages
+	// Cline: the session's manifest, beside its messages; Grok Build: its
+	// summary.json, beside its updates
 	manifest string
 }
 
@@ -292,7 +294,8 @@ func ccFiles(agent, dir string) []file {
 func allFiles() []file {
 	var out []file
 	for _, fs := range [][]file{claudeFiles(), codexFiles(), openCodeFiles(), piFiles(),
-		zcodeFiles(), dshFiles(), clineFiles(), ccFiles("qoder", QoderDir("qoder")), ccFiles("qoder-cn", QoderDir("qoder-cn"))} {
+		zcodeFiles(), dshFiles(), clineFiles(), ccFiles("qoder", QoderDir("qoder")), ccFiles("qoder-cn", QoderDir("qoder-cn")),
+		grokFiles(), workbuddyFiles()} {
 		out = append(out, fs...)
 	}
 	return out
@@ -310,6 +313,8 @@ func Dirs() []string {
 		{ClineSessionDir(), ClineSessionDir()},
 		{QoderDir("qoder"), filepath.Join(QoderDir("qoder"), "projects")},
 		{QoderDir("qoder-cn"), filepath.Join(QoderDir("qoder-cn"), "projects")},
+		{GrokDir(), filepath.Join(GrokDir(), "sessions")},
+		{WorkBuddyDir(), filepath.Join(WorkBuddyDir(), "projects")},
 	} {
 		if _, err := os.Stat(d.sessions); err == nil {
 			out = append(out, d.dir)
@@ -567,7 +572,7 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 			if first == "" {
 				first = st.First
 			}
-			if (s.Agent == "codex" || s.Agent == "pi" || s.Agent == "dsh") && st.ID != "" && f.path == fs[0].path {
+			if (s.Agent == "codex" || s.Agent == "pi" || s.Agent == "dsh" || s.Agent == "grok") && st.ID != "" && f.path == fs[0].path {
 				s.ID = st.ID
 			}
 		}
@@ -628,6 +633,8 @@ func parse(f file, old *state) *state {
 		return parseDsh(f)
 	case "cline":
 		return parseCline(f)
+	case "grok":
+		return parseGrok(f)
 	}
 	var s *state
 	if old != nil && f.size >= old.Size && old.Off <= f.size {
@@ -642,10 +649,15 @@ func parse(f file, old *state) *state {
 		line = codexLine
 	case "pi":
 		line = piParse
+	case "workbuddy":
+		line = workbuddyLine
 	}
 	off, err := scan(f.path, s.Off, func(b []byte) { line(s, b, f.main) })
 	if err == nil {
 		s.Off = off
+	}
+	if f.agent == "workbuddy" && s.Cwd == "" {
+		workbuddyMeta(s, f.path)
 	}
 	return s
 }
@@ -814,6 +826,8 @@ func ResumeCommand(agent, id, cwd string) string {
 		run = "qodercli --resume " + id
 	case "qoder-cn":
 		run = "qoderclicn --resume " + id
+	case "grok":
+		run = "grok --resume " + id
 	default:
 		return ""
 	}
