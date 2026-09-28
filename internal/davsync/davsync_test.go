@@ -456,3 +456,53 @@ func must[T any](v T, err error) T {
 	}
 	return v
 }
+
+// The password saved goes with the server and user it was given for: left
+// empty, it is kept for another folder there; for another server or user
+// it is asked for, never sent to them, and a server with no user needs none
+// once the user is taken away. SavedPassword says so before Configure does.
+func TestConfigurePassword(t *testing.T) {
+	newComputer(t).use(t)
+	withUser := Config{URL: "https://dav.example.com/dav/", User: "me", Password: "pw", Passphrase: "correct horse"}
+	tokenOnly := Config{URL: "https://dav.example.com/dav/", Password: "token", Passphrase: "correct horse"}
+	for _, tc := range []struct {
+		from      Config
+		url, user string
+		want      string // the password saved after
+		asked     bool
+	}{
+		{withUser, "https://dav.example.com/dav/other/", "me", "pw", false},
+		{withUser, "https://DAV.example.com/dav/", " me ", "pw", false},
+		{withUser, "https://other.example.com/dav/", "me", "", true},
+		{withUser, "http://dav.example.com/dav/", "me", "", true}, // not sent where it can be read on the way
+		{withUser, "https://dav.example.com:8443/dav/", "me", "", true},
+		{withUser, "https://dav.example.com/dav/", "you", "", true},
+		{withUser, "https://dav.example.com/dav/", "", "", false}, // a server that asks for no sign-in
+		{tokenOnly, "https://dav.example.com/dav/other/", "", "token", false},
+		{tokenOnly, "https://other.example.com/dav/", "", "", true},
+	} {
+		if err := Configure(tc.from); err != nil {
+			t.Fatal(err)
+		}
+		c := Config{URL: tc.url, User: tc.user}
+		if kept, needed := SavedPassword(c); kept != (tc.want != "") || needed != tc.asked {
+			t.Errorf("%s as %q: SavedPassword kept %v, needed %v", tc.url, tc.user, kept, needed)
+		}
+		err := Configure(c)
+		if tc.asked {
+			if err == nil || !strings.Contains(err.Error(), "type the password") {
+				t.Errorf("%s as %q: %v, want the password asked for", tc.url, tc.user, err)
+			}
+			if c, _ := Load(); c.URL != tc.from.URL || c.Password != tc.from.Password {
+				t.Errorf("%s as %q: saved anyway: %+v", tc.url, tc.user, c)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c, _ := Load(); c.Password != tc.want || c.Passphrase != "correct horse" {
+			t.Errorf("%s as %q: password %q, passphrase %q", tc.url, tc.user, c.Password, c.Passphrase)
+		}
+	}
+}

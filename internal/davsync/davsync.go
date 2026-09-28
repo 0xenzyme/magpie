@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -95,47 +96,112 @@ func Load() (Config, bool) {
 }
 
 // Configure turns sync on, or changes it. A password or passphrase left
-// empty keeps the one set before.
+// empty keeps the one set before — the password only for the same server
+// and user: it is never sent to another, and is asked for again there.
 func Configure(c Config) error {
 	c.URL, c.User = strings.TrimSpace(c.URL), strings.TrimSpace(c.User)
-	if _, err := newDAV(c); err != nil {
+	if err := CheckAddress(c.URL); err != nil {
 		return err
 	}
-	if old, ok := Load(); ok {
-		if c.Password == "" {
-			c.Password = old.Password
+	// after a sync in progress, which would save its state for the setup it
+	// began with
+	return locked(func() error {
+		if old, ok := Load(); ok {
+			kept, needed := password(old, c)
+			if kept {
+				c.Password = old.Password
+			}
+			if needed {
+				who := c.URL
+				if u, err := url.Parse(c.URL); err == nil && u.Host != "" {
+					who = u.Host
+				}
+				if c.User != "" {
+					who = c.User + " on " + who
+				}
+				return fmt.Errorf("type the password for %s: the one saved is only sent to the server and user it was given for", who)
+			}
+			if c.Passphrase == "" {
+				c.Passphrase = old.Passphrase
+			}
 		}
 		if c.Passphrase == "" {
-			c.Passphrase = old.Passphrase
+			return errors.New("sync needs a passphrase: the file is sealed with it before it leaves this computer")
 		}
+		if c.Password != "" && c.Passphrase == c.Password {
+			// the server is sent the password: with it, it could open the file
+			return errors.New("the passphrase is the server's password: the server is sent the password, and could open the file with it. Pick a passphrase of its own")
+		}
+		b, err := json.MarshalIndent(c, "", "  ")
+		if err != nil {
+			return err
+		}
+		os.MkdirAll(settings.Dir(), 0o755)
+		if err := edit.WriteAtomic(path("sync.json"), b); err != nil {
+			return err
+		}
+		return os.Chmod(path("sync.json"), 0o600)
+	})
+}
+
+// CheckAddress is Configure's look at the address alone, for a caller to
+// make before asking for the password and passphrase.
+func CheckAddress(u string) error {
+	_, err := newDAV(Config{URL: u})
+	return err
+}
+
+// password is what becomes of the saved password when old is changed to
+// c, with c's own left empty: kept, for the same server and user; or
+// needed, a new one typed, for another — unless the user name was just
+// taken away, for a server that asks for no sign-in.
+func password(old, c Config) (kept, needed bool) {
+	if c.Password != "" || old.Password == "" {
+		return false, false
 	}
-	if c.Passphrase == "" {
-		return errors.New("sync needs a passphrase: the file is sealed with it before it leaves this computer")
+	if c.sameAccount(old) {
+		return true, false
 	}
-	if c.Password != "" && c.Passphrase == c.Password {
-		// the server is sent the password: with it, it could open the file
-		return errors.New("the passphrase is the server's password: the server is sent the password, and could open the file with it. Pick a passphrase of its own")
+	cleared := strings.TrimSpace(c.User) == "" && strings.TrimSpace(old.User) != ""
+	return false, !cleared
+}
+
+// SavedPassword is Configure's look at the saved password for c, with c's
+// own left empty, for a caller to make before asking for one: whether it
+// is kept, or a new one is needed.
+func SavedPassword(c Config) (kept, needed bool) {
+	old, ok := Load()
+	if !ok {
+		return false, false
 	}
-	b, err := json.MarshalIndent(c, "", "  ")
+	c.Password = ""
+	return password(old, c)
+}
+
+// sameAccount is whether c and o are one user on one server: the password
+// given for one is only ever sent to the other when they are.
+func (c Config) sameAccount(o Config) bool {
+	a, err := url.Parse(strings.TrimSpace(c.URL))
 	if err != nil {
-		return err
+		return false
 	}
-	os.MkdirAll(settings.Dir(), 0o755)
-	if err := edit.WriteAtomic(path("sync.json"), b); err != nil {
-		return err
+	b, err := url.Parse(strings.TrimSpace(o.URL))
+	if err != nil {
+		return false
 	}
-	return os.Chmod(path("sync.json"), 0o600)
+	return a.Host != "" && a.Scheme == b.Scheme && strings.EqualFold(a.Host, b.Host) &&
+		strings.TrimSpace(c.User) == strings.TrimSpace(o.User)
 }
 
 // Off turns sync off. The file on the server stays.
 func Off() error {
-	mu.Lock()
-	defer mu.Unlock()
-	os.Remove(path("sync-state.json"))
-	if err := os.Remove(path("sync.json")); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
+	return locked(func() error {
+		os.Remove(path("sync-state.json"))
+		if err := os.Remove(path("sync.json")); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	})
 }
 
 // View is sync as the Settings page shows it: never the secrets.
@@ -169,12 +235,13 @@ func Status() View {
 }
 
 // Dismiss clears the notice.
-func Dismiss() {
-	mu.Lock()
-	defer mu.Unlock()
-	st := loadState()
-	st.Notice = nil
-	saveState(st)
+func Dismiss() error {
+	return locked(func() error {
+		st := loadState()
+		st.Notice = nil
+		saveState(st)
+		return nil
+	})
 }
 
 func loadState() state {
@@ -201,8 +268,18 @@ var mu sync.Mutex
 
 // Now syncs once; nothing when sync is off.
 func Now(ctx context.Context) error {
+	if _, ok := Load(); !ok { // off: no lock taken, so none made
+		return nil
+	}
+	unlock, err := lock(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	mu.Lock()
 	defer mu.Unlock()
+	// read again under the lock: another magpie may have turned sync off,
+	// or changed it, while this one waited
 	c, ok := Load()
 	if !ok {
 		return nil
@@ -211,7 +288,7 @@ func Now(ctx context.Context) error {
 	if st.Key != stateKey(c) { // another folder or passphrase: start afresh
 		st = state{Key: stateKey(c)}
 	}
-	err := syncOnce(ctx, c, &st)
+	err = syncOnce(ctx, c, &st)
 	if errors.Is(err, errChanged) { // another computer got in between: again, over its version
 		err = syncOnce(ctx, c, &st)
 	}

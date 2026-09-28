@@ -126,17 +126,27 @@ func restoreCmd(args []string) error {
 }
 
 // passphrase reads one from the terminal without echo, asked twice when
-// it is being set; piped in, it is the first line of stdin.
+// it is being set; piped in, it is the next line of stdin.
 func passphrase(prompt string, confirm bool) (string, error) {
+	return secret("passphrase", prompt, confirm)
+}
+
+// stdin is read through one reader, so a second secret piped in is the
+// second line and not lost to the first one's buffer.
+var stdin = bufio.NewReader(os.Stdin)
+
+// secret reads what (a passphrase, a password) as passphrase does; piped
+// in, it is the next line of stdin.
+func secret(what, prompt string, confirm bool) (string, error) {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
-		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		line, err := stdin.ReadString('\n')
 		line = strings.TrimRight(line, "\r\n")
 		if line == "" {
 			if err != nil {
-				return "", fmt.Errorf("no passphrase on stdin: %w", err)
+				return "", fmt.Errorf("no %s on stdin: %w", what, err)
 			}
-			return "", errors.New("the passphrase is empty")
+			return "", fmt.Errorf("the %s is empty", what)
 		}
 		return line, nil
 	}
@@ -151,7 +161,7 @@ func passphrase(prompt string, confirm bool) (string, error) {
 		return "", err
 	}
 	if pass == "" {
-		return "", errors.New("the passphrase is empty")
+		return "", fmt.Errorf("the %s is empty", what)
 	}
 	if confirm {
 		again, err := read("Again: ")
@@ -159,7 +169,7 @@ func passphrase(prompt string, confirm bool) (string, error) {
 			return "", err
 		}
 		if again != pass {
-			return "", errors.New("the passphrases differ")
+			return "", fmt.Errorf("the %ss differ", what)
 		}
 	}
 	return pass, nil
