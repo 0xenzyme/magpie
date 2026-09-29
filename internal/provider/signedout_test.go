@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Saved accounts of an agent not signed in where magpie looks (a magpie
@@ -40,5 +41,35 @@ func TestSavedButSignedOut(t *testing.T) {
 		if x.SignedOut {
 			t.Errorf("signed in, yet: %+v", x)
 		}
+	}
+}
+
+// A Claude account saved in magpie but not offered says which check found
+// no sign-in: no credentials, or credentials Claude Code says are signed out.
+func TestSavedButSignedOutClaudeSaysWhy(t *testing.T) {
+	home := claudeHome(t)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	if err := writeLogins([]savedLogin{{Agent: "claude", User: "a@x.com", Auth: []byte(`{}`)}}); err != nil {
+		t.Fatal(err)
+	}
+	why := func() string {
+		forgetClaudeCredential()
+		forgetClaudeStatus()
+		for _, x := range Excluded() {
+			if x.Agent == "claude" && x.SignedOut {
+				return x.Why
+			}
+		}
+		return ""
+	}
+	if w := why(); !strings.Contains(w, "nothing at "+filepath.Join(home, ".claude", ".credentials.json")) {
+		t.Fatalf("no credentials: %q", w)
+	}
+	claudeSignIn(t, home, time.Now().Add(time.Hour))
+	exe := filepath.Join(home, "claude")
+	os.WriteFile(exe, []byte("#!/bin/sh\necho '{\"loggedIn\": false}'\n"), 0o755)
+	claudeExecutable = func() string { return exe }
+	if w := why(); !strings.Contains(w, "claude auth status says no one is signed in") {
+		t.Fatalf("signed out: %q", w)
 	}
 }

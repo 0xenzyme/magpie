@@ -326,18 +326,39 @@ func savedButSignedOut() []Exclusion {
 		if _, ok := liveLogin(a); ok {
 			continue
 		}
-		where, signIn := codexAuthPath(), "codex login"
+		why, signIn := "nothing at "+codexAuthPath(), "codex login"
 		if a == "claude" {
-			where, signIn = claudeCredentialsPath(), "claude, then /login"
+			why, signIn = claudeNotSignedInWhy(), "claude, then /login"
 		}
 		n := "1 account is"
 		if saved[a] > 1 {
 			n = fmt.Sprintf("%d accounts are", saved[a])
 		}
 		out = append(out, Exclusion{Agent: a, SignedOut: true,
-			Why: fmt.Sprintf("%s saved in magpie, but it isn't signed in here (nothing at %s), and they are only offered beside the account it is signed in to. Sign in (%s) with this HOME.", n, where, signIn)})
+			Why: fmt.Sprintf("%s saved in magpie, but it isn't signed in here (%s), and they are only offered beside the account it is signed in to. Sign in (%s) with this HOME.", n, why, signIn)})
 	}
 	return out
+}
+
+// claudeNotSignedInWhy says which of liveLogin's checks found no Claude Code
+// sign-in: its credentials (on a Mac, the keychain first), what
+// `claude auth status` says, or the account's name.
+func claudeNotSignedInWhy() string {
+	c, _, ok := claudeCredential()
+	if !ok {
+		if claudeKeychain {
+			return `no "Claude Code-credentials" in the keychain magpie could read, and nothing at ` + claudeCredentialsPath()
+		}
+		return "nothing at " + claudeCredentialsPath()
+	}
+	user, plan, signedOut := claudeIdentity()
+	if signedOut {
+		return "its credentials are there, but claude auth status says no one is signed in"
+	}
+	if u, _ := claudeSignedInUser(c.OAuth.SubscriptionType, plan, user); u == "" {
+		return "its credentials are there, but neither " + claudeProfilePath() + " nor claude auth status names the account"
+	}
+	return "its sign-in could not be read"
 }
 
 // liveLogin reads the account an agent is signed in to now.
