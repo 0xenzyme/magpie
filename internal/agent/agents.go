@@ -75,6 +75,7 @@ func All() []*Agent {
 		omp(home),
 		devin(home, cfg),
 		hermes(home),
+		kimi(home),
 		cline(home),
 		qoder(home),
 		qoderCN(home),

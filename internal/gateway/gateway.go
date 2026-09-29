@@ -1171,7 +1171,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	case provider.Chat:
 		body = developerAsSystem(body)
 		if strings.HasSuffix(p.Host(), "openai.com") {
-			body = withoutFields(body, "enable_thinking")
+			// Qwen's switch and Kimi Code's (thinking: {type: …}), which
+			// OpenAI turns away as arguments it doesn't know
+			body = withoutFields(body, "enable_thinking", "thinking")
 		}
 		if p.IsBedrock() {
 			body = asCompletionTokens(body)
