@@ -208,6 +208,8 @@ const I18N = {
     "{n} models": "{n} 个模型",
     "{n} image model": "{n} 个图像模型",
     "{n} image models": "{n} 个图像模型",
+    "Image models": "图像模型",
+    "Agents don't chat with these, so they aren't among its models: the one that draws is picked in Settings → Images.": "Agent 不和它们对话，所以不在上面的模型里：生图用哪个，在 设置 → 图像 里选。",
     "no models exposed": "未暴露模型",
     "signed in as {user}": "已登录 {user}",
     "{name} · {model} — click to change": "{name} · {model} — 点击更改",

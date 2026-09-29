@@ -2672,6 +2672,7 @@ function renderEditor(p, presetID) {
       ed.append(...field(t("Account"), acct, t("{agent}'s sign-in, read from its own files. Sign out there and this provider goes away.", { agent: a.agentName })));
     }
     ed.append(...field(t("Models"), renderModels(p), ""));
+    if (p.drawIds?.length) ed.append(...renderDrawers(p));
     // a subscription's window too: Codex's backend says 272K for models
     // that take 872K (#120)
     const cx = input(draft.contexts || "", t("e.g. 128k · or gpt-6=1m, comma separated"));
@@ -2778,6 +2779,7 @@ function renderEditor(p, presetID) {
   }
 
   if (p) ed.append(...field(t("Models"), renderModels(p), ""));
+  if (p?.drawIds?.length) ed.append(...renderDrawers(p));
   {
     // the window agents are told a model has, over what the vendor or
     // models.dev says: one for all of them, and model=size for one
@@ -3491,6 +3493,15 @@ function renderModels(p) {
   box.append(why);
   draw();
   return box;
+}
+
+// renderDrawers: the provider's image models. Agents don't chat with them,
+// so they aren't among its Models; they are listed to say they are there,
+// and one is picked in Settings → Images.
+function renderDrawers(p) {
+  const chips = el("div", "mchips");
+  for (const id of p.drawIds) chips.append(el("span", "mchip ro", id));
+  return field(t("Image models"), chips, t("Agents don't chat with these, so they aren't among its models: the one that draws is picked in Settings → Images."));
 }
 
 // renderRouting: how the gateway spreads requests over the keys or
