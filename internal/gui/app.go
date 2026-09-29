@@ -69,7 +69,9 @@ type host struct {
 	// click in it doesn't start another over it
 	flapping atomic.Bool
 
-	panelHeight int
+	panelHeight int          // the panel's, in points
+	panelPage   int          // what its page last asked for, in CSS pixels
+	textSize    atomic.Int64 // Settings' text size, in percent (settings.TextSizes)
 	glides      atomic.Int64 // the newest panel glide; older ones stop
 	query       string       // what the windows' URLs carry (a forced theme)
 
@@ -123,14 +125,13 @@ func (h *host) ChooseFolder(title string) (string, error) {
 		SetTitle(title).AttachToWindow(h.main).PromptForSingleSelection()
 }
 
-// panelMax keeps the panel a drop-down, not most of the screen: longer
-// content (the usage of many accounts) scrolls in it (#124)
-const panelWidth, panelMin, panelMax = 440, 220, 560
-
 // FitPanel grows or shrinks the panel to its content and keeps it anchored
-// under the tray icon; a shown panel glides there when g says how.
+// under the tray icon; a shown panel glides there when g says how. height
+// is the page's, in its CSS pixels: at a larger text size the panel is
+// that much taller (and wider), no taller than the screen has room for.
 func (h *host) FitPanel(height int, g Glide) {
-	height = max(panelMin, min(panelMax, height))
+	h.panelPage = height
+	_, height = panelFrame(height, h.zoom(), h.panelRoom())
 	if h.panelHeight == height {
 		return
 	}
@@ -139,11 +140,69 @@ func (h *host) FitPanel(height int, g Glide) {
 		return
 	}
 	h.glides.Add(1)
-	h.panel.SetSize(panelWidth, height)
+	h.panel.SetSize(h.panelW(), height)
 	if h.panel.IsVisible() {
 		_ = h.tray.PositionWindow(h.panel, 6)
 	}
 }
+
+// zoom is the text size the pages are drawn at, as a factor.
+func (h *host) zoom() float64 { return zoomOf(int(h.textSize.Load())) }
+
+// panelW is the panel's width, in points, at the text size.
+func (h *host) panelW() int { return zoomed(panelWidth, h.zoom()) }
+
+// panelRoom is how tall the panel can be on its screen: the work area,
+// less the gap under the menu bar (or over the taskbar) and a little air.
+func (h *host) panelRoom() int {
+	if _, rh := screenRoom(h.panel); rh > 0 {
+		return rh - 16
+	}
+	return 0
+}
+
+// screenRoom is the work area of the screen w is on, 0s when unknown.
+func screenRoom(w *application.WebviewWindow) (int, int) {
+	s, err := w.GetScreen()
+	if err != nil || s == nil {
+		return 0, 0
+	}
+	return s.WorkArea.Width, s.WorkArea.Height
+}
+
+// SetTextSize zooms both pages to percent, the Settings page's choice or a
+// Ctrl/Cmd +, − or 0 in either window. The panel is resized at once, to
+// the height its page last asked for; the main window is kept no smaller
+// than the page's least, larger if it has to be.
+func (h *host) SetTextSize(percent int) {
+	if int(h.textSize.Swap(int64(percent))) == percent {
+		return
+	}
+	h.whenReady(h.applyZoom)
+}
+
+// applyZoom puts the text size on the windows as they are now.
+func (h *host) applyZoom() {
+	z := h.zoom()
+	setPageZoom(h.main, z)
+	setPageZoom(h.panel, z)
+	sw, sh := screenRoom(h.main)
+	h.main.SetMinSize(windowMin(z, sw, sh))
+	page := h.panelPage
+	if page == 0 {
+		page = panelStart
+	}
+	w, ht := panelFrame(page, z, h.panelRoom())
+	h.glides.Add(1)
+	h.panelHeight = ht
+	h.panel.SetSize(w, ht)
+	if h.panel.IsVisible() {
+		_ = h.tray.PositionWindow(h.panel, 6)
+	}
+}
+
+// panelStart is the panel's height before its page first asks for one.
+const panelStart = 520
 
 // Run starts the desktop app: a menu bar icon whose click drops down a compact
 // panel, plus a regular window for when you want it to stay around.
@@ -172,6 +231,11 @@ func Run(version string, showMain bool, link string) error {
 		theme = "&theme=" + t
 	}
 	h := &host{query: theme, ready: make(chan struct{})}
+	// the pages open at the saved text size: Windows' and Linux's webviews
+	// take it as they are made (the Zoom options below), the Mac's once
+	// the app has started (applyZoom)
+	h.textSize.Store(int64(settings.Load().TextSize))
+	zoom := h.zoom()
 	go stats.Run(version, "app")
 	handler := devShell(h)
 	if handler == nil {
@@ -203,21 +267,26 @@ func Run(version string, showMain bool, link string) error {
 		e.Cancel()
 	})
 
-	h.panel = h.app.Window.NewWithOptions(panelOptions(runtime.GOOS, theme))
+	po := panelOptions(runtime.GOOS, theme)
+	po.Width, po.Height, po.Zoom = zoomed(panelWidth, zoom), zoomed(panelStart, zoom), zoom
+	h.panel = h.app.Window.NewWithOptions(po)
 
 	// the window opens at the size it was last given
 	width, height := 660, 600
 	if s := settings.Load().Window; len(s) == 2 && s[0] >= 560 && s[1] >= 420 {
 		width, height = s[0], s[1]
 	}
+	// and no smaller than its page's least at the text size
+	minW, minH := windowMin(zoom, 0, 0)
 	h.main = h.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:      "main",
 		Title:     "magpie",
 		URL:       "/?" + theme,
-		Width:     width,
-		Height:    height,
-		MinWidth:  560,
-		MinHeight: 420,
+		Width:     max(width, minW),
+		Height:    max(height, minH),
+		MinWidth:  minW,
+		MinHeight: minH,
+		Zoom:      zoom,
 		Hidden:    true,
 		Mac: application.MacWindow{
 			// no InvisibleTitleBarHeight: that strip drags from anywhere in
@@ -322,6 +391,12 @@ func Run(version string, showMain bool, link string) error {
 			plainTitlebar(h.main) // Linux: the page's header is the title bar
 			markReady()
 		})
+	}
+	// the Mac's webviews take the text size only once they are made;
+	// Windows' took it with the options, and its panel's webview may not be
+	// made yet here
+	if zoom != 1 && runtime.GOOS != "windows" {
+		h.whenReady(h.applyZoom)
 	}
 	if showMain {
 		h.whenReady(func() { h.ShowMain("") })

@@ -230,6 +230,9 @@ func (c remoteWindows) TintPanel(rgba [4]uint8, ms int) bool {
 	q := url.Values{"c": {fmt.Sprintf("%d,%d,%d,%d", rgba[0], rgba[1], rgba[2], rgba[3])}, "ms": {strconv.Itoa(ms)}}
 	return c.post("tint", url.Values{"arg": {q.Encode()}}) == "ok"
 }
+func (c remoteWindows) SetTextSize(percent int) {
+	c.post("textsize", url.Values{"arg": {strconv.Itoa(percent)}})
+}
 
 // backendClient waits out a backend's restart: a request made while the old
 // one is gone connects to the new one once it listens.
@@ -294,6 +297,10 @@ func devShell(h *host) http.Handler {
 			q := url.Values{"h": {arg}, "ms": {r.FormValue("ms")}, "ease": {r.FormValue("ease")}}
 			if n, g, ok := parseFit(q); ok {
 				h.FitPanel(n, g)
+			}
+		case "textsize":
+			if n, err := strconv.Atoi(arg); err == nil {
+				h.SetTextSize(n)
 			}
 		case "tint":
 			q, _ := url.ParseQuery(arg)

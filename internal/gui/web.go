@@ -33,6 +33,7 @@ func (webHost) OpenURL(string)               {} // the page opens links itself
 func (webHost) Copy(string) bool             { return false }
 func (webHost) FitPanel(int, Glide)          {}
 func (webHost) TintPanel([4]uint8, int) bool { return false }
+func (webHost) SetTextSize(int)              {} // the browser zooms its own tab
 func (webHost) OpenFolder(path string) error {
 	return errors.New("in the browser magpie can't open folders: it is " + tilde(path))
 }

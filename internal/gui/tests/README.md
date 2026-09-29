@@ -98,6 +98,18 @@ cny (#212): the Usage page's total converts, the row's tooltip carries the
 rate, picking it with the settings list scrolled well down moves nothing,
 and the choice survives a reload — in English and Chinese.
 
+`text-size.test.cjs` checks the Settings page's Text size row (100, 110,
+125 and 150%): a pick posts to /api/settings/text-size without scrolling
+the page, stays picked after a reload (boot.js carries it, and the page's
+`--zoom` has it before the first paint), and a save of the other settings
+leaves it be; Ctrl/Cmd + = and − step through the sizes and 0 goes back to
+100%, in the window and the tray panel, the other modifier doing nothing.
+The zoom is the webview's, so here it is as a browser zooms: the smallest
+window at 150% (840×630 points) is 560×420 CSS pixels at a device scale of
+1.5, and no view (nor the panel at 150%) runs off to the side, the Mac
+header still 50 points tall for the traffic lights. English and Chinese,
+light and dark; ARTIFACT_DIR gets screenshots at 100% and 150%.
+
 `settings-groups.test.cjs` puts the Settings page's warm-ups and check-in
 under a tab per service (#124): Codex, Claude Code and WorkBuddy tabs where a
 heading would be, after Preferences, before Local network, Codex's picked to
@@ -193,7 +205,7 @@ saying it stays where it is and posting the name; in English and Chinese.
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs internal/gui/tests/usage-ledger.test.cjs internal/gui/tests/update-check.test.cjs node --test internal/gui/tests/signin-callback.test.cjs internal/gui/tests/routing-steady.test.cjs internal/gui/tests/old-webkit.test.cjs internal/gui/tests/session-terminal.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs internal/gui/tests/usage-ledger.test.cjs internal/gui/tests/update-check.test.cjs node --test internal/gui/tests/signin-callback.test.cjs internal/gui/tests/routing-steady.test.cjs internal/gui/tests/old-webkit.test.cjs internal/gui/tests/session-terminal.test.cjs internal/gui/tests/text-size.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

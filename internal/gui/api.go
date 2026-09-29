@@ -56,6 +56,9 @@ type Windows interface {
 	// keeps up with the panel's size; false when it can't, for the page to
 	// go on painting it itself.
 	TintPanel(rgba [4]uint8, ms int) bool
+	// SetTextSize zooms the window's and the panel's pages to percent
+	// (settings.TextSizes), the panel's size with them.
+	SetTextSize(percent int)
 }
 
 type fieldJSON struct {
@@ -262,7 +265,9 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	// they came only with the settings, so the tabs showed English first
 	mux.HandleFunc("GET /boot.js", func(rw http.ResponseWriter, r *http.Request) {
 		s := settings.Load()
-		b, _ := json.Marshal(map[string]any{"lang": s.Lang, "theme": s.Theme, "web": isWeb(w)})
+		// and the text size, which the Mac's header measures against the
+		// traffic lights
+		b, _ := json.Marshal(map[string]any{"lang": s.Lang, "theme": s.Theme, "textSize": s.TextSize, "web": isWeb(w)})
 		rw.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		rw.Header().Set("Cache-Control", "no-store")
 		rw.Write(append(append([]byte("window.bootPrefs = "), b...), ";\n"...))
@@ -440,6 +445,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		in.RedactRules = cur.RedactRules // the masking rules, set on their own
 		// used or left is the Usage page's toggle as much as Settings', set on its own
 		in.QuotaLeft = cur.QuotaLeft
+		// and the text size, which the keyboard changes too (text-size below)
+		in.TextSize = cur.TextSize
 		if v := strings.TrimSpace(in.Vision); v != "" && v != "off" && v != cur.Vision {
 			if _, _, ok := provider.Resolve(v); !ok {
 				fail(rw, fmt.Errorf("no model %s to describe images", v))
@@ -481,6 +488,26 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		}
 		if changed && onTrayUsage != nil {
 			onTrayUsage()
+		}
+		writeJSON(rw, settingsState())
+	})
+	// how large the window and the panel are drawn: Settings' choice and
+	// Ctrl/Cmd +, − and 0 in either, set on its own so a key pressed while
+	// the Settings page saves something else is never undone by it
+	mux.HandleFunc("POST /api/settings/text-size", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ Size int }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		s := settings.Load()
+		s.TextSize = in.Size
+		if err := settings.Save(s); err != nil {
+			fail(rw, err)
+			return
+		}
+		if w != nil {
+			w.SetTextSize(in.Size)
 		}
 		writeJSON(rw, settingsState())
 	})

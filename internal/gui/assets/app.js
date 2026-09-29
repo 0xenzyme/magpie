@@ -13,6 +13,9 @@ if (web) document.body.classList.add("web");
 // has the name, the close button and a double-click to maximise.
 if (!web && /^Mac/.test(navigator.platform)) document.body.classList.add("mac");
 if (!web && /^Linux/.test(navigator.platform)) document.body.classList.add("linux");
+// Windows: its own UI faces by name, Chinese in Microsoft YaHei UI rather
+// than whatever the webview falls back to for it
+if (/^Win/.test(navigator.platform)) document.documentElement.classList.add("win");
 // The window is dragged by its header, and only where the header says so
 // (--wails-draggable), so the tabs and buttons in it stay plain clicks.
 // Outside the app — a browser on the gateway's page — there is no runtime.
@@ -23,6 +26,7 @@ if (window.bootPrefs) {
   const b = window.bootPrefs;
   if (!params.get("theme") && b.theme && b.theme !== "system") document.documentElement.dataset.theme = b.theme;
   setLocale(b.lang);
+  document.documentElement.style.setProperty("--zoom", b.web ? 1 : (b.textSize || 100) / 100);
 }
 
 let state = { agents: [], profiles: [], catalog: "", settings: {} };
@@ -7312,6 +7316,46 @@ const THEMES = [["system", "System"], ["light", "Light"], ["dark", "Dark"]];
 const LOCALES = [["system", "System"], ["en", "English"], ["zh", "中文"]];
 const TRAYS = [["panel", "Quick panel"], ["window", "Main window"]];
 const CURRENCIES = [["usd", "$ USD"], ["cny", "¥ CNY"]];
+// The text size is the windows' own zoom, as a browser's Ctrl/Cmd +: the
+// page is laid out again in larger CSS pixels, so everything it measures is
+// as at 100%, and magpie sizes the windows around it (textsize.go). None is
+// under 100%: WebView2 and WebKitGTK zoom no smaller through Wails.
+const TEXT_SIZES = [100, 110, 125, 150];
+const textSizeKeys = () => /^Mac/.test(navigator.platform) ? "⌘+ ⌘− ⌘0" : "Ctrl+ Ctrl− Ctrl+0";
+// --zoom is the text size for what is placed against the window's own
+// drawing, which does not grow with the page: the Mac's traffic lights.
+function applyZoom(n) {
+  document.documentElement.style.setProperty("--zoom", web ? 1 : (n || 100) / 100);
+}
+let textSize = window.bootPrefs?.textSize || 100;
+async function setTextSize(n) {
+  if (web || n === textSize) return;
+  textSize = n;
+  applyZoom(n);
+  try {
+    prefs = await writingPrefs(api("settings/text-size", { size: n }));
+    state.settings = prefs;
+    if (view === "settings") renderSettings();
+  } catch (e) {
+    status(e.message, "err");
+  }
+}
+// Ctrl/Cmd + = and − step through the sizes, 0 goes back to 100%, in the
+// window and the panel alike; in a browser tab they are the browser's.
+if (!web) addEventListener("keydown", (e) => {
+  const mod = /^Mac/.test(navigator.platform) ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+  if (!mod || e.altKey) return;
+  const k = e.code === "NumpadAdd" || e.key === "=" || e.key === "+" ? 1
+    : e.code === "NumpadSubtract" || e.key === "-" || e.key === "_" ? -1
+    : e.code === "Digit0" || e.code === "Numpad0" || e.key === "0" ? 0 : null;
+  if (k === null) return;
+  e.preventDefault();
+  const i = TEXT_SIZES.indexOf(textSize);
+  const n = k === 0 ? 100 : TEXT_SIZES[Math.max(0, Math.min(TEXT_SIZES.length - 1, (i < 0 ? 0 : i) + k))];
+  if (n === textSize) return;
+  setTextSize(n);
+  status(t("Text size {n}%", { n }));
+}, true);
 
 // applyPrefs paints and speaks as the saved settings say, costs at the
 // exchange rate given (rate, /api/state's fx) or the settings' own. A
@@ -7353,6 +7397,7 @@ function applyPrefs(s, rate) {
     if (applyPrefs.painted) renderCosts();
   }
   applyPrefs.painted = true;
+  if (!prefsBusy && (s.textSize || 100) !== textSize) { textSize = s.textSize || 100; applyZoom(textSize); }
   const was = locale;
   setLocale(s.lang);
   if (was !== locale && mode === "window") queueMicrotask(() => slide($("#nav"), "nav"));
@@ -7446,6 +7491,10 @@ function renderSettings() {
   prefsBase = keep;
   $("#themeSegs").replaceChildren(segs(THEMES.map(([id, name]) => [id, t(name)]), s.theme, (theme) => savePrefs({ ...keep, theme })));
   $("#langSegs").replaceChildren(segs(LOCALES.map(([id, name]) => [id, t(name)]), s.lang, (lang) => savePrefs({ ...keep, lang })));
+  // a browser tab has its own zoom, and magpie leaves it to it
+  $("#textSizeRow").hidden = web;
+  $("#textSizeSub").textContent = t("Everything in magpie's windows, larger; {keys} too", { keys: textSizeKeys() });
+  $("#textSizeSegs").replaceChildren(segs(TEXT_SIZES.map((n) => [n, n + "%"]), s.textSize || 100, (n) => setTextSize(n)));
   $("#traySegs").replaceChildren(segs(TRAYS.map(([id, name]) => [id, t(name)]), s.tray || "panel", (tray) => savePrefs({ ...keep, tray })));
   // the Dock is the Mac's; the tray and the login item the app's
   $("#dockRow").hidden = !document.body.classList.contains("mac");

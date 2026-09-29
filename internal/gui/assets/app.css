@@ -80,6 +80,9 @@
   --logo-invert: 1;
   --tk-s: #98d8a4; --tk-k: #c4b5fd; --tk-f: #93c5fd; --tk-n: #f2b544; --tk-v: #67e8f9; --tk-o: #f0abfc; --tk-c: #8b8b94;
 }
+/* Windows' own text faces, and Chinese in YaHei UI, its UI face for it, not
+   the webview's fallback; the Mac's and Linux's stack is the one above */
+:root.win { --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
@@ -141,8 +144,9 @@ code { font: 11.5px var(--code); }
 
 /* ---- header --------------------------------------------------------------- */
 .top { display: flex; align-items: center; gap: 8px; padding: 0 10px 0 14px; height: 46px; flex: none; position: relative; }
-body.window.mac .top { padding-left: 96px; height: 50px; padding-top: 2px; } /* the traffic lights centre 25.75pt from the top, not 25 */
-body.window.mac .seg { top: calc(50% + 1px); } /* 50% centres in the padding box; the 2px top padding puts the flex row a pixel lower */
+/* the traffic lights centre 25.75pt from the top, not 25; they are the window's, drawn in points, so at a larger text size (--zoom, the page's zoom) the header is that many fewer CSS pixels, still level with them */
+body.window.mac .top { padding-left: calc(96px / var(--zoom, 1)); height: calc(50px / var(--zoom, 1)); padding-top: calc(2px / var(--zoom, 1)); }
+body.window.mac .seg { top: calc(50% + 1px / var(--zoom, 1)); } /* 50% centres in the padding box; the 2px top padding puts the flex row a pixel lower */
 .brand { display: flex; align-items: center; gap: 6px; font-weight: 600; letter-spacing: .01em; }
 body.window:not(.mac):not(.linux) .brand { display: none; } /* Windows' title bar above already shows the icon and the name */
 /* Linux: the header is the title bar, so it closes the window too — round,
@@ -1665,7 +1669,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .modal .editor.framed > .editor-error { flex: none; padding: 8px 18px; border-top: 1px solid var(--line-2); }
 /* Keep native window chrome outside the scrim and dialog. In particular, the
    macOS traffic lights must never sit on top of modal content. */
-body.window.mac .modal { top: 50px; padding: 16px 24px 24px; }
+body.window.mac .modal { top: calc(50px / var(--zoom, 1)); padding: 16px 24px 24px; }
 body.window .modal { padding: 16px 24px 24px; }
 body.panel .modal { padding: 16px 12px; }
 @keyframes fade-in { from { opacity: 0; } }

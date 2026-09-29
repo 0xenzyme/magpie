@@ -102,6 +102,10 @@ type Settings struct {
 	// QuotaLeft shows a subscription's windows by how much of each is left,
 	// not used: the Usage page, the tray panel and the menu bar alike.
 	QuotaLeft bool `json:"quotaLeft,omitempty"`
+	// TextSize is how large the window's and the tray panel's pages are
+	// drawn, in percent (one of TextSizes): the webviews' own zoom, as a
+	// browser's, so the text and everything around it grow together.
+	TextSize int `json:"textSize,omitempty"`
 	// How the agents are listed, by agent id. AgentOrder comes first, as
 	// ordered; an agent it doesn't name (one installed since) follows in
 	// magpie's own order. A hidden agent is folded away at the bottom of the
@@ -174,6 +178,9 @@ var (
 	Warmups = []string{"", "week", "all"}
 	// TrayEvery are TrayUsageEvery's values, in minutes.
 	TrayEvery = []int{1, 3, 5, 10, 30}
+	// TextSizes are TextSize's values, in percent. None is under 100: the
+	// webviews' zoom on Windows and Linux (Wails' SetZoom) goes no lower.
+	TextSizes = []int{100, 110, 125, 150}
 )
 
 var validTerminalBundleID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$`)
@@ -251,6 +258,9 @@ func Save(s Settings) error {
 	if !slices.Contains(TrayEvery, s.TrayUsageEvery) {
 		return fmt.Errorf("the menu bar's usage is refreshed every %v minutes, not %d", TrayEvery, s.TrayUsageEvery)
 	}
+	if !slices.Contains(TextSizes, s.TextSize) {
+		return fmt.Errorf("text size must be one of %v percent, not %d", TextSizes, s.TextSize)
+	}
 	s.Proxy = strings.TrimSpace(s.Proxy)
 	if err := CheckProxy(s.Proxy); err != nil {
 		return err
@@ -300,6 +310,9 @@ func (s Settings) normal() Settings {
 	}
 	if s.TrayUsageEvery == 0 {
 		s.TrayUsageEvery = 3
+	}
+	if s.TextSize == 0 {
+		s.TextSize = 100
 	}
 	// a time of day as 06:00 whichever way it came (6:00, 06:00:00)
 	for _, at := range []*string{&s.CodexWarmAt, &s.ClaudeWarmAt} {

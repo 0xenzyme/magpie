@@ -80,7 +80,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     ]) {
       await t.test(lang, async () => {
         const errors = [];
-        const context = await browser.newContext({ viewport: { width: 900, height: 420 }, reducedMotion: "reduce" });
+        const context = await browser.newContext({ viewport: { width: 900, height: 480 }, reducedMotion: "reduce" });
         const page = await context.newPage();
         pages.push(page);
         page.setDefaultTimeout(5000);
