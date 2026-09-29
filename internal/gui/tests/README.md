@@ -28,6 +28,13 @@ a title, memories, a turn on Luna Reserve, a kind it does not know yet): each
 has a grey tag by its model in the Requests list, in English and Chinese, the
 model keeping its room first, and the request's story says what it was.
 
+`routing-served.test.cjs` lists a request whose vendor's reply names another
+model than the one asked for (gpt-6-sol served as gpt-6-luna), one answered
+under the model's dated name and ones naming none: only the first is marked
+"served gpt-6-luna" by its answer in the Requests list and "requested
+gpt-6-sol · served gpt-6-luna" in its story, in English and Chinese, and the
+click that picks it leaves the page where it is.
+
 `balance-fix.test.cjs` opens a custom provider whose balance token sits
 beside new-api's `/api/usage/token` (and a new one with a token and no
 Balance URL): the editor says so, one click moves it to `/api/user/self`

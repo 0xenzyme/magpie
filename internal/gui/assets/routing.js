@@ -911,11 +911,14 @@
       items.push([tryWhy(r, i), tr.done ? (tr.status < 400 ? "ok" : "bad") : "wait"]);
       // what the vendor said, word for word: the why above is magpie's reading of it
       if (tr.done && tr.status >= 400 && tr.error) items.push([t("It said: {error}", { error: tr.error.length > 600 ? tr.error.slice(0, 600) + "…" : tr.error }), "aside said"]);
+      // the reply said another model answered it
+      if (tr.done && tr.status < 400 && tr.swapped) items.push([swapWhy(tr), "swap", tr]);
     });
     if (r.done && !r.tries.length) items.push([t("Nothing was tried: {error}", { error: r.error || r.status }), "bad"]);
-    steps.replaceChildren(...items.map(([s, c]) => {
+    steps.replaceChildren(...items.map(([s, c, tr]) => {
       const li = el("li", c, s);
       if (c === "aside kind") li.prepend(kindTag(r), " ");
+      if (c === "swap") li.prepend(swapTag(tr), " ");
       return li;
     }));
   }
@@ -951,6 +954,15 @@
     k.title = kindWhy(r);
     return k;
   }
+  // a try whose reply said another model answered than the one it asked
+  // for: a vendor serving a cheaper model in its place, which only the
+  // reply's model field tells (its dated name is the same model)
+  function swapTag(tr, short) {
+    const k = el("span", "swap", short ? t("served {served}", { served: tr.served }) : t("requested {sent} · served {served}", { sent: tr.model, served: tr.served }));
+    k.title = swapWhy(tr);
+    return k;
+  }
+  const swapWhy = (tr) => t("The vendor was asked for {sent}, and its reply says {served} answered it: another model, not just {sent} under a dated name.", { sent: tr.model, served: tr.served });
   function kindWhy(r) {
     const agent = agentName(r.agent);
     if (r.kind === "luna_reserve") return t("{agent} sent this turn on Luna Reserve, which it turns to once the plan's own allowance is used up; it picks the model itself.", { agent });
@@ -1065,6 +1077,7 @@
         ef.title = effortNote(r, tr);
         to.append(ef);
       }
+      if (tr?.swapped && tr.done && tr.status < 400) to.append(swapTag(tr, true)); // beside the model asked for
       const meta = [];
       if (r.tries.length > 1) meta.push(t("{n} tries", { n: r.tries.length }));
       if (r.done && r.ms) meta.push(took(r.ms));

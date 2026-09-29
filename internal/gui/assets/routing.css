@@ -174,6 +174,9 @@
 /* in a narrow row the model keeps its room first: the tag gives way, to an ellipsis */
 .rt-req .asked .kind { flex: 0 100 auto; min-width: 3.2em; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
 .rt-req .asked.kinded .m { flex: none; max-width: calc(100% - 3.2em - 40px); }
+.rt-req .to .swap, .rt-steps li .swap { font-size: 10.5px; line-height: 16px; padding: 0 5px; border-radius: 5px; color: var(--amber); background: var(--amber-soft); white-space: nowrap; }
+.rt-req .to .swap { flex: none; max-width: 70%; }
+.rt-steps li.swap::before { background: var(--amber); }
 .rt-req .meta { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
 @container (max-width: 520px) { .rt-reqs { grid-template-columns: auto minmax(0, 1fr); } .rt-req { row-gap: 2px; } .rt-req .to { grid-column: 2; } .rt-req .meta { grid-column: 2; text-align: left; } }
 .rt-acts { padding: 4px 0; }

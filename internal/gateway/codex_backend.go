@@ -216,6 +216,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 	// the one it can go to: Codex's own sign-in, or its key
 	var tr *Route
 	first := firstToken{start: start} // the reply's first tokens (#196), counted as ms are
+	served := ""                      // the model the reply says answered
 	end := func(status int, msg string, tokens, out int) {}
 	if rest == "/responses" {
 		who := "Codex's own sign-in"
@@ -234,6 +235,8 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 				t.Tries[0].TTFT, t.Tries[0].FirstText = ttft, text
 				t.Done, t.Status, t.Error, t.Millis, t.Tokens = true, status, msg, ms, tokens
 				t.Output, t.TTFT, t.FirstText = out, ttft, text
+				t.Tries[0].Served, t.Tries[0].Swapped = served, swapped(model, served)
+				t.Served, t.Swapped = t.Tries[0].Served, t.Tries[0].Swapped
 			})
 		}
 	}
@@ -326,7 +329,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 	call.TTFT, call.FirstText = first.ms()
 	var uu Usage
 	uu.add(sniff.usage())
-	call.Usage = uu
+	call.Usage, served = uu, uu.Served
 	if res.StatusCode >= 400 {
 		call.Error = res.Status
 	}

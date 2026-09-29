@@ -153,6 +153,9 @@ type Usage struct {
 	CacheRead  int `json:"cache_read"`
 	CacheWrite int `json:"cache_write"`
 	Reasoning  int `json:"reasoning"`
+	// Served: the model the vendor's reply says answered, when it named
+	// one — which may not be the one it was asked for
+	Served string `json:"served,omitempty"`
 }
 
 // prompt is every token the prompt came to, as OpenAI's and Gemini's
@@ -177,6 +180,9 @@ func (u *Usage) add(v Usage) {
 	}
 	if v.Reasoning > 0 {
 		u.Reasoning = v.Reasoning
+	}
+	if v.Served != "" {
+		u.Served = v.Served
 	}
 }
 

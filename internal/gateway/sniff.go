@@ -18,6 +18,8 @@ type usageSniffer struct {
 	data  []byte // SSE data lines of the event in progress
 	over  bool   // the JSON body outgrew the cap; give up on it
 	u     Usage
+	// served: the model the reply says answered it, the last it named
+	served string
 }
 
 func newSniffer(proto provider.Protocol, contentType string) *usageSniffer {
@@ -82,19 +84,27 @@ func (s *usageSniffer) parse(b []byte) {
 	switch s.proto {
 	case provider.Chat:
 		var v struct {
+			Model string  `json:"model"`
 			Usage *cUsage `json:"usage"`
 		}
-		if json.Unmarshal(b, &v) == nil && v.Usage != nil {
-			s.u.add(v.Usage.usage())
+		if json.Unmarshal(b, &v) == nil {
+			s.saw(v.Model)
+			if v.Usage != nil {
+				s.u.add(v.Usage.usage())
+			}
 		}
 	case provider.Responses:
 		var v struct {
+			Model    string  `json:"model"`
 			Usage    *rUsage `json:"usage"`
 			Response struct {
+				Model string  `json:"model"`
 				Usage *rUsage `json:"usage"`
 			} `json:"response"`
 		}
 		if json.Unmarshal(b, &v) == nil {
+			s.saw(v.Response.Model)
+			s.saw(v.Model)
 			if v.Response.Usage != nil {
 				s.u.add(v.Response.Usage.usage())
 			} else if v.Usage != nil {
@@ -103,12 +113,16 @@ func (s *usageSniffer) parse(b []byte) {
 		}
 	default:
 		var v struct {
+			Model   string  `json:"model"`
 			Usage   *aUsage `json:"usage"`
 			Message struct {
+				Model string  `json:"model"`
 				Usage *aUsage `json:"usage"`
 			} `json:"message"`
 		}
 		if json.Unmarshal(b, &v) == nil {
+			s.saw(v.Message.Model)
+			s.saw(v.Model)
 			if v.Message.Usage != nil {
 				s.u.add(v.Message.Usage.usage())
 			}
@@ -119,7 +133,15 @@ func (s *usageSniffer) parse(b []byte) {
 	}
 }
 
-// usage is what the reply reported; call it once the body has ended.
+// saw keeps a model the reply named.
+func (s *usageSniffer) saw(model string) {
+	if model != "" {
+		s.served = model
+	}
+}
+
+// usage is what the reply reported, the model it named in Served; call it
+// once the body has ended.
 func (s *usageSniffer) usage() Usage {
 	if s.sse {
 		if len(s.buf) > 0 {
@@ -132,5 +154,7 @@ func (s *usageSniffer) usage() Usage {
 		s.parse(bytes.TrimSpace(s.buf))
 		s.buf = nil
 	}
-	return s.u
+	u := s.u
+	u.Served = s.served
+	return u
 }

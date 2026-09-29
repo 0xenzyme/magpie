@@ -1293,6 +1293,7 @@ func relay(w http.ResponseWriter, r *http.Request, from provider.Protocol, name 
 				failed = ev.Text
 			case KStart, KUsage:
 				usage.add(ev.Usage)
+				usage.add(Usage{Served: ev.Model})
 			case KText:
 				said += ev.Text
 			case KStop:
@@ -1337,6 +1338,7 @@ func relay(w http.ResponseWriter, r *http.Request, from provider.Protocol, name 
 	ended(said, stop, col.err == "" && r.Context().Err() == nil)
 	res := col.finish()
 	usage.add(res.Usage)
+	usage.add(Usage{Served: res.Model})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 	_, _ = w.Write(render(from, res, req))

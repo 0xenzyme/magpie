@@ -956,7 +956,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		if hw.failure != 0 { // the stream failed before any of it was sent
 			call.Status, call.Error = hw.failure, c.p.Name+": "+hw.failMsg
 		}
-		try := Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Start: began, Done: true, Status: call.Status, Millis: time.Since(began).Milliseconds(), Error: call.Error}
+		try := Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Start: began, Done: true, Status: call.Status, Millis: time.Since(began).Milliseconds(), Error: call.Error,
+			Served: call.Usage.Served, Swapped: swapped(c.model, call.Usage.Served)}
 		try.TTFT, try.FirstText = hw.first.ms()
 		// the request's, from when it came as its ms are: the time before
 		// this try, the ones that failed first, is in it
@@ -1047,6 +1048,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		t.Done, t.Status, t.Error, t.Millis = true, call.Status, call.Error, call.Millis
 		t.Tokens = call.Usage.Input + call.Usage.Output + call.Usage.CacheRead + call.Usage.CacheWrite
 		t.Output, t.TTFT, t.FirstText = call.Usage.Output, call.TTFT, call.FirstText
+		if n := len(t.Tries); n > 0 && call.Status < 400 {
+			t.Served, t.Swapped = t.Tries[n-1].Served, t.Tries[n-1].Swapped
+		}
 	})
 	s.record(call)
 	if call.To != "" {
@@ -1626,6 +1630,7 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 					failed = ev.Text
 				case KStart, KUsage:
 					u.add(ev.Usage)
+					u.add(Usage{Served: ev.Model}) // the model the vendor says answered
 				}
 				enc.event(ev)
 			})
@@ -1654,6 +1659,7 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 	}
 	res2 := col.finish()
 	u.add(res2.Usage)
+	u.add(Usage{Served: res2.Model})
 	out := render(from, res2, request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
