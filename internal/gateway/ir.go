@@ -403,6 +403,8 @@ func effortOf(s string) string {
 		return "low"
 	case "low", "medium", "high", "xhigh", "max":
 		return strings.ToLower(s)
+	case "ultra": // Codex's max, with its own agents to hand work to
+		return "max"
 	}
 	return ""
 }
@@ -415,7 +417,14 @@ var effortRank = []string{"none", "minimal", "low", "medium", "high", "xhigh", "
 // asks "medium" of a model it was given no levels for, and an agent's
 // setting can outlive the model it was picked for; GLM-5.3 takes low, high
 // and max only.
+//
+// Codex's ultra is max to a model without an ultra of its own (a routing
+// group offers it when a ChatGPT model in it does): sent as max, or the
+// nearest the model has below it.
 func fitEffort(want string, levels []string) string {
+	if want == "ultra" && !slices.Contains(levels, want) {
+		want = "max"
+	}
 	if len(levels) == 0 || slices.Contains(levels, want) {
 		return want
 	}

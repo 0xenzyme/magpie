@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/provider"
 )
 
@@ -223,5 +224,79 @@ func TestWithFixedEffort(t *testing.T) {
 	}
 	if fitLevel("xhigh", nil) != "high" || fitLevel("xhigh", []string{"low", "xhigh"}) != "xhigh" || fitLevel("max", []string{"low", "medium", "high"}) != "high" {
 		t.Error("fitLevel")
+	}
+}
+
+// Codex's ultra, asked of a routing group (TJHHHH: 似乎在使用路由时不支持
+// ultra模式): the group offers it when a member of ChatGPT's has it and
+// every member reaches max, and each member is sent the most it has — max
+// to one without an ultra of its own, whether the request goes as it came
+// or is made again for the member's endpoint (Codex speaks Responses, these
+// members Chat), and to one whose levels aren't known.
+func TestGroupUltra(t *testing.T) {
+	s, a, b := ruled(t)
+	all := []string{"low", "medium", "high", "xhigh", "max"}
+	live := func(id string, m catalog.Model) {
+		t.Helper()
+		p, err := provider.Find(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := catalog.SaveLive(id, p.Chat, []catalog.Model{m}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	levels := func() []string {
+		t.Helper()
+		for _, e := range provider.Catalog() {
+			if e.ID == "group/r" {
+				return e.Efforts
+			}
+		}
+		t.Fatal("group/r not listed")
+		return nil
+	}
+	live("a", catalog.Model{ID: "small", Efforts: append(slices.Clone(all), "ultra")})
+	live("b", catalog.Model{ID: "big", Efforts: all})
+	if got := levels(); !slices.Equal(got, append(slices.Clone(all), "ultra")) {
+		t.Fatalf("group levels %v", got)
+	}
+
+	for _, c := range []struct {
+		member string
+		up     *ruleUp
+	}{{"a/small", a}, {"b/big", b}} {
+		setMembers(t, []string{c.member})
+		code, out := postTo(t, s, "/v1/responses", `{"model":"group/r","stream":false,"reasoning":{"effort":"ultra"},"input":"hi"}`)
+		if code != 200 {
+			t.Fatalf("%s: %d %s", c.member, code, out)
+		}
+		if sent := sentBody(t, c.up); sent["reasoning_effort"] != "max" {
+			t.Errorf("responses to %s: sent %v", c.member, sent["reasoning_effort"])
+		}
+	}
+	// Chat as it came: to a member without ultra, max
+	setMembers(t, []string{"b/big"})
+	postOK(t, s, "", chat("hi", nil, 0, `,"reasoning_effort":"ultra"`))
+	if sent := sentBody(t, b); sent["reasoning_effort"] != "max" {
+		t.Errorf("chat to b/big: sent %v", sent["reasoning_effort"])
+	}
+	// a model whose levels aren't known is sent max, not a word it may not know
+	live("b", catalog.Model{ID: "big"})
+	postOK(t, s, "", chat("hi", nil, 0, `,"reasoning_effort":"ultra"`))
+	if sent := sentBody(t, b); sent["reasoning_effort"] != "max" {
+		t.Errorf("chat to b/big, levels unknown: sent %v", sent["reasoning_effort"])
+	}
+	// a member that doesn't reach max: no ultra
+	setMembers(t, []string{"a/small", "b/big"})
+	live("b", catalog.Model{ID: "big", Efforts: []string{"low", "medium", "high"}})
+	if got := levels(); !slices.Equal(got, []string{"low", "medium", "high"}) {
+		t.Fatalf("group levels with b at high %v", got)
+	}
+	// nor without a ChatGPT model's ultra
+	live("a", catalog.Model{ID: "small", Efforts: all})
+	live("b", catalog.Model{ID: "big", Efforts: all})
+	if got := levels(); !slices.Equal(got, all) {
+		t.Fatalf("group levels without an ultra %v", got)
 	}
 }

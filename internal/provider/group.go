@@ -325,6 +325,11 @@ func groupEntries(entries []Entry) []Entry {
 		e := Entry{ID: GroupPrefix + g.ID, Model: ms[0].Model, Name: g.Name, Provider: ms[0].Provider, Group: g.ID, Images: true}
 		var fixed []string // the efforts members are fixed at
 		levelled := false  // a member that follows the agent's effort was met
+		// Codex's ultra (max, with Codex handing parts of the task to agents
+		// of its own) is a level of ChatGPT's own models alone; a group with
+		// one of them in it, every member at max, offers it too, and the
+		// gateway sends max to the members that have no ultra
+		ultra := false
 		for i, m := range ms {
 			if !slices.ContainsFunc(ms[:i], func(o Member) bool { return o.Provider.ID == m.Provider.ID }) {
 				e.Icons = append(e.Icons, m.Provider.Icon) // each provider once, "" for one without
@@ -355,6 +360,7 @@ func groupEntries(entries []Entry) []Entry {
 				}
 				continue
 			}
+			ultra = ultra || slices.Contains(efforts, "ultra")
 			if !levelled {
 				e.Efforts, levelled = efforts, true
 				continue
@@ -363,6 +369,9 @@ func groupEntries(entries []Entry) []Entry {
 		}
 		if !levelled {
 			e.Efforts = fixedLevels(fixed)
+		}
+		if ultra && slices.Contains(e.Efforts, "max") && !slices.Contains(e.Efforts, "ultra") {
+			e.Efforts = append(e.Efforts, "ultra")
 		}
 		if e.ImageInput != nil && !*e.ImageInput {
 			e.Images = false
