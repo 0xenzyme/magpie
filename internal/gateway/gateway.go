@@ -76,8 +76,10 @@ func standIn(agent, asked string) string {
 }
 
 // unserved: magpie shows no entry for the model — not a catalog id or
-// model, nor a ready provider's "provider/model" (a routing group's id is
-// taken as served).
+// model, nor the "provider/model" of a provider that is on (a routing
+// group's id is taken as served). A switched-off provider's is unserved: a
+// session that started before it was switched off still asks for the model
+// its agent was then on, and the agent has been moved since (#200).
 func unserved(asked string) bool {
 	if asked == "" || strings.HasPrefix(asked, provider.GroupPrefix) {
 		return false
@@ -92,7 +94,7 @@ func unserved(asked string) bool {
 		}
 	}
 	if pid, _, ok := strings.Cut(id, "/"); ok {
-		if p, err := provider.Find(pid); err == nil && p.Ready() {
+		if p, err := provider.Find(pid); err == nil && p.On() {
 			return false
 		}
 	}

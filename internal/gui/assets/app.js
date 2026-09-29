@@ -1638,7 +1638,7 @@ async function switchProvider(p, on, s) {
     renderProviders();
     state = await api("state");
     renderAgents();
-    status(t(on ? "{name} is on" : "{name} is off: agents no longer get its models", { name: p.name }), "ok");
+    saidMoved(t(on ? "{name} is on" : "{name} is off: agents no longer get its models", { name: p.name }));
   } catch (e) {
     s?.classList.toggle("on", !on);
     status(e.message, "err");
@@ -4225,7 +4225,7 @@ async function accountAction(path, body, okMsg) {
     renderProviders();
     state = await api("state");
     renderAgents();
-    if (okMsg) status(okMsg, "ok");
+    saidMoved(okMsg);
     return true;
   } catch (e) {
     if (!editorError(e.message, "err")) status(e.message, "err");
@@ -4452,11 +4452,24 @@ async function providerAction(action, body, okMsg, base = "provider/") {
     renderProviders();
     state = await api("state");
     renderAgents();
-    if (okMsg) status(okMsg, "ok");
+    saidMoved(okMsg);
   } catch (e) {
     if (!editorError(e.message, "err")) status(e.message, "err");
     document.querySelector(".editor .busy")?.classList.remove("busy");
   }
+}
+
+// saidMoved says what was done, and which agents it moved off models it
+// took away (a provider switched off or removed, the last account signed
+// out: #200), each to the same model elsewhere or back to its default.
+function saidMoved(okMsg) {
+  const moved = (providers.moved || []).map((m) => {
+    const who = m.field === "model" ? m.agent : m.agent + " " + m.field;
+    return m.to ? t("{agent} moved to {model}", { agent: who, model: m.to })
+      : t("{agent} is back on its default", { agent: who });
+  });
+  const msg = [okMsg, ...moved].filter(Boolean).join(" · ");
+  if (msg) status(msg, "ok", moved.length ? 9000 : undefined);
 }
 
 // editorError shows what went wrong inside the open provider editor, by its

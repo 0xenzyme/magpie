@@ -232,6 +232,8 @@ const I18N = {
     "Off · switch it on and agents get its models again": "已关闭 · 开启后它的模型会重新写入 Agent",
     "{name} is on": "{name} 已开启",
     "{name} is off: agents no longer get its models": "{name} 已关闭：不再把它的模型写入 Agent",
+    "{agent} moved to {model}": "{agent} 已改用 {model}",
+    "{agent} is back on its default": "{agent} 已恢复为默认模型",
     "Switched off: agents aren't given its models and no request goes to it. Its keys and settings are kept; switch it on to use it again.": "已关闭：它的模型不会写入 Agent，也不会有请求发往它。密钥和设置都会保留，开启即可重新使用。",
     "API key {masked}": "API 密钥 {masked}",
     "Local servers need no key": "本地服务无需密钥",

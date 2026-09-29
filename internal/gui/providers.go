@@ -151,6 +151,9 @@ type providersJSON struct {
 	// signed in to after Codex was switched to another; "" when none is
 	// left behind (provider.CodexDaemonStale).
 	CodexDaemon string `json:"codexDaemon,omitempty"`
+	// Moved is the agents the change moved off models it stopped serving
+	// (agent.Reseat), for the page to say so.
+	Moved []agent.Move `json:"moved,omitempty"`
 }
 
 // agentModel is the model an agent is on, as magpie's catalog names it.
@@ -454,6 +457,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			return
 		}
 		in := req.Provider
+		var moved []agent.Move
 		switch r.PathValue("action") {
 		case "show":
 			// a signed-in account the user removed, back with its picks
@@ -576,8 +580,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		case "off", "on":
 			// switched off, it stays with its keys, but agents are given
 			// none of its models; the files they keep them in follow,
-			// through catalog.Changed
-			if err := provider.SetOff(in.ID, r.PathValue("action") == "off"); err != nil {
+			// through catalog.Changed, and the agents on one of its models
+			// are moved to another
+			var err error
+			if moved, err = agent.Reseat(func() error {
+				return provider.SetOff(in.ID, r.PathValue("action") == "off")
+			}); err != nil {
 				fail(rw, err)
 				return
 			}
@@ -588,7 +596,8 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				return
 			}
 		case "delete":
-			if err := provider.Delete(in.ID); err != nil {
+			var err error
+			if moved, err = agent.Reseat(func() error { return provider.Delete(in.ID) }); err != nil {
 				fail(rw, err)
 				return
 			}
@@ -640,7 +649,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			http.NotFound(rw, r)
 			return
 		}
-		writeJSON(rw, providersState())
+		st := providersState()
+		st.Moved = moved
+		writeJSON(rw, st)
 	})
 	// How much of its allowance each of an agent's accounts has used.
 	mux.HandleFunc("GET /api/login/usage", func(rw http.ResponseWriter, r *http.Request) {
@@ -656,18 +667,21 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			fail(rw, err)
 			return
 		}
-		var err error
+		var change func() error
 		switch r.PathValue("action") {
 		case "switch":
-			err = provider.SwitchLogin(in.Agent, in.User)
+			change = func() error { return provider.SwitchLogin(in.Agent, in.User) }
 		case "forget":
-			err = provider.ForgetLogin(in.Agent, in.User)
+			change = func() error { return provider.ForgetLogin(in.Agent, in.User) }
 		case "on", "off":
-			err = provider.SetLoginOn(in.Agent, in.User, r.PathValue("action") == "on")
+			change = func() error { return provider.SetLoginOn(in.Agent, in.User, r.PathValue("action") == "on") }
 		default:
 			http.NotFound(rw, r)
 			return
 		}
+		// the last account signed out or off takes the sign-in's models
+		// away: the agents on them are moved to others
+		moved, err := agent.Reseat(change)
 		if err != nil {
 			fail(rw, err)
 			return
@@ -675,7 +689,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		// an agent on its own models goes through magpie while more of
 		// its accounts are on, and straight to its vendor again once not
 		agent.SyncCatalog()
-		writeJSON(rw, providersState())
+		st := providersState()
+		st.Moved = moved
+		writeJSON(rw, st)
 	})
 	// Codex's background app-server, left on the account before a switch:
 	// restarting it (which ends the Codex sessions on it), or letting it be.
@@ -707,6 +723,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			return
 		}
 		var err error
+		var moved []agent.Move
 		switch r.PathValue("action") {
 		case "add":
 			err = provider.AddKey(in.ID, in.Name, in.Key, in.Protocol)
@@ -715,11 +732,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		case "use":
 			err = provider.UseKey(in.ID, in.Ref)
 		case "remove":
-			err = provider.RemoveKey(in.ID, in.Ref)
+			// the last key gone, or off, takes the provider's models away
+			moved, err = agent.Reseat(func() error { return provider.RemoveKey(in.ID, in.Ref) })
 		case "rename":
 			err = provider.RenameKey(in.ID, in.Ref, in.Name)
 		case "on", "off":
-			err = provider.SetKeyOn(in.ID, in.Ref, r.PathValue("action") == "on")
+			moved, err = agent.Reseat(func() error { return provider.SetKeyOn(in.ID, in.Ref, r.PathValue("action") == "on") })
 		default:
 			http.NotFound(rw, r)
 			return
@@ -739,7 +757,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				cancel()
 			}
 		}
-		writeJSON(rw, providersState())
+		st := providersState()
+		st.Moved = moved
+		writeJSON(rw, st)
 	})
 	// Adding a subscription: magpie opens the vendor's sign-in in the
 	// browser and the window follows it until the account is in.
