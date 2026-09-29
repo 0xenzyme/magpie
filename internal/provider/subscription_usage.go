@@ -253,7 +253,7 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 		fetches = append(fetches, perLogin(via("qoder"), loginsOf(qoderLogins()), "Qoder", "qoder")...)
 	}
 	if !hidden["dimagent"] {
-		fetches = append(fetches, perLogin(ctx, dimagentLoginList(), "DimAgent", "dimagent")...)
+		fetches = append(fetches, perLogin(via("dimagent"), dimagentLoginList(), "DimAgent", "dimagent")...)
 	}
 	for _, agent := range []string{"gemini", "antigravity"} {
 		if hidden[agent] {
