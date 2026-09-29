@@ -440,6 +440,7 @@ function renderProfiles() {
   $(".profiles > .chip-input")?.remove(); // a name field open goes with the list it was for
   $(".profiles").classList.remove("naming");
   $("#save").textContent = t("＋ Save current");
+  $("#profN").textContent = state.profiles.length || "";
   if (!state.profiles.length) chips.append(el("span", "hint", t("none yet · save the setup to switch back in one click")));
   for (const p of state.profiles) {
     const c = el("button", "chip");
@@ -953,7 +954,7 @@ function fit(extra = 0, glide) {
   const body = document.body, tab = body.dataset.ptab;
   delete body.dataset.ptab;
   // extra is only ever the agents' (a row opening, the scroll unrolling)
-  const tallest = Math.max($("#agents").offsetHeight + extra, $(".profiles").offsetHeight, $("#panelQuota").offsetHeight, $("#panelRouting").offsetHeight);
+  const tallest = Math.max($("#agents").offsetHeight + extra, $("#panelQuota").offsetHeight, $("#panelRouting").offsetHeight);
   if (tab) body.dataset.ptab = tab;
   const h = $(".top").offsetHeight + $("#ptabs").offsetHeight + tallest + $(".foot").offsetHeight + 4;
   if (h === fit.last) return;
@@ -1604,6 +1605,7 @@ async function profileAction(action, name, update) {
     state = data;
     renderAgents();
     if (action === "use") {
+      closeProfiles(); // the agents, as they are now, in sight
       let msg = t(data.changed === 1 ? "{name} applied · {n} setting changed" : "{name} applied · {n} settings changed", { name, n: data.changed });
       const lib = data.library;
       if (lib?.missing?.length) msg += " · " + t("skipped, no longer in the Library: {names}", { names: lib.missing.map((m) => m.replace(/^\w+:/, "")).join(", ") });
@@ -5221,16 +5223,49 @@ function planSpan(q) {
   return s;
 }
 
-// The tray panel is four tabs over the one page: the agents, the allowances
-// of every subscription and key (the "usage" tab, as it was named before),
-// the gateway's latest requests (routing.js draws those) and the saved
-// profiles. The tab is remembered.
+// The tray panel is three tabs over the one page: the agents, the allowances
+// of every subscription and key (the "usage" tab, as it was named before)
+// and the gateway's latest requests (routing.js draws those). The saved
+// profiles open from Profiles at the Agents tab's foot, over the list (a tab
+// of their own was one too many). The tab is remembered.
+const profBtn = $("#profBtn"), profBox = $(".profiles");
+function placeProfiles() {
+  if (!profBox.classList.contains("open")) return;
+  const r = profBtn.getBoundingClientRect(), top = $("#ptabs").getBoundingClientRect().bottom;
+  profBox.style.bottom = Math.round(innerHeight - r.top + 6) + "px";
+  profBox.style.maxHeight = Math.max(120, Math.round(r.top - 6 - top - 4)) + "px";
+}
+function openProfiles() {
+  profBox.classList.add("open");
+  profBtn.setAttribute("aria-expanded", "true");
+  placeProfiles();
+}
+function closeProfiles() {
+  if (!profBox.classList.contains("open")) return;
+  profBox.classList.remove("open");
+  profBtn.setAttribute("aria-expanded", "false");
+  const f = $(".profiles > .chip-input");
+  if (f) closeSave(f);
+}
+if (mode === "panel") {
+  profBtn.hidden = false;
+  document.body.append(profBox); // over the page, not in the list's scroll
+  profBtn.onclick = () => profBox.classList.contains("open") ? closeProfiles() : openProfiles();
+  document.addEventListener("mousedown", (e) => {
+    if (profBox.classList.contains("open") && !profBox.contains(e.target) && !profBtn.contains(e.target)) closeProfiles();
+  }, true);
+  // the name field's Escape is its own (it stops there)
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && profBox.classList.contains("open")) { closeProfiles(); profBtn.focus({ preventScroll: true }); } });
+  addEventListener("resize", placeProfiles);
+}
 let panelTab = "agents";
 try { panelTab = localStorage.getItem("magpie.panelTab") || "agents"; } catch {}
 function setPanelTab(tab) {
   const tabs = $("#ptabs");
-  // no usage to show, no tab for it
-  if (tabs.querySelector(`[data-ptab="${tab}"]`)?.hidden) tab = "agents";
+  // no usage to show, no tab for it (nor for profiles: they open from the foot)
+  const b = tabs.querySelector(`[data-ptab="${tab}"]`);
+  if (!b || b.hidden) tab = "agents";
+  closeProfiles();
   panelTab = tab;
   try { localStorage.setItem("magpie.panelTab", tab); } catch {}
   document.body.dataset.ptab = tab;

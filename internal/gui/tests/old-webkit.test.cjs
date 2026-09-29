@@ -212,11 +212,12 @@ test("with Safari 15.0's built-ins, the panel and the window draw every page", a
       assert.equal(await page.evaluate(() => [1, 2, 3].at(-1)), 3);
       if (mode === "panel") {
         assert(await page.locator("#ptabs").isVisible(), "the panel's tabs are the page's own, drawn by app.js");
-        for (const tab of ["usage", "routing", "agents", "profiles"]) {
+        for (const tab of ["usage", "routing", "agents"]) {
           const b = page.locator(`#ptabs [data-ptab="${tab}"]`);
           if (await b.isVisible()) await b.click();
           await page.waitForTimeout(150);
         }
+        await page.locator("#profBtn").click();
         await page.locator("#save").click();
         assert(await page.locator(".profiles.naming > .chip-input").isVisible(), "Save current opens the name field");
       } else {
