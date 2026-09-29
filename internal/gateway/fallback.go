@@ -702,6 +702,12 @@ func streamEvent(ev []byte) (kind, status int, msg string) {
 		return errOf(v.Error)
 	case typ == "ping", typ == "message_start", typ == "response.created", typ == "response.in_progress", typ == "response.queued":
 		return eventLead, 0, ""
+	case strings.HasPrefix(typ, "codex."):
+		// the ChatGPT backend's word on the account (codex.rate_limits),
+		// ahead of the reply: taken for content, it let the stream
+		// through, and a refusal after it (response.failed) went to the
+		// agent rather than tried again
+		return eventLead, 0, ""
 	case typ == "" && v.Choices != nil:
 		// a Chat chunk: the first says only who speaks
 		for _, c := range *v.Choices {
