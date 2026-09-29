@@ -6,7 +6,12 @@
 // page's focus ring over its own; field and button stay in sight, and the
 // button then reads Save; a click on it saves as Enter does (it did nothing:
 // the field lost focus to it and went). Escape closes the field and gives the
-// button back. No backend: the API is faked here.
+// button back. With magpie slow to answer (reading every agent again took it
+// seconds) and no profiles yet, the chip saved is there at once, dimmed till
+// the answer, under the tabs' line and not scrolled up behind them (the
+// click held the button, which the chip came in above); × takes a chip away
+// at once; a save refused puts the list back and says why. No backend: the
+// API is faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -22,8 +27,8 @@ const agent = (id) => ({
 });
 const profile = (name) => ({ name, summary: "" });
 
-function server(lang, saved) {
-  let profiles = Array.from({ length: 30 }, (_, i) => profile("profile-" + i));
+function server(lang, saved, { count = 30, delay = 0, refuse = "" } = {}) {
+  let profiles = Array.from({ length: count }, (_, i) => profile("profile-" + i));
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
     const state = () => ({ agents: [agent("codex"), agent("claude")], profiles, settings: { lang, theme: "light" } });
@@ -32,8 +37,16 @@ function server(lang, saved) {
     if (url.pathname === "/api/state") return route.fulfill({ json: state() });
     if (url.pathname === "/api/profile/save") {
       const { name } = req.postDataJSON();
+      await new Promise((r) => setTimeout(r, delay));
+      if (name === refuse) return route.fulfill({ status: 400, json: { error: "can't write profiles.json" } });
       saved.push(name);
       profiles = [...profiles, profile(name)];
+      return route.fulfill({ json: state() });
+    }
+    if (url.pathname === "/api/profile/delete") {
+      const { name } = req.postDataJSON();
+      await new Promise((r) => setTimeout(r, delay));
+      profiles = profiles.filter((p) => p.name !== name);
       return route.fulfill({ json: state() });
     }
     if (url.pathname === "/api/usage/quotas") return route.fulfill({ json: [] });
@@ -60,14 +73,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       }
       await browser.close();
     });
-    const open = async (lang, saved) => {
+    const open = async (lang, saved, opts) => {
       const page = await (await browser.newContext({ viewport: { width: 440, height: 420 } })).newPage();
       pages.push(page);
       page.setDefaultTimeout(5000);
       page.on("pageerror", (e) => errors.push(e.message));
-      await page.route("**/*", server(lang, saved));
+      await page.route("**/*", server(lang, saved, opts));
       await page.goto("http://magpie.test/?mode=panel");
-      await page.locator("#profiles .chip").first().waitFor({ state: "attached" }); // shown with the tab
+      await page.locator("#profiles .chip, #profiles .hint").first().waitFor({ state: "attached" }); // shown with the tab
       await page.locator('[data-ptab="profiles"]').click();
       await page.waitForTimeout(300);
       return page;
@@ -132,6 +145,54 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await field.press("Escape");
         assert.equal(await field.count(), 0);
         assert.equal((await button.textContent()).trim(), add);
+      });
+
+      await t.test(lang + ": a slow magpie, from none", async () => {
+        const saved = [];
+        const page = await open(lang, saved, { count: 0, delay: 1500, refuse: "refused" });
+        const button = page.locator("#save"), field = page.locator(".profiles > .chip-input");
+        const chip = (name) => page.locator("#profiles .chip", { hasText: name });
+        const where = () => page.evaluate(() => {
+          const v = document.querySelector("#view-agents"), tabs = document.querySelector("#ptabs").getBoundingClientRect();
+          const c = document.querySelector("#profiles .chip");
+          return { scroll: v.scrollTop, below: !c || c.getBoundingClientRect().top >= tabs.bottom, status: document.querySelector("#status").textContent };
+        });
+
+        await button.click();
+        await field.pressSequentially("hi");
+        await button.click();
+        await page.waitForTimeout(200);
+        assert.equal(await chip("hi").count(), 1, "the chip saved is there before magpie answers");
+        assert(await chip("hi").evaluate((c) => c.classList.contains("pending")), "and dimmed till it does");
+        assert.equal(await field.count(), 0, "the field closes at once");
+        assert.equal((await button.textContent()).trim(), add);
+        await page.locator("#profiles .chip:not(.pending)").waitFor();
+        await page.waitForTimeout(300);
+        let w = await where();
+        assert.equal(w.scroll, 0, "saving must not scroll the list");
+        assert(w.below, "the chip saved must not be under the tabs");
+        assert.match(w.status, /hi/);
+        assert.deepEqual(saved, ["hi"]);
+
+        // × takes it away at once
+        await chip("hi").hover();
+        await chip("hi").locator(".x").nth(1).click();
+        await page.waitForTimeout(200);
+        assert.equal(await chip("hi").count(), 0, "the chip deleted goes before magpie answers");
+        await page.locator("#profiles .hint").waitFor({ state: "attached" });
+        await page.waitForFunction(() => /hi/.test(document.querySelector("#status").textContent) && !document.querySelector("#status").classList.contains("ok"));
+        assert.equal(await chip("hi").count(), 0);
+
+        // a save refused: the chip goes again and the reason is shown
+        await button.click();
+        await field.pressSequentially("refused");
+        await field.press("Enter");
+        await page.waitForTimeout(200);
+        assert.equal(await chip("refused").count(), 1);
+        await page.waitForFunction(() => document.querySelector("#status").classList.contains("err"));
+        assert.equal(await chip("refused").count(), 0, "a save refused is taken off the list");
+        assert.match((await where()).status, /profiles\.json/);
+        assert.equal((await where()).scroll, 0);
       });
     }
     assert.deepEqual(errors, []);

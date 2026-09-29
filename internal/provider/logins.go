@@ -76,12 +76,16 @@ var loginAgents = []string{"claude", "codex"}
 func loginsPath() string { return filepath.Join(filepath.Dir(Path()), "logins.json") }
 
 func readLogins() []savedLogin {
-	var out []savedLogin
-	b, err := os.ReadFile(loginsPath())
-	if err == nil {
+	// parsed once until the file changes: a state of the page asks for it
+	// dozens of times (every agent's drift and models), and with the
+	// accounts' credentials in it the file is large — a Save of a profile
+	// waited seconds on it
+	ls, _ := filememo.Read("logins", loginsPath(), func(b []byte) ([]savedLogin, error) {
+		var out []savedLogin
 		_ = json.Unmarshal(b, &out)
-	}
-	return dedupeLogins(out)
+		return dedupeLogins(out), nil
+	})
+	return slices.Clone(ls) // callers change theirs
 }
 
 func writeLogins(ls []savedLogin) error {

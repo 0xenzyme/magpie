@@ -424,6 +424,14 @@ function renderAgents() {
     list.append(more, fold);
   }
 
+  renderProfiles();
+  fit(0, agentsGlide);
+  agentsGlide = null;
+}
+
+// renderProfiles draws the saved profiles as chips, a chip whose save,
+// update or use is on its way dimmed until the answer is in.
+function renderProfiles() {
   const chips = $("#profiles");
   chips.replaceChildren();
   $(".profiles > .chip-input")?.remove(); // a name field open goes with the list it was for
@@ -431,6 +439,7 @@ function renderAgents() {
   if (!state.profiles.length) chips.append(el("span", "hint", t("none yet · save the setup to switch back in one click")));
   for (const p of state.profiles) {
     const c = el("button", "chip");
+    if (profilePending.has(p.name)) c.classList.add("pending");
     const lib = profileLibrary(p.library);
     c.title = [p.summary, lib].filter(Boolean).join("\n");
     c.append(el("span", "", p.name));
@@ -446,8 +455,6 @@ function renderAgents() {
     c.onclick = () => profileAction("use", p.name);
     chips.append(c);
   }
-  fit(0, agentsGlide);
-  agentsGlide = null;
 }
 
 // driftNote: under the name of an agent whose config something else
@@ -1550,9 +1557,26 @@ function profileLibrary(l) {
   return parts.length ? t("+ Library: {what}", { what: parts.join(t(", ")) }) : t("+ Library: nothing on");
 }
 
+// profilePending are the profiles a save, update, delete or use is on its
+// way for. What the click does shows at once — the chip saved is there, the
+// one deleted gone, the name field closed — rather than when magpie has read
+// every agent again for the answer: that took seconds, and a Save or × that
+// changed nothing for that long looked broken. An error puts the list back.
+const profilePending = new Set();
+
 async function profileAction(action, name, update) {
+  const before = state.profiles;
+  if (action === "delete") state.profiles = before.filter((p) => p.name !== name);
+  else if (action === "save" && !before.some((p) => p.name === name)) {
+    // where magpie will list it: by name, as Go's sort.Strings has them
+    state.profiles = [...before, { name, summary: "" }].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  }
+  if (action !== "delete") profilePending.add(name);
+  renderProfiles();
+  fit();
   try {
     const data = await api("profile/" + action, { name });
+    profilePending.delete(name);
     state = data;
     renderAgents();
     if (action === "use") {
@@ -1565,6 +1589,10 @@ async function profileAction(action, name, update) {
     else if (action === "save") status(t(update ? "Updated {name} to the current setup" : "Saved {name}", { name }), "ok");
     else status(t("Deleted {name}", { name }));
   } catch (e) {
+    profilePending.delete(name);
+    state.profiles = before;
+    renderProfiles();
+    fit();
     status(e.message, "err");
   }
 }
@@ -6680,7 +6708,8 @@ function savePrefs(body) {
 //   A control under what it unrolls (data-unrolls: "Show 7 more") is the
 //   exception: it goes down with what it opens, and what's held is the
 //   part it is in, so the rows open downwards rather than the page riding
-//   up past them.
+//   up past them. A view at its top stays at its top: what comes in above
+//   the control there moves it down instead of scrolling itself out of sight.
 //
 // Code moves a view only in answer to a click that asks to go somewhere, and
 // shows that with the reader's event: scrollOnPurpose(e). Called without one
@@ -6762,7 +6791,13 @@ function hold(h) {
   if (!a) return;
   const v = h.v, d = onScreen(a[0], v) - a[1];
   if (Math.abs(d) >= 1) {
-    const want = v.scrollTop + d, max = v.scrollHeight - v.clientHeight;
+    let want = v.scrollTop + d;
+    const max = v.scrollHeight - v.clientHeight;
+    // a view at its top when clicked stays there rather than be given room
+    // to scroll down: a chip saved in the panel's Profiles came in above the
+    // button held, and room made for the button slid the chip up under the
+    // tabs, out of sight
+    if (want > max && h.top) want = max;
     if (want > max) setRoom(v, roomOf(v) + want - max);
     v.scrollTop = want;
   }
@@ -6792,7 +6827,7 @@ addEventListener("click", (e) => {
   for (let n = from; n && n !== v; n = n.parentElement) {
     for (const m of [n, n.previousElementSibling, n.nextElementSibling]) if (m instanceof HTMLElement && m.offsetParent) chain.push([m, onScreen(m, v)]);
   }
-  held = chain.length ? { v, chain, until: performance.now() + 4000 } : null;
+  held = chain.length ? { v, chain, until: performance.now() + 4000, top: v.scrollTop < 1 } : null;
   heldSizes.disconnect();
   if (held) for (const c of v.children) if (!c.classList.contains("view-room")) heldSizes.observe(c);
   if (held && !holding) { holding = true; requestAnimationFrame(keepHeld); }
