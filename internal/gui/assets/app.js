@@ -1288,6 +1288,19 @@ function renderPickerRail() {
   queueMicrotask(updatePickerRailSelection);
 }
 
+// namedFree: a model its vendor names free (OpenRouter's foo/bar:free, a
+// free-model), "free" as a word of its id or name, not freedom-7b (#185)
+function namedFree(...names) {
+  return names.some((n) => /(^|[^a-z])free($|[^a-z])/i.test(n || ""));
+}
+
+// freeBadge: the green FREE by a model, and why it is free
+function freeBadge(plan) {
+  const f = el("span", "badge free", t("free"));
+  f.title = t(plan ? "free: it doesn't use the plan's credits" : "free: so its name says");
+  return f;
+}
+
 function renderList() {
   const list = $("#list");
   list.replaceChildren();
@@ -1305,7 +1318,7 @@ function renderList() {
     // a choice of magpie's own (Codex's sign-in) reads in the page's language
     const own = pick.field.label === "sign-in";
     words.append(el("span", "v", own ? t(o.label || o.value) : o.label || o.value));
-    if (o.free) { const f = el("span", "badge free", t("free")); f.title = t("free: it doesn't use the plan's credits"); words.append(f); }
+    if (o.free || (pick.modelPicker && o.value && namedFree(o.value, o.label))) words.append(freeBadge(o.free));
     let note = o.note && o.note !== (o.label || o.value) ? (own ? t(o.note) : o.note) : "";
     if (q && o.group && !note) note = o.group;
     if (note) words.append(el("span", "n", note));
@@ -2026,7 +2039,9 @@ function renderGatewayModels() {
   for (const m of models) {
     const row = el("div", "row model" + (m.id === exampleModel ? " selected" : ""));
     const who = el("div", "who");
-    who.append(el("div", "name", m.id), el("div", "sub", m.name && m.name !== m.id.split("/")[1] ? `${m.name} · ${m.provider.name}` : m.provider.name));
+    const name = el("div", "name", m.id);
+    if (namedFree(m.id, m.name)) name.append(freeBadge(false));
+    who.append(name, el("div", "sub", m.name && m.name !== m.id.split("/")[1] ? `${m.name} · ${m.provider.name}` : m.provider.name));
     row.append(m.group ? stackIcon(m.icons) : icon(m.provider.icon || "generic"), who, copyBtn(m.id, t("Model id")));
     row.title = t("Use this model in the snippets");
     row.onclick = () => { exampleModel = m.id; localStorage.setItem("magpie.model", m.id); renderConnect(); renderGatewayModels(); };
@@ -3233,7 +3248,11 @@ function renderImport(im) {
   ed.append(...field(t("Endpoints"), renderEndpoints(null, p), ""));
   if (p.models?.length) {
     const chips = el("div", "mchips");
-    for (const m of p.models) chips.append(el("span", "mchip on", m));
+    for (const m of p.models) {
+      const c = el("span", "mchip on", m);
+      if (namedFree(m)) c.append(freeBadge(false));
+      chips.append(c);
+    }
     ed.append(...field(t("Models"), chips, ""));
   }
   if (im.replaces) ed.append(el("div", "warnbox soft", t("Replaces your {name}, key and all.", { name: im.replaces })));
@@ -3333,10 +3352,12 @@ function renderModels(p) {
       const c = el("button", "mchip" + (on ? " on" : ""));
       c.append(el("span", "", m.name && m.name !== m.id ? m.name : m.id));
       // one the plan serves at no cost to it (WorkBuddy's x0.00 credits)
-      if (m.free) c.append(el("span", "badge free", t("free")));
+      // or one its vendor names free (#185)
+      const free = m.free || namedFree(m.id, m.name);
+      if (free) c.append(el("span", "badge free", t("free")));
       if (m.default) c.title = `${m.id} · ${m.default}`;
       else if (m.name && m.name !== m.id) c.title = m.id;
-      if (m.free) c.title = (c.title || m.id) + " · " + t("free: it doesn't use the plan's credits");
+      if (free) c.title = (c.title || m.id) + " · " + t(m.free ? "free: it doesn't use the plan's credits" : "free: so its name says");
       tested(c, m.id);
       c.onclick = () => { draft.chosen = on ? draft.chosen.filter((x) => x !== m.id) : [...draft.chosen, m.id]; draw(); };
       chips.append(c);
@@ -4022,6 +4043,9 @@ function quotaText(w) {
 async function setQuotaLeft(on) {
   quotaLeft = on;
   renderQuotas();
+  // the panel's "used"/"left" lights up a moment, so a click on a ring is
+  // seen to have turned every ring, not to have done nothing (#184)
+  for (const m of document.querySelectorAll(".pq-mode")) m.classList.add("flash");
   try {
     prefs = await writingPrefs(api("settings/quota-left", { on }));
     state.settings = prefs;
@@ -4626,6 +4650,14 @@ function renderPanelQuota() {
     } else {
       const note = [qs[0].plan, qs[0].until ? planTerm(qs[0]) : "", qs[0].balance].filter(Boolean).join(" · ");
       head.append(el("span", "pq-gnote" + (qs[0].renew === "off" ? " ends" : ""), note));
+    }
+    // whether the rings say what is used or what is left, once above them,
+    // turned here as by a ring (#184)
+    if (qs.some((q) => !q.error && q.windows?.length)) {
+      const m = el("button", "pq-mode", t(quotaLeft ? "Left" : "Used"));
+      m.title = t(quotaLeft ? "Show how much of each window is used" : "Show how much of each window is left");
+      m.onclick = () => setQuotaLeft(!quotaLeft);
+      head.append(m);
     }
     g.append(head);
     for (const q of qs) g.append(panelQuotaCard(q));
