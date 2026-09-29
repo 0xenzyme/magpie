@@ -792,7 +792,8 @@ func (f geminiFlags) offered(preview bool) []catalog.Model {
 // wire is the id Gemini CLI sends Code Assist a model as (its
 // getBackendModelMappings): 3.5 Flash goes as 3.8 Flash where that is
 // rolled out, else as gemini-3-flash, and 3.1 Flash Lite as 3.5 Flash
-// Lite where that is.
+// Lite where that is; 3.8 Flash and 3.5 Flash Lite where they aren't go
+// as the account's Flash and Flash Lite.
 func (f geminiFlags) wire(model string) string {
 	switch {
 	case f.latestFlash && (model == "gemini-3.5-flash" || model == "gemini-3-flash"):
@@ -801,6 +802,13 @@ func (f geminiFlags) wire(model string) string {
 		return "gemini-3-flash"
 	case f.latestFlashLite && model == "gemini-3.1-flash-lite":
 		return "gemini-3.5-flash-lite"
+	case !f.latestFlash && model == "gemini-3.8-flash":
+		// asked for by an account it isn't rolled out to (picked from the
+		// list magpie falls back on): Code Assist may not serve it that
+		// account, so it goes as the Flash the account has (蒙面人: 502)
+		return "gemini-3-flash"
+	case !f.latestFlashLite && model == "gemini-3.5-flash-lite":
+		return "gemini-3.1-flash-lite"
 	}
 	return model
 }

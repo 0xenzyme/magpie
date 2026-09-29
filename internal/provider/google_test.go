@@ -278,7 +278,8 @@ func TestGeminiModelsAsTheCLIOffersThem(t *testing.T) {
 	}{
 		{"no experiments", "", quota,
 			"gemini-3-pro-preview gemini-3-flash-preview gemini-3.5-flash gemini-3.1-flash-lite gemini-2.5-pro gemini-2.5-flash gemini-2.5-flash-lite",
-			map[string]string{"gemini-3.5-flash": "gemini-3-flash", "gemini-3.1-flash-lite": "gemini-3.1-flash-lite", "gemini-2.5-pro": "gemini-2.5-pro"}},
+			map[string]string{"gemini-3.5-flash": "gemini-3-flash", "gemini-3.1-flash-lite": "gemini-3.1-flash-lite", "gemini-2.5-pro": "gemini-2.5-pro",
+				"gemini-3.8-flash": "gemini-3-flash", "gemini-3.5-flash-lite": "gemini-3.1-flash-lite"}},
 		{"latest rolled out", `{"flags":[{"flagId":45842815,"boolValue":true},{"flagId":45827489,"boolValue":true},{"flagId":45760185,"boolValue":true}]}`, quota,
 			"gemini-3.1-pro-preview gemini-3-flash-preview gemini-3.8-flash gemini-3.5-flash-lite gemini-2.5-pro gemini-2.5-flash-lite",
 			map[string]string{"gemini-3.8-flash": "gemini-3.8-flash", "gemini-3.5-flash": "gemini-3.8-flash", "gemini-3-flash": "gemini-3.8-flash",
