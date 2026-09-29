@@ -6016,29 +6016,31 @@ function renderSettings() {
   // the system's record, set on its own, not with the other choices
   $("#loginSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.login ? "on" : "off", (v) =>
     writingPrefs(api("settings/login", { on: v === "on" })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
-  // a ChatGPT account's next window started as soon as the last resets
+  // Codex's and Claude Code's warm-ups and WorkBuddy's check-in, each under
+  // its service's heading, the rows' names not saying the service again.
+  // A ChatGPT account's next window started as soon as the last resets
   $("#warmSegs").replaceChildren(segs([["off", t("Off")], ["week", t("Weekly")], ["all", t("Weekly and 5-hour")]],
     s.codexWarmup || "off", (v) => savePrefs({ ...keep, codexWarmup: v === "off" ? "" : v })));
-  $("#warmSub").textContent = t("When a ChatGPT account's window resets, send it one tiny request so the next one starts counting at once")
+  $("#warmSub").textContent = t("One tiny request starts the next window at once")
     + (s.codexWarmed ? " · " + t("last started {when}", { when: syncWhen(s.codexWarmed) }) : "");
   // and a Claude account's, the request sent through Claude Code
   $("#claudeWarmSegs").replaceChildren(segs([["off", t("Off")], ["week", t("Weekly")], ["all", t("Weekly and 5-hour")]],
     s.claudeWarmup || "off", (v) => savePrefs({ ...keep, claudeWarmup: v === "off" ? "" : v })));
-  $("#claudeWarmSub").textContent = t("When a Claude account's window resets, send it one tiny request through Claude Code (Haiku) so the next one starts counting at once")
+  $("#claudeWarmSub").textContent = t("One tiny request through Claude Code (Haiku) starts the next window at once")
     + (s.claudeWarmed ? " · " + t("last started {when}", { when: syncWhen(s.claudeWarmed) }) : "");
   // and the 5-hour windows started at a time of day, so they line up with it
-  renderWarmAt($("#warmAtSegs"), $("#warmAtSub"), s.codexWarmAt, s.codexWarmup,
-    t("Start each ChatGPT account's 5-hour window at this time every day: 06:00 gives three by 21:00"),
+  renderWarmAt($("#warmAtSegs"), $("#warmAtSub"), s.codexWarmAt, s.codexWarmup, "",
     (v) => savePrefs({ ...keep, codexWarmAt: v }));
-  renderWarmAt($("#claudeWarmAtSegs"), $("#claudeWarmAtSub"), s.claudeWarmAt, s.claudeWarmup,
-    t("Start each Claude account's 5-hour window at this time every day, through Claude Code: 06:00 gives three by 21:00"),
+  renderWarmAt($("#claudeWarmAtSegs"), $("#claudeWarmAtSub"), s.claudeWarmAt, s.claudeWarmup, t("Sent through Claude Code."),
     (v) => savePrefs({ ...keep, claudeWarmAt: v }));
-  // WorkBuddy's daily check-in pressed for each account, shown while one is signed in
-  $("#wbCheckinRow").hidden = !s.workbuddy && !s.workbuddyCheckin;
+  // WorkBuddy's daily check-in pressed for each account, its group shown
+  // while one is signed in
+  $("#wbHead").hidden = $("#wbList").hidden = !s.workbuddy && !s.workbuddyCheckin;
   $("#wbCheckinSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.workbuddyCheckin ? "on" : "off",
     (v) => savePrefs({ ...keep, workbuddyCheckin: v === "on" })));
-  $("#wbCheckinSub").textContent = [t("Claim the daily check-in credits for each signed-in WorkBuddy (China) account once a day, as pressing 签到 in WorkBuddy does"),
+  $("#wbCheckinSub").textContent = [t("Claims each signed-in China account's check-in credits once a day"),
     ...(s.workbuddyCheckins || []).map(wbCheckinLine)].filter(Boolean).join(" · ");
+  $("#wbCheckinSub").title = t("As pressing 签到 in WorkBuddy does");
   renderTrayUsage(s, keep);
   renderProxy(s, keep);
   renderImages(s, keep);
@@ -6377,12 +6379,14 @@ function renderProxy(s, keep) {
 }
 
 // renderWarmAt draws a daily warm-up's control: Off, or a time of day in
-// a time field, saved as it is changed; On picks 06:00 to begin with.
-function renderWarmAt(box, sub, at, onReset, what, save) {
-  // the fine print, too long for the line: what is left be, and how it
-  // goes with the warm-up on reset
+// a time field, saved as it is changed; On picks 06:00 to begin with, and
+// the field is there only while it is on. via says how the request goes.
+function renderWarmAt(box, sub, at, onReset, via, save) {
+  // the purpose on the line; the fine print, too long for it, in the
+  // title: what is left be, and how it goes with the warm-up on reset
+  const what = t("Starts each account's 5-hour window at this time every day");
   sub.textContent = what;
-  sub.title = [what, t("One tiny request, sent only to an account whose 5-hour window isn't running then."),
+  sub.title = [what, t("06:00 gives three by 21:00."), via, t("One tiny request, sent only to an account whose 5-hour window isn't running then."),
     t("A computer asleep then sends it on waking, up to an hour late; later than that, the day is left be."),
     onReset === "all" ? t("With Weekly and 5-hour on, a window that would still be running then isn't started on its reset: the windows follow one another from this time.") : ""].filter(Boolean).join("\n");
   box.replaceChildren();

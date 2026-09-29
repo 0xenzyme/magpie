@@ -71,6 +71,14 @@ cny (#212): the Usage page's total converts, the row's tooltip carries the
 rate, picking it with the settings list scrolled well down moves nothing,
 and the choice survives a reload — in English and Chinese.
 
+`settings-groups.test.cjs` groups the Settings page's warm-ups and
+check-in by service (#124): Codex, Claude Code and WorkBuddy headings after
+Preferences, before Local network, their rows named without the service,
+the last warm-up and today's check-in still on the short lines, no left-border
+stripe; a daily warm-up's time field only while it is on; each control
+posting the setting it did, with the page scrolled and left where it was;
+the WorkBuddy group only with an account signed in; in English and Chinese.
+
 With Node.js and Playwright available:
 
 ```sh
