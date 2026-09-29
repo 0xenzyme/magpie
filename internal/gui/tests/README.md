@@ -169,6 +169,13 @@ autonomy (remembered, the page left where it was), tool use (the top tools,
 their kinds and weeks) and the top skills with their last use, agents and
 projects.
 
+`shared-skills.test.cjs` opens the Library's Skills tab with skills found in
+the user-wide `~/.agents/skills` (#227): one row for a skill there that
+agents link or junction to, "shared in ~/.agents/skills/…" with those
+agents' icons and no "differs in"; a link in the shared folder also saying
+where it points; a copy of an agent's own still "differs in ZCode"; Bring in
+saying it stays where it is and posting the name; in English and Chinese.
+
 With Node.js and Playwright available:
 
 ```sh
