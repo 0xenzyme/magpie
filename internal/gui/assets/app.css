@@ -1314,6 +1314,15 @@ input.words { width: 240px; max-width: 100%; }
 .prefs .val .discord:active { transform: scale(.96); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .prefs .val .discord:not(:hover) { color: #8b95ff; } }
 :root[data-theme="dark"] .prefs .val .discord:not(:hover) { color: #8b95ff; }
+.prefs .val .github {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px 0 9px; border-radius: 999px; margin-left: 6px;
+  font-size: 12px; font-weight: 560; white-space: nowrap; color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--fg) 22%, transparent);
+  transition: background .15s, color .15s, transform .12s var(--ease);
+}
+.prefs .val .github:hover { background: var(--fg); color: var(--bg); }
+.prefs .val .github:active { transform: scale(.96); }
 
 
 /* ---------- motion ----------

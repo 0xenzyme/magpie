@@ -573,7 +573,7 @@ const I18N = {
     "Needs a key: {names}": "需要填写 Key：{names}",
     "Library brought in and written into the agents": "资源库已导入，并已写入各 agent",
     "{agent} couldn't get {what}: {error}": "{agent} 未能写入 {what}：{error}",
-    "Community": "社区", "questions, ideas and feedback, on Discord": "提问、想法和反馈，都在 Discord", "Join Discord": "加入 Discord",
+    "Community": "社区", "questions, ideas and feedback, on Discord or GitHub": "提问、想法和反馈，Discord 或 GitHub 都可以", "Join Discord": "加入 Discord",
     "Copy": "复制",
     "Copied": "已复制",
     "Region": "区域",
