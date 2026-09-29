@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"os"
 	"slices"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/yetone/magpie/internal/agent"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/stats"
 )
 
@@ -753,6 +755,19 @@ func refreshLive(ctx context.Context) {
 	}
 }
 
+// keyNote says who the gateway takes any key from: this machine alone,
+// unless MAGPIE_ADDR puts it on the network (a server, a Docker image)
+// without sharing it from Settings, when it is anyone who reaches it.
+func keyNote() string {
+	if s := settings.Load(); s.LAN && s.LANKey != "" {
+		return "(anything works from this machine; from others, the key under Settings → Share on local network)"
+	}
+	if h, _, err := net.SplitHostPort(gateway.Addr()); err == nil && h != "localhost" && !net.ParseIP(h).IsLoopback() {
+		return "(anything works, from anyone who reaches it — share it from Settings to require a key)"
+	}
+	return "(anything works; the gateway only listens on localhost)"
+}
+
 // serve: `magpie serve` — the gateway alone, in the foreground.
 func serve() error {
 	s := gateway.New()
@@ -760,7 +775,7 @@ func serve() error {
 	fmt.Println(green.Render("●"), "magpie gateway on", bold.Render(gateway.URL()))
 	fmt.Println(muted.Render("  OpenAI  "), gateway.URL()+"/v1/chat/completions", muted.Render("·"), gateway.URL()+"/v1/responses")
 	fmt.Println(muted.Render("  Anthropic"), gateway.URL()+"/v1/messages")
-	fmt.Println(muted.Render("  key     "), gateway.Token, muted.Render("(anything works; the gateway only listens on localhost)"))
+	fmt.Println(muted.Render("  key     "), gateway.Token, muted.Render(keyNote()))
 	n := len(provider.Catalog())
 	if n == 0 {
 		fmt.Println(amber.Render("!"), "no models yet ·", "magpie provider add deepseek sk-…")
