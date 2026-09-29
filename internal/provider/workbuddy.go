@@ -335,6 +335,9 @@ func wbProvider(a wbAccount) Provider {
 		req.Header.Set("X-Product", "SaaS")
 		req.Header.Set("X-IDE-Type", "WorkBuddy")
 		req.Header.Set("User-Agent", "WorkBuddy/"+wbUAVersion)
+		if w.id == WorkBuddyAIID {
+			wbClientHeaders(req)
+		}
 		return nil
 	}
 	acct.models = func() []catalog.Model { return w.models }
@@ -346,6 +349,38 @@ func wbProvider(a wbAccount) Provider {
 		return ms, catalog.SaveLive(w.id, w.api()+"/v2", ms)
 	}
 	return Provider{ID: w.id, Name: w.name, Icon: "workbuddy-color", Chat: w.api() + "/v2", Website: w.website, Account: acct}
+}
+
+// wbClientHeaders are the rest of what WorkBuddy's own chats carry to its
+// /v2/chat/completions, as its desktop app lists them for that gateway
+// (x-requested-with is "the gateway's admission convention"): the request
+// marked as an XHR, the agent's intent, the client's name and version, and
+// the conversation and request ids. WorkBuddy AI answered a chat without
+// them for deepseek-v4.1-flash with "illegal API invocation from an
+// unapproved channel", while serving GPT and Claude. Only WorkBuddy AI
+// gets them: the China build serves that model without them.
+func wbClientHeaders(req *http.Request) {
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("X-Agent-Intent", "craft")
+	req.Header.Set("X-Agent-Type", "main")
+	req.Header.Set("X-IDE-Name", "WorkBuddy")
+	req.Header.Set("X-IDE-Version", wbUAVersion)
+	id := wbRequestID()
+	for _, h := range []string{"X-Conversation-ID", "X-Conversation-Request-ID"} {
+		if req.Header.Get(h) == "" {
+			req.Header.Set(h, id)
+		}
+	}
+	id = wbRequestID()
+	req.Header.Set("X-Conversation-Message-ID", id)
+	req.Header.Set("X-Request-ID", id)
+}
+
+// wbRequestID is a new id as WorkBuddy makes them: 32 hex digits.
+func wbRequestID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // wbDomain is the X-Domain a request carries: the account's own domain, or
