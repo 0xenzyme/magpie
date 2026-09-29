@@ -1501,6 +1501,15 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 /* ---------- settings ---------- */
 #view-settings .row-head { margin: 4px 0 6px; padding: 0 2px; }
 #view-settings .row-head + .list { margin-bottom: 8px; }
+/* the warm-ups and check-in: a tab per service where a heading would be,
+   in the headings' small capitals, the one picked darker on a soft pill,
+   the picked one's card alone under them */
+.warm-tabs { display: flex; align-items: center; gap: 2px; margin-left: -7px; }
+.warm-tabs button { height: 22px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); transition: color .12s, background-color .12s; }
+.warm-tabs button:hover:not(.on) { color: var(--fg-2); }
+.warm-tabs button.on { color: var(--fg); background: var(--pill); }
+.warm-tabs button[hidden] { display: none; }
+.warm-panes { margin-bottom: 8px; }
 .row.pref { min-height: 50px; padding: 8px 12px 8px 14px; gap: 14px; }
 .row.pref .who { flex: 1 1 auto; }
 .row.pref .sub { margin-top: 2px; }

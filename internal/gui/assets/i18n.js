@@ -117,6 +117,7 @@ const I18N = {
     "Mask personal data": "脱敏个人信息",
     "Count me as a user": "计入用户数",
     "Once a day, a random id for this computer with magpie's version and system — nothing you use magpie for": "每天一次，只发送本机的随机 ID、magpie 版本和系统，不含你用 magpie 做的任何事",
+    "Warm-up and check-in": "预热与签到",
     "Warm up on reset": "窗口重置时预热",
     "Daily warm-up": "每日定时预热",
     "Usage in the menu bar": "菜单栏显示用量",

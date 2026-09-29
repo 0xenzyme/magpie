@@ -88,13 +88,18 @@ cny (#212): the Usage page's total converts, the row's tooltip carries the
 rate, picking it with the settings list scrolled well down moves nothing,
 and the choice survives a reload — in English and Chinese.
 
-`settings-groups.test.cjs` groups the Settings page's warm-ups and
-check-in by service (#124): Codex, Claude Code and WorkBuddy headings after
-Preferences, before Local network, their rows named without the service,
-the last warm-up and today's check-in still on the short lines, no left-border
+`settings-groups.test.cjs` puts the Settings page's warm-ups and check-in
+under a tab per service (#124): Codex, Claude Code and WorkBuddy tabs where a
+heading would be, after Preferences, before Local network, Codex's picked to
+begin with and each showing its rows alone, named without the service; the
+last warm-up and today's check-in still on the short lines, no left-border
 stripe; a daily warm-up's time field only while it is on; each control
-posting the setting it did, with the page scrolled and left where it was;
-the WorkBuddy group only with an account signed in; in English and Chinese.
+posting the setting it did and a tab posting nothing, with the page scrolled
+and left where it was; the arrows, Home and End along the tabs; a tab picked
+at the page's very end (a shorter card, then a taller one) leaving the tabs
+where they were; the tab remembered across a reload, Codex's shown when the
+remembered WorkBuddy one is gone; the WorkBuddy tab only with an account
+signed in; in English and Chinese.
 
 `update-check.test.cjs` checks the version row: the button stays, dimmed,
 through a check, a second click asks nothing, and the answer puts it back.
