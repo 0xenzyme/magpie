@@ -3819,6 +3819,7 @@ function renderAccounts(a) {
     row.append(accountQuota(l.lapsed ? { [l.user]: { error: l.lapsed } } : quota, l.user));
     list.append(row);
   }
+  if (a.agent === "codex" && providers?.codexDaemon) list.append(renderCodexDaemon(providers.codexDaemon));
   if (signing?.agent === a.agent) list.append(renderSigning(sub));
   else {
     const add = el("button", "acc add");
@@ -3838,6 +3839,26 @@ function renderAccounts(a) {
     }
   }
   return list;
+}
+
+// renderCodexDaemon: Codex's background app-server read the sign-in when it
+// started, so after a switch the Codex sessions that attach to it are still
+// on the account before (user) until it restarts. magpie doesn't restart it
+// unasked: that ends the Codex sessions running on it.
+function renderCodexDaemon(user) {
+  const box = el("div", "signing daemon");
+  box.append(el("span", "mark", "!"));
+  const tt = el("span", "tt");
+  tt.append(el("span", "n", t("Codex's background service is still signed in as {user}", { user })),
+    el("span", "s", t("Restart it to use the new account. Running Codex sessions will be interrupted.")));
+  box.append(tt);
+  const later = el("button", "text", t("Later"));
+  later.onclick = () => accountAction("codex/daemon/dismiss", {});
+  const go = el("button", "text primary", t("Restart"));
+  go.title = "codex app-server daemon restart";
+  go.onclick = () => { go.classList.add("busy"); accountAction("codex/daemon/restart", {}, t("Codex's background service restarted")); };
+  box.append(later, go);
+  return box;
 }
 
 // Accounts brought in from another tool's export instead of signing in

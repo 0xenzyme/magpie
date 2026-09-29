@@ -477,7 +477,8 @@ func Logins(agent string) []Login {
 
 // SwitchLogin signs an agent in to a remembered account. Sessions of the
 // agent that are already running keep the account they started with until
-// they restart.
+// they restart; so does Codex's background app-server, which new Codex
+// sessions attach to (CodexDaemonStale says when it is).
 func SwitchLogin(agent, user string) error {
 	switch agent {
 	case "grok":
@@ -493,6 +494,17 @@ func SwitchLogin(agent, user string) error {
 	case "gemini", "antigravity":
 		return switchGoogleLogin(agent, user)
 	}
+	from, err := switchSavedLogin(agent, user)
+	if err == nil && agent == "codex" && from != "" {
+		noteCodexSwitch(from, user)
+	}
+	return err
+}
+
+// switchSavedLogin puts a Codex or Claude Code account magpie saved into
+// the agent's own store, and answers the account it replaced: "" when there
+// was none, or the agent was on that one already.
+func switchSavedLogin(agent, user string) (from string, _ error) {
 	// not while a saved account is being refreshed: the agent would be
 	// given the refresh token that refresh is spending
 	savedTokenMu.Lock()
@@ -507,13 +519,14 @@ func SwitchLogin(agent, user string) error {
 		}
 	}
 	if target == nil {
-		return fmt.Errorf("no saved %s account %q", agent, user)
+		return "", fmt.Errorf("no saved %s account %q", agent, user)
 	}
 	want := *target
 	if live, ok := liveLogin(agent); ok {
 		if strings.EqualFold(live.User, want.User) {
-			return nil
+			return "", nil
 		}
+		from = live.User
 		// the credentials being replaced, as fresh as the agent has them;
 		// in use still if the one taking over was: it is next in line now
 		live.Seen = time.Now().UTC().Truncate(time.Second)
@@ -524,7 +537,7 @@ func SwitchLogin(agent, user string) error {
 			}
 		}
 		if err := writeLogins(ls); err != nil {
-			return err
+			return "", err
 		}
 	}
 	var err error
@@ -537,11 +550,11 @@ func SwitchLogin(agent, user string) error {
 		err = fmt.Errorf("%s accounts can't be switched", agent)
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
 	loginsSeenAt = time.Time{}
 	forgetAccountCaches()
-	return nil
+	return from, nil
 }
 
 func putClaudeLogin(l savedLogin) error {
