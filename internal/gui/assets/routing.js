@@ -903,6 +903,7 @@
       : main && main.model !== r.model
       ? t("{agent} asked for {model}: {name} serves it, and the vendor is asked for {sent}", { agent: agentName(r.agent), model: r.model, name: main.name, sent: main.model })
       : t("{agent} asked for {model}", { agent: agentName(r.agent), model: r.model }) + " → " + (main?.name || r.provider), ""]);
+    if (r.kind) items.push([kindWhy(r), "aside kind"]);
     items.push([affWhy(r, true) || ruleWhy(r, true) || firstWhy(r), "why"]);
     for (const s of nestedWhy(r)) items.push([s, "why"]);
     for (const a of asides(r)) items.push([a, "aside"]);
@@ -912,7 +913,11 @@
       if (tr.done && tr.status >= 400 && tr.error) items.push([t("It said: {error}", { error: tr.error.length > 600 ? tr.error.slice(0, 600) + "…" : tr.error }), "aside said"]);
     });
     if (r.done && !r.tries.length) items.push([t("Nothing was tried: {error}", { error: r.error || r.status }), "bad"]);
-    steps.replaceChildren(...items.map(([s, c]) => el("li", c, s)));
+    steps.replaceChildren(...items.map(([s, c]) => {
+      const li = el("li", c, s);
+      if (c === "aside kind") li.prepend(kindTag(r), " ");
+      return li;
+    }));
   }
 
   // pick sets the stage to a past request, or back to live with the newest.
@@ -926,6 +931,30 @@
     cur = r;
     sync(true); renderAll();
     say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r));
+  }
+
+  // what a call was for when it isn't a turn of the conversation, as
+  // Codex names it (x-openai-subagent): its own guardian review of an
+  // approval, a thread's title, memories… — each on the model Codex picks
+  // for it, so a list of Luna calls under a Sol composer reads as it is
+  const KIND = {
+    guardian: "Approval check", auto_review: "Approval check", guardian_review: "Approval check",
+    review: "Review", compact: "Compaction",
+    memory_consolidation: "Memory", memgen: "Memory", memory: "Memory",
+    thread_title: "Title", title: "Title",
+    collab_spawn: "Subagent", thread_spawn: "Subagent", agent_job: "Subagent",
+    luna_reserve: "Luna Reserve",
+  };
+  const kindName = (k) => KIND[k] ? t(KIND[k]) : k;
+  function kindTag(r) {
+    const k = el("span", "kind", kindName(r.kind));
+    k.title = kindWhy(r);
+    return k;
+  }
+  function kindWhy(r) {
+    const agent = agentName(r.agent);
+    if (r.kind === "luna_reserve") return t("{agent} sent this turn on Luna Reserve, which it turns to once the plan's own allowance is used up; it picks the model itself.", { agent });
+    return t("{agent} made this call itself ({kind}), not as a turn of the conversation, and picks its model itself.", { agent, kind: kindName(r.kind) });
   }
 
   // who answered a request, or what its agent got
@@ -1021,6 +1050,7 @@
       const sw = el("i", "ag");
       sw.style.setProperty("--agent", hueOf(r.agent));
       asked.append(sw, icon(ag?.icon || "generic"), el("span", "m", r.model));
+      if (r.kind) { asked.classList.add("kinded"); asked.append(kindTag(r)); }
       // the reasoning the model was sent at — the turn's pick, or the
       // agent's fitted to the model's levels; what the agent asked for is
       // in its title and the request's story
@@ -1403,7 +1433,7 @@
       sw.style.setProperty("--agent", hueOf(r.agent));
       const [said] = outcome(r);
       row.append(el("span", "rp-n", t("request {i} of {n}", { i: g.n, n: p.plan.length })), sw,
-        el("b", "", agentName(r.agent)), el("code", "mdl", r.model), el("span", "rp-to", "→ " + said),
+        el("b", "", agentName(r.agent)), el("code", "mdl", r.model), ...(r.kind ? [kindTag(r)] : []), el("span", "rp-to", "→ " + said),
         el("span", "rp-at", t("sent {time}", { time: new Date(r.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) })));
       row.onclick = () => { cur = r; renderLog(); };
       return row;

@@ -23,10 +23,15 @@ was clicked where it is on every frame.
 scrolled: its fields hide, the head keeps the base URL and a copy button, the
 head stays where it was, and the fold is remembered across a reload.
 
+`routing-kind.test.cjs` lists calls Codex makes for itself (a guardian review,
+a title, memories, a turn on Luna Reserve, a kind it does not know yet): each
+has a grey tag by its model in the Requests list, in English and Chinese, the
+model keeping its room first, and the request's story says what it was.
+
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

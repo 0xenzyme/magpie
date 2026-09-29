@@ -153,8 +153,11 @@ func Serving() (running, window bool) {
 
 // Call is one request the gateway handled, for the status views.
 type Call struct {
-	Time     time.Time         `json:"time"`
-	Agent    string            `json:"agent"` // who called, from the client's User-Agent
+	Time  time.Time `json:"time"`
+	Agent string    `json:"agent"` // who called, from the client's User-Agent
+	// Kind: what the agent made the call for, when it isn't its turn —
+	// a Codex subagent's (callKind) — "" for a turn
+	Kind     string            `json:"kind,omitempty"`
 	Model    string            `json:"model"`
 	Provider string            `json:"provider"`
 	From     provider.Protocol `json:"from"`
@@ -643,7 +646,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	requestBody, requestTruncated := captureRequestBody(body)
 	capture := &captureResponseWriter{ResponseWriter: w}
 	w = capture
-	call := Call{Time: start, From: from, Model: unprefixed(modelOf(body)), Agent: agentOf(r),
+	call := Call{Time: start, From: from, Model: unprefixed(modelOf(body)), Agent: agentOf(r), Kind: callKind(r.Header),
 		RequestBody: requestBody, RequestTruncated: requestTruncated}
 	usage.Saw(call.Agent)
 	finishCapture := func() {
@@ -873,7 +876,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	if len(cands) == 1 {
 		shown = nil // nobody else to stay away from
 	}
-	tr := s.trace.begin(Route{Time: start, Agent: call.Agent, Model: call.Model, Effort: requestEffort(from, body), Provider: p.ID, Group: group, Rule: hit, Nested: nested, Affinity: shown, Order: pl.order, Left: pl.left})
+	tr := s.trace.begin(Route{Time: start, Agent: call.Agent, Kind: call.Kind, Model: call.Model, Effort: requestEffort(from, body), Provider: p.ID, Group: group, Rule: hit, Nested: nested, Affinity: shown, Order: pl.order, Left: pl.left})
 	var skipped []string
 	sent := ""        // the reasoning the last try's model was asked for
 	where := ""       // the last try's provider.Where, for the usage
@@ -1047,7 +1050,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		usage.Append(usage.Record{Time: start, Agent: call.Agent, Provider: call.Provider, Host: where, Model: model,
 			Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
 			CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: call.Millis, Status: call.Status,
-			TTFT: call.TTFT, FirstText: call.FirstText, Session: sessionOf(r.Header)})
+			TTFT: call.TTFT, FirstText: call.FirstText, Session: sessionOf(r.Header), Kind: call.Kind})
 	}
 }
 
@@ -1183,6 +1186,16 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	}
 	if p.IsOpenCode() {
 		req.Header.Set("x-opencode-session", conversationID(in, body))
+	}
+	if p.Account != nil && p.Account.Agent == "codex" {
+		// what Codex says about the request goes on as codexUpstream
+		// relays it — a subagent's kind, the turn's metadata, a turn on
+		// Luna Reserve — the account signing it being the pool's
+		for k, vs := range in {
+			if codexHeader(k) {
+				req.Header[k] = slices.Clone(vs)
+			}
+		}
 	}
 	if err := p.Sign(ctx, req, to, body); err != nil {
 		return nil, err

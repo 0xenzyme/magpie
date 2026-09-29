@@ -47,6 +47,9 @@ type Record struct {
 	// it (X-Magpie-Session, or the session header Claude Code, Codex or
 	// OpenCode sends): several sessions on one model told apart
 	Session string `json:"session,omitempty"`
+	// Kind is what the agent made the call for when it isn't a turn of
+	// the conversation: a Codex subagent's (review, compact, guardian…)
+	Kind string `json:"kind,omitempty"`
 }
 
 // Path is the log file: ~/.config/magpie/usage.jsonl (XDG-aware).

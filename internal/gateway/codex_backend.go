@@ -224,7 +224,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 		}
 		model := modelOf(body)
 		seat := Weighed{ID: "codex", Provider: "openai", Name: "OpenAI", Icon: "openai", Who: who, Kind: "account", Agent: "codex", Model: model}
-		tr = s.trace.begin(Route{Time: start, Agent: agentOf(r), Model: model, Provider: "openai",
+		tr = s.trace.begin(Route{Time: start, Agent: agentOf(r), Kind: callKind(r.Header), Model: model, Provider: "openai",
 			Order: []Weighed{seat}, Tries: []Try{{ID: seat.ID, Model: model, Start: start}}})
 		end = func(status int, msg string, tokens, out int) {
 			ms := time.Since(start).Milliseconds()
@@ -321,7 +321,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 		return
 	}
 	call := Call{Time: start, From: provider.Responses, To: provider.Responses, Model: modelOf(body),
-		Provider: "openai", Agent: agentOf(r), Status: res.StatusCode,
+		Provider: "openai", Agent: agentOf(r), Kind: callKind(r.Header), Status: res.StatusCode,
 		Millis: time.Since(start).Milliseconds()}
 	call.TTFT, call.FirstText = first.ms()
 	var uu Usage
@@ -334,7 +334,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 	s.record(call)
 	usage.Append(usage.Record{Time: start, Agent: call.Agent, Provider: call.Provider, Host: provider.HostOf(base), Model: call.Model,
 		Input: uu.Input, Output: uu.Output, CacheRead: uu.CacheRead, CacheWrite: uu.CacheWrite,
-		Reasoning: uu.Reasoning, Millis: call.Millis, TTFT: call.TTFT, FirstText: call.FirstText, Status: call.Status, Session: sessionOf(r.Header)})
+		Reasoning: uu.Reasoning, Millis: call.Millis, TTFT: call.TTFT, FirstText: call.FirstText, Status: call.Status, Session: sessionOf(r.Header), Kind: call.Kind})
 }
 
 // unreadableItem is the item OpenAI's refusal names: sealed content it
@@ -416,6 +416,48 @@ func hopHeader(k string) bool {
 		return true
 	}
 	return false
+}
+
+// codexHeader is one of the headers Codex tells the ChatGPT backend about
+// a request by, which go on with it when a pool account signs it as they
+// do when Codex's own sign-in does (codexUpstream): x-openai-subagent (a
+// guardian review, a thread's title, memories, a compaction…), the turn's
+// x-codex-turn-metadata, its installation, window and parent thread, and
+// the session. Never a sign-in: the account's own goes in its place, and
+// Codex's device attestation is its own sign-in's. Nor what holds for
+// Codex's own account alone: x-openai-codex-luna-reserve, which says its
+// plan's allowance is used up (another account's may not be), and
+// x-codex-turn-state, the backend's routing of the turn for that account.
+func codexHeader(k string) bool {
+	k = strings.ToLower(k)
+	if strings.Contains(k, "authorization") || k == "x-oai-attestation" ||
+		k == "x-openai-codex-luna-reserve" || k == "x-codex-turn-state" {
+		return false
+	}
+	switch k {
+	case "session_id", "conversation_id", "x-client-request-id", "version":
+		return true
+	}
+	return strings.HasPrefix(k, "x-openai-") || strings.HasPrefix(k, "x-codex-")
+}
+
+// callKind is what an agent made a call for when it isn't a turn of the
+// conversation, as Codex names it in x-openai-subagent: "guardian" (auto
+// review of an approval), "review", "compact", "memory_consolidation",
+// "thread_title", "collab_spawn"… A turn Codex sends on Luna Reserve, once
+// the plan's own allowance is used up, is "luna_reserve".
+func callKind(h http.Header) string {
+	v := strings.TrimSpace(h.Get("x-openai-subagent"))
+	if v == "" && h.Get("x-openai-memgen-request") != "" {
+		v = "memgen"
+	}
+	if v == "" && h.Get("x-openai-codex-luna-reserve") != "" {
+		v = "luna_reserve"
+	}
+	if len(v) > 40 {
+		v = v[:40]
+	}
+	return v
 }
 
 func copyHeaders(dst, src http.Header) {

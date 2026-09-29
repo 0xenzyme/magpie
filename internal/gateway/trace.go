@@ -26,6 +26,7 @@ type Route struct {
 	ID       int64     `json:"id"`
 	Time     time.Time `json:"time"`
 	Agent    string    `json:"agent"`
+	Kind     string    `json:"kind,omitempty"`   // what the call is for, as Call's
 	Model    string    `json:"model"`            // as the agent asked
 	Effort   string    `json:"effort,omitempty"` // the reasoning the agent asked for; "" for none
 	Provider string    `json:"provider"`         // the provider the model resolved to
