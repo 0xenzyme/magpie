@@ -309,22 +309,97 @@ var devinFamiliesCache struct {
 	sync.Mutex
 	at       time.Time
 	families []DevinFamily
+	// failed is when the CLI last gave no list, and err what it said: a
+	// CLI signed out, or one that can't reach Devin, is asked again only
+	// after devinFamiliesRetry, not on every call
+	failed time.Time
+	err    error
+	// asking is closed when the ask in flight ends; nil with none
+	asking chan struct{}
 }
 
+const (
+	devinFamiliesFresh = 5 * time.Minute
+	devinFamiliesRetry = time.Minute
+)
+
+type devinNoWaitKey struct{}
+
+// DevinNoWait marks a context whose caller must not wait on the devin CLI:
+// the window's state, drawn after every click. DevinFamilies then answers
+// with what it knows (or an error while nothing is known) and asks the
+// CLI in the background, so the next state has it.
+func DevinNoWait(ctx context.Context) context.Context {
+	return context.WithValue(ctx, devinNoWaitKey{}, true)
+}
+
+var errDevinAsking = errors.New("devin models list: still being read")
+
 // DevinFamilies is the CLI's model list, kept a few minutes: the picker and
-// the provider ask for it often and `devin models list` spawns a process.
+// the provider ask for it often and `devin models list` spawns a process
+// that takes seconds (switching Claude Code's model took 5–10s while
+// every state asked it anew). A list past its time is served as it is
+// while it is read again in the background; only a caller with nothing
+// known yet waits, and not one marked DevinNoWait.
 func DevinFamilies(ctx context.Context) ([]DevinFamily, error) {
-	devinFamiliesCache.Lock()
-	defer devinFamiliesCache.Unlock()
-	if time.Since(devinFamiliesCache.at) < 5*time.Minute && len(devinFamiliesCache.families) > 0 {
-		return devinFamiliesCache.families, nil
+	c := &devinFamiliesCache
+	c.Lock()
+	if len(c.families) > 0 {
+		if time.Since(c.at) >= devinFamiliesFresh && time.Since(c.failed) >= devinFamiliesRetry {
+			devinAskLocked()
+		}
+		f := c.families
+		c.Unlock()
+		return f, nil
 	}
-	families, err := askDevinFamilies(ctx)
-	if err != nil {
+	if time.Since(c.failed) < devinFamiliesRetry {
+		err := c.err
+		c.Unlock()
 		return nil, err
 	}
-	devinFamiliesCache.families, devinFamiliesCache.at = families, time.Now()
-	return families, nil
+	done := devinAskLocked()
+	c.Unlock()
+	if ctx.Value(devinNoWaitKey{}) != nil {
+		return nil, errDevinAsking
+	}
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	c.Lock()
+	defer c.Unlock()
+	if len(c.families) > 0 {
+		return c.families, nil
+	}
+	if c.err == nil {
+		return nil, errDevinAsking
+	}
+	return nil, c.err
+}
+
+// devinAskLocked starts reading the CLI's list, unless a read is under
+// way; the channel closes when it ends. devinFamiliesCache is held.
+func devinAskLocked() chan struct{} {
+	c := &devinFamiliesCache
+	if c.asking != nil {
+		return c.asking
+	}
+	done := make(chan struct{})
+	c.asking = done
+	go func() {
+		families, err := askDevinFamilies(context.Background())
+		c.Lock()
+		if err != nil {
+			c.failed, c.err = time.Now(), err
+		} else {
+			c.families, c.at, c.failed, c.err = families, time.Now(), time.Time{}, nil
+		}
+		c.asking = nil
+		close(done)
+		c.Unlock()
+	}()
+	return done
 }
 
 // devinCached is the CLI list last read, without asking it again.
@@ -337,6 +412,7 @@ func devinCached() []DevinFamily {
 func devinFamiliesCached(families []DevinFamily) {
 	devinFamiliesCache.Lock()
 	devinFamiliesCache.families, devinFamiliesCache.at = families, time.Now()
+	devinFamiliesCache.failed, devinFamiliesCache.err = time.Time{}, nil
 	devinFamiliesCache.Unlock()
 }
 

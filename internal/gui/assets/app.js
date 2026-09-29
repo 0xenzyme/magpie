@@ -1522,16 +1522,40 @@ async function commit(value) {
     return;
   }
   if (value === field.value) return;
+  // The pick shows at once: the row is drawn with it before magpie has
+  // written the config and answered with the whole state, which can take
+  // seconds (every agent's lists are read again for it). The answer then
+  // draws what the config really says; a refused pick puts the old one back.
+  const was = field.value;
+  const seq = commit.seq = (commit.seq || 0) + 1;
+  field.value = value;
+  const picked = performance.now();
+  // the green flash runs on through the row drawn again with the answer
+  const flash = () => {
+    const b = document.querySelector(`.agent[data-id="${CSS.escape(agent.id)}"] .field[data-key="${TIERS.includes(field.label) ? "tiers" : field.key}"]`);
+    const gone = performance.now() - picked;
+    if (!b || gone > 1200) return;
+    b.style.animationDelay = `${-gone}ms`;
+    b.classList.add("flash");
+  };
+  renderAgents();
+  flash();
   try {
-    state = await api("set", { agent: agent.id, field: field.key, value });
+    const next = await api("set", { agent: agent.id, field: field.key, value });
+    // a later pick is already on its way: its answer is the one to draw
+    if (seq !== commit.seq) return;
+    state = next;
     renderAgents();
-    const b = document.querySelector(`.agent[data-id="${agent.id}"] .field[data-key="${TIERS.includes(field.label) ? "tiers" : field.key}"]`);
-    b?.classList.add("flash");
+    flash();
     const shown = opt?.label || value;
     if (state.notice) status(`${agent.name} → ${shown}. ${state.notice}`, "warn", 9000);
     else status(`${agent.name} ${t(field.label)} → ${shown}`, "ok");
     if (providers) loadProviders();
   } catch (e) {
+    if (seq === commit.seq && field.value === value) {
+      field.value = was;
+      renderAgents();
+    }
     status(e.message, "err");
   }
 }

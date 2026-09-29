@@ -202,6 +202,12 @@ agents' icons and no "differs in"; a link in the shared folder also saying
 where it points; a copy of an agent's own still "differs in ZCode"; Bring in
 saying it stays where it is and posting the name; in English and Chinese.
 
+`model-pick.test.cjs` picks Claude Code's model with the Agents page
+scrolled while a faked `/api/set` takes 2.5s to answer: the row shows the
+new model at once, in the window and in the tray panel's opened row and its
+line, the page left where it was; the answer keeps it and says so; a refused
+pick puts the old model back with the reason; in English and Chinese.
+
 With Node.js and Playwright available:
 
 ```sh

@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yetone/magpie/internal/proc"
@@ -134,10 +135,38 @@ func (a *Agent) Detected() bool {
 }
 
 // goProgram reports whether bin was built by Go: another tool of the same
-// name, not the agent, when the agent is not written in Go.
+// name, not the agent, when the agent is not written in Go. Reading a
+// binary's build info parses its whole symbol table (~150ms for a large
+// one), and detection runs on every state the window asks for, so the
+// answer is kept while the file is the same.
 func goProgram(bin string) bool {
-	_, err := buildinfo.ReadFile(bin)
+	st, err := os.Stat(bin)
+	if err != nil {
+		return false
+	}
+	key := goProgramKey{bin, st.Size(), st.ModTime()}
+	goPrograms.Lock()
+	defer goPrograms.Unlock()
+	if v, ok := goPrograms.m[key]; ok {
+		return v
+	}
+	_, err = buildinfo.ReadFile(bin)
+	if goPrograms.m == nil {
+		goPrograms.m = map[goProgramKey]bool{}
+	}
+	goPrograms.m[key] = err == nil
 	return err == nil
+}
+
+type goProgramKey struct {
+	path string
+	size int64
+	mod  time.Time
+}
+
+var goPrograms struct {
+	sync.Mutex
+	m map[goProgramKey]bool
 }
 
 // Field looks a field up by key.
