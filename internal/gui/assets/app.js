@@ -1529,7 +1529,9 @@ function renderProviders() {
     if (p.sponsored) name.append(el("span", "badge", t("sponsored")));
     if (p.off) name.append(el("span", "badge off", t("Switched off")));
     const n = p.models.filter((m) => m.on).length;
-    const models = n ? t(n === 1 ? "{n} model" : "{n} models", { n }) : t("no models exposed");
+    // a provider that only draws images (Settings → Image generation) says so
+    const models = n ? t(n === 1 ? "{n} model" : "{n} models", { n })
+      : p.draws ? t(p.draws === 1 ? "{n} image model" : "{n} image models", { n: p.draws }) : t("no models exposed");
     who.append(name, el("div", "sub", (p.account ? t("signed in as {user}", { user: p.account.user }) : p.host) + " · " + models));
     const using = p.agents.filter((a) => a.current);
     const uses = el("div", "uses");

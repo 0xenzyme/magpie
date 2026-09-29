@@ -70,6 +70,7 @@ type providerJSON struct {
 	Affinity  string             `json:"affinity"`           // how long a conversation stays with who answered it
 	Models    []modelJSON        `json:"models"`             // everything the vendor lists, exposed ones flagged
 	Exposed   int                `json:"exposed"`            // how many reach the agents
+	Draws     int                `json:"draws,omitempty"`    // how many of its models draw images (gateway.Drawers)
 	Unlisted  bool               `json:"unlisted"`           // its models serve only through routing groups
 	Off       bool               `json:"off"`                // switched off: kept, but agents get none of its models
 	Contexts  map[string]int     `json:"contexts,omitempty"` // the windows the user set, "*" for all its models
@@ -259,6 +260,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		}
 	}
 	out.Exposed = len(exposed)
+	out.Draws = len(gateway.Drawers(p))
 	if t, ok := p.Fetched(); ok {
 		out.Fetched = ago(t)
 	}

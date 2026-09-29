@@ -206,6 +206,8 @@ const I18N = {
     "free: it doesn't use the plan's credits": "免费：不消耗套餐积分",
     "{n} model": "{n} 个模型",
     "{n} models": "{n} 个模型",
+    "{n} image model": "{n} 个图像模型",
+    "{n} image models": "{n} 个图像模型",
     "no models exposed": "未暴露模型",
     "signed in as {user}": "已登录 {user}",
     "{name} · {model} — click to change": "{name} · {model} — 点击更改",
