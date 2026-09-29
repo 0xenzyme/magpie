@@ -356,13 +356,14 @@ func (s *Server) systemOne(ctx context.Context, p provider.Provider, model strin
 	}
 	b = decideAnswer(via, b)
 	var use struct {
+		Model string `json:"model"` // the one that answered, when the reply says
 		Usage struct {
 			Input  int `json:"input_tokens"`
 			Output int `json:"output_tokens"`
 		} `json:"usage"`
 	}
 	_ = json.Unmarshal(b, &use)
-	usage.Append(usage.Record{Time: start, Agent: usage.AgentOf(RouterAgent), Provider: p.ID, Host: p.Where(), Model: model,
+	usage.Append(usage.Record{Time: start, Agent: usage.AgentOf(RouterAgent), Provider: p.ID, Host: p.Where(), Model: model, Requested: model, Served: use.Model,
 		Input: use.Usage.Input, Output: use.Usage.Output, Millis: time.Since(start).Milliseconds(), Status: res.StatusCode})
 	return b, nil
 }

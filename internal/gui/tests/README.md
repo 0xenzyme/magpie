@@ -89,10 +89,21 @@ stripe; a daily warm-up's time field only while it is on; each control
 posting the setting it did, with the page scrolled and left where it was;
 the WorkBuddy group only with an account signed in; in English and Chinese.
 
+`usage-ledger.test.cjs` opens the Usage page's Requests, a row per request
+from a faked `/api/usage/requests`: the columns, the model asked for, the
+provider and account, the model sent, "gpt-6-luna" amber by the one a vendor
+answered with another model and plain on a dated name, a failure's red dot
+and 429, the totals over them. Older and Newer page through 130 requests
+with the pager held where it was; the agent, Failed and search filters and
+the period ask the server again from the first page; Export CSV posts the
+filters shown with no page and says where the file went. At the window's
+narrowest (560) the table scrolls in its box and no tab scrolls the page
+sideways; no left-border stripe; in English and Chinese, light and dark.
+
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs internal/gui/tests/usage-ledger.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

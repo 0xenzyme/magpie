@@ -4893,6 +4893,7 @@ let quotasAt = 0; // when they came in
 async function loadUsage() {
   renderUsageTab();
   if (usageTab === "sessions") return loadSessions();
+  if (usageTab === "requests") return loadLedger();
   renderUsageLoading();
   loadQuotas();
   usage = await api("usage?period=" + period);
@@ -4908,18 +4909,24 @@ function loadQuotas() {
   return quotasLoading;
 }
 
-function renderUsageLoading() {
-  const view = $("#view-usage");
-  view.classList.add("loading");
-  view.setAttribute("aria-busy", "true");
+// the period picker, in the page's head, for the Overview and Requests
+function renderPeriod(loading) {
   const seg = $("#period");
   seg.replaceChildren();
   for (const [id, name] of PERIODS) {
     const b = el("button", "opt" + (id === period ? " on" : ""), t(name));
-    b.disabled = true;
+    b.disabled = !!loading;
+    b.onclick = () => { for (const x of seg.querySelectorAll(".opt")) x.classList.toggle("on", x === b); slide(seg, "period"); period = id; ledOffset = 0; loadUsage().catch((e) => status(e.message, "err")); };
     seg.append(b);
   }
   slide(seg, "period");
+}
+
+function renderUsageLoading() {
+  const view = $("#view-usage");
+  view.classList.add("loading");
+  view.setAttribute("aria-busy", "true");
+  renderPeriod(true);
   $("#usageCost").replaceChildren(el("span", "skeleton sk-cost"));
   renderQuotas();
   const stats = $("#stats");
@@ -4962,6 +4969,7 @@ function fmtCost(t) {
 // click on the setting never moves anything it isn't showing (#212)
 function renderCosts() {
   if (usage) renderUsage();
+  if (ledger && usageTab === "requests") renderLedger();
   if (sessions) renderSessions();
 }
 const tokensOf = (t) => t.input + t.output;
@@ -5400,14 +5408,7 @@ function renderUsage() {
   const view = $("#view-usage");
   view.classList.remove("loading");
   view.removeAttribute("aria-busy");
-  const seg = $("#period");
-  seg.replaceChildren();
-  for (const [id, name] of PERIODS) {
-    const b = el("button", "opt" + (id === period ? " on" : ""), t(name));
-    b.onclick = () => { for (const x of seg.querySelectorAll(".opt")) x.classList.toggle("on", x === b); slide(seg, "period"); period = id; loadUsage().catch((e) => status(e.message, "err")); };
-    seg.append(b);
-  }
-  slide(seg, "period");
+  renderPeriod();
   const cost = $("#usageCost");
   cost.replaceChildren();
   const c = fmtCost(u);
@@ -5512,14 +5513,226 @@ function renderUsage() {
   $("#usageNote").textContent = t("Counted from the providers' own usage reports on every call through the gateway · {path}", { path: u.path });
 }
 
+// ---------- requests ----------
+//
+// The ledger: every request of the period, one row each, newest first —
+// what the agent asked for, where it went, the model sent and the one the
+// reply says answered, the tokens, what they cost at list price, how long
+// it took and how it ended — to set beside a vendor's own bill. The
+// server pages it (/api/usage/requests) and saves it whole as CSV.
+
+let ledger = null; // the page shown: { rows, offset, total, agents, …totals }
+let ledOffset = 0, ledAgent = "", ledFailed = false, ledQuery = "";
+const LED_PAGE = 100;
+
+function ledParams(extra) {
+  const q = new URLSearchParams({ period });
+  if (ledAgent) q.set("agent", ledAgent);
+  if (ledFailed) q.set("failed", "1");
+  if (ledQuery.trim()) q.set("q", ledQuery.trim());
+  if (extra) for (const k in extra) q.set(k, extra[k]);
+  return q.toString();
+}
+
+// quiet: a refresh while it's looked at, redrawn only on a change
+async function loadLedger(quiet) {
+  if (!ledger && !quiet) renderLedgerLoading();
+  const want = ledParams({ offset: ledOffset, limit: LED_PAGE });
+  const l = await api("usage/requests?" + want);
+  if (want !== ledParams({ offset: ledOffset, limit: LED_PAGE })) return; // another page or filter was picked meanwhile
+  if (quiet && JSON.stringify(l) === JSON.stringify(ledger)) return;
+  ledger = l;
+  if (view === "usage" && usageTab === "requests") renderLedger();
+}
+
+function renderLedgerLoading() {
+  const view = $("#view-usage");
+  view.classList.add("loading");
+  view.setAttribute("aria-busy", "true");
+  renderPeriod(true);
+  $("#usageCost").replaceChildren(el("span", "skeleton sk-cost"));
+  $("#ledSum").textContent = "";
+  $("#ledPager").hidden = true;
+  const wrap = $("#ledWrap");
+  wrap.classList.remove("none");
+  wrap.replaceChildren();
+  for (let i = 0; i < 5; i++) {
+    const r = el("div", "led-sk");
+    r.append(el("span", "skeleton sk-line"));
+    wrap.append(r);
+  }
+}
+
+const ledNum = (n) => (n || 0).toLocaleString(locale === "zh" ? "zh-CN" : "en");
+const ledTook = (ms = 0) => ms < 1000 ? t("{n} ms", { n: ms }) : t("{n} s", { n: (ms / 1000).toFixed(ms < 10e3 ? 1 : 0) });
+function ledTime(when) {
+  const d = new Date(when), now = new Date();
+  const opts = { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false };
+  if (d.toDateString() !== now.toDateString()) Object.assign(opts, { month: "short", day: "numeric" });
+  return d.toLocaleString(locale === "zh" ? "zh-CN" : "en", opts);
+}
+// the model the reply named: amber, as the Routing page's tag, when it is
+// another than the one sent; plain when it is that one under a dated name
+function ledServed(r) {
+  if (!r.served) return el("span", "faint", "—");
+  if (!r.swapped) return el("span", "muted", r.served);
+  const k = el("span", "swap", r.served);
+  k.title = window.swapWhy ? window.swapWhy({ model: r.model, served: r.served }) : "";
+  return k;
+}
+
+const LED_COLS = [
+  ["Time"], ["Agent"], ["Requested"], ["Provider · account"], ["Sent"], ["Served"], ["Effort"],
+  ["In", "n"], ["Out", "n"], ["Cache write", "n"], ["Cache read", "n"], ["Cost", "n"], ["Duration", "n"], ["Status"],
+];
+
+function renderLedger() {
+  const l = ledger;
+  const view = $("#view-usage");
+  view.classList.remove("loading");
+  view.removeAttribute("aria-busy");
+  renderPeriod();
+
+  const cost = $("#usageCost");
+  cost.replaceChildren();
+  cost.title = "";
+  const c = fmtCost(l);
+  if (c) {
+    cost.append(el("b", "", "≈" + c), el("span", "", t("list price")));
+    cost.title = l.unpriced ? t(l.unpriced === 1 ? "{n} call had no known price and is not counted" : "{n} calls had no known price and are not counted", { n: l.unpriced }) : t("At each model's list price on models.dev");
+  }
+
+  // the filters: the agents with calls in the period, and failures alone
+  if (ledAgent && !l.agents.some((a) => a.id === ledAgent)) ledAgent = "";
+  sessPick($("#ledAgent"), "All agents", ledAgent, l.agents.map((a) => ({ v: a.id, name: a.name, note: "" })), "Agent", (v) => { ledAgent = v; ledOffset = 0; loadLedger().catch((e) => status(e.message, "err")); });
+  const seg = $("#ledStatus");
+  seg.replaceChildren();
+  for (const [on, name] of [[false, "All"], [true, "Failed"]]) {
+    const b = el("button", "opt" + (on === ledFailed ? " on" : ""), t(name));
+    b.onclick = () => {
+      if (on === ledFailed) return;
+      for (const x of seg.querySelectorAll(".opt")) x.classList.toggle("on", x === b);
+      slide(seg, "ledStatus");
+      ledFailed = on; ledOffset = 0;
+      loadLedger().catch((e) => status(e.message, "err"));
+    };
+    seg.append(b);
+  }
+  slide(seg, "ledStatus");
+  $("#ledExport").disabled = !l.total;
+
+  const sum = [t(l.total === 1 ? "{n} request" : "{n} requests", { n: ledNum(l.total) })];
+  if (l.total) {
+    sum.push(t("{n} in", { n: fmtN(l.input) }), t("{n} out", { n: fmtN(l.output) }), t("{n} cache write", { n: fmtN(l.cache_write) }), t("{n} cache read", { n: fmtN(l.cache_read) }));
+    if (l.errors) sum.push(t("{n} failed", { n: l.errors }));
+  }
+  $("#ledSum").textContent = sum.join(" · ");
+
+  const wrap = $("#ledWrap");
+  const pager = $("#ledPager");
+  if (!l.total) {
+    wrap.classList.add("none");
+    const filtered = ledAgent || ledFailed || ledQuery.trim();
+    const none = { today: "No calls today.", "7d": "No calls in the last 7 days.", "30d": "No calls in the last 30 days.", all: "No calls yet." }[period];
+    wrap.replaceChildren(el("div", "led-none", filtered ? t("No requests match these filters.") : t(none)));
+    pager.hidden = true;
+    $("#ledNote").textContent = "";
+    return;
+  }
+  wrap.classList.remove("none");
+  const table = el("table", "led");
+  const head = el("tr");
+  for (const [name, cls] of LED_COLS) head.append(el("th", cls || "", t(name)));
+  table.append(el("thead"), el("tbody"));
+  table.tHead.append(head);
+  for (const r of l.rows) {
+    const bad = r.status >= 400;
+    const tr = el("tr", bad ? "bad" : "");
+    const td = (child, cls, title) => {
+      const c = el("td", cls || "");
+      if (typeof child === "string") c.textContent = child; else c.append(child);
+      if (title) c.title = title;
+      tr.append(c);
+      return c;
+    };
+    td(ledTime(r.t), "when", new Date(r.t).toLocaleString(locale === "zh" ? "zh-CN" : "en"));
+    const who = el("span", "who");
+    who.append(icon(r.icon || "generic"), el("span", "", r.agentName || r.agent));
+    td(who, "", [r.kind, r.session && t("session {id}", { id: r.session })].filter(Boolean).join(" · "));
+    td(r.req || "—", "model" + (r.req ? "" : " faint"), r.req || t("Not kept for requests before this version"));
+    const where = r.providerName + (r.host ? " · " + r.host : "");
+    td(where, "where", where);
+    td(r.model || "—", "model", r.model);
+    td(ledServed(r), "model");
+    td(r.effort || "—", r.effort ? "" : "faint");
+    td(ledNum(r.in), "n");
+    td(ledNum(r.out), "n", r.reasoning ? t("{n} reasoning, inside output", { n: ledNum(r.reasoning) }) : "");
+    td(ledNum(r.cache_write), "n" + (r.cache_write ? "" : " faint"));
+    td(ledNum(r.cache_read), "n" + (r.cache_read ? "" : " faint"));
+    td(r.priced ? "≈" + fmtCost({ cost: r.cost, unpriced: 0 }) : "—", "n cost" + (r.priced ? "" : " faint"), r.priced ? "" : t("No known price for this model"));
+    td(ledTook(r.ms), "n", r.ttft_ms ? t("TTFT {ms}", { ms: ledTook(r.ttft_ms) }) : "");
+    const st = el("span", "st");
+    st.append(el("i", "dot"), document.createTextNode(r.status ? String(r.status) : "—"));
+    td(st, "", bad ? t("Failed: the agent was answered {status}", { status: r.status }) : "");
+    table.tBodies[0].append(tr);
+  }
+  wrap.replaceChildren(table);
+
+  // a page at a time: the newest first
+  pager.hidden = l.total <= LED_PAGE;
+  pager.replaceChildren();
+  if (!pager.hidden) {
+    const prev = el("button", "text", t("Newer"));
+    const next = el("button", "text", t("Older"));
+    prev.disabled = l.offset <= 0;
+    next.disabled = l.offset + l.rows.length >= l.total;
+    prev.onclick = () => { ledOffset = Math.max(0, l.offset - LED_PAGE); loadLedger().catch((e) => status(e.message, "err")); };
+    next.onclick = () => { ledOffset = l.offset + LED_PAGE; loadLedger().catch((e) => status(e.message, "err")); };
+    pager.append(prev, el("span", "", t("{a}–{b} of {n}", { a: ledNum(l.offset + 1), b: ledNum(l.offset + l.rows.length), n: ledNum(l.total) })), next);
+  }
+  $("#ledNote").textContent = t("Each request's tokens as its provider reported them; the cost at the model's list price. Export CSV saves every page.");
+}
+
+{
+  let typing = 0;
+  $("#ledQ").oninput = (e) => {
+    ledQuery = e.target.value;
+    clearTimeout(typing);
+    typing = setTimeout(() => { ledOffset = 0; loadLedger().catch((err) => status(err.message, "err")); }, 250);
+  };
+  $("#ledQ").onkeydown = (e) => {
+    if (e.key === "Escape" && e.target.value) { e.stopPropagation(); e.target.value = ""; ledQuery = ""; ledOffset = 0; loadLedger().catch((err) => status(err.message, "err")); }
+  };
+  $("#ledExport").onclick = async () => {
+    const b = $("#ledExport");
+    // in a browser the file comes to it; in the app it goes to Downloads
+    if (web) {
+      const a = el("a");
+      a.href = "/api/usage/requests.csv?" + ledParams();
+      a.download = "";
+      a.click();
+      return;
+    }
+    b.classList.add("busy");
+    try {
+      const r = await api("usage/requests/export?" + ledParams(), {});
+      status(t(r.rows === 1 ? "Saved {n} request to {path}" : "Saved {n} requests to {path}", { n: ledNum(r.rows), path: r.path }), "ok");
+    } catch (e) {
+      status(e.message, "err");
+    } finally {
+      b.classList.remove("busy");
+    }
+  };
+}
+
 // ---------- sessions ----------
 //
 // The agents' own sessions, read from their session files: what each cost,
 // and the command that picks it up again. A segment of the Usage page.
 
-const USAGE_TABS = [["usage", "Overview"], ["sessions", "Sessions"]];
+const USAGE_TABS = [["usage", "Overview"], ["requests", "Requests"], ["sessions", "Sessions"]];
 let usageTab = "usage";
-try { if (localStorage.getItem("magpie.usageTab") === "sessions") usageTab = "sessions"; } catch {}
+try { const k = localStorage.getItem("magpie.usageTab"); if (USAGE_TABS.some(([id]) => id === k)) usageTab = k; } catch {}
 let sessions = null; // { sessions, terminal, dirs }
 let sessAgent = "all";
 let sessQuery = "";
@@ -5556,7 +5769,8 @@ function renderUsageTab() {
   const on = usageTab === "sessions";
   $("#period").hidden = on;
   $("#sessRange").hidden = !on;
-  $("#usagePane").hidden = on;
+  $("#usagePane").hidden = usageTab !== "usage";
+  $("#ledgerPane").hidden = usageTab !== "requests";
   $("#sessionsPane").hidden = !on;
 }
 
@@ -7021,6 +7235,11 @@ setInterval(async () => {
   if (usageTab === "sessions") {
     // the agents write their session files as they go
     if (++usageTicks % 3 === 0 && sessions) loadSessions().catch(() => {});
+    return;
+  }
+  if (usageTab === "requests") {
+    // the newest page takes the requests as they come; an older one stays put
+    if (ledger && !ledOffset) loadLedger(true).catch(() => {});
     return;
   }
   if (!usage) return;

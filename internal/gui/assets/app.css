@@ -468,8 +468,16 @@ body.window .field.solo { grid-column: auto; }
 .loading-kpi .sk-number { width: 54%; height: 17px; }
 .loading-kpi .sk-label { width: 36%; height: 8px; }
 #view-usage.loading .opt { cursor: default; }
-.usage-cost { display: inline-flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+.usage-cost { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
 .usage-cost b { font-size: 15px; font-weight: 600; color: var(--fg); }
+/* a narrow window, three tabs and the periods beside it: the words after the
+   sum give way, never the page sideways */
+.usage-cost span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 640px) {
+  .usage-head { gap: 7px; }
+  .usage-cost span:not(.skeleton) { display: none; }
+  .usage-cost b { font-size: 14px; }
+}
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; flex: none; }
 .stats.empty { display: block; background: var(--card); }
 .stats .none { padding: 18px 16px; color: var(--muted); text-align: center; line-height: 1.5; }
@@ -498,6 +506,41 @@ body.window .field.solo { grid-column: auto; }
 .usage-note { padding: 10px 4px 2px; font-size: 11px; color: var(--faint); user-select: text; -webkit-user-select: text; }
 .usage-pane { display: flex; flex-direction: column; flex: none; }
 .usage-pane[hidden] { display: none; }
+
+/* ---- requests, a segment of usage: the ledger ------------------------------ */
+#ledgerPane { min-width: 0; }
+#ledgerPane .sess-tools .segs .opt { height: 22px; }
+#ledExport { flex: none; font-size: 12px; }
+.led-sum { margin: 0 2px 7px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* the table scrolls sideways in its own box, never the page */
+.led-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.led-wrap.none { overflow: visible; }
+.led-none { padding: 18px 16px; color: var(--muted); text-align: center; line-height: 1.5; }
+.led-sk { padding: 11px 14px; }
+.led-sk + .led-sk { border-top: 1px solid var(--line-2); }
+.led { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.led th { padding: 7px 9px 6px; background: var(--card); border-bottom: 1px solid var(--line); font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); text-align: left; white-space: nowrap; }
+.led td { padding: 6px 9px; border-top: 1px solid var(--line-2); white-space: nowrap; color: var(--fg); user-select: text; -webkit-user-select: text; }
+.led tbody tr:first-child td { border-top: 0; }
+.led tbody tr:hover td { background: var(--card-2, var(--pill)); }
+.led .n { text-align: right; }
+.led .faint { color: var(--faint); }
+.led .muted { color: var(--muted); }
+.led .when { color: var(--muted); }
+.led .model, .led .where { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+.led .where { color: var(--fg-2); }
+.led .cost { color: var(--green); }
+.led .cost.faint { color: var(--faint); }
+.led .who { display: inline-flex; align-items: center; gap: 6px; }
+.led .who .ic { width: 14px; height: 14px; flex: none; }
+.led .swap { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; font-size: 10.5px; line-height: 16px; padding: 0 5px; border-radius: 5px; color: var(--amber); background: var(--amber-soft); }
+.led .st { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.led .st .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex: none; }
+.led tr.bad .st { color: var(--red); font-weight: 600; }
+.led tr.bad .st .dot { background: var(--red); }
+.led-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 8px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.led-pager[hidden] { display: none; }
+.led-pager .text { font-size: 12px; }
 
 /* ---- sessions, a segment of usage ------------------------------------------ */
 .sess-tools { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; flex: none; }
