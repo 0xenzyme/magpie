@@ -229,7 +229,7 @@ var presets = []PresetDef{
 		Regions: bedrockRegions("us-east-1", "us-east-2", "us-west-2", "eu-central-1", "eu-west-1", "eu-west-3",
 			"ap-northeast-1", "ap-southeast-1", "ap-southeast-2", "ap-south-1"),
 		NoList: true,
-		Models: []string{"global.anthropic.claude-opus-5-5", "global.anthropic.claude-sonnet-5", "global.anthropic.claude-opus-5",
+		Models: []string{"global.anthropic.claude-opus-5-5", "global.anthropic.claude-sonnet-5-5", "global.anthropic.claude-sonnet-5", "global.anthropic.claude-opus-5",
 			"global.anthropic.claude-fable-5-1", "global.anthropic.claude-opus-4-8", "global.anthropic.claude-opus-4-7",
 			"global.anthropic.claude-haiku-4-5-20251001-v1:0",
 			"global.openai.gpt-6-astra", "global.openai.gpt-6-sol", "global.openai.gpt-6-luna",
