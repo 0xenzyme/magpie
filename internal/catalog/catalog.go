@@ -192,13 +192,22 @@ func load() map[string]mdProvider {
 				votes := map[string]int{}
 				sizes, outs := map[string]map[int]int{}, map[string]map[int]int{}
 				levels := map[string]map[string]int{}
-				for _, p := range m {
+				// one vote a provider for each list it gives a model: a
+				// gateway listing it under each host it routes to
+				// (llmgateway's deepinfra/…, xiaomi/…) votes once, not once
+				// a host
+				voted := map[string]bool{}
+				for pid, p := range m {
 					for id, x := range p.Models {
 						if e := x.efforts(); len(e) > 0 {
+							l := strings.Join(e, ",")
 							if levels[bareID(id)] == nil {
 								levels[bareID(id)] = map[string]int{}
 							}
-							levels[bareID(id)][strings.Join(e, ",")]++
+							if k := pid + "\x00" + bareID(id) + "\x00" + l; !voted[k] {
+								voted[k] = true
+								levels[bareID(id)][l]++
+							}
 						}
 						if slices.Contains(x.Modalities.Input, "image") {
 							votes[bareID(id)]++
@@ -456,6 +465,55 @@ func EffortsOf(id string) []string {
 		return slices.Clone(efforts[b[:i]])
 	}
 	return nil
+}
+
+// ListedBy is the reasoning levels the first of providers (models.dev
+// ids) listing a model of this id gives it — none, for one listed with a
+// thinking switch alone or nothing at all — and whether any of them says.
+// One listed with a thinking budget and no levels says nothing of them
+// (Anthropic's claude-sonnet-4-5, whose budget an effort is sent as). The
+// id is matched as EffortsOf matches it: without a vendor's prefix, in any
+// case. It is how a model's maker is heard before its resellers: Xiaomi
+// lists mimo-v2.6-flash with a switch alone, where gateways reselling it
+// give levels up to max, which Xiaomi turns away (#214).
+func ListedBy(providers []string, id string) ([]string, bool) {
+	all := load()
+	b := bareID(id)
+	if r, ok := unprofiled(b); ok {
+		b = r
+	}
+	for _, want := range []string{b, cutAt(b, '('), cutAt(b, ':')} {
+		for _, pid := range providers {
+			for key, m := range all[pid].Models {
+				if bareID(key) != want {
+					continue
+				}
+				if e := m.efforts(); len(e) > 0 || !m.budgeted() {
+					return slices.Clone(e), true
+				}
+			}
+		}
+	}
+	return nil, false
+}
+
+// budgeted reports whether models.dev says the model takes a thinking
+// budget.
+func (m mdModel) budgeted() bool {
+	for _, r := range m.Reasoning {
+		if r.Type == "budget_tokens" {
+			return true
+		}
+	}
+	return false
+}
+
+// cutAt is s before sep: "gpt-5.4(high)" is gpt-5.4, "glm-5:free" glm-5.
+func cutAt(s string, sep byte) string {
+	if i := strings.IndexByte(s, sep); i > 0 {
+		return s[:i]
+	}
+	return s
 }
 
 // mostListed is the list most providers give; a tie goes to the shorter,

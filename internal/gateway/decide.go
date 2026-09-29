@@ -18,6 +18,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -552,7 +553,21 @@ func sentEffort(proto provider.Protocol, body []byte, p provider.Provider, model
 	if e == "" {
 		return ""
 	}
-	return fitEffort(e, p.Efforts(model))
+	return fitFor(p, model, e)
+}
+
+// fitFor is the effort a request asking for want goes to model at, at p:
+// the level of its own nearest (fitEffort), and for a model known to have
+// none to pick from — a thinking switch alone, as Xiaomi's mimo-v2.6-flash
+// has — no more than high, which it takes where it turns max away (#214).
+// A model whose levels just aren't known is asked as the agent asked.
+func fitFor(p provider.Provider, model, want string) string {
+	levels := p.Efforts(model)
+	e := fitEffort(want, levels)
+	if len(levels) == 0 && slices.Index(effortRank, e) > slices.Index(effortRank, "high") && p.Levelless(model) {
+		return "high"
+	}
+	return e
 }
 
 // fitLevel is the level of the model's own nearest the one picked for it

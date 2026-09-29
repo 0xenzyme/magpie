@@ -1262,7 +1262,7 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	// the effort as the agent sent it, fitted to the model's levels: Qoder's
 	// permission check asks "none", which Command Code turns away
 	asked := bodyEffort(proto, body)
-	if e := fitEffort(asked, p.Efforts(model)); asked != "" && e != asked {
+	if e := fitFor(p, model, asked); asked != "" && e != asked {
 		body = withBodyEffort(proto, body, e)
 	}
 	path := pathOf(proto)
@@ -1433,7 +1433,7 @@ func (s *Server) usable(p provider.Provider, model string) []provider.Protocol {
 // speaks, and the model is remembered there.
 func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to provider.Protocol, req *Request, model string, in http.Header) (*http.Response, provider.Protocol, error) {
 	if req.Effort != "" {
-		if e := fitEffort(req.Effort, p.Efforts(model)); e != req.Effort {
+		if e := fitFor(p, model, req.Effort); e != req.Effort {
 			r := *req
 			r.Effort, req = e, &r
 		}
