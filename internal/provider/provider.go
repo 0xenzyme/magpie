@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -339,6 +340,11 @@ func Add(p Provider) (string, error) {
 	if p.ID == "" {
 		p.ID = Slug(p.Name)
 	}
+	if p.ID == "" {
+		// a name with no Latin letters or digits in it (中转站) slugs to
+		// nothing: the id is the site's instead
+		p.ID = hostID(p)
+	}
 	// the same key on the same host with the same headers is the one
 	// already here, not another: adding it twice would only split its usage
 	for _, h := range All() {
@@ -348,6 +354,31 @@ func Add(p Provider) (string, error) {
 	}
 	p.ID, p.Name = freeID(p.ID), freeName(p.Name)
 	return p.ID, Save(p)
+}
+
+// hostID is an id for a provider from the host it is on: api.relay.com is
+// relay, and one on an IP address, or with no address, is custom.
+func hostID(p Provider) string {
+	for _, u := range []string{p.Chat, p.Responses, p.Anthropic} {
+		h := hostOf(u)
+		if host, _, err := net.SplitHostPort(h); err == nil {
+			h = host
+		}
+		if h = strings.Trim(h, "[]"); h == "" || net.ParseIP(h) != nil {
+			continue
+		}
+		labels := strings.Split(h, ".")
+		if len(labels) > 1 {
+			labels = labels[:len(labels)-1] // the .com
+		}
+		for len(labels) > 1 && (labels[0] == "api" || labels[0] == "www") {
+			labels = labels[1:]
+		}
+		if id := Slug(strings.Join(labels, "-")); id != "" {
+			return id
+		}
+	}
+	return "custom"
 }
 
 // freeName is name, or "name 2", "name 3"… whichever no provider is called,
