@@ -3320,6 +3320,21 @@ function drawEditor(p, presetID) {
   // magpie's, the Usage page shows them
   if (p?.stepPlan) ed.append(...field(t("Step Plan usage"), renderStepPlan(p.stepPlan), t("A key tells only the balance. The Step Plan's 5-hour, weekly and credit windows are told only to a StepFun sign-in: bring yours here once and magpie keeps it (for 30 days), used for nothing else.")));
 
+  // a key on a team's GLM Coding Plan is told the team's windows only with
+  // the team's organization and project, which the console shows (#236)
+  const team = p ? !!p.zhipuTeam : !!pr?.zhipuTeam;
+  if (team) {
+    draft.zhipuTeam = draft.zhipuTeam || { org: p?.zhipuTeam?.org || "", project: p?.zhipuTeam?.project || "" };
+    const org = input(draft.zhipuTeam.org, t("optional · only for a team plan"));
+    org.classList.add("team-org");
+    org.oninput = () => { draft.zhipuTeam.org = org.value; };
+    const proj = input(draft.zhipuTeam.project, t("optional · only for a team plan"));
+    proj.classList.add("team-project");
+    proj.oninput = () => { draft.zhipuTeam.project = proj.value; };
+    ed.append(...field(t("Team org ID"), org, ""));
+    ed.append(...field(t("Team project ID"), proj, t("Only for a key on a team's GLM Coding Plan: both are in {p}'s console, under the team's organization and project. With them the Usage page shows the team's 5-hour and weekly windows.", { p: pr?.name || p.name })));
+  }
+
   // a relay that offers several regional endpoints, or a vendor whose plans
   // are served at their own: one selector, and the provider's base URLs follow it
   let refreshEndpoints = () => {};
@@ -3478,6 +3493,12 @@ function drawEditor(p, presetID) {
     if (body.proxy === null) { ed.querySelector(".proxy-url")?.focus(); return editorError(t("Proxy: type its address, like http://127.0.0.1:7890"), "warn"); }
     if (draft.balanceToken) body.balanceToken = draft.balanceToken;
     else if (draft.clearBalanceToken) body.clearBalanceToken = true;
+    if (team) {
+      // both or neither: {} clears them
+      const org = (draft.zhipuTeam.org || "").trim(), project = (draft.zhipuTeam.project || "").trim();
+      if (!org !== !project) { ed.querySelector(org ? ".team-project" : ".team-org")?.focus({ preventScroll: true }); return editorError(t("Team plan: give both the organization ID and the project ID"), "warn"); }
+      body.zhipuTeam = org ? { org, project } : {};
+    }
     if (isNew && custom && !body.name) { name.focus(); return editorError(t("Give it a name"), "warn"); }
     if (isNew && custom && !body.chat && !body.anthropic && !body.responses) { url.focus(); return editorError(t("A base URL is needed"), "warn"); }
     if (endpoint && !body.chat && !body.responses) { endpoint.focus(); return editorError(t("Your resource's endpoint is needed"), "warn"); }

@@ -361,7 +361,7 @@ func PlanQuotas(ctx context.Context) []SubscriptionQuota {
 			if zhipu := strings.HasSuffix(j.src.url, "/api/monitor/usage/quota/limit"); zhipu && (err != nil || len(ws) == 0) {
 				// no plan of the key's own: a team's key, whose windows are
 				// asked with type=2 (zcode_team.go)
-				if tplan, tws, terr := zhipuKeyTeamWindows(j.p.Via(ctx), j.src.url, j.key); terr == nil && len(tws) > 0 {
+				if tplan, tws, terr := zhipuKeyTeamWindows(j.p.Via(ctx), j.src.url, j.key, j.p.ZhipuTeam); terr == nil && len(tws) > 0 {
 					plan, ws, err, team = tplan, tws, nil, true
 				}
 			}
@@ -397,20 +397,74 @@ func PlanQuotas(ctx context.Context) []SubscriptionQuota {
 	return out
 }
 
+// ZhipuTeam is the team a Zhipu or Z.ai key's GLM Coding Plan belongs to:
+// its organization and project IDs, as the BigModel console shows them.
+type ZhipuTeam struct {
+	Org     string `json:"org,omitempty"`
+	Project string `json:"project,omitempty"`
+}
+
+// normal is t as it is kept: trimmed, nil when neither is given.
+func (t *ZhipuTeam) normal() *ZhipuTeam {
+	if t == nil {
+		return nil
+	}
+	n := ZhipuTeam{strings.TrimSpace(t.Org), strings.TrimSpace(t.Project)}
+	if n.Org == "" && n.Project == "" {
+		return nil
+	}
+	return &n
+}
+
+// TakesZhipuTeam says p is a key of Zhipu's or Z.ai's, whose editor then
+// offers the team's organization and project (#236).
+func TakesZhipuTeam(p Provider) bool {
+	if p.Account != nil {
+		return false
+	}
+	src, ok := planQuotaSourceOf(p)
+	return ok && strings.HasSuffix(src.url, "/api/monitor/usage/quota/limit")
+}
+
 // zhipuKeyTeamWindows is a GLM key's windows on a team's GLM Coding Plan:
 // the quota asked with type=2 where ZCode asks it (bigmodel.cn, api.z.ai),
-// with the team's organization and project in the headers when the key is
-// a ZCode account's team key magpie holds (a key pasted alone is asked
-// without them, which is a guess: ZCode always sends them).
-func zhipuKeyTeamWindows(ctx context.Context, quotaURL, key string) (string, []QuotaWindow, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, zcodeBizRoot(quotaURL)+"/api/monitor/usage/quota/limit?type=2", nil)
+// with the team's organization and project in the headers: those the user
+// gave the provider, else those of a ZCode account's team key magpie holds
+// (a key pasted alone is asked without them, which is a guess: ZCode
+// always sends them).
+func zhipuKeyTeamWindows(ctx context.Context, quotaURL, key string, team *ZhipuTeam) (plan string, ws []QuotaWindow, err error) {
+	// the key's own host first (open.bigmodel.cn, as CC Switch asks it),
+	// then where ZCode asks it
+	for _, root := range zhipuTeamRoots(quotaURL) {
+		if plan, ws, err = zhipuKeyTeamAt(ctx, root, quotaURL, key, team); err == nil && len(ws) > 0 {
+			return
+		}
+	}
+	return
+}
+
+// zhipuTeamRoots are the hosts a team's quota is asked at, each once.
+func zhipuTeamRoots(quotaURL string) []string {
+	own := strings.TrimSuffix(quotaURL, "/api/monitor/usage/quota/limit")
+	if biz := zcodeBizRoot(quotaURL); biz != own {
+		return []string{own, biz}
+	}
+	return []string{own}
+}
+
+func zhipuKeyTeamAt(ctx context.Context, root, quotaURL, key string, team *ZhipuTeam) (string, []QuotaWindow, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, root+"/api/monitor/usage/quota/limit?type=2", nil)
 	if err != nil {
 		return "", nil, err
 	}
 	req.Header.Set("Authorization", key)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Accept-Language", "en-US,en")
-	if org, project := zhipuTeamOf(key); org != "" {
+	org, project := zhipuTeamOf(key)
+	if team != nil && team.Org != "" && team.Project != "" {
+		org, project = team.Org, team.Project
+	}
+	if org != "" {
 		for k, v := range zcodeTeamHeaders(quotaURL, org, project) {
 			req.Header.Set(k, v)
 		}

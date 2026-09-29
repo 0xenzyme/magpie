@@ -254,7 +254,7 @@ func TestZhipuKeyTeamWindows(t *testing.T) {
 	if err := addSideLogin(savedLogin{Agent: "zcode", User: "team@example.com", Plan: plan, Auth: auth}, "", func(savedLogin) {}); err != nil {
 		t.Fatal(err)
 	}
-	plan, ws, err := zhipuKeyTeamWindows(context.Background(), ZCodeBigModelBase, "tk.ts")
+	plan, ws, err := zhipuKeyTeamWindows(context.Background(), ZCodeBigModelBase, "tk.ts", nil)
 	if err != nil || plan != "GLM Coding Team" || len(ws) != 2 || ws[0].Name != "5 hours" || ws[0].Used != 42 || ws[0].Span != 5*time.Hour || ws[1].Name != "7 days" {
 		t.Fatalf("windows: %v %q %+v", err, plan, ws)
 	}
@@ -262,7 +262,7 @@ func TestZhipuKeyTeamWindows(t *testing.T) {
 		t.Fatalf("asked with: %v", u.quota.Header)
 	}
 	// a key that isn't a seat magpie holds is asked without them, and has none
-	if _, ws, err := zhipuKeyTeamWindows(context.Background(), ZCodeBigModelBase, "other.key"); err != nil || len(ws) != 0 {
+	if _, ws, err := zhipuKeyTeamWindows(context.Background(), ZCodeBigModelBase, "other.key", nil); err != nil || len(ws) != 0 {
 		t.Fatalf("another key: %v %+v", err, ws)
 	}
 }

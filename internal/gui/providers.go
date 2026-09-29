@@ -69,6 +69,9 @@ type providerJSON struct {
 	// a StepFun provider's Step Plan windows, told only to a platform
 	// sign-in: which site's, and whether one is kept
 	StepPlan *stepPlanJSON `json:"stepPlan,omitempty"`
+	// a Zhipu or Z.ai key's team, for a team's GLM Coding Plan (#236):
+	// set, if empty, for those providers alone, which the editor asks it of
+	ZhipuTeam *provider.ZhipuTeam `json:"zhipuTeam,omitempty"`
 
 	Key struct {
 		Set      bool   `json:"set"`
@@ -124,6 +127,9 @@ type providerAgent struct {
 type presetJSON struct {
 	provider.PresetDef
 	Added bool `json:"added"`
+	// ZhipuTeam: a key of it may be on a team's GLM Coding Plan, whose
+	// organization and project the editor offers to take
+	ZhipuTeam bool `json:"zhipuTeam,omitempty"`
 }
 
 type gatewayJSON struct {
@@ -219,6 +225,12 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		out.Key.Optional = pr.NoKey
 	}
 	out.BalanceToken.Takes, out.BalanceToken.Set = provider.TakesBalanceToken(p), p.BalanceToken != ""
+	if provider.TakesZhipuTeam(p) {
+		out.ZhipuTeam = &provider.ZhipuTeam{}
+		if p.ZhipuTeam != nil {
+			*out.ZhipuTeam = *p.ZhipuTeam
+		}
+	}
 	if site := provider.StepFunSite(p); site != "" {
 		out.StepPlan = &stepPlanJSON{site, provider.StepFunSignedIn(site), provider.StepFunSignInURL(site), provider.StepFunBookmarklet()}
 	}
@@ -344,7 +356,8 @@ func providersState() providersJSON {
 		s.Providers = append(s.Providers, providerInfo(p, uses))
 	}
 	for _, pr := range provider.Presets() {
-		s.Presets = append(s.Presets, presetJSON{PresetDef: pr, Added: have[pr.ID]})
+		team := provider.TakesZhipuTeam(provider.Provider{Chat: pr.Chat, Responses: pr.Responses, Anthropic: pr.Anthropic})
+		s.Presets = append(s.Presets, presetJSON{PresetDef: pr, Added: have[pr.ID], ZhipuTeam: team})
 	}
 	cat := provider.Catalog()
 	s.Gateway = gatewayJSON{URL: gateway.URL(), Models: len(cat), Calls: []gateway.Call{}, Groups: []gwGroupJSON{}}
@@ -499,6 +512,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// its key when the form left it blank
 			if pr, err := provider.FromPreset(in.Preset); err == nil && in.Chat == "" && in.Responses == "" && in.Anthropic == "" {
 				pr.Key, pr.Models, pr.Fallback, pr.Headers, pr.BalanceToken, pr.Contexts = in.Key, in.Models, in.Fallback, in.Headers, in.BalanceToken, in.Contexts
+				pr.ZhipuTeam = in.ZhipuTeam
 				if in.Name != "" {
 					pr.Name = in.Name
 				}
@@ -545,6 +559,10 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				// each account's own proxy likewise: {} clears them
 				if in.AccountProxies == nil && old != nil {
 					in.AccountProxies = old.AccountProxies
+				}
+				// a Zhipu key's team likewise: {} clears it
+				if in.ZhipuTeam == nil && old != nil {
+					in.ZhipuTeam = old.ZhipuTeam
 				}
 				if in.Key == "" && old != nil {
 					in.Key = old.Key

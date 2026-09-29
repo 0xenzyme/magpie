@@ -118,6 +118,11 @@ type Provider struct {
 	// BalanceURL (see TakesBalanceToken). It is asked with nothing else but
 	// the provider's headers, when the endpoint is one named.
 	BalanceToken string `json:"balanceToken,omitempty"`
+	// ZhipuTeam, for a Zhipu or Z.ai key on a team's GLM Coding Plan, is
+	// the team's organization and project, from the BigModel console: the
+	// team's windows are told to the key only with them (see
+	// zhipuKeyTeamWindows). nil for a key of the user's own plan.
+	ZhipuTeam *ZhipuTeam `json:"zhipuTeam,omitempty"`
 
 	// ModelsURL, when set, is where the vendor lists its models, for one
 	// that lists them away from the base URL requests go to (Xiaomi MiMo's
@@ -531,6 +536,7 @@ func normalize(p Provider) Provider {
 	p.Key = strings.TrimSpace(p.Key)
 	p.Proxy = strings.TrimSpace(p.Proxy)
 	p.AccountProxies = normalAccountProxies(p.AccountProxies)
+	p.ZhipuTeam = p.ZhipuTeam.normal()
 	for _, u := range []*string{&p.Chat, &p.Responses, &p.Anthropic, &p.Decide, &p.Website, &p.KeysURL} {
 		*u = strings.TrimRight(strings.TrimSpace(*u), "/")
 		if *u != "" && !strings.Contains(*u, "://") {
