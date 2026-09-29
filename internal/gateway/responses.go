@@ -722,8 +722,12 @@ func renderResponses(res Result, model string, named map[string]nsTool) []byte {
 	}
 	status := "completed"
 	var incomplete any
-	if res.Stop == "length" {
+	switch res.Stop {
+	case "length":
 		status, incomplete = "incomplete", map[string]any{"reason": "max_output_tokens"}
+	case "filter":
+		// as the stream says it (#248)
+		status, incomplete = "incomplete", map[string]any{"reason": "content_filter"}
 	}
 	b, _ := json.Marshal(map[string]any{"id": id, "object": "response", "created_at": time.Now().Unix(), "status": status,
 		"model": model, "output": output, "usage": res.Usage.responses(), "incomplete_details": incomplete,

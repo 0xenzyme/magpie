@@ -132,6 +132,9 @@ const (
 	// failVerify: the account must be verified with its vendor (Google's
 	// VALIDATION_REQUIRED) before it is served again
 	failVerify = "verify"
+	// failRefused: the vendor's safety filter refused the request before
+	// anything was said (#248) — the next one is asked, and nobody rests
+	failRefused = "refused"
 )
 
 // failure says why a reply failed.

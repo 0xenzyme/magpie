@@ -958,8 +958,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		} else {
 			call.Status, call.Error = s.attempt(hw, r, from, c.p, c.model, attemptBody, &call)
 		}
+		hw.settle()
 		if hw.failure != 0 { // the stream failed before any of it was sent
 			call.Status, call.Error = hw.failure, c.p.Name+": "+hw.failMsg
+		}
+		if hw.refused {
+			// the vendor's safety filter, with nothing said (#248)
+			call.Error = refusedError(c.p, c.model, hw.failMsg)
 		}
 		try := Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Start: began, Done: true, Status: call.Status, Millis: time.Since(began).Milliseconds(), Error: call.Error,
 			Served: call.Usage.Served, Swapped: swapped(c.model, call.Usage.Served)}
@@ -999,6 +1004,22 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				continue
 			}
 		}
+		if !last && hw.failed() && hw.refused {
+			// another account or model may answer what this one refused;
+			// this one isn't set aside, as nothing is wrong with it, and
+			// what the refusal cost is logged on its own
+			try.Fail = failRefused
+			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+			skipped = append(skipped, c.label()+": "+call.Error)
+			if call.To != "" {
+				usage.Append(usage.Record{Time: began, Agent: call.Agent, Provider: call.Provider, Host: where, Model: c.model,
+					Requested: call.Model, Served: call.Usage.Served,
+					Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
+					CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: time.Since(began).Milliseconds(), Status: call.Status,
+					TTFT: try.TTFT, FirstText: try.FirstText, Session: sessionOf(r.Header), Kind: call.Kind})
+			}
+			continue
+		}
 		if !last && hw.failed() {
 			rest := s.restAfterMarked(c, hw.code(), hw.header, hw.errBody(), hw.sharedPool)
 			try.Fail, try.Rest = rest.Why, &rest
@@ -1021,7 +1042,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 			break
 		}
-		hw.release()
+		if hw.refused && !hw.passing {
+			// nobody is left: the agent is told it was refused, as a
+			// request it shouldn't send again as it is, not handed an empty
+			// reply it would ask again for, paying for each
+			writeError(w, from, refusedStatus, call.Error)
+		} else {
+			hw.release()
+		}
 		model = c.model
 		if call.Status < 400 {
 			servedCandidate(c, call.Usage.Input+call.Usage.Output+call.Usage.CacheRead+call.Usage.CacheWrite)
@@ -1032,6 +1060,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			for _, at := range nestedAt {
 				ruleAnswered(at, call.Usage)
 			}
+		} else if hw.refused {
+			try.Fail = failRefused
 		} else {
 			try.Fail = failure(call.Status, []byte(call.Error))
 			if try.Fail == failVerify && !held {
@@ -1065,6 +1095,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: call.Millis, Status: call.Status,
 			TTFT: call.TTFT, FirstText: call.FirstText, Session: sessionOf(r.Header), Kind: call.Kind})
 	}
+}
+
+// refusedError is what the agent is told of a refusal by the vendor's
+// safety filter, with nothing said before it (#248).
+func refusedError(p provider.Provider, model, why string) string {
+	return fmt.Sprintf("%s refused this request (%s) via %s", model, why, p.Name)
 }
 
 // sinceStart is a time d into a try that began before into the request,
