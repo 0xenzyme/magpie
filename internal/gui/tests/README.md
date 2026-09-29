@@ -112,10 +112,13 @@ and Chinese.
 `add-sheet.test.cjs` opens the Providers page's add sheet as quiet rows:
 Subscriptions, Vendors, Relays and On this machine, each with its word on
 what it is; rows with no border, no second line and no overflow, three to a
-line at 900px; an added provider not faded but marked "Added" in green, the
-Claude subscription "2 accounts"; the host in a row's title; the custom
-provider a line at the foot, gone while searching; a row opening its editor;
-in English and Chinese.
+line at 900px; an added provider not faded but marked by a small green dot
+after its name, a grey count only past one account (the Claude subscription's
+2); short names with the full name, plans and host in the title; a vendor's
+global and China presets one row marked "Global · China", its editor picking
+the region with the key typed kept; the custom provider a line at the foot,
+gone while searching; the dialog growing out of the row clicked on a spring
+and folding back into it on close; in English and Chinese.
 
 `own-signin-remove.test.cjs` opens the Kiro subscription's accounts with
 kiro-cli's own sign-in behind one of magpie's, then alone and first: its

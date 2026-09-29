@@ -635,6 +635,7 @@ const I18N = {
     "Region": "区域",
     "Auto": "自动",
     "Global": "国际",
+    "China": "中国",
     "China Mainland": "中国大陆",
     "Plan": "套餐",
     "Pay as you go": "按量付费",

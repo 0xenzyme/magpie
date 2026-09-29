@@ -1767,8 +1767,8 @@ function renderProviders() {
   dialog = renderAdd() || dialog;
   if (importing) dialog = renderImport(importing);
   if (importingApps) dialog = renderImportApps(importingApps);
+  view.scrollTop = top; // first: a closing dialog folds into its row where it is
   if (dialog) openModal(dialog); else closeModal();
-  view.scrollTop = top;
 }
 
 // providerSwitch turns a provider off and on (#163): off, it stays with its
@@ -2416,11 +2416,13 @@ function renderAdd() {
       }
     }
     for (const [kind, title, hint] of [["vendor", "Vendors", "the makers' own APIs"], ["relay", "Relays", "one key, many vendors"], ["local", "On this machine", ""]]) {
-      const ps = providers.presets.filter((p) => p.kind === kind && hit(p));
-      if (!ps.length) continue;
+      // a vendor's China endpoint is a preset of its own: one row with the global one
+      const rows = providers.presets.filter((p) => p.kind === kind && !globalOf(p))
+        .map((p) => [p, chinaOf(p)]).filter(([p, cn]) => hit(p) || (cn && hit(cn)));
+      if (!rows.length) continue;
       any = true;
       const grid = section(title, hint);
-      for (const pr of ps) grid.append(tile(pr));
+      for (const [pr, cn] of rows) grid.append(cn ? pairTile(pr, cn) : tile(pr));
     }
     if (!any) {
       const none = el("div", "none");
@@ -2434,6 +2436,7 @@ function renderAdd() {
       const foot = el("div", "custom-foot");
       const c = el("button", "custom" + (editing?.custom ? " on" : ""));
       c.append(svg(PLUS, 13, 1.8), el("span", "", t("Custom provider")));
+      c.dataset.pick = "custom";
       c.onclick = () => { editing = { custom: true }; draft = null; renderProviders(); };
       foot.append(c, el("span", "hint", t("any OpenAI or Anthropic compatible URL")));
       tiles.append(foot);
@@ -2447,41 +2450,74 @@ function renderAdd() {
 // them; what more there is to say goes in its title.
 function pickRow(ic, name, cls = "") {
   const b = el("button", "tile" + cls);
-  const n = el("span", "n", name);
-  b.append(icon(ic), n);
+  b.dataset.pick = name; // the dialog it opens folds back into it, re-rendered
+  const nm = el("span", "nm");
+  nm.append(el("span", "n", name));
+  b.append(icon(ic), nm);
   return b;
 }
 
-// the green mark on a row already added: a check and a word
-function addedMark(text) {
-  const m = el("span", "st added");
-  m.append(svg(CHECK, 10, 2), el("span", "", text));
-  return m;
+// a row already added: a green dot after its name, and how many accounts
+// when a subscription has more than one
+function markAdded(b, n = 1) {
+  b.classList.add("added");
+  const nm = b.querySelector(".nm");
+  nm.append(el("span", "have"));
+  if (n > 1) nm.append(el("span", "cnt", String(n)));
 }
+
+// the add sheet names a row without what its title tells: a subscription's
+// plan in brackets, a preset's long name
+const shortName = (name) => name.replace(/\s*[(（][^()（）]*[)）]\s*$/, "") || name;
+
+// a vendor's China endpoint is a preset of its own, id-cn beside the global id
+const chinaOf = (pr) => providers.presets.find((x) => x.id === pr.id + "-cn");
+const globalOf = (pr) => pr.id.endsWith("-cn") ? providers.presets.find((x) => x.id === pr.id.slice(0, -3)) : null;
+
+// pairTile is a vendor's global and China presets as one row; the editor
+// switches between them. A click adds the one not added yet, or opens the
+// provider when both are.
+function pairTile(pr, cn) {
+  const both = [pr, cn];
+  const b = pickRow(pr.icon || "generic", shortName(pr.short || pr.name), both.some((x) => editing?.preset === x.id) ? " on" : "");
+  b.append(el("span", "st", t("Global") + " · " + t("China")));
+  const added = both.filter((x) => x.added);
+  b.title = both.map((x) => t(x === pr ? "Global" : "China") + " " + hostOf(x.chat || x.responses || x.anthropic) + (x.added ? " · " + t("Added") : "")).join("\n");
+  if (added.length) markAdded(b);
+  const next = both.find((x) => !x.added);
+  b.onclick = () => {
+    if (next) { editing = { preset: next.id }; draft = null; }
+    else { editing = presetProvider(pr)?.id ?? pr.id; draft = null; }
+    renderProviders();
+  };
+  return b;
+}
+
+// the first provider made from a preset, which may not have the preset's id
+const presetProvider = (pr) => providers.providers.find((p) => p.preset === pr.id) || providers.providers.find((p) => p.id === pr.id);
 
 // subTile adds a subscription: one more account when the agent has some.
 function subTile(x) {
   const have = providers.providers.find((p) => p.account?.agent === x.agent);
   const n = have ? (have.account.logins?.length || 1) : 0;
-  const b = pickRow(x.icon, x.name, signing?.agent === x.agent ? " on" : "");
+  const b = pickRow(x.icon, shortName(x.name), signing?.agent === x.agent ? " on" : "");
   b.title = t("{name} subscription", { name: x.name }) + " · " + x.plans;
   if (n) {
-    b.append(addedMark(x.single ? t("Signed in") : t(n === 1 ? "1 account" : "{n} accounts", { n })));
-    b.title += " — " + t(x.single ? "signed in · click to switch account" : "click to add another account");
+    markAdded(b, x.single ? 1 : n);
+    b.title += "\n" + (x.single ? t("Signed in") : t(n === 1 ? "1 account" : "{n} accounts", { n })) + " · " + t(x.single ? "signed in · click to switch account" : "click to add another account");
   }
   b.onclick = () => startSignIn(x.agent);
   return b;
 }
 
 function tile(pr) {
-  const b = pickRow(pr.icon || "generic", pr.name, editing?.preset === pr.id ? " on" : "");
-  if (pr.sponsored) b.querySelector(".n").append(el("span", "badge", t("sponsored")));
-  b.title = pr.note ? t(pr.note) : hostOf(pr.chat || pr.responses || pr.anthropic);
+  const b = pickRow(pr.icon || "generic", pr.short || pr.name, editing?.preset === pr.id ? " on" : "");
+  if (pr.sponsored) b.querySelector(".nm").append(el("span", "badge", t("sponsored")));
+  b.title = (pr.short ? pr.name + " · " : "") + (pr.note ? t(pr.note) : hostOf(pr.chat || pr.responses || pr.anthropic));
   if (pr.added) {
-    b.append(addedMark(t("Added")));
+    markAdded(b);
     b.title = t("{name} is already added — open it", { name: pr.name });
-    // the first provider made from it, which may not have the preset's id
-    const have = providers.providers.find((p) => p.preset === pr.id) || providers.providers.find((p) => p.id === pr.id);
+    const have = presetProvider(pr);
     b.onclick = () => { editing = have?.id ?? pr.id; draft = null; renderProviders(); };
   } else {
     b.onclick = () => { editing = { preset: pr.id }; draft = null; renderProviders(); };
@@ -2721,20 +2757,60 @@ function iconPicker(ed) {
 
 // ---------- modal ----------
 // The provider editor opens as a dialog over the page; Escape, the backdrop
-// or Cancel close it.
-let modalTimer = 0;
+// or Cancel close it. As on iOS it grows out of what was pressed, on a
+// spring, and closing folds it back into that (still there, re-rendered or
+// not); with nothing pressed it rises from a little below.
+const SPRING = CSS.supports?.("animation-timing-function", "linear(0, 1)")
+  // a damped spring (response .42 s, damping .8): 1.5% over, settled at 570 ms
+  ? "linear(0, 0.0203, 0.0723, 0.1448, 0.2292, 0.3188, 0.4086, 0.4951, 0.576, 0.6498, 0.7157, 0.7735, 0.8232, 0.8654, 0.9005, 0.9293, 0.9525, 0.9708, 0.9849, 0.9956, 1.0033, 1.0087, 1.0122, 1.0142, 1.015, 1.0151, 1.0146, 1.0136, 1.0124, 1.0111, 1.0097, 1.0084, 1.0071, 1.0059, 1.0049, 1.0039, 1.0031, 1.0024, 1.0018, 1.0013, 1)"
+  : "cubic-bezier(.2, .9, .25, 1.02)";
+const IOS_EASE = "cubic-bezier(.32, .72, 0, 1)";
+const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+// what was last pressed, and a way to find it again once re-rendered
+let pressed = null;
+document.addEventListener("pointerdown", (e) => {
+  const at = e.target.closest?.("[data-pick], .row.provider[data-id], button");
+  if (!at || at.closest("#modal")) return;
+  const find = at.dataset.pick ? `[data-pick="${CSS.escape(at.dataset.pick)}"]` : at.matches(".row.provider") ? `.row.provider[data-id="${CSS.escape(at.dataset.id)}"]` : null;
+  pressed = { el: at, find, time: performance.now() };
+}, true);
+let modalOrigin = null, modalDone = null;
+// originRect: where the dialog came from, as it is now, or null when it's gone
+function originRect(o) {
+  const at = o && (o.el.isConnected ? o.el : o.find ? document.querySelector(o.find) : null);
+  if (!at || at.closest("[hidden]")) return null;
+  const r = at.getBoundingClientRect();
+  return r.width && r.height && r.bottom > 0 && r.top < innerHeight ? r : null;
+}
+// fromRect: the transform putting the dialog (at `to`) over the rect `from`
+function fromRect(from, to) {
+  const s = Math.max(.3, Math.min(1, from.width / to.width));
+  const dx = from.left + from.width / 2 - (to.left + to.width / 2), dy = from.top + from.height / 2 - (to.top + to.height / 2);
+  return `translate(${dx}px, ${dy}px) scale(${s})`;
+}
 function openModal(content) {
   const m = $("#modal"), d = m.firstElementChild;
-  clearTimeout(modalTimer);
+  const fresh = m.hidden || m.classList.contains("out");
+  const top = m.hidden ? 0 : d.querySelector(".ebody")?.scrollTop || 0;
   m.classList.remove("out");
   d.classList.remove("swap");
-  const top = m.hidden ? 0 : d.querySelector(".ebody")?.scrollTop || 0;
-  if (!m.hidden) { void d.offsetWidth; d.classList.add("swap"); } // content changed: a soft refresh, not a re-entrance
+  if (!fresh) { void d.offsetWidth; d.classList.add("swap"); } // content changed: a soft refresh, not a re-entrance
   frame(content);
   d.replaceChildren(content);
   m.hidden = false;
   const body = content.querySelector(":scope > .ebody");
   if (body) body.scrollTop = top; // a re-render keeps the place
+  if (!fresh) return;
+  for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.cancel();
+  d.style.opacity = d.style.transform = m.style.opacity = "";
+  modalDone = null;
+  modalOrigin = pressed && performance.now() - pressed.time < 1000 ? pressed : null;
+  pressed = null;
+  m.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280, easing: "ease-out" });
+  if (calm()) { d.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 }); return; }
+  const to = d.getBoundingClientRect(), from = originRect(modalOrigin);
+  d.animate([{ transform: from ? fromRect(from, to) : "translateY(24px) scale(.94)" }, { transform: "none" }], { duration: 570, easing: SPRING });
+  d.animate([{ opacity: 0 }, { opacity: 1 }], { duration: from ? 200 : 240, easing: "ease-out" });
 }
 // frame holds an editor's head and its buttons still while the fields
 // between them scroll.
@@ -2746,10 +2822,34 @@ function frame(ed) {
   ed.classList.add("framed");
 }
 function closeModal() {
-  const m = $("#modal");
-  if (m.hidden || m.classList.contains("out")) return;
+  const m = $("#modal"), d = m.firstElementChild;
+  if (m.hidden) return Promise.resolve();
+  if (m.classList.contains("out")) return modalDone || Promise.resolve();
   m.classList.add("out");
-  modalTimer = setTimeout(() => { m.hidden = true; m.classList.remove("out"); m.firstElementChild.replaceChildren(); }, 170);
+  for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.commitStyles?.(), a.cancel();
+  // where it would sit at rest, whatever an opening cut short left it at
+  const was = d.style.transform;
+  d.style.transform = "none";
+  const to = d.getBoundingClientRect(), from = calm() ? null : originRect(modalOrigin);
+  d.style.transform = was;
+  const shape = { duration: from ? 380 : 260, easing: IOS_EASE, fill: "forwards" };
+  const moves = [
+    m.animate([{ opacity: 0 }], { ...shape, easing: "ease-out" }),
+    calm() ? d.animate([{ opacity: 0 }], { duration: 140, fill: "forwards" })
+      : d.animate([{ transform: from ? fromRect(from, to) : "translateY(14px) scale(.95)" }], shape),
+  ];
+  // it fades as it lands, the last part of the way
+  if (!calm()) moves.push(d.animate([{ offset: from ? .45 : .2, opacity: getComputedStyle(d).opacity }, { opacity: 0 }], shape));
+  const done = modalDone = Promise.all(moves.map((a) => a.finished)).then(() => {
+    if (modalDone !== done) return;
+    modalDone = null;
+    m.hidden = true;
+    m.classList.remove("out");
+    d.replaceChildren();
+    for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.cancel();
+    d.style.opacity = d.style.transform = m.style.opacity = "";
+  }, () => {});
+  return done;
 }
 $("#modal").onclick = (e) => { if (e.target === e.currentTarget) cancelEdit(); };
 
@@ -2815,6 +2915,26 @@ function renderEditor(p, presetID) {
     if (p) h.append(providerSwitch(p));
     ed.append(h);
     if (p?.off) ed.append(el("div", "hint off-note", t("Switched off: agents aren't given its models and no request goes to it. Its keys and settings are kept; switch it on to use it again.")));
+  }
+
+  // a vendor's global and China endpoints are presets of their own, one row
+  // in the add sheet: here the new provider picks between them, the key kept
+  const pair = isNew && pr ? (globalOf(pr) ? [globalOf(pr), pr] : chinaOf(pr) ? [pr, chinaOf(pr)] : null) : null;
+  if (pair) {
+    const seg = el("div", "segs area");
+    pair.forEach((x, i) => {
+      const b = el("button", "opt" + (x.id === pr.id ? " on" : ""), t(i ? "China" : "Global"));
+      b.title = hostOf(x.chat || x.responses || x.anthropic) + (x.added ? " · " + t("Added") : "");
+      b.onclick = () => {
+        if (x.id === pr.id) return;
+        editing = { preset: x.id };
+        draft = { id: x.id, name: x.name, preset: x.id, key: draft.key, chosen: [], extra: [], headers: [] };
+        renderProviders();
+      };
+      seg.append(b);
+    });
+    queueMicrotask(() => slide(seg, "area"));
+    ed.append(...field(t("Region"), seg, ""));
   }
 
   // who uses it: just the agents already pointed here, so a click changes
@@ -5347,8 +5467,7 @@ function askCodexReset(q) {
 function closeResetAsk() {
   if (!resetAsk) return;
   resetAsk = null;
-  closeModal();
-  setTimeout(() => { if (!resetAsk) $("#modal").classList.remove("lib"); }, 200);
+  closeModal().then(() => { if (!resetAsk) $("#modal").classList.remove("lib"); });
 }
 // the dialog is the providers page's: while this asks, its backdrop and
 // Escape close only this (in the panel, Escape would hide the window)

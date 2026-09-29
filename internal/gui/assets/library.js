@@ -2411,7 +2411,7 @@
   // ---------- the dialog ----------
 
   function openLib(content) { openModal(content); $("#modal").classList.add("lib"); }
-  function closeLibModal() { modal = null; closeModal(); setTimeout(() => { if (!modal) $("#modal").classList.remove("lib"); }, 200); }
+  function closeLibModal() { modal = null; closeModal().then(() => { if (!modal) $("#modal").classList.remove("lib"); }); }
   // The dialog is the providers page's; while the library has it, its
   // backdrop and Escape close it here.
   $("#modal").addEventListener("click", (e) => {

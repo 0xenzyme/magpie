@@ -1310,26 +1310,28 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .sheet .find, #view-gateway .find { height: 24px; width: 160px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); font-size: 12px; outline: none; transition: border-color .12s; }
 .sheet .find:focus, #view-gateway .find:focus { border-color: var(--accent); }
 .sheet .find::placeholder, #view-gateway .find::placeholder { color: var(--faint); }
-.sheet .kind { display: flex; align-items: baseline; gap: 8px; padding: 18px 8px 5px; font-size: 12px; }
-.sheet .kind b { font-weight: 600; color: var(--fg-2); }
+.sheet .kind { display: flex; align-items: baseline; gap: 8px; padding: 22px 8px 6px; font-size: 12px; }
+.sheet .kind b { font-size: 13px; font-weight: 600; color: var(--fg); }
 .sheet .kind span { color: var(--faint); }
 .sheet .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1px 12px; }
 .sheet .none { padding: 14px 2px; color: var(--muted); font-size: 12px; }
 #gwModels .none { padding: 16px; color: var(--muted); font-size: 12px; text-align: center; }
 #view-gateway .row-head .find { margin-right: 8px; }
 /* a row of the add sheet: an icon and a name, no frame; a row already
-   added says so in green on its right rather than fading */
+   added has a small green dot after its name rather than fading */
 .tile {
-  display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px;
+  display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 8px;
   border-radius: 8px; text-align: left; min-width: 0; transition: background .12s;
 }
 .tile:hover { background: var(--pill); }
 .tile.on { background: var(--sel); }
 .tile .ic { width: 18px; height: 18px; flex: none; }
-.tile .n { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tile .n .badge { margin-left: 5px; }
-.tile .st { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); }
-.tile .st.added { color: var(--green); }
+.tile .nm { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.tile .n { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .nm .badge { flex: none; }
+.tile .have { flex: none; width: 6px; height: 6px; border-radius: 3px; background: var(--green); }
+.tile .cnt { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tile .st { flex: none; font-size: 11px; color: var(--faint); white-space: nowrap; }
 .sheet .custom-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 10px 2px 0; border-top: 1px solid var(--line-2); }
 .sheet .custom-foot .custom { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px 0 6px; border-radius: 8px; color: var(--accent); font-size: 13px; }
 .sheet .custom-foot .custom:hover, .sheet .custom-foot .custom.on { background: var(--accent-soft); }
@@ -1608,17 +1610,15 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   display: flex; align-items: center; justify-content: center; padding: 28px 24px;
   background: rgba(0, 0, 0, .28);
   -webkit-backdrop-filter: blur(8px) saturate(1.1); backdrop-filter: blur(8px) saturate(1.1);
-  animation: fade-in .2s var(--ease);
 }
-.modal.out { animation: fade-out .16s var(--ease) forwards; pointer-events: none; }
+/* opening and closing are animated from app.js (openModal, closeModal) */
+.modal.out { pointer-events: none; }
 .modal .dialog {
   width: min(600px, 100%); min-width: 0; max-height: 100%; overflow-y: auto;
   border-radius: 14px; background: var(--card);
   box-shadow: 0 0 0 1px var(--line), 0 24px 60px rgba(0, 0, 0, .32), 0 2px 8px rgba(0, 0, 0, .12);
-  animation: dialog-in .26s var(--ease);
 }
 .modal .dialog.swap { animation: content-in .22s var(--ease); }
-.modal.out .dialog { animation: dialog-out .16s var(--ease) forwards; }
 .modal .dialog::-webkit-scrollbar { width: 0; }
 /* In a dialog the editor's head and buttons stay put and only the fields
    between them scroll; both bars are the same height, their contents
@@ -1640,9 +1640,6 @@ body.window.mac .modal { top: 50px; padding: 16px 24px 24px; }
 body.window .modal { padding: 16px 24px 24px; }
 body.panel .modal { padding: 16px 12px; }
 @keyframes fade-in { from { opacity: 0; } }
-@keyframes fade-out { to { opacity: 0; } }
-@keyframes dialog-in { from { opacity: 0; transform: translateY(12px) scale(.97); } }
-@keyframes dialog-out { to { opacity: 0; transform: translateY(6px) scale(.98); } }
 @keyframes content-in { from { opacity: .5; transform: translateY(2px); } }
 
 @media (prefers-reduced-motion: reduce) {
