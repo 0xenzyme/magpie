@@ -342,6 +342,34 @@ Linux needs `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` for the app build
 (the Makefile adds the `gtk3` tag; with plain `go build`, pass `-tags gtk3`);
 Windows uses the WebView2 runtime that ships with the OS.
 
+### Docker
+
+`docker build` makes a server image: the terminal-only binary on
+distroless, run as nonroot, with magpie's files in a volume at `/config`.
+
+```sh
+docker build -t magpie .
+docker run -d --name magpie -p 127.0.0.1:3425:3425 -p 127.0.0.1:3430:3430 -v magpie-config:/config magpie
+```
+
+3425 is the gateway for agents. Until it is shared (below) it takes any key,
+`Bearer magpie` included, from anyone who reaches it, so the ports above are
+published on the host's loopback only; Docker's `-p 3425:3425` would put it
+on every interface of the host, past its firewall. To reach it from other
+machines, turn on Settings → Share on local network in the browser UI (or
+put `"lan": true, "lanKey": "sk-magpie-…"` in `/config/magpie/settings.json`):
+from then on a request from outside the container must carry that key as its
+API key, and only then publish the port beyond 127.0.0.1.
+
+For the browser UI run the image with `magpie web --addr 0.0.0.0:3430 --no-open`
+in place of the default `serve`, and open
+`http://localhost:3430/?k=<key from docker logs magpie>` (set `MAGPIE_WEB_KEY`
+to keep one key across restarts). There you add providers and import
+sign-ins from a file; a subscription sign-in started in the container cannot
+finish, because the vendor sends the browser back to the container's own
+loopback, so sign in on a machine where magpie runs with a browser. Keys and
+sign-ins live in the volume, so a restart keeps them.
+
 ### Developing
 
 ```sh
