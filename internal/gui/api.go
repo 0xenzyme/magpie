@@ -556,7 +556,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		case "hide":
 			w.HidePanel()
 		case "main":
-			w.ShowMain(r.URL.Query().Get("view"))
+			w.ShowMain(mainView(r.URL.Query()))
 		case "quit":
 			w.Quit()
 		case "fit":

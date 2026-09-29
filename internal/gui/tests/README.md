@@ -55,6 +55,16 @@ list not moving, field and button in sight, one focus ring; the button then
 reads Save and a click on it saves, as Enter does; an empty name keeps the
 field; Escape closes it; in English and Chinese.
 
+`panel-routing.test.cjs` opens the tray panel's Routing tab: the gateway's
+latest requests from a faked trace, newest first, each with its agent, the
+model asked for, the provider and account it went to, the model that
+answered ("served gpt-6-luna" on the one a vendor answered with another, not
+on a dated name), a failure's status, and the time; today's calls and tokens
+over them; the allowances' tab named Allowances. A click, with the panel
+scrolled, asks for the window's Routing page on that request and moves
+nothing; the window opened so has that request picked. In English and
+Chinese.
+
 `login-import.test.cjs` brings ChatGPT accounts in from CLIProxyAPI's auth
 files: offered from the accounts list and from a browser sign-in under way,
 the box says the refresh spends the file's sign-in, what is pasted is posted
@@ -82,7 +92,7 @@ the WorkBuddy group only with an account signed in; in English and Chinese.
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

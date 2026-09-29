@@ -566,9 +566,10 @@ body.panel .view { padding-top: 2px; }
 .ptabs button.on { color: var(--fg); font-weight: 550; }
 .ptabs button[hidden] { display: none; }
 .ptabs em { font-style: normal; font-weight: 400; color: var(--faint); font-variant-numeric: tabular-nums; }
-body.panel[data-ptab="usage"] :is(#agents, .profiles),
-body.panel[data-ptab="profiles"] :is(#agents, #panelQuota),
-body.panel[data-ptab="agents"] :is(.profiles, #panelQuota) { display: none; }
+body.panel[data-ptab="usage"] :is(#agents, .profiles, #panelRouting),
+body.panel[data-ptab="routing"] :is(#agents, .profiles, #panelQuota),
+body.panel[data-ptab="profiles"] :is(#agents, #panelQuota, #panelRouting),
+body.panel[data-ptab="agents"] :is(.profiles, #panelQuota, #panelRouting) { display: none; }
 
 /* ---- the panel's agents: one quiet line each, opened in place ------------ */
 /* icon · name · model · effort · chevron, the last three in columns of their

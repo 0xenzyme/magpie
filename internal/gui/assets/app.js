@@ -952,7 +952,7 @@ function fit(extra = 0, glide) {
   const body = document.body, tab = body.dataset.ptab;
   delete body.dataset.ptab;
   // extra is only ever the agents' (a row opening, the scroll unrolling)
-  const tallest = Math.max($("#agents").offsetHeight + extra, $(".profiles").offsetHeight, $("#panelQuota").offsetHeight);
+  const tallest = Math.max($("#agents").offsetHeight + extra, $(".profiles").offsetHeight, $("#panelQuota").offsetHeight, $("#panelRouting").offsetHeight);
   if (tab) body.dataset.ptab = tab;
   const h = $(".top").offsetHeight + $("#ptabs").offsetHeight + tallest + $(".foot").offsetHeight + 4;
   if (h === fit.last) return;
@@ -5048,8 +5048,10 @@ function planSpan(q) {
   return s;
 }
 
-// The tray panel is three tabs over the one page: the agents, the usage of
-// every subscription and key, and the saved profiles. The tab is remembered.
+// The tray panel is four tabs over the one page: the agents, the allowances
+// of every subscription and key (the "usage" tab, as it was named before),
+// the gateway's latest requests (routing.js draws those) and the saved
+// profiles. The tab is remembered.
 let panelTab = "agents";
 try { panelTab = localStorage.getItem("magpie.panelTab") || "agents"; } catch {}
 function setPanelTab(tab) {
@@ -5066,6 +5068,7 @@ function setPanelTab(tab) {
   // the card under the tab picked glides to it, as on every other pill
   slide(tabs, "ptabs");
   panelAge();
+  window.panelRoutingShown?.();
   fit();
 }
 if (mode === "panel") {

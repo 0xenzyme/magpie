@@ -330,3 +330,37 @@
 .rt-day small { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .rt-day:hover { color: var(--fg); }
 .rt-day.on { color: var(--fg); border-color: var(--fg); }
+
+/* the tray panel's Routing tab: the gateway's latest requests, two lines each */
+.panel-routing { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 2px 2px 6px; }
+.pr-head { display: flex; align-items: center; gap: 8px; min-height: 22px; padding: 0 2px 0 4px; font-size: 12px; color: var(--muted); }
+.pr-head .rt-livedot { margin-left: 0; flex: none; }
+.pr-today { font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pr-today b { color: var(--fg); font-weight: 600; }
+.pr-head .text { flex: none; font-size: 12px; }
+.skeleton.pr-sk { display: inline-block; width: 150px; height: 9px; border-radius: 4px; vertical-align: middle; }
+.skeleton.pr-sk-row { height: 40px; border-radius: 11px; }
+.pr-none { margin: 0; padding: 12px; border-radius: 11px; background: var(--card); box-shadow: var(--card-edge); font-size: 12px; line-height: 1.55; color: var(--muted); }
+.pr-none b { display: block; color: var(--fg); font-weight: 550; }
+.pr-list { display: flex; flex-direction: column; padding: 4px; border-radius: 11px; background: var(--card); box-shadow: var(--card-edge); }
+.pr-req { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; padding: 6px 8px; border-radius: 8px; font: inherit; font-size: 12px; text-align: left; color: var(--fg-2); background: none; border: 0; cursor: pointer; }
+.pr-req:hover { background: var(--card-2); }
+.pr-a, .pr-to { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pr-a i.ag { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--agent); }
+.pr-a .ic, .pr-a .ic img, .pr-a .ic svg { width: 14px; height: 14px; flex: none; }
+.pr-who { flex: none; color: var(--fg); font-weight: 550; }
+.pr-a .m { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg-2); background: var(--card-2); border-radius: 5px; padding: 0 5px; }
+.pr-a .kind { flex: 0 100 auto; min-width: 3.2em; max-width: 8em; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; line-height: 16px; padding: 0 5px; border-radius: 5px; color: var(--muted); background: var(--card-2); border: 1px solid var(--line); white-space: nowrap; }
+.pr-req .at { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 11px; }
+.pr-to { padding-left: 2px; color: var(--fg); }
+.pr-to > i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.pr-req.moved .pr-to > i { background: var(--accent); }
+.pr-req.bad .pr-to { color: var(--red); }
+.pr-req.bad .pr-to > i { background: var(--red); }
+.pr-req.wait .pr-to > i { background: var(--muted); animation: rtlive 1.8s infinite; }
+.pr-where { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-m { flex: 0 2 auto; min-width: 2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.pr-m::before { content: "· "; }
+.pr-to .swap { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; line-height: 16px; padding: 0 5px; border-radius: 5px; color: var(--amber); background: var(--amber-soft); white-space: nowrap; }
+.pr-req .meta { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+@media (prefers-reduced-motion: reduce) { .pr-req.wait .pr-to > i { animation: none; } }

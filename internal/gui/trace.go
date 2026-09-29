@@ -3,6 +3,7 @@ package gui
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -14,6 +15,19 @@ type traceJSON struct {
 	gateway.TraceState
 	Mine bool      `json:"mine"` // this magpie serves the gateway: another's trace isn't here
 	Now  time.Time `json:"now"`
+}
+
+// mainView is the tab the window is asked to open on, as the page's view
+// parameter: the Routing page on one request (req, its id) when the tray
+// panel's Routing tab asks for it. Anything but an id is dropped.
+func mainView(q url.Values) string {
+	view := q.Get("view")
+	if req := q.Get("req"); view == "routing" && req != "" {
+		if id, err := strconv.ParseInt(req, 10, 64); err == nil && id > 0 {
+			view += "&req=" + strconv.FormatInt(id, 10)
+		}
+	}
+	return view
 }
 
 // traceRoutes serves the routing trace for the Gateway view to play: it

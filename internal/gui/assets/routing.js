@@ -470,6 +470,9 @@
 
   const routes = new Map(); // id → the latest of each route
   let seq = 0, mine = true, loaded = false, daysAt = 0;
+  let offMsg = ""; // why the trace can't be watched here, when it can't
+  // the request the window was opened on (?req=), from the tray panel
+  let wanted = document.body.classList.contains("window") && Number(params.get("req")) || 0;
   let cur = null;           // the route the header and the log tell of: the newest played
   let pinned = null;        // a past route picked from the strip
   let rows = new Map();     // id → { li, wire, st, bi, tg, w, rid, up }
@@ -1588,11 +1591,13 @@
         statB[2].textContent = d.totals.errors;
         if (!mine) {
           const gw = providers?.gateway;
-          offline(t(!gw?.running ? "The gateway isn't running, so nothing is routed."
+          offMsg = !gw?.running ? "The gateway isn't running, so nothing is routed."
             : gw.window ? "Another magpie serves the gateway; its routing plays live in that magpie's window."
             // magpie serve: its routing isn't shown anywhere
-            : "The gateway is served by a magpie without a window (magpie serve), so its routing can't be watched. Stop it and let this magpie serve the gateway to see routing live."));
+            : "The gateway is served by a magpie without a window (magpie serve), so its routing can't be watched. Stop it and let this magpie serve the gateway to see routing live.";
+          offline(t(offMsg));
           loaded = false;
+          renderPanel();
           await new Promise((r) => setTimeout(r, 5000));
           continue;
         }
@@ -1606,13 +1611,19 @@
         }
         for (const id of [...routes.keys()].sort((a, b) => a - b).slice(0, -60)) routes.delete(id);
         loaded = true;
+        offMsg = "";
+        renderPanel(first || d.routes.some((r) => r.done));
         // a request done is a day's count grown: heard of now and then
         if (first || (d.routes.some((r) => r.done) && performance.now() - daysAt > 15e3)) { daysAt = performance.now(); loadDays(); }
         if (first) {
           offline("");
           // the agents' names come with the app's state, which may not be here yet
           for (let i = 0; i < 30 && !state.agents.length; i++) await new Promise((res) => setTimeout(res, 100));
-          const r = newest();
+          renderPanel();
+          // the window opened from the tray panel's Routing tab on a request
+          const asked = wanted && routes.get(wanted), r = asked || newest();
+          if (wanted) { wanted = 0; params.delete("req"); history.replaceState(null, "", params.size ? "?" + params : location.pathname); }
+          if (asked && asked.id !== newest().id) pinned = asked;
           if (r) { cur = r; sync(true); say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r)); renderAll(); } else empty();
         } else {
           if (cur && routes.has(cur.id) && !rp) cur = routes.get(cur.id);
@@ -1636,6 +1647,7 @@
     // the caption said before, said again in these words: it was set as text
     if (loaded) { if (cur) { sync(true); renderAll(); capQ = []; say(affWhy(cur, true) || ruleWhy(cur, true) || firstWhy(cur)); } else empty(); }
     renderGroups();
+    renderPanel();
   }
   new MutationObserver(words).observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
 
@@ -2084,6 +2096,95 @@
   new MutationObserver(() => { if (!$("#view-routing").hidden) loadGroups(); }).observe($("#view-routing"), { attributes: true, attributeFilter: ["hidden"] });
   window.addEventListener("focus", () => { if (shown()) loadGroups(); });
   loadGroups();
+
+  // ---------- the tray panel's Routing tab ----------
+  // The gateway's latest requests, as they come, from the same trace the
+  // page above plays: who sent each, the model asked for, the provider and
+  // account it went to, the model that answered (marked when the reply
+  // names another), how it ended and when; today's calls and tokens over
+  // them, from the Usage page's count. A click opens the window's Routing
+  // page on that request; nothing here moves the panel's scroll.
+  const pBox = document.body.classList.contains("panel") ? $("#panelRouting") : null;
+  if (pBox) pBox.hidden = false;
+  const P_ROWS = 8;
+  let today = null, todayAt = 0;
+  const pShown = () => pBox && document.body.dataset.ptab === "routing";
+  async function loadToday() {
+    todayAt = performance.now();
+    try { today = await api("usage?period=today"); } catch { return; }
+    renderPanel();
+  }
+  window.panelRoutingShown = () => { if (pShown() && performance.now() - todayAt > 5e3) loadToday(); };
+  // renderPanel draws the tab; counted is a request just done, for today's
+  // totals to be read again (now and then)
+  function renderPanel(counted) {
+    if (!pBox) return;
+    if (counted && (!todayAt || performance.now() - todayAt > 5e3)) loadToday();
+    const v = $("#view-agents"), keep = v.scrollTop;
+    const head = el("div", "pr-head");
+    const sum = el("span", "pr-today");
+    if (today) {
+      sum.append(el("span", "", t("today")), " ",
+        el("b", "", String(today.calls || 0)), " ", t(today.calls === 1 ? "call" : "calls"), " · ",
+        el("b", "", fmtN(tokensOf(today) || 0)), " ", t("tokens"));
+    } else sum.append(el("span", "skeleton pr-sk"));
+    const open = el("button", "text", t("Open Routing"));
+    open.type = "button";
+    open.onclick = (e) => { api("window/main?view=routing", {}); e.currentTarget.blur(); };
+    head.append(el("span", "rt-livedot"), sum, el("span", "grow"), open);
+    const out = [head];
+    const rs = [...routes.values()].sort((a, b) => b.id - a.id).slice(0, P_ROWS);
+    if (offMsg) out.push(el("p", "pr-none", t(offMsg)));
+    else if (!loaded) for (let i = 0; i < 3; i++) out.push(el("span", "skeleton pr-sk-row"));
+    else if (!rs.length) {
+      const p = el("div", "pr-none");
+      p.append(el("b", "", t("No request yet")), t("Every request an agent sends to magpie shows up here, routed for real."));
+      out.push(p);
+    } else {
+      const list = el("div", "pr-list");
+      for (const r of rs) list.append(panelRow(r));
+      out.push(list);
+    }
+    pBox.replaceChildren(...out);
+    if (v.scrollTop !== keep) v.scrollTop = keep;
+    fit();
+  }
+  function panelRow(r) {
+    const [, how, tr] = outcome(r);
+    const w = tr && tried(r, tr);
+    const b = el("button", "pr-req " + how);
+    b.type = "button";
+    const ag = agentOf(r.agent);
+    const asked = el("span", "pr-a");
+    const sw = el("i", "ag");
+    sw.style.setProperty("--agent", hueOf(r.agent));
+    asked.append(sw, icon(ag?.icon || "generic"), el("span", "pr-who", agentName(r.agent)), el("code", "m", r.model));
+    if (r.kind) asked.append(kindTag(r));
+    const when = el("span", "at", new Date(r.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    // where it went: the provider, the account or key, and the model that
+    // answered — marked when the reply names another than the one sent
+    const to = el("span", "pr-to");
+    to.append(el("i"));
+    const where = w ? (w.kind === "provider" || !w.who ? w.name || w.provider : `${w.name || w.provider} · ${w.who}`) : r.provider;
+    if (!r.done) to.append(el("span", "pr-where", w ? t("{who} is answering…", { who: where }) : t("routing…")));
+    else if (r.status >= 400) {
+      const last = r.tries[r.tries.length - 1];
+      to.append(el("span", "pr-where", last ? `${r.status} · ${failWord(last.fail)}` : `${r.status || ""} ${r.error || ""}`.trim()));
+    } else {
+      to.append(el("span", "pr-where", where));
+      const model = tr?.model || w?.model;
+      if (model) to.append(el("span", "pr-m", model));
+      if (tr?.swapped && tr.done) to.append(swapTag(tr, true));
+    }
+    const meta = [];
+    if (r.tries.length > 1) meta.push(t("{n} tries", { n: r.tries.length }));
+    if (r.tokens) meta.push(t("{n} tokens", { n: tokens(r.tokens) }));
+    if (r.done && r.ms) meta.push(took(r.ms));
+    b.append(asked, when, to, el("span", "meta", meta.join(" · ")));
+    b.title = `${agentName(r.agent)} · ${r.model} → ${r.provider}`;
+    b.onclick = (e) => { api("window/main?view=routing&req=" + r.id, {}); e.currentTarget.blur(); };
+    return b;
+  }
 
   new ResizeObserver(() => layout()).observe(stage);
   // the list is as tall as leaves the stage in sight above it: the reader
