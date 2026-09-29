@@ -8780,7 +8780,9 @@ setInterval(renderUpdateBadge, 15 * 60 * 1000); // a window left open still hear
 (() => {
   const EYE = "M2 12s3.5-8 10-8 10 8 10 8-3.5 8-10 8-10-8-10-8zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z";
   const EYE_OFF = "M9.9 4.2A10.4 10.4 0 0 1 12 4c6.5 0 10 8 10 8a17.6 17.6 0 0 1-2.2 3.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 8 10 8a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M2 2l20 20";
-  const EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, IS_EMAIL = new RegExp(EMAIL.source);
+  // an address a vendor has half masked itself (Zhipu's abc***gh@…) is one
+  // address still, the letters before its stars hidden too
+  const EMAIL = /[\w.+*•-]+@[\w*•-]+(?:\.[\w*•-]+)+/g, IS_EMAIL = new RegExp(EMAIL.source);
   // stand-in letters of the address's shape, the same each time it's drawn:
   // blurred, they read as a name without being one
   const dots = (s) => { let h = 7; return s.replace(/[^@.]/g, (c) => (h = (h * 31 + c.charCodeAt(0)) >>> 0, "aeiounrstlcmdh"[h % 14])); };
@@ -8812,7 +8814,8 @@ setInterval(renderUpdateBadge, 15 * 60 * 1000); // a window left open still hear
         else n.replaceWith(...bits);
       }
       for (const e of view.querySelectorAll("[title]")) {
-        if (!e.title.includes("@") || !IS_EMAIL.test(e.title)) continue;
+        // one masked already reads as an address too, its stars and all
+        if ("piiTitle" in e.dataset || !e.title.includes("@") || !IS_EMAIL.test(e.title)) continue;
         e.dataset.piiTitle = e.title;
         e.title = e.title.replace(EMAIL, (m) => m.replace(/[^@.]/g, "•")); // a tooltip can't blur
       }
