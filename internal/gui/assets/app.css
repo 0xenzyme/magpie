@@ -1197,29 +1197,30 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .sheet .find, #view-gateway .find { height: 24px; width: 160px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); font-size: 12px; outline: none; transition: border-color .12s; }
 .sheet .find:focus, #view-gateway .find:focus { border-color: var(--accent); }
 .sheet .find::placeholder, #view-gateway .find::placeholder { color: var(--faint); }
-.sheet .kind { font-size: 11.5px; color: var(--muted); padding: 10px 2px 5px; }
-.sheet .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.sheet .kind { display: flex; align-items: baseline; gap: 8px; padding: 18px 8px 5px; font-size: 12px; }
+.sheet .kind b { font-weight: 600; color: var(--fg-2); }
+.sheet .kind span { color: var(--faint); }
+.sheet .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1px 12px; }
 .sheet .none { padding: 14px 2px; color: var(--muted); font-size: 12px; }
 #gwModels .none { padding: 16px; color: var(--muted); font-size: 12px; text-align: center; }
 #view-gateway .row-head .find { margin-right: 8px; }
+/* a row of the add sheet: an icon and a name, no frame; a row already
+   added says so in green on its right rather than fading */
 .tile {
-  position: relative; display: flex; align-items: center; gap: 10px;
-  height: 46px; padding: 0 10px 0 11px; border-radius: 10px; text-align: left; min-width: 0;
-  background: var(--card); border: 1px solid var(--line);
-  transition: border-color .12s, background .12s, box-shadow .12s;
+  display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px;
+  border-radius: 8px; text-align: left; min-width: 0; transition: background .12s;
 }
-.tile:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: var(--card-2); }
-.tile.on { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
-.tile .ic { width: 20px; height: 20px; flex: none; }
-.tile .ic.plus { color: var(--muted); border-radius: 6px; background: var(--pill); }
-.tile .tt { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
-.tile .n { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile:hover { background: var(--pill); }
+.tile.on { background: var(--sel); }
+.tile .ic { width: 18px; height: 18px; flex: none; }
+.tile .n { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile .n .badge { margin-left: 5px; }
-.tile .s { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
-.tile.added { opacity: .5; }
-.tile.added:hover { opacity: .8; }
-.tile .check { margin-left: auto; color: var(--green); display: inline-flex; flex: none; }
-.tile.custom { border-style: dashed; }
+.tile .st { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); }
+.tile .st.added { color: var(--green); }
+.sheet .custom-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 10px 2px 0; border-top: 1px solid var(--line-2); }
+.sheet .custom-foot .custom { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px 0 6px; border-radius: 8px; color: var(--accent); font-size: 13px; }
+.sheet .custom-foot .custom:hover, .sheet .custom-foot .custom.on { background: var(--accent-soft); }
+.sheet .custom-foot .hint { font-size: 12px; color: var(--muted); }
 /* the provider editor, in a dialog */
 .editor { padding: 16px 18px 14px; display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px 14px; align-items: start; }
 .editor .ehead { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding-bottom: 8px; margin-bottom: 2px; border-bottom: 1px solid var(--line-2); }

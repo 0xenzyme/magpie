@@ -89,6 +89,14 @@ stripe; a daily warm-up's time field only while it is on; each control
 posting the setting it did, with the page scrolled and left where it was;
 the WorkBuddy group only with an account signed in; in English and Chinese.
 
+`add-sheet.test.cjs` opens the Providers page's add sheet as quiet rows:
+Subscriptions, Vendors, Relays and On this machine, each with its word on
+what it is; rows with no border, no second line and no overflow, three to a
+line at 900px; an added provider not faded but marked "Added" in green, the
+Claude subscription "2 accounts"; the host in a row's title; the custom
+provider a line at the foot, gone while searching; a row opening its editor;
+in English and Chinese.
+
 `usage-ledger.test.cjs` opens the Usage page's Requests, a row per request
 from a faked `/api/usage/requests`: the columns, the model asked for, the
 provider and account, the model sent, "gpt-6-luna" amber by the one a vendor

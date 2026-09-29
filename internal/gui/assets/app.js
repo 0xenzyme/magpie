@@ -2372,50 +2372,41 @@ function renderAdd() {
     tiles.replaceChildren();
     const f = presetQuery.trim().toLowerCase();
     const hit = (pr) => !f || pr.name.toLowerCase().includes(f) || pr.id.includes(f) || hostOf(pr.chat || pr.responses || pr.anthropic).includes(f) || (pr.note || "").toLowerCase().includes(f);
+    // a section: its name, what it is in a word, and its rows, three to a line
+    const section = (title, hint) => {
+      const k = el("div", "kind");
+      k.append(el("b", "", t(title)));
+      if (hint) k.append(el("span", "", t(hint)));
+      const grid = el("div", "grid");
+      tiles.append(k, grid);
+      return grid;
+    };
     let any = false;
     const subs = SUBS.filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "subscription".includes(f));
     if (subs.length) {
       any = true;
-      tiles.append(el("div", "kind", t("Subscriptions · sign in, no key")));
-      const grid = el("div", "grid");
+      const grid = section("Subscriptions", "sign in, no key");
       for (const x of subs) grid.append(subTile(x));
-      tiles.append(grid);
       const w = subs.find((x) => signing?.agent === x.agent);
       if (w) tiles.append(renderSigning(w));
     }
-    const gone = providers.excluded.filter((x) => x.quiet && x.provider && (!f || x.agentName.toLowerCase().includes(f) || x.agent.includes(f)));
+    const gone = (providers.excluded || []).filter((x) => x.quiet && x.provider && (!f || x.agentName.toLowerCase().includes(f) || x.agent.includes(f)));
     if (gone.length) {
       any = true;
-      tiles.append(el("div", "kind", t("Removed from magpie · still signed in")));
-      const grid = el("div", "grid");
+      const grid = section("Removed from magpie", "still signed in");
       for (const x of gone) {
-        const b = el("button", "tile");
-        b.append(icon(x.agentIcon));
-        const tt = el("span", "tt");
-        tt.append(el("span", "n", x.agentName), el("span", "s", t("Add it back")));
-        b.append(tt);
+        const b = pickRow(x.agentIcon, x.agentName);
+        b.append(el("span", "st", t("Add it back")));
         b.onclick = () => providerAction("show", { id: x.provider }, t("{name} added back", { name: x.agentName }));
         grid.append(b);
       }
-      tiles.append(grid);
     }
-    for (const [kind, title] of [["vendor", "Vendors"], ["relay", "Relays · many vendors behind one key"], ["local", "On this machine"]]) {
+    for (const [kind, title, hint] of [["vendor", "Vendors", "the makers' own APIs"], ["relay", "Relays", "one key, many vendors"], ["local", "On this machine", ""]]) {
       const ps = providers.presets.filter((p) => p.kind === kind && hit(p));
-      if (!ps.length && !(kind === "local" && !f)) continue;
+      if (!ps.length) continue;
       any = true;
-      tiles.append(el("div", "kind", t(title)));
-      const grid = el("div", "grid");
+      const grid = section(title, hint);
       for (const pr of ps) grid.append(tile(pr));
-      if (kind === "local" && !f) {
-        const c = el("button", "tile custom" + (editing?.custom ? " on" : ""));
-        const ic = el("span", "ic plus");
-        ic.append(svg(PLUS, 13, 1.8));
-        c.append(ic, el("span", "tt"));
-        c.lastChild.append(el("span", "n", t("Custom")), el("span", "s", t("any compatible URL")));
-        c.onclick = () => { editing = { custom: true }; draft = null; renderProviders(); };
-        grid.append(c);
-      }
-      tiles.append(grid);
     }
     if (!any) {
       const none = el("div", "none");
@@ -2424,38 +2415,56 @@ function renderAdd() {
       b.onclick = () => { editing = { custom: true }; draft = null; renderProviders(); };
       none.append(b);
       tiles.append(none);
+    } else if (!f) {
+      // a vendor not listed: one line under them all
+      const foot = el("div", "custom-foot");
+      const c = el("button", "custom" + (editing?.custom ? " on" : ""));
+      c.append(svg(PLUS, 13, 1.8), el("span", "", t("Custom provider")));
+      c.onclick = () => { editing = { custom: true }; draft = null; renderProviders(); };
+      foot.append(c, el("span", "hint", t("any OpenAI or Anthropic compatible URL")));
+      tiles.append(foot);
     }
   };
   drawTiles();
   return editing && typeof editing === "object" ? renderEditor(null, editing.preset) : null;
 }
 
+// pickRow is one row of the add sheet: an icon and a name, nothing framing
+// them; what more there is to say goes in its title.
+function pickRow(ic, name, cls = "") {
+  const b = el("button", "tile" + cls);
+  const n = el("span", "n", name);
+  b.append(icon(ic), n);
+  return b;
+}
+
+// the green mark on a row already added: a check and a word
+function addedMark(text) {
+  const m = el("span", "st added");
+  m.append(svg(CHECK, 10, 2), el("span", "", text));
+  return m;
+}
+
 // subTile adds a subscription: one more account when the agent has some.
 function subTile(x) {
   const have = providers.providers.find((p) => p.account?.agent === x.agent);
   const n = have ? (have.account.logins?.length || 1) : 0;
-  const b = el("button", "tile" + (signing?.agent === x.agent ? " on" : ""));
-  b.append(icon(x.icon));
-  const tt = el("span", "tt");
-  tt.append(el("span", "n", t("{name} subscription", { name: x.name })),
-    el("span", "s", !n ? x.plans : x.single ? t("signed in · switch account") : t(n === 1 ? "1 account · add another" : "{n} accounts · add another", { n })));
-  b.append(tt);
+  const b = pickRow(x.icon, x.name, signing?.agent === x.agent ? " on" : "");
+  b.title = t("{name} subscription", { name: x.name }) + " · " + x.plans;
+  if (n) {
+    b.append(addedMark(x.single ? t("Signed in") : t(n === 1 ? "1 account" : "{n} accounts", { n })));
+    b.title += " — " + t(x.single ? "signed in · click to switch account" : "click to add another account");
+  }
   b.onclick = () => startSignIn(x.agent);
   return b;
 }
 
 function tile(pr) {
-  const b = el("button", "tile" + (pr.added ? " added" : "") + (editing?.preset === pr.id ? " on" : ""));
-  b.append(icon(pr.icon || "generic"));
-  const tt = el("span", "tt");
-  const n = el("span", "n", pr.name);
-  if (pr.sponsored) n.append(el("span", "badge", t("sponsored")));
-  tt.append(n, el("span", "s", pr.note || hostOf(pr.chat || pr.responses || pr.anthropic)));
-  b.append(tt);
+  const b = pickRow(pr.icon || "generic", pr.name, editing?.preset === pr.id ? " on" : "");
+  if (pr.sponsored) b.querySelector(".n").append(el("span", "badge", t("sponsored")));
+  b.title = pr.note || hostOf(pr.chat || pr.responses || pr.anthropic);
   if (pr.added) {
-    const ck = el("span", "check");
-    ck.append(svg(CHECK, 10, 2));
-    b.append(ck);
+    b.append(addedMark(t("Added")));
     b.title = t("{name} is already added — open it", { name: pr.name });
     // the first provider made from it, which may not have the preset's id
     const have = providers.providers.find((p) => p.preset === pr.id) || providers.providers.find((p) => p.id === pr.id);
