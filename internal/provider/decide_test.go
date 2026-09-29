@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -171,5 +172,23 @@ func TestAPIErrorShapes(t *testing.T) {
 	}
 	if got := APIError(nil, "400 Bad Request"); got != "400 Bad Request" {
 		t.Fatal(got)
+	}
+}
+
+// A backend that only streams is tested with a streamed request: WorkBuddy
+// refuses any other with 400 (#124).
+func TestTinyStreamsStreamOnly(t *testing.T) {
+	p := Provider{Chat: "https://x/v1", Responses: "https://x/v1", Anthropic: "https://x"}
+	for _, proto := range []Protocol{Chat, Responses, Anthropic} {
+		if _, b := tiny(p, proto, "m"); strings.Contains(b, "stream") {
+			t.Errorf("%s: %s", proto, b)
+		}
+		p.Account = &Account{Stream: true}
+		_, b := tiny(p, proto, "m")
+		var v map[string]any
+		if err := json.Unmarshal([]byte(b), &v); err != nil || v["stream"] != true || v["model"] != "m" {
+			t.Errorf("%s: %s", proto, b)
+		}
+		p.Account = nil
 	}
 }

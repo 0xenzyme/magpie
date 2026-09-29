@@ -320,7 +320,9 @@ func workBuddyAlsoOn(w *wbSite) []Provider {
 
 func wbProvider(a wbAccount) Provider {
 	w := a.site
-	acct := &Account{Agent: w.id, User: a.User, Plan: a.Plan}
+	// WorkBuddy refuses a request that doesn't stream: "Non-stream chat
+	// request is currently not supported" (#124)
+	acct := &Account{Agent: w.id, User: a.User, Plan: a.Plan, Stream: true}
 	acct.sign = func(ctx context.Context, req *http.Request, body []byte) error {
 		c, err := wbFresh(ctx, a)
 		if err != nil {

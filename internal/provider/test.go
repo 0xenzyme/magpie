@@ -50,8 +50,17 @@ func (p Provider) Test(ctx context.Context) []Result {
 	return out
 }
 
-// tiny is the smallest request for model on proto's endpoint.
+// tiny is the smallest request for model on proto's endpoint, streamed
+// to a backend that only streams.
 func tiny(q Provider, proto Protocol, model string) (url, body string) {
+	url, body = tinyBody(q, proto, model)
+	if q.Account != nil && q.Account.Stream && body != "" {
+		body = strings.TrimSuffix(body, "}") + `,"stream":true}`
+	}
+	return url, body
+}
+
+func tinyBody(q Provider, proto Protocol, model string) (url, body string) {
 	switch proto {
 	case Chat:
 		return q.Chat + "/chat/completions", fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hi"}],"max_tokens":16}`, model)
@@ -314,7 +323,7 @@ func apiError(b []byte, fallback string) string {
 	var v struct {
 		Error   json.RawMessage `json:"error"`
 		Message string          `json:"message"`
-		Msg     string          `json:"msg"` // Tencent's (WorkBuddy): {code, msg}
+		Msg     string          `json:"msg"`    // Tencent's (WorkBuddy): {code, msg}
 		Detail  json.RawMessage `json:"detail"` // FastAPI's (TypeSafe)
 		Errors  []struct {
 			Message string `json:"message"`
