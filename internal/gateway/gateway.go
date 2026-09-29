@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tidwall/gjson"
+
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/redact"
@@ -1170,7 +1172,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			body = withoutFields(body, "enable_thinking")
 		}
 	case provider.Anthropic:
-		body = thinkingOffUnlessAsked(body)
+		if !anthropicModel.MatchString(model) {
+			body = thinkingOffUnlessAsked(body)
+		}
 		if effortInOutputConfig.MatchString(model) {
 			body = withOutputEffort(body, p.Efforts(model))
 		}
@@ -1718,9 +1722,23 @@ func modelOf(body []byte) string {
 	return v.Model
 }
 
-// rewriteModel swaps the model field, keeping every other field as it was.
+// rewriteModel swaps the model field, keeping every other byte as it was:
+// the fields in their order, and the text unescaped. A relay that only lets
+// Claude Code in (packy) takes a body with its fields sorted and its < and >
+// escaped, as re-encoding leaves it, for one tampered with (#179).
 func rewriteModel(body []byte, model string) []byte {
-	return withFields(body, map[string]any{"model": model})
+	v := gjson.GetBytes(body, "model")
+	if v.Type == gjson.String && v.Str == model {
+		return body
+	}
+	if v.Type != gjson.String || v.Index <= 0 || !gjson.ValidBytes(body) {
+		return withFields(body, map[string]any{"model": model})
+	}
+	name, _ := json.Marshal(model)
+	out := make([]byte, 0, len(body)+len(name))
+	out = append(out, body[:v.Index]...)
+	out = append(out, name...)
+	return append(out, body[v.Index+len(v.Raw):]...)
 }
 
 // developerAsSystem turns "developer" messages into "system" ones. Agents
@@ -1898,11 +1916,13 @@ func withFields(body []byte, fields map[string]any) []byte {
 	for k, v := range fields {
 		m[k] = v
 	}
-	out, err := json.Marshal(m)
-	if err != nil {
+	var out bytes.Buffer
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false) // <, > and & as the agent wrote them
+	if enc.Encode(m) != nil {
 		return body
 	}
-	return out
+	return bytes.TrimSuffix(out.Bytes(), []byte("\n"))
 }
 
 // withoutFields drops fields the vendor refuses to see: Qoder asks every
