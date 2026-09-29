@@ -112,6 +112,12 @@ Claude subscription "2 accounts"; the host in a row's title; the custom
 provider a line at the foot, gone while searching; a row opening its editor;
 in English and Chinese.
 
+`own-signin-remove.test.cjs` opens the Kiro subscription's accounts with
+kiro-cli's own sign-in behind one of magpie's, then alone and first: its
+Remove is there both times, its title saying magpie only hides it and it
+shows again when Kiro signs in anew, and it posts login/forget; magpie's
+own account in use first has no Remove; in English and Chinese.
+
 `usage-ledger.test.cjs` opens the Usage page's Requests, a row per request
 from a faked `/api/usage/requests`: the columns, the model asked for, the
 provider and account, the model sent, "gpt-6-luna" amber by the one a vendor

@@ -4146,6 +4146,12 @@ function renderSigning(sub) {
 // can be ticked: the gateway moves to the next ticked account when the
 // first is out of quota. Each shows how much of its allowance is used, so
 // which one to go to next is plain to see.
+// forgetOwnTitle: what Remove does to the agent's own sign-in, which magpie
+// only reads — it is hidden, and shows again when the agent signs in anew.
+function forgetOwnTitle(a) {
+  return t("magpie stops showing and using {agent}'s own sign-in; its files are left as they are, and it shows again when {agent} signs in anew", { agent: a.agentName });
+}
+
 function renderAccounts(a) {
   const sub = subOf(a.agent);
   const list = el("div", "accts");
@@ -4168,14 +4174,15 @@ function renderAccounts(a) {
     row.append(dot, el("span", "n", l.user), el("span", "plan", accountPlan({ agent: a.agent, plan: l.plan })), el("span", "grow"));
     if (l.active) {
       row.append(el("span", "using", several ? t("First") : t("In use")));
-      if (a.agent === "qoder") {
+      if (a.agent === "qoder" || l.own) {
         const forget = el("button", "text quiet", t("Remove"));
+        if (l.own) forget.title = forgetOwnTitle(a);
         forget.onclick = () => accountAction("login/forget", { agent: a.agent, user: l.user }, t("{user} removed", { user: l.user }));
         row.append(forget);
       }
     } else {
       const forget = el("button", "text quiet", t("Remove"));
-      forget.title = t("magpie forgets this account's sign-in; the account itself is untouched");
+      forget.title = l.own ? forgetOwnTitle(a) : t("magpie forgets this account's sign-in; the account itself is untouched");
       forget.onclick = () => accountAction("login/forget", { agent: a.agent, user: l.user }, t("{user} removed", { user: l.user }));
       const use = el("button", "text", on ? t("Make first") : t("Use"));
       use.title = sub?.own ? t("The gateway uses this account first") : t("Sign {agent} in to this account", { agent: a.agentName });

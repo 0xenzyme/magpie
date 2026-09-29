@@ -408,6 +408,7 @@ const I18N = {
     "{user} signed in, but magpie can't list it — please report this":"{user} 已登录，但 magpie 无法列出它，请反馈此问题",
     "{user} removed": "已移除 {user}",
     "magpie forgets this account's sign-in; the account itself is untouched": "magpie 忘掉这个账号的登录信息；账号本身不受影响",
+    "magpie stops showing and using {agent}'s own sign-in; its files are left as they are, and it shows again when {agent} signs in anew": "magpie 不再显示和使用 {agent} 自己的登录；它的文件保持原样，{agent} 重新登录后会再次出现",
     "Sign {agent} in to this account": "让 {agent} 登录到这个账号",
     "{agent} is now signed in as {user}": "{agent} 已切换为 {user}",
     "Codex's background service is still signed in as {user}": "Codex 的后台服务仍登录着 {user}",
