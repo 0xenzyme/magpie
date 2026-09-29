@@ -133,6 +133,30 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       }
     });
 
+    await t.test("a control under what it unrolls goes down with it", async () => {
+      await reset();
+      await page.locator(view).evaluate((v) => {
+        const s = document.createElement("div");
+        s.style.cssText = "flex:none;height:1600px";
+        const part = document.createElement("div");
+        part.id = "part"; part.style.flex = "none";
+        const head = document.createElement("div");
+        head.id = "head"; head.textContent = "head";
+        const fold = document.createElement("div");
+        const b = document.createElement("button");
+        b.id = "more"; b.textContent = "more"; b.dataset.unrolls = "";
+        b.onclick = () => { fold.style.height = "300px"; };
+        part.append(head, fold, b);
+        v.append(s, part, Object.assign(document.createElement("div"), { style: "flex:none;height:600px" }));
+      });
+      await scrollTo("#more");
+      const head = await top(page, "#head"), more = await top(page, "#more");
+      await page.locator("#more").click();
+      await settle(page);
+      assert(Math.abs((await top(page, "#head")) - head) <= 1, "what's above the fold must stay put");
+      assert(Math.abs((await top(page, "#more")) - more - 300) <= 1, "the control must go down with the rows");
+    });
+
     await t.test("a click that asks to go somewhere does", async () => {
       await reset();
       await page.locator(view).evaluate((v) => {

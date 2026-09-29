@@ -373,6 +373,7 @@ function renderAgents() {
     }
     fold.append(inner);
     const more = el("button", "agent-more");
+    more.dataset.unrolls = ""; // it goes down with the rows it opens
     const label = el("span", "", "");
     const chev = el("span", "chev");
     chev.append(svg(CHEV, 10, 1.8));
@@ -6310,6 +6311,10 @@ function savePrefs(body) {
 //   filter, a day, a toggle leaves the page where it was. When what it does
 //   leaves the page shorter under it (a list emptied), the view keeps room
 //   at its foot for it to stay, room that goes as the reader scrolls back.
+//   A control under what it unrolls (data-unrolls: "Show 7 more") is the
+//   exception: it goes down with what it opens, and what's held is the
+//   part it is in, so the rows open downwards rather than the page riding
+//   up past them.
 //
 // Code moves a view only in answer to a click that asks to go somewhere, and
 // shows that with the reader's event: scrollOnPurpose(e). Called without one
@@ -6402,7 +6407,8 @@ addEventListener("click", (e) => {
   const v = e.target.closest?.(".view");
   if (!v || v.hidden) { held = null; return; }
   const chain = [];
-  for (let n = e.target; n && n !== v; n = n.parentElement) {
+  const from = e.target.closest?.("[data-unrolls]")?.parentElement || e.target;
+  for (let n = from; n && n !== v; n = n.parentElement) {
     for (const m of [n, n.previousElementSibling, n.nextElementSibling]) if (m instanceof HTMLElement && m.offsetParent) chain.push([m, onScreen(m, v)]);
   }
   held = chain.length ? { v, chain, until: performance.now() + 4000 } : null;

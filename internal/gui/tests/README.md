@@ -9,7 +9,8 @@ and dismissal. It does not start the backend or read local user configuration.
 (see "where the reader is" in `app.js`): on the Routing page, Live and a day
 picked in turn with the list scrolled to its end; a click whose handler sets
 scrollTop, grows the page above, redraws itself, or scrolls from a timer or a
-shared helper; a click that asks to go somewhere with `scrollOnPurpose(e)`;
+shared helper; a control under what it unrolls (`data-unrolls`) going down
+with it; a click that asks to go somewhere with `scrollOnPurpose(e)`;
 the room kept at the foot going as the reader scrolls back; and the wheel.
 
 With Node.js and Playwright available:
