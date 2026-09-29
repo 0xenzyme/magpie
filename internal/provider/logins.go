@@ -609,6 +609,9 @@ func putClaudeLogin(l savedLogin) error {
 		loc = claudeCredentialLocation{path: filepath.Join(dir, ".credentials.json")}
 		if claudeKeychain {
 			loc = claudeCredentialLocation{keychain: true, account: claudeKeychainAccount()}
+		} else if err := os.MkdirAll(dir, 0o700); err != nil {
+			// Claude Code never run here yet
+			return err
 		}
 	}
 	if err := saveClaudeCredential(loc, c); err != nil {

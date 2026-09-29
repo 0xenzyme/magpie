@@ -822,7 +822,8 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		rw.WriteHeader(http.StatusNoContent)
 	})
 	// Accounts brought in from another tool's export (Antigravity's, from
-	// Antigravity Cockpit, Antigravity Manager, CLIProxyAPI), each file's
+	// Antigravity Cockpit, Antigravity Manager, CLIProxyAPI; ChatGPT's and
+	// Claude's from CLIProxyAPI or the agents' own files), each file's
 	// text as it is; each checked with the vendor before it is kept.
 	mux.HandleFunc("POST /api/signin/import", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct {
@@ -835,7 +836,13 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 		defer cancel()
-		res, err := provider.ImportGoogleAccounts(ctx, in.Agent, in.Files)
+		imp := provider.ImportGoogleAccounts
+		if in.Agent == "codex" || in.Agent == "claude" {
+			// ChatGPT and Claude sign-ins: CLIProxyAPI's auth files, Codex
+			// CLI's auth.json, Claude Code's .credentials.json
+			imp = provider.ImportLogins
+		}
+		res, err := imp(ctx, in.Agent, in.Files)
 		if err != nil {
 			fail(rw, err)
 			return

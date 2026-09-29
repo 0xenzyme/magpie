@@ -3823,8 +3823,9 @@ function fallbackHint(p) {
 // being the one in use.
 
 const SUBS = [
-  { agent: "claude", name: "Claude", icon: "claude-color", plans: "Pro · Max · Team" },
-  { agent: "codex", name: "ChatGPT", icon: "openai", plans: "Plus · Pro · Business" },
+  // both can also come from CLIProxyAPI's auth files or the agent's own (importing below)
+  { agent: "claude", name: "Claude", icon: "claude-color", plans: "Pro · Max · Team", importable: true },
+  { agent: "codex", name: "ChatGPT", icon: "openai", plans: "Plus · Pro · Business", importable: true },
   // cursor-agent keeps one account; signing in again replaces it
   { agent: "cursor", name: "Cursor", icon: "cursor", plans: "Pro · Ultra · Teams", single: true },
   // so does Grok Build
@@ -3851,6 +3852,29 @@ const SUBS = [
   { agent: "antigravity", name: "Antigravity", icon: "antigravity-color", plans: "Google AI Pro · Ultra · free", risk: true, importable: true },
 ];
 const subOf = (agent) => SUBS.find((x) => x.agent === agent);
+
+// importSay: what the import of an app's accounts says — where its files
+// come from, and who they are checked with. A ChatGPT or Claude sign-in is
+// refreshed as it comes in, which spends the file's refresh token.
+function importSay(agent) {
+  if (agent === "codex" || agent === "claude") {
+    const vendor = agent === "codex" ? "ChatGPT" : "Claude";
+    const own = agent === "codex" ? "Codex's auth.json" : "Claude Code's .credentials.json";
+    return {
+      from: t("Bring in accounts from CLIProxyAPI's auth files or {own}", { own }),
+      intro: t("Choose or paste CLIProxyAPI's auth files (JSON) or {own}. Each account's sign-in is refreshed with {vendor} before it is added.", { own, vendor }),
+      spent: t("Refreshing it spends the file's sign-in: the tool it came from will need to sign in again to use that account."),
+      checking: t("Checking the accounts with {vendor}…", { vendor }),
+      checks: t("Each account's sign-in is refreshed and its account looked up, as signing in does."),
+    };
+  }
+  return {
+    from: t("Bring in accounts exported from Antigravity Cockpit, Antigravity Manager or CLIProxyAPI"),
+    intro: t("Choose or paste an export from Antigravity Cockpit, Antigravity Manager or CLIProxyAPI — JSON, or refresh tokens one a line. Each account is checked with Google before it is added."),
+    checking: t("Checking the accounts with Google…"),
+    checks: t("Each account's sign-in is refreshed and its project looked up, as signing in does."),
+  };
+}
 let signing = null; // the sign-in under way: { id, agent, url, state, installing, error }
 const signingOpen = () => signing?.state === "waiting" || signing?.state === "installing";
 let justAdded = ""; // the account that just came in, to greet it
@@ -3988,13 +4012,13 @@ function renderSigning(sub) {
     close.onclick = cancelSignIn;
     if (sub.importable) {
       const imp = el("button", "text", t("Import instead…"));
-      imp.title = t("Bring in accounts exported from Antigravity Cockpit, Antigravity Manager or CLIProxyAPI");
+      imp.title = importSay(sub.agent).from;
       imp.onclick = () => startImport(sub.agent);
       box.append(close, imp, go);
     } else box.append(close, go);
     return box;
   }
-  if (signing.state === "import" || signing.state === "importing" || signing.state === "imported") return renderImport(sub);
+  if (signing.state === "import" || signing.state === "importing" || signing.state === "imported") return renderLoginImport(sub);
   if (signing.state === "failed") {
     box.append(el("span", "mark", "!"));
     tt.append(el("span", "n", t("Sign-in didn't finish")), el("span", "s", signing.error || ""));
@@ -4032,6 +4056,14 @@ function renderSigning(sub) {
     cp.onclick = () => copy(signing.url, t("Sign-in link"), cp);
     acts.append(open, cp);
     tt.append(acts);
+  }
+  if (sub.importable) {
+    // an account another tool is signed in to comes in from its file
+    const imp = el("button", "link", t("Import from a file instead…"));
+    imp.title = importSay(sub.agent).from;
+    imp.onclick = () => startImport(sub.agent);
+    const acts = tt.querySelector(".acts") || tt.appendChild(el("span", "acts"));
+    acts.append(imp);
   }
   const x = el("button", "text", t("Cancel"));
   x.onclick = cancelSignIn;
@@ -4097,7 +4129,7 @@ function renderAccounts(a) {
       const ic2 = el("span", "dot");
       ic2.append(svg(PLUS, 10, 1.8));
       imp.append(ic2, el("span", "n", t("Import accounts from a file…")));
-      imp.title = t("Bring in accounts exported from Antigravity Cockpit, Antigravity Manager or CLIProxyAPI");
+      imp.title = importSay(a.agent).from;
       imp.onclick = () => startImport(a.agent);
       list.append(imp);
     }
@@ -4169,13 +4201,13 @@ async function runImport(agent) {
 
 const importStatus = { added: "Added", updated: "Updated with this sign-in", exists: "Already in magpie", failed: "Not added" };
 
-function renderImport(sub) {
+function renderLoginImport(sub) {
   const box = el("div", "signing import");
   const tt = el("span", "tt");
   if (signing.state === "importing") {
     box.append(el("span", "spinner"));
-    tt.append(el("span", "n", t("Checking the accounts with Google…")),
-      el("span", "s", t("Each account's sign-in is refreshed and its project looked up, as signing in does.")));
+    const say = importSay(sub.agent);
+    tt.append(el("span", "n", say.checking), el("span", "s", say.checks));
     box.append(tt);
     return box;
   }
@@ -4197,8 +4229,9 @@ function renderImport(sub) {
     return box;
   }
   box.append(el("span", "mark", "↑"));
-  tt.append(el("span", "n", t("Import {name} accounts", { name: sub.name })),
-    el("span", "s", t("Choose or paste an export from Antigravity Cockpit, Antigravity Manager or CLIProxyAPI — JSON, or refresh tokens one a line. Each account is checked with Google before it is added.")));
+  const say = importSay(sub.agent);
+  tt.append(el("span", "n", t("Import {name} accounts", { name: sub.name })), el("span", "s", say.intro));
+  if (say.spent) tt.append(el("span", "s", say.spent));
   if (sub.risk) tt.append(el("span", "s", t("Google may suspend an Antigravity account it sees used outside Antigravity. Use one you can afford to lose.")));
   const area = el("textarea");
   area.rows = 3;
