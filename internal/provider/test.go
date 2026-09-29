@@ -32,6 +32,7 @@ type Result struct {
 // serves, signed with a key made for it and asking for a model that key
 // sees, and reports what came back.
 func (p Provider) Test(ctx context.Context) []Result {
+	ctx = p.Via(ctx)
 	if p.Decides() {
 		return p.testDecide(ctx)
 	}
@@ -105,6 +106,7 @@ func tinyDrawing(q Provider, model string) (url, body string) {
 // on the endpoint it's served on and with a key that sees it: whether each
 // answers, not only whether the vendor does. Results are in models' order.
 func (p Provider) TestModels(ctx context.Context, models []string) []Result {
+	ctx = p.Via(ctx)
 	out := make([]Result, len(models))
 	sem := make(chan struct{}, 4)
 	var wg sync.WaitGroup

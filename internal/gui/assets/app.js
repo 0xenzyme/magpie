@@ -2546,6 +2546,49 @@ function input(value, placeholder, type = "text") {
 }
 function cancelEdit() { editing = null; draft = null; importing = null; importingApps = null; renderProviders(); }
 
+// proxyPicker: the proxy one provider's requests go through (#237) — the
+// one in Settings, none, or its own — so Codex can go through a proxy
+// while a vendor at home goes direct. The draft keeps the choice as
+// proxyMode ("" global, "direct", "custom") and the address as proxyURL;
+// proxyOfDraft is what is saved.
+const PROXY_HINT = {
+  "": "Follows the proxy in Settings",
+  direct: "Requests to it go direct, whatever the proxy in Settings",
+  custom: "Requests to it go through this proxy: http://, https:// or socks5://",
+};
+function proxyPicker() {
+  const box = el("div", "stack proxy-pick");
+  const hint = el("div", "hint", t(PROXY_HINT[draft.proxyMode || ""]));
+  const addr = input(draft.proxyURL || "", "http://127.0.0.1:7890");
+  addr.className = "proxy-url";
+  addr.classList.toggle("off", draft.proxyMode !== "custom");
+  addr.oninput = () => { draft.proxyURL = addr.value; };
+  const seg = segs([["", t("Global proxy")], ["direct", t("Direct")], ["custom", t("Custom")]], draft.proxyMode || "", (v) => {
+    draft.proxyMode = v;
+    addr.classList.toggle("off", v !== "custom");
+    hint.textContent = t(PROXY_HINT[v]);
+  });
+  seg.classList.add("proxy-mode");
+  // the address sits beside the options, its room kept while it is not
+  // asked for, so picking one never changes the dialog's height (a
+  // centred dialog would move under the pointer)
+  const row = el("div", "proxy-row");
+  row.append(seg, addr);
+  box.append(row, hint);
+  return box;
+}
+function proxyDraft(p) {
+  const v = (p?.proxy || "").trim();
+  return { proxyMode: !v ? "" : v === "direct" ? "direct" : "custom", proxyURL: v && v !== "direct" ? v : "" };
+}
+// proxyOfDraft is the draft's proxy as it is saved, or null when Custom
+// has no address yet.
+function proxyOfDraft() {
+  if (draft.proxyMode === "direct") return "direct";
+  if (draft.proxyMode !== "custom") return "";
+  return (draft.proxyURL || "").trim() || null;
+}
+
 // Custom request headers: the draft keeps them as an ordered [name, value,
 // json?] list so a half-typed row (and its open JSON editor) survives a
 // re-render; headersOf folds that back into the object the backend stores,
@@ -2900,7 +2943,7 @@ function renderEditor(p, presetID) {
   // more provider of it, under a name and id of its own
   const another = isNew && !!pr?.added;
   draft = draft || (p
-    ? { id: p.id, name: p.name, preset: p.preset, chat: p.chat, responses: p.responses, anthropic: p.anthropic, catalog: p.catalog, key: "", api: p.chat ? "openai" : p.anthropic ? "anthropic" : p.responses ? "responses" : "openai", chosen: p.models.filter((m) => m.on).map((m) => m.id), extra: [], headers: headerRows(p.headers), icon: p.icon || "", fallback: [...(p.fallback || [])], unlisted: !!p.unlisted, balanceURL: p.balanceURL || "", balancePath: p.balancePath || "", modelsURL: p.modelsURL || "", contexts: contextsText(p.contexts), keysUrl: p.keysUrl || "" }
+    ? { id: p.id, name: p.name, preset: p.preset, chat: p.chat, responses: p.responses, anthropic: p.anthropic, catalog: p.catalog, key: "", api: p.chat ? "openai" : p.anthropic ? "anthropic" : p.responses ? "responses" : "openai", chosen: p.models.filter((m) => m.on).map((m) => m.id), extra: [], headers: headerRows(p.headers), icon: p.icon || "", fallback: [...(p.fallback || [])], unlisted: !!p.unlisted, balanceURL: p.balanceURL || "", balancePath: p.balancePath || "", modelsURL: p.modelsURL || "", contexts: contextsText(p.contexts), keysUrl: p.keysUrl || "", ...proxyDraft(p) }
     : pr
       ? { id: pr.id, name: pr.name, preset: pr.id, key: "", chosen: [], extra: [], headers: [] }
       : { id: "", name: "", preset: "", chat: "", responses: "", anthropic: "", catalog: "", key: "", api: "openai", chosen: [], extra: [], headers: [], icon: "" });
@@ -3047,6 +3090,7 @@ function renderEditor(p, presetID) {
     const cx = input(draft.contexts || "", t("e.g. 128k · or gpt-6=1m, comma separated"));
     ed.append(...field(t("Context window"), contextPicks(p, cx), t("How long a request the models take, told to the agents; empty leaves it to the vendor and models.dev")));
     ed.append(...field(t("Fallback"), renderFallback(p), fallbackHint(p)));
+    ed.append(...field(t("Proxy"), proxyPicker()));
     if (p.chat || p.responses || p.anthropic) ed.append(...field(t("Endpoints"), renderEndpoints(p, p)));
     const bar = el("div", "bar");
     // removing only hides it from magpie; the agent stays signed in
@@ -3060,7 +3104,9 @@ function renderEditor(p, presetID) {
     saveBtn.onclick = () => {
       const cx = parseContexts(draft.contexts || "");
       if (cx.error) return editorError(t("Context window: {v} is not a length like 128k or 1m", { v: cx.error }), "warn");
-      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map }, t("{name} saved", { name: p.name })); };
+      const proxy = proxyOfDraft();
+      if (proxy === null) { ed.querySelector(".proxy-url")?.focus(); return editorError(t("Proxy: type its address, like http://127.0.0.1:7890"), "warn"); }
+      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, proxy }, t("{name} saved", { name: p.name })); };
     bar.append(cancel, saveBtn);
     ed.append(bar);
     return ed;
@@ -3107,6 +3153,7 @@ function renderEditor(p, presetID) {
   } else {
     ed.append(...field(t("Headers"), headerEditor(pr?.headerHints || []), t("Optional headers sent with every request to {p}, applied after auth.", { p: pr?.name || p?.name })));
   }
+  ed.append(...field(t("Proxy"), proxyPicker()));
 
   // a vendor that tells the whole account's balance only to a token of its
   // own (AiHubMix's system access token), where a key knows just its own
@@ -3300,6 +3347,8 @@ function renderEditor(p, presetID) {
     const cx = parseContexts(draft.contexts || "");
     if (cx.error) return editorError(t("Context window: {v} is not a length like 128k or 1m", { v: cx.error }), "warn");
     body.contexts = cx.map;
+    body.proxy = proxyOfDraft();
+    if (body.proxy === null) { ed.querySelector(".proxy-url")?.focus(); return editorError(t("Proxy: type its address, like http://127.0.0.1:7890"), "warn"); }
     if (draft.balanceToken) body.balanceToken = draft.balanceToken;
     else if (draft.clearBalanceToken) body.clearBalanceToken = true;
     if (isNew && custom && !body.name) { name.focus(); return editorError(t("Give it a name"), "warn"); }

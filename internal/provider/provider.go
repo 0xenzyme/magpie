@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/settings"
 )
 
 // Protocol is a wire API magpie can speak to an upstream.
@@ -92,6 +93,13 @@ type Provider struct {
 	// when a gateway insists on a private scheme. Signed-in agent accounts
 	// ignore them: their auth is the agent's own.
 	Headers map[string]string `json:"headers,omitempty"`
+
+	// Proxy is the proxy magpie's requests to this provider go through
+	// (#237: Codex through one, a vendor at home without): "" follows
+	// the global one (Settings' Proxy, the environment's, the system's),
+	// "direct" none, anything else the proxy's address (http://, https://,
+	// socks5://; host:port means http). Signed-in accounts keep it too.
+	Proxy string `json:"proxy,omitempty"`
 
 	// BalanceURL, when set, is where the vendor tells what is left on a
 	// key, asked with the key the way a chat request carries it; BalancePath
@@ -216,6 +224,7 @@ func All() []Provider {
 		}
 		pk := picks[a.ID]
 		a.Models, a.Unlisted, a.Off, a.Fallback, a.Routing, a.Affinity, a.Contexts, a.Family = pk.Models, pk.Unlisted, pk.Off, pk.Fallback, pk.Routing, pk.Affinity, pk.Contexts, pk.Family
+		a.Proxy = pk.Proxy
 		if a.ID == "cursor" { // picked before its efforts were one model
 			a.Models = cursorPicks(a.Models)
 		}
@@ -295,6 +304,9 @@ func Save(p Provider) error {
 	if p.ID == strings.TrimSuffix(GroupPrefix, "/") {
 		return errors.New(`"group" starts the ids of routing groups; pick another id`)
 	}
+	if err := settings.CheckProxy(p.Proxy); err != nil {
+		return err
+	}
 	if p.Name == "" {
 		p.Name = p.ID
 	}
@@ -308,7 +320,7 @@ func Save(p Provider) error {
 		if p.ID == "kiro" {
 			key = p.Key
 		}
-		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Contexts: p.Contexts, Family: p.Family, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID)}
+		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Contexts: p.Contexts, Family: p.Family, Proxy: p.Proxy, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID)}
 	} else {
 		if slices.Contains(accountIDs, p.ID) && !stored(p.ID) {
 			// taken, it would hide that subscription once signed in
@@ -505,6 +517,7 @@ func normalize(p Provider) Provider {
 	p.ID = strings.ToLower(strings.TrimSpace(p.ID))
 	p.Name = strings.TrimSpace(p.Name)
 	p.Key = strings.TrimSpace(p.Key)
+	p.Proxy = strings.TrimSpace(p.Proxy)
 	for _, u := range []*string{&p.Chat, &p.Responses, &p.Anthropic, &p.Decide, &p.Website, &p.KeysURL} {
 		*u = strings.TrimRight(strings.TrimSpace(*u), "/")
 		if *u != "" && !strings.Contains(*u, "://") {

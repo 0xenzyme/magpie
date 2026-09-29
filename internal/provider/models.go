@@ -91,6 +91,7 @@ func (p Provider) Fetched() (time.Time, bool) {
 
 // Fetch asks the vendor which models it serves and remembers the answer.
 func (p Provider) Fetch(ctx context.Context) ([]catalog.Model, error) {
+	ctx = p.Via(ctx)
 	if p.Decides() {
 		return p.fetchDecide(ctx)
 	}
