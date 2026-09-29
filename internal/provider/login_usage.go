@@ -84,6 +84,7 @@ func LoginUsage(ctx context.Context, agent string) map[string]SubscriptionQuota 
 		}(l)
 	}
 	wg.Wait()
+	usageRead(agent, out) // a window not started: the warm-up looks now
 	return out
 }
 

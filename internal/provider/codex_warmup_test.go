@@ -52,6 +52,9 @@ func TestWarmDue(t *testing.T) {
 		{"a stale read past its reset", warmWindow{ResetsAt: now.Add(-time.Minute), Used: 50}, true,
 			win("7 days", week, 50, now.Add(-time.Minute)), true},
 		{"a failed warm-up", warmWindow{Pending: true, Failed: 1}, true, running, true},
+		{"still not started, its retry come", warmWindow{Idle: 1, Retry: now}, true, win("7 days", week, 0, time.Time{}), true},
+		{"still not started, before its retry", warmWindow{Idle: 1, Retry: now.Add(time.Minute)}, true, win("7 days", week, 0, time.Time{}), false},
+		{"not started before, running now", warmWindow{Idle: 1}, true, running, false},
 	} {
 		if got := warmDue(c.p, c.seen, asOf(c.cur, now), now); got != c.want {
 			t.Errorf("%s: due %v, want %v", c.name, got, c.want)
