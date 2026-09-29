@@ -118,17 +118,14 @@ func devinAccount() (Provider, bool) {
 	acct.models = func() []catalog.Model {
 		// what a fetch or a picker visit last asked the CLI — never spawn
 		// one here: Available() runs on every gateway request
-		devinFamiliesCache.Lock()
-		families := devinFamiliesCache.families
-		devinFamiliesCache.Unlock()
-		return devinModelsFlatten(families)
+		return devinModels(devinCached())
 	}
 	acct.fetch = func(ctx context.Context) ([]catalog.Model, error) {
 		families, err := askDevinFamilies(ctx)
 		if err != nil {
 			return nil, err
 		}
-		ms := devinModelsFlatten(families)
+		ms := devinModels(families)
 		devinFamiliesCached(families)
 		return ms, catalog.SaveLive("devin", "", ms)
 	}
@@ -206,11 +203,8 @@ func (f DevinFamily) reply() int {
 // numbers of the variant it follows; a variant without numbers takes its
 // family's, as devinModelsFlatten leaves them. Empty until the CLI list is read.
 func devinDeclared() map[string][2]int {
-	devinFamiliesCache.Lock()
-	families := devinFamiliesCache.families
-	devinFamiliesCache.Unlock()
 	out := map[string][2]int{}
-	for _, f := range families {
+	for _, f := range devinCached() {
 		window, most := f.window(), f.reply()
 		if window > 0 || most > 0 {
 			out[f.UID] = [2]int{window, most}
@@ -301,6 +295,13 @@ func DevinFamilies(ctx context.Context) ([]DevinFamily, error) {
 	}
 	devinFamiliesCache.families, devinFamiliesCache.at = families, time.Now()
 	return families, nil
+}
+
+// devinCached is the CLI list last read, without asking it again.
+func devinCached() []DevinFamily {
+	devinFamiliesCache.Lock()
+	defer devinFamiliesCache.Unlock()
+	return devinFamiliesCache.families
 }
 
 func devinFamiliesCached(families []DevinFamily) {
@@ -485,24 +486,158 @@ func DevinAuth() (key, server string, err error) {
 
 // DevinVariant is the model to ask Devin's API for: a family's name
 // follows its newest model, which the API takes only as one of its
-// variants — the one at the effort asked for, else the family's default.
+// variants — the one at the effort asked for, or at the nearest effort
+// the family has; with none asked, the family's default. A variant's own
+// id (swe-2-medium, one an agent was set to) goes as it is, whatever
+// effort is asked: its id is the effort it runs at.
 func DevinVariant(ctx context.Context, model, effort string) string {
 	families, err := DevinFamilies(ctx)
 	if err != nil {
 		return model
 	}
+	return devinVariantIn(families, model, effort)
+}
+
+func devinVariantIn(families []DevinFamily, model, effort string) string {
 	for _, f := range families {
 		if f.UID != model && !slices.Contains(f.Aliases, model) || len(f.Models) == 0 {
 			continue
 		}
 		if effort != "" {
-			for _, m := range f.Models {
-				if strings.HasSuffix(strings.ToLower(m.ID), "-"+effort) || strings.HasSuffix(m.ID, "_"+strings.ToUpper(effort)) {
-					return m.ID
-				}
+			if id := f.byLevel()[devinNearest(effort, f.efforts())]; id != "" {
+				return id
 			}
 		}
 		return f.Models[0].ID
 	}
 	return model
+}
+
+// devinLevels are the effort words Devin's variant ids end in (swe-2-high,
+// …_HIGH), and the level each is.
+var devinLevels = []struct{ word, level string }{
+	{"xhigh", "xhigh"}, {"minimal", "minimal"}, {"min", "minimal"},
+	{"low", "low"}, {"medium", "medium"}, {"high", "high"}, {"max", "max"},
+}
+
+// devinLevel is the effort a Devin id says it runs at, "" when it says
+// none (glm-5-2-1m, claude-opus-5-5-high-fast).
+func devinLevel(id string) string {
+	id = strings.ToLower(id)
+	for _, l := range devinLevels {
+		if strings.HasSuffix(id, "-"+l.word) || strings.HasSuffix(id, "_"+l.word) {
+			return l.level
+		}
+	}
+	return ""
+}
+
+// byLevel is the family's variant at each effort its ids say, the first
+// at each.
+func (f DevinFamily) byLevel() map[string]string {
+	out := map[string]string{}
+	for _, m := range f.Models {
+		if l := devinLevel(m.ID); l != "" && m.ID != f.UID && out[l] == "" {
+			out[l] = m.ID
+		}
+	}
+	return out
+}
+
+// efforts are the levels the family's variants are at, lowest first.
+func (f DevinFamily) efforts() []string {
+	by := f.byLevel()
+	var out []string
+	for _, l := range cursorLevelRank {
+		if by[l] != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// devinNearest is the one of levels nearest the level asked for, a tie
+// going up, as the gateway fits an effort to a model's levels.
+func devinNearest(want string, levels []string) string {
+	at := slices.Index(cursorLevelRank, want)
+	if at < 0 || len(levels) == 0 || slices.Contains(levels, want) {
+		return want
+	}
+	best, dist := want, len(cursorLevelRank)
+	for _, l := range levels {
+		i := slices.Index(cursorLevelRank, l)
+		if d := max(i-at, at-i); d < dist || d == dist && i > at {
+			best, dist = l, d
+		}
+	}
+	return best
+}
+
+// devinModels is Devin's list as magpie offers it: each family one model,
+// whose effort is picked as any model's is and turned into the variant at
+// it by the gateway (DevinVariant), rather than 600-odd ids that are
+// mostly one family at an effort each. See devinCollapse.
+func devinModels(families []DevinFamily) []catalog.Model {
+	return devinCollapse(devinModelsFlatten(families), families, nil)
+}
+
+// devinCollapse is a list of Devin's ids with each family one model: the
+// family's id, with the efforts its variants are at. A variant at an
+// effort is left out, as is a family's only variant, which the family's id
+// already asks for — unless the user picked it (keep) before the families
+// were one model: it stays, at the one effort its id is at, and goes to
+// Devin as it is. A variant at none (glm-5-2-1m) stays. families is the
+// CLI list last read; without it the list is as saved, which a fetch
+// already collapsed.
+func devinCollapse(ms []catalog.Model, families []DevinFamily, keep []string) []catalog.Model {
+	efforts := map[string][]string{}
+	variants := map[string]catalog.Model{}
+	drop := map[string]bool{}
+	for _, f := range families {
+		if e := f.efforts(); len(e) > 0 {
+			efforts[f.UID] = e
+		}
+		for _, m := range f.Models {
+			if m.ID == f.UID {
+				continue
+			}
+			variants[m.ID] = m
+			if devinLevel(m.ID) != "" || len(f.Models) == 1 {
+				drop[m.ID] = true
+			}
+		}
+	}
+	var out []catalog.Model
+	seen := map[string]bool{}
+	for _, m := range ms {
+		if seen[m.ID] || drop[m.ID] && !slices.Contains(keep, m.ID) {
+			continue
+		}
+		if len(m.Efforts) == 0 {
+			if e, ok := efforts[m.ID]; ok {
+				m.Efforts = e
+			} else if l := devinLevel(m.ID); l != "" {
+				m.Efforts = []string{l}
+			}
+		}
+		seen[m.ID] = true
+		out = append(out, m)
+	}
+	// a picked variant a saved list no longer has
+	for _, id := range keep {
+		m, known := variants[id]
+		if seen[id] || !known && devinLevel(id) == "" {
+			continue
+		}
+		m.ID, m.Provider = id, "devin"
+		if m.Name == "" {
+			m.Name = id
+		}
+		if l := devinLevel(id); l != "" {
+			m.Efforts = []string{l}
+		}
+		seen[id] = true
+		out = append(out, m)
+	}
+	return out
 }
