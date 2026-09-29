@@ -98,8 +98,22 @@ const COPY_ICON = "M5.5 5.5V3.5h7v7h-2M3.5 5.5h7v7h-7z";
 // A brand icon: colour logos are images, mono logos take the text colour.
 // Nothing is ever invented: a model with no known vendor keeps the slot
 // empty, and a custom provider shows a plain outline ("generic").
+// A page redrawn whole (the Providers page, as a dialog opens or closes)
+// hands its icons to keptIcons first and the new rows take them back: a
+// logo made afresh loads its picture again and blinks out for a moment.
+let keptIcons = null;
+function keepIcons(...roots) {
+  keptIcons = new Map();
+  for (const r of roots) for (const e of r.querySelectorAll(".ic[data-icon]")) {
+    if (!keptIcons.has(e.dataset.icon)) keptIcons.set(e.dataset.icon, []);
+    keptIcons.get(e.dataset.icon).push(e);
+  }
+}
 function icon(name) {
+  const kept = keptIcons?.get(name || "")?.shift();
+  if (kept) { kept.removeAttribute("title"); return kept; }
   const e = el("span", "ic");
+  e.dataset.icon = name || "";
   if (name === "generic") {
     e.classList.add("generic");
     e.append(svg("M8 2.2 13.2 5.1v5.8L8 13.8 2.8 10.9V5.1Z M8 8v5.8 M2.8 5.1 8 8l5.2-2.9", 16, 1.4));
@@ -1714,6 +1728,7 @@ function renderProviders() {
   // scroll to the top; put it back so closing the editor leaves the reader
   // where they were.
   const view = $("#view-providers"), top = view.scrollTop;
+  keepIcons($("#providers"), $("#addSheet"), $("#excluded"));
   view.classList.remove("loading");
   view.removeAttribute("aria-busy");
   closeProtoMenu();
@@ -1769,6 +1784,7 @@ function renderProviders() {
   dialog = renderAdd() || dialog;
   if (importing) dialog = renderImport(importing);
   if (importingApps) dialog = renderImportApps(importingApps);
+  keptIcons = null;
   view.scrollTop = top; // first: a closing dialog folds into its row where it is
   if (dialog) openModal(dialog); else closeModal();
 }
@@ -2364,7 +2380,6 @@ function renderAdd() {
   const sheet = $("#addSheet");
   sheet.replaceChildren();
   sheet.hidden = !adding;
-  $("#addProvider").hidden = adding;
   if (!adding) return null;
   const head = el("div", "row-head");
   head.append(el("span", "label", t(providers.providers.length ? "Add a provider" : "Add your first provider")), el("span", "grow"));
@@ -2482,7 +2497,6 @@ const globalOf = (pr) => pr.id.endsWith("-cn") ? providers.presets.find((x) => x
 function pairTile(pr, cn) {
   const both = [pr, cn];
   const b = pickRow(pr.icon || "generic", shortName(pr.short || pr.name), both.some((x) => editing?.preset === x.id) ? " on" : "");
-  b.append(el("span", "st", t("Global") + " · " + t("China")));
   const added = both.filter((x) => x.added);
   b.title = both.map((x) => t(x === pr ? "Global" : "China") + " " + hostOf(x.chat || x.responses || x.anthropic) + (x.added ? " · " + t("Added") : "")).join("\n");
   if (added.length) markAdded(b);
@@ -2937,6 +2951,12 @@ const PROTOS = [["chat", "OpenAI", "Chat Completions — most agents"], ["respon
 
 // renderEditor: an existing provider (p), a new preset (presetID), or custom.
 function renderEditor(p, presetID) {
+  // its own icons, not the page's kept ones, which the rows after it take back
+  const kept = keptIcons;
+  keptIcons = null;
+  try { return drawEditor(p, presetID); } finally { keptIcons = kept; }
+}
+function drawEditor(p, presetID) {
   const pr = presetID ? providers.presets.find((x) => x.id === presetID) : p?.preset ? providers.presets.find((x) => x.id === p.preset) : null;
   const isNew = !p, custom = !pr && !p?.account, decides = !!(p?.decide || pr?.decide);
   // a preset already added is added again only through "Add another": one
@@ -5060,11 +5080,33 @@ function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^
 function hostOf(u) { try { return new URL(u.includes("://") ? u : "https://" + u).host; } catch { return ""; } }
 
 // the sheet opens below the list: it unrolls on the rows' spring and the
-// view goes down with it
+// view goes down with it. The button stays at the view's foot however long
+// the list is; with the sheet already open it takes the view down to it,
+// and it steps aside while the sheet's head is in sight.
 $("#addProvider").onclick = (e) => {
-  adding = true; editing = null; draft = null; renderProviders();
-  unrollSheet($("#view-providers"), $("#addSheet"), e);
+  const view = $("#view-providers"), sheet = $("#addSheet");
+  if (!adding) {
+    adding = true; editing = null; draft = null; renderProviders();
+    return unrollSheet(view, sheet, e);
+  }
+  if (!scrollOnPurpose(e, 700)) return;
+  const from = view.scrollTop;
+  const to = Math.min(from + sheet.getBoundingClientRect().top - view.getBoundingClientRect().top - 12, view.scrollHeight - view.clientHeight);
+  if (calm()) { view.scrollTop = to; return; }
+  const t0 = performance.now(), ease = (x) => 1 - Math.pow(1 - x, 3);
+  let set = from;
+  const step = (now) => {
+    if (Math.abs(view.scrollTop - set) > 2) return; // the reader took it
+    const x = Math.min(1, (now - t0) / 520);
+    view.scrollTop = Math.round(from + (to - from) * ease(x));
+    set = view.scrollTop;
+    if (x < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 };
+new IntersectionObserver(([en]) => {
+  $("#view-providers .after-list").classList.toggle("away", !en.target.hidden && en.isIntersecting);
+}, { root: $("#view-providers") }).observe($("#addSheet"));
 
 // unrollSheet opens a sheet just drawn at the foot of a view from nothing to
 // its height, what's in it easing down into place, and takes the view down
@@ -5093,7 +5135,9 @@ function unrollSheet(view, sheet, e) {
     c.animate([{ opacity: 0, transform: "translateY(-6px)" }, { opacity: 1, transform: "none" }],
       { duration: 340, delay: 60, easing: "cubic-bezier(.22, 1, .36, 1)", fill: "backwards" });
   }
-  let set = from;
+  // what the view is at once the sheet starts at no height: a page that
+  // was scrolled to its end is clamped shorter (WebKit), not moved by the reader
+  let set = view.scrollTop;
   const follow = () => {
     if (!go || Math.abs(view.scrollTop - set) > 2) return; // the reader took it
     const done = grow.playState === "finished";
