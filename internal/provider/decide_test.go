@@ -154,3 +154,22 @@ func TestCloudflareNoAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A vendor's words are shown whatever shape they come in: Tencent's
+// {code, msg}, and a long body in no shape known cut short, not dropped.
+func TestAPIErrorShapes(t *testing.T) {
+	if got := APIError([]byte(`{"code":11001,"msg":"model not supported"}`), "400 Bad Request"); got != "model not supported" {
+		t.Fatal(got)
+	}
+	long := `{"code":400,"data":null,"trace":"` + strings.Repeat("x", 400) + `"}`
+	got := APIError([]byte(long), "400 Bad Request")
+	if !strings.HasPrefix(got, `400 Bad Request: {"code":400`) || !strings.HasSuffix(got, "…") || len([]rune(got)) > 320 {
+		t.Fatal(got)
+	}
+	if got := APIError([]byte("<html><body>bad</body></html>"), "400 Bad Request"); got != "400 Bad Request" {
+		t.Fatal(got)
+	}
+	if got := APIError(nil, "400 Bad Request"); got != "400 Bad Request" {
+		t.Fatal(got)
+	}
+}

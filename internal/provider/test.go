@@ -314,6 +314,7 @@ func apiError(b []byte, fallback string) string {
 	var v struct {
 		Error   json.RawMessage `json:"error"`
 		Message string          `json:"message"`
+		Msg     string          `json:"msg"` // Tencent's (WorkBuddy): {code, msg}
 		Detail  json.RawMessage `json:"detail"` // FastAPI's (TypeSafe)
 		Errors  []struct {
 			Message string `json:"message"`
@@ -336,12 +337,18 @@ func apiError(b []byte, fallback string) string {
 		if json.Unmarshal(v.Error, &s) == nil && s != "" {
 			return s
 		}
-		if v.Message != "" {
-			return v.Message
+		if m := cmp.Or(v.Message, v.Msg); m != "" {
+			return m
 		}
 	}
-	if s := strings.TrimSpace(string(b)); s != "" && len(s) < 200 && !strings.HasPrefix(s, "<") {
-		return fallback + ": " + s
+	// a body in no shape known is shown as it is, cut short, so what the
+	// vendor said isn't lost; an HTML page says nothing worth showing
+	s := strings.Join(strings.Fields(string(b)), " ")
+	if s == "" || strings.HasPrefix(s, "<") {
+		return fallback
 	}
-	return fallback
+	if r := []rune(s); len(r) > 300 {
+		s = string(r[:300]) + "…"
+	}
+	return fallback + ": " + s
 }
