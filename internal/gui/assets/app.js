@@ -1112,7 +1112,9 @@ function placePop(anchor, w, h) {
 // options (the providers page offers one vendor's models at a time).
 function openPicker(agent, field, anchor, ev, only) {
   ev.stopPropagation();
+  const again = pick?.anchor === anchor;
   closePicker();
+  if (again) return;
   const cur = field.value;
   let options = field.options.filter((o) => !only || only(o));
   // routing groups come first, before the agent's own models and each
@@ -1556,7 +1558,9 @@ $("#q").addEventListener("keydown", (e) => {
   else if (e.key === "Enter") { e.preventDefault(); commit(pick?.items[pick.cursor]?.value); }
   else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closePicker(); }
 });
-document.addEventListener("mousedown", (e) => { if (pick && !$("#pop").contains(e.target)) closePicker(); });
+document.addEventListener("mousedown", (e) => {
+    if (pick && !$("#pop").contains(e.target) && !pick.anchor.contains(e.target)) closePicker();
+});
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || pick) return;
   if (editing !== null || importingApps) cancelEdit();

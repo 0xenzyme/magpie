@@ -160,6 +160,16 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert(await page.locator("#pop").isHidden());
       }
     });
+    await t.test("main model picker closes on a second click", async () => {
+      const anchor = page.locator('#agents [data-key="model"]');
+      await anchor.click();
+      assert(await page.locator("#pop").isVisible());
+      await anchor.click();
+      assert(await page.locator("#pop").isHidden());
+      await anchor.click();
+      assert(await page.locator("#pop").isVisible(), "a third click opens it again");
+      await page.locator("#q").press("Escape");
+    });
     assert.deepEqual(errors, [], "page runtime errors");
   });
 }
