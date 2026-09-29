@@ -85,7 +85,7 @@ func TestQianfanTokenPlanRoutes(t *testing.T) {
 	}
 	p.Key = "bce-v3-test"
 	p.Chat, p.Responses = srv.URL+"/v2/tokenplan/personal", srv.URL+"/v2/tokenplan/personal"
-	p.Anthropic = srv.URL+"/anthropic/tokenplan/personal"
+	p.Anthropic = srv.URL + "/anthropic/tokenplan/personal"
 	p.Models = []string{"deepseek-v4.1-flash", "deepseek-v4-pro"}
 	if err := provider.Save(p); err != nil {
 		t.Fatal(err)
