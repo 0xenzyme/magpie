@@ -565,12 +565,16 @@ const I18N = {
     "The name agents and magpie show for {id}; empty for its own": "Agent 和 magpie 为 {id} 显示的名称；留空则用默认名称",
     "{id} is called {name}": "{id} 已改名为 {name}",
     "{id} has its own name again": "{id} 已恢复默认名称",
+    "Accepts images": "支持图片输入",
+    "Whether agents are told {id} can see images": "是否告诉 Agent {id} 能看图片",
+    "{id} accepts images": "{id} 支持图片输入",
+    "{id} does not accept images": "{id} 不支持图片输入",
     "Reasoning levels agents are offered": "提供给 Agent 的推理档位",
     "Its reasoning levels aren't known: tick the ones it takes": "未知这个模型的推理档位：勾选它支持的档位",
     "Keep at least one level": "至少保留一个档位",
     "{id}: {levels}": "{id}：{levels}",
     "Restore default": "恢复默认",
-    "Its own name and every reasoning level it has": "恢复默认名称和全部推理档位",
+    "Its own name, every reasoning level it has, and whether it sees images": "恢复默认名称、全部推理档位，以及是否支持图片",
     "{id} is as its provider has it again": "{id} 已恢复为供应商的默认设置",
 
     // gateway

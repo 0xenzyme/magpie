@@ -3800,6 +3800,11 @@ function renderModels(p) {
       const who = el("div", "mwho");
       who.append(name, el("code", "", m.id));
       row.append(who);
+      const [img, imgCb] = tick(t("Accepts images"), !!m.images);
+      img.title = t("Whether agents are told {id} can see images", { id: m.id });
+      imgCb.onchange = () => accountAction("provider/images", { id: p.id, model: m.id, images: imgCb.checked },
+        imgCb.checked ? t("{id} accepts images", { id: m.id }) : t("{id} does not accept images", { id: m.id }));
+      row.append(img);
       const levels = m.efforts || [];
       // a model whose levels aren't known (m.given) can be given any
       // of them, and none again
@@ -3819,13 +3824,15 @@ function renderModels(p) {
         }
         row.append(lv);
       }
-      if (m.default || m.kept?.length) {
+      if (m.default || m.kept?.length || m.imageSet) {
         const reset = el("button", "text action", t("Restore default"));
-        reset.title = t("Its own name and every reasoning level it has");
+        reset.title = t("Its own name, every reasoning level it has, and whether it sees images");
         reset.onclick = async () => {
           reset.classList.add("busy");
-          try { if (m.default) await api("provider/name", { id: p.id, model: m.id, modelName: "" }); }
-          catch (e) { status(e.message, "err"); reset.classList.remove("busy"); return; }
+          try {
+            if (m.default) await api("provider/name", { id: p.id, model: m.id, modelName: "" });
+            if (m.imageSet) await api("provider/images", { id: p.id, model: m.id, images: null });
+          } catch (e) { status(e.message, "err"); reset.classList.remove("busy"); return; }
           accountAction("provider/efforts", { id: p.id, model: m.id, efforts: [] }, t("{id} is as its provider has it again", { id: m.id }));
         };
         row.append(reset);

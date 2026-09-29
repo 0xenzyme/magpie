@@ -616,8 +616,9 @@ func providerEntries() []Entry {
 			if m.ImageInput != nil {
 				images = *m.ImageInput
 			}
+			images, imageInput := ApplyImage(p.ID, m.ID, images, m.ImageInput)
 			e := Entry{ID: p.ID + "/" + m.ID, Model: m.ID, Family: p.Family, Name: m.Name, Efforts: effortsOf(m), Provider: p,
-				Images: images, ImageInput: m.ImageInput, Context: ctx, Output: output, Free: m.Free}
+				Images: images, ImageInput: imageInput, Context: ctx, Output: output, Free: m.Free}
 			if n, ok := modelNameIn(s.ModelNames, p.ID, m.ID); ok {
 				e.Name, e.Default = n, m.Name
 			}
