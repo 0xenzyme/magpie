@@ -544,6 +544,10 @@ const I18N = {
     "Requests to it go direct, whatever the proxy in Settings": "发往它的请求直连，不走设置里的代理",
     "Requests to it go through this proxy: http://, https:// or socks5://": "发往它的请求走这个代理：http://、https:// 或 socks5://",
     "Proxy: type its address, like http://127.0.0.1:7890": "代理：请填写地址，例如 http://127.0.0.1:7890",
+    // each account's own proxy (gakki)
+    "Provider's proxy": "供应商代理",
+    "Each account can go through a proxy of its own; Provider's proxy is the one above": "每个账号可以走自己的代理；“供应商代理”即上面这一项",
+    "Proxy of {user}: type its address, like http://127.0.0.1:7890": "{user} 的代理：请填写地址，例如 http://127.0.0.1:7890",
     "Add another {name}": "再添加一个 {name}",
     "One more {name} provider, with its own key, headers and models": "再添加一个 {name} 供应商，使用各自的 key、请求头和模型",
     "e.g. {name} · Work": "例如 {name} · Work",

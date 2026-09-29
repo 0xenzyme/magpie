@@ -147,10 +147,11 @@ func (o ResetOutcome) Text() string {
 // last longer goes before it. It can't be undone: callers ask first. The
 // account's usage is read afresh after.
 func UseCodexReset(ctx context.Context, user string) (ResetOutcome, error) {
-	user, tok, accountID, err := codexUserToken(ctx, user)
+	user, tok, accountID, err := codexUserToken(ViaLogin(ctx, "codex", user), user)
 	if err != nil {
 		return ResetOutcome{}, err
 	}
+	ctx = ViaLogin(ctx, "codex", user) // through the account's own proxy
 	base := strings.TrimSuffix(CodexBase, "/codex")
 	// which of them to spend is named, as Codex itself does: left to the
 	// vendor, it may be one that lasts longer
@@ -162,7 +163,7 @@ func UseCodexReset(ctx context.Context, user string) (ResetOutcome, error) {
 	if credit == "" {
 		return ResetOutcome{Code: "no_credit"}, nil
 	}
-	out, err := consumeCodexReset(Via(ctx, "codex"), base, tok, accountID, credit, newRedeemID())
+	out, err := consumeCodexReset(ctx, base, tok, accountID, credit, newRedeemID())
 	if err != nil {
 		return out, err
 	}

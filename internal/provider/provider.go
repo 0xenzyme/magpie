@@ -100,6 +100,11 @@ type Provider struct {
 	// "direct" none, anything else the proxy's address (http://, https://,
 	// socks5://; host:port means http). Signed-in accounts keep it too.
 	Proxy string `json:"proxy,omitempty"`
+	// AccountProxies is, for a subscription holding several accounts
+	// (Codex's, Claude Code's…), the proxy of each account that has one
+	// of its own, by its name in lower case, as Proxy takes one; an
+	// account not in it follows Proxy (see ProxyChoice).
+	AccountProxies map[string]string `json:"accountProxies,omitempty"`
 
 	// BalanceURL, when set, is where the vendor tells what is left on a
 	// key, asked with the key the way a chat request carries it; BalancePath
@@ -224,7 +229,7 @@ func All() []Provider {
 		}
 		pk := picks[a.ID]
 		a.Models, a.Unlisted, a.Off, a.Fallback, a.Routing, a.Affinity, a.Contexts, a.Family = pk.Models, pk.Unlisted, pk.Off, pk.Fallback, pk.Routing, pk.Affinity, pk.Contexts, pk.Family
-		a.Proxy = pk.Proxy
+		a.Proxy, a.AccountProxies = pk.Proxy, pk.AccountProxies
 		if a.ID == "cursor" { // picked before its efforts were one model
 			a.Models = cursorPicks(a.Models)
 		}
@@ -307,6 +312,9 @@ func Save(p Provider) error {
 	if err := settings.CheckProxy(p.Proxy); err != nil {
 		return err
 	}
+	if err := checkAccountProxies(p.AccountProxies); err != nil {
+		return err
+	}
 	if p.Name == "" {
 		p.Name = p.ID
 	}
@@ -320,8 +328,9 @@ func Save(p Provider) error {
 		if p.ID == "kiro" {
 			key = p.Key
 		}
-		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Contexts: p.Contexts, Family: p.Family, Proxy: p.Proxy, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID)}
+		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Contexts: p.Contexts, Family: p.Family, Proxy: p.Proxy, AccountProxies: p.AccountProxies, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID)}
 	} else {
+		p.AccountProxies = nil // a provider of a key has no accounts to proxy apart
 		if slices.Contains(accountIDs, p.ID) && !stored(p.ID) {
 			// taken, it would hide that subscription once signed in
 			return fmt.Errorf("%q is the id of the %s subscription; pick another name", p.ID, p.ID)
@@ -521,6 +530,7 @@ func normalize(p Provider) Provider {
 	p.Name = strings.TrimSpace(p.Name)
 	p.Key = strings.TrimSpace(p.Key)
 	p.Proxy = strings.TrimSpace(p.Proxy)
+	p.AccountProxies = normalAccountProxies(p.AccountProxies)
 	for _, u := range []*string{&p.Chat, &p.Responses, &p.Anthropic, &p.Decide, &p.Website, &p.KeysURL} {
 		*u = strings.TrimRight(strings.TrimSpace(*u), "/")
 		if *u != "" && !strings.Contains(*u, "://") {

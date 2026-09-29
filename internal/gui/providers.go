@@ -53,6 +53,9 @@ type providerJSON struct {
 	// the proxy its requests go through: "" the global one, "direct"
 	// none, or an address (#237)
 	Proxy string `json:"proxy"`
+	// the proxy of each of a subscription's accounts that has one of its
+	// own, by its name in lower case; the others follow Proxy
+	AccountProxies map[string]string `json:"accountProxies,omitempty"`
 	// where a custom provider's balance is asked (see provider.Balance)
 	BalanceURL  string `json:"balanceURL,omitempty"`
 	BalancePath string `json:"balancePath,omitempty"`
@@ -201,7 +204,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		ID: p.ID, Name: p.Name, Icon: p.Icon, Preset: p.Preset, Host: p.Host(),
 		Chat: p.Chat, Responses: p.Responses, Anthropic: p.Anthropic, Decide: p.Decide,
 		Catalog: p.Catalog, Website: p.Website, KeysURL: p.KeysURL,
-		Proxy: p.Proxy, Headers: p.Headers, BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, ModelsURL: p.ModelsURL,
+		Proxy: p.Proxy, AccountProxies: p.AccountProxies, Headers: p.Headers, BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, ModelsURL: p.ModelsURL,
 		Ready: p.Ready(), Chosen: p.Models, Models: []modelJSON{}, Agents: []providerAgent{},
 		Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
 	}
@@ -538,6 +541,10 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 					in.Proxy = *req.Proxy
 				} else if old != nil {
 					in.Proxy = old.Proxy
+				}
+				// each account's own proxy likewise: {} clears them
+				if in.AccountProxies == nil && old != nil {
+					in.AccountProxies = old.AccountProxies
 				}
 				if in.Key == "" && old != nil {
 					in.Key = old.Key

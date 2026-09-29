@@ -37,6 +37,8 @@ func claudeWarmUsage(ctx context.Context) map[string]SubscriptionQuota {
 // Claude Code is signed in to.
 func warmClaudeLogin(send func(ctx context.Context, oauth string) error) func(context.Context, string) error {
 	return func(ctx context.Context, user string) error {
+		// the account's own proxy, which send's Claude Code runs with too
+		ctx = ViaLogin(ctx, "claude", user)
 		ls := Logins("claude")
 		i := slices.IndexFunc(ls, func(l Login) bool { return strings.EqualFold(l.User, user) })
 		if i < 0 {

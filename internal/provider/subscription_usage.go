@@ -194,6 +194,9 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 		proxies[p.ID] = p.Proxy
 	}
 	via := func(id string) context.Context { return netproxy.With(ctx0, proxies[id]) }
+	// and one account of several through its own, if it has one (perLogin
+	// and loginQuota ask each so)
+	viaLogin := func(id, user string) context.Context { return ViaLogin(ctx0, id, user) }
 	hidden := map[string]bool{}
 	for _, p := range load().Providers {
 		hidden[p.ID] = p.Hidden || p.Off // switched off: not asked either
@@ -203,11 +206,11 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 		if ls := accountsOf("claude"); len(ls) > 1 {
 			fetches = append(fetches, perLogin(via("claude"), ls, "Claude Code", "claude-color")...)
 		} else {
-			fetches = append(fetches, withUser(p.Account.User, func() SubscriptionQuota { return claudeSubscriptionUsage(via("claude")) }))
+			fetches = append(fetches, withUser(p.Account.User, func() SubscriptionQuota { return claudeSubscriptionUsage(viaLogin("claude", p.Account.User)) }))
 		}
 	}
 	if user, plan, ok := cursorIdentity(); ok && !hidden["cursor"] {
-		fetches = append(fetches, withUser(user, func() SubscriptionQuota { return cursorSubscriptionUsage(via("cursor"), plan) }))
+		fetches = append(fetches, withUser(user, func() SubscriptionQuota { return cursorSubscriptionUsage(viaLogin("cursor", user), plan) }))
 	}
 	if _, ok := grokAccount(); ok && !hidden["grok"] {
 		fetches = append(fetches, func() SubscriptionQuota { return grokSubscriptionUsage(via("grok")) })
@@ -218,7 +221,7 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 				fetches = append(fetches, perLogin(via("codex"), ls, "Codex", "codex-color")...)
 			} else {
 				auth := filepath.Join(home, ".codex", "auth.json")
-				fetches = append(fetches, withUser(p.Account.User, func() SubscriptionQuota { return codexSubscriptionUsage(via("codex"), auth) }))
+				fetches = append(fetches, withUser(p.Account.User, func() SubscriptionQuota { return codexSubscriptionUsage(viaLogin("codex", p.Account.User), auth) }))
 			}
 		}
 		cfg := os.Getenv("XDG_CONFIG_HOME")
@@ -229,7 +232,7 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 			if ls := copilotLoginList(); len(ls) > 1 {
 				fetches = append(fetches, perLogin(via("copilot"), ls, "Copilot", "githubcopilot")...)
 			} else {
-				fetches = append(fetches, withUser(app.User, func() SubscriptionQuota { return copilotSubscriptionUsage(via("copilot"), app.Token) }))
+				fetches = append(fetches, withUser(app.User, func() SubscriptionQuota { return copilotSubscriptionUsage(viaLogin("copilot", app.User), app.Token) }))
 			}
 		}
 	}
@@ -263,7 +266,7 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 			continue
 		}
 		for _, l := range googleLogins(agent) {
-			fetches = append(fetches, func() SubscriptionQuota { return l.acct.quota(via(agent), l.Plan) })
+			fetches = append(fetches, func() SubscriptionQuota { return l.acct.quota(viaLogin(agent, l.User), l.Plan) })
 		}
 	}
 	out := make([]SubscriptionQuota, len(fetches))

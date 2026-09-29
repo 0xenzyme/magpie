@@ -1383,6 +1383,12 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .editor .proxy-row .proxy-mode { flex: none; }
 .editor .proxy-row input.proxy-url { flex: 1 1 auto; width: auto; min-width: 0; }
 .editor .proxy-row input.proxy-url.off { visibility: hidden; }
+/* each of a subscription's accounts with a proxy of its own: its name
+   over the same row as the provider's, in a quiet card, no stripes */
+.editor .acct-proxies { display: grid; gap: 8px; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.editor .acct-proxy { display: grid; gap: 4px; min-width: 0; }
+.editor .acct-proxy .who { font-size: 12px; font-weight: 500; color: var(--fg-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor .acct-proxies > .hint { margin-top: 0; }
 /* what a balance token's URL wants instead, and a balance checked in the form */
 .editor .bal-fix { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; font-size: 12px; line-height: 1.45; color: var(--muted); }
 .editor .bal-fix:empty { display: none; }

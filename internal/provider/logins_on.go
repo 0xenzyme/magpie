@@ -148,6 +148,7 @@ func savedLoginToken(ctx context.Context, agent, user string) (tok, accountID st
 // refuses is kept on the account as lapsed, until one goes through or it is
 // signed in again.
 func renewSavedLogin(ctx context.Context, agent, user string, force bool) (tok, accountID string, err error) {
+	ctx = ViaLogin(ctx, agent, user) // refreshed through the account's own proxy
 	savedTokenMu.Lock()
 	defer savedTokenMu.Unlock()
 	loginsMu.Lock()

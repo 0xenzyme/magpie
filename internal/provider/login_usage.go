@@ -97,6 +97,7 @@ func LoginUsage(ctx context.Context, agent string) map[string]SubscriptionQuota 
 }
 
 func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
+	ctx = ViaLogin(ctx, l.Agent, l.User) // asked through the account's own proxy
 	if l.Agent == "qoder" {
 		return qoderLoginQuota(ctx, l)
 	}

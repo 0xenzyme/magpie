@@ -253,7 +253,7 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, oau
 	args := claudeCLIArgs(model, string(mcpConfig), req.Effort, req.WebSearch)
 	cmd := proc.CommandContext(context.Background(), binary, args...)
 	cmd.Dir = tmp
-	cmd.Env = netproxy.EnvWith(provider.ProxyOf("claude"), cleanClaudeEnv(os.Environ()))
+	cmd.Env = netproxy.EnvWith(claudeProxy(ctx), cleanClaudeEnv(os.Environ()))
 	if oauth != "" {
 		// a saved account in use beside the one Claude Code is signed in to
 		cmd.Env = append(cmd.Env, "CLAUDE_CODE_OAUTH_TOKEN="+oauth)
@@ -1180,6 +1180,7 @@ func (b *subscriptionBridge) removeRun(run *subscriptionRun) {
 
 func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request, from provider.Protocol, p provider.Provider, model string, body []byte, usage *Usage) (int, string) {
 	start := func(ctx context.Context, req *Request) (*subscriptionRun, <-chan Event, error) {
+		ctx = p.Via(ctx) // the account's own proxy, its CLI run's too
 		owner := p.ID + "\x00" + p.Account.User
 		if run, events := s.subscription.resume(req, owner); run != nil {
 			return run, events, nil

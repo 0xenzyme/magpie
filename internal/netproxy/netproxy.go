@@ -58,6 +58,10 @@ func With(ctx context.Context, choice string) context.Context {
 	return context.WithValue(ctx, choiceKey{}, choice)
 }
 
+// Choice is the proxy ctx names (With), "" when it names none — for a CLI
+// run on a provider's behalf, whose *_PROXY is set from it (EnvWith).
+func Choice(ctx context.Context) string { return choiceOf(ctx) }
+
 func choiceOf(ctx context.Context) string {
 	if ctx == nil {
 		return ""

@@ -183,7 +183,8 @@ func codexFetchSaved(ctx context.Context) {
 		}
 		user := l.User
 		sign := codexSign(func(ctx context.Context) (string, string, error) { return savedLoginToken(ctx, "codex", user) })
-		if ms, err := codexModels(ctx, sign); err == nil {
+		// through the account's own proxy, if it has one
+		if ms, err := codexModels(ViaLogin(ctx, "codex", user), sign); err == nil {
 			catalog.SaveLive(accountModels("codex", user), CodexBase, ms)
 		}
 	}

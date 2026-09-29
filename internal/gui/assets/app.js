@@ -2622,7 +2622,10 @@ function proxyPicker() {
 }
 function proxyDraft(p) {
   const v = (p?.proxy || "").trim();
-  return { proxyMode: !v ? "" : v === "direct" ? "direct" : "custom", proxyURL: v && v !== "direct" ? v : "" };
+  // each account's own (accountProxies), by its name in lower case
+  const accountProxies = {};
+  for (const [u, x] of Object.entries(p?.accountProxies || {})) accountProxies[u] = { mode: x === "direct" ? "direct" : "custom", url: x === "direct" ? "" : x };
+  return { proxyMode: !v ? "" : v === "direct" ? "direct" : "custom", proxyURL: v && v !== "direct" ? v : "", accountProxies };
 }
 // proxyOfDraft is the draft's proxy as it is saved, or null when Custom
 // has no address yet.
@@ -2630,6 +2633,59 @@ function proxyOfDraft() {
   if (draft.proxyMode === "direct") return "direct";
   if (draft.proxyMode !== "custom") return "";
   return (draft.proxyURL || "").trim() || null;
+}
+
+// accountProxyPicker: one proxy per account of a subscription holding
+// several (gakki: one Codex account through one proxy, another through
+// another) — the provider's own (the row above), none, or its own address.
+// Each account is a line of its name over the same row as the provider's,
+// the address's room kept while it isn't asked for, so a pick moves
+// nothing. null for a subscription with one account: the row above is its.
+const ACCOUNT_PROXY_HINT = "Each account can go through a proxy of its own; Provider's proxy is the one above";
+function accountProxyPicker(a) {
+  const ls = [...(a?.logins || [])];
+  if (ls.length < 2) return null;
+  ls.sort((x, y) => (y.active ? 1 : 0) - (x.active ? 1 : 0));
+  draft.accountProxies = draft.accountProxies || {};
+  const box = el("div", "acct-proxies");
+  for (const l of ls) {
+    const k = l.user.toLowerCase();
+    const cur = draft.accountProxies[k] || { mode: "", url: "" };
+    const line = el("div", "acct-proxy");
+    line.dataset.user = l.user;
+    const who = el("span", "who", l.user);
+    who.title = l.user;
+    const addr = input(cur.url || "", "http://127.0.0.1:7890");
+    addr.className = "proxy-url";
+    addr.classList.toggle("off", cur.mode !== "custom");
+    addr.oninput = () => { draft.accountProxies[k] = { ...(draft.accountProxies[k] || { mode: "custom" }), url: addr.value }; };
+    const seg = segs([["", t("Provider's proxy")], ["direct", t("Direct")], ["custom", t("Custom")]], cur.mode || "", (v) => {
+      draft.accountProxies[k] = { ...(draft.accountProxies[k] || {}), mode: v };
+      addr.classList.toggle("off", v !== "custom");
+    });
+    seg.classList.add("proxy-mode");
+    const row = el("div", "proxy-row");
+    row.append(seg, addr);
+    line.append(who, row);
+    box.append(line);
+  }
+  box.append(el("div", "hint", t(ACCOUNT_PROXY_HINT)));
+  return box;
+}
+// accountProxiesOfDraft is each account's own proxy as it is saved — the
+// accounts that follow the provider's left out — or { missing: user } when
+// one's Custom has no address yet.
+function accountProxiesOfDraft() {
+  const out = {};
+  for (const [u, x] of Object.entries(draft.accountProxies || {})) {
+    if (x.mode === "direct") out[u] = "direct";
+    else if (x.mode === "custom") {
+      const v = (x.url || "").trim();
+      if (!v) return { missing: u };
+      out[u] = v;
+    }
+  }
+  return { map: out };
 }
 
 // Custom request headers: the draft keeps them as an ordered [name, value,
@@ -3139,7 +3195,11 @@ function drawEditor(p, presetID) {
     const cx = input(draft.contexts || "", t("e.g. 128k · or gpt-6=1m, comma separated"));
     ed.append(...field(t("Context window"), contextPicks(p, cx), t("How long a request the models take, told to the agents; empty leaves it to the vendor and models.dev")));
     ed.append(...field(t("Fallback"), renderFallback(p), fallbackHint(p)));
-    ed.append(...field(t("Proxy"), proxyPicker()));
+    const proxies = el("div", "stack");
+    proxies.append(proxyPicker());
+    const perAccount = subOf(a.agent) ? accountProxyPicker(a) : null;
+    if (perAccount) proxies.append(perAccount);
+    ed.append(...field(t("Proxy"), proxies));
     if (p.chat || p.responses || p.anthropic) ed.append(...field(t("Endpoints"), renderEndpoints(p, p)));
     const bar = el("div", "bar");
     // removing only hides it from magpie; the agent stays signed in
@@ -3155,7 +3215,13 @@ function drawEditor(p, presetID) {
       if (cx.error) return editorError(t("Context window: {v} is not a length like 128k or 1m", { v: cx.error }), "warn");
       const proxy = proxyOfDraft();
       if (proxy === null) { ed.querySelector(".proxy-url")?.focus(); return editorError(t("Proxy: type its address, like http://127.0.0.1:7890"), "warn"); }
-      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, proxy }, t("{name} saved", { name: p.name })); };
+      const own = accountProxiesOfDraft();
+      if (own.missing) {
+        const line = [...ed.querySelectorAll(".acct-proxy")].find((x) => x.dataset.user.toLowerCase() === own.missing);
+        line?.querySelector(".proxy-url")?.focus({ preventScroll: true });
+        return editorError(t("Proxy of {user}: type its address, like http://127.0.0.1:7890", { user: line?.dataset.user || own.missing }), "warn");
+      }
+      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, proxy, accountProxies: own.map }, t("{name} saved", { name: p.name })); };
     bar.append(cancel, saveBtn);
     ed.append(bar);
     return ed;
