@@ -339,6 +339,9 @@ function renderAgents() {
       row.classList.add("drifted");
       who.append(driftFix(a));
     }
+    // the CLI's version, and an update when one is out (#202); the panel's
+    // name column has no room for it
+    if (mode !== "panel") who.append(cliTag(a));
     row.append(agentHandle(a, row, inFold), who);
     if (sum) row.append(sum, ...(openBox ? [openBox] : []));
     else row.append(fields);
@@ -489,6 +492,87 @@ async function reapplyAgent(a, btn) {
   } catch (e) {
     btn?.classList.remove("busy");
     status(e.message, "err");
+  }
+}
+
+// ---------- the agents' CLIs (#202) ----------
+// Each agent's CLI shows its version after its name, faint; when a newer one
+// is out and magpie knows how the CLI was installed (its own updater, npm,
+// bun, pnpm, Homebrew), a pill beside it updates it. The versions come after
+// the rows are drawn, never holding them up; one magpie can't tell how it
+// was installed shows its version alone.
+
+let cliInfo = {}; // agent id → { version, latest, via, command, update }
+const cliBusy = new Set(); // the ones being updated now
+const CLI_UP = "M8 2.5v8M4.5 7 8 10.5 11.5 7M3.5 13.5h9";
+const CLI_SPIN = "M13.5 8a5.5 5.5 0 1 1-5.5-5.5";
+
+function cliTag(a) {
+  const box = el("span", "ag-cli");
+  const c = cliInfo[a.id];
+  if (!c?.version) return box;
+  const v = el("span", "ag-ver", c.version);
+  v.title = !c.via ? t("{agent} {v} · magpie can't tell how it was installed — update it the way you installed it", { agent: a.name, v: c.version })
+    : c.update ? t("{agent} {v} is installed · {latest} is out", { agent: a.name, v: c.version, latest: c.latest })
+    : t("{agent} {v} · up to date", { agent: a.name, v: c.version });
+  box.append(v);
+  if (c.update || cliBusy.has(a.id)) {
+    const b = el("button", "ag-up");
+    b.type = "button";
+    b.title = t("Updates with {cmd}", { cmd: c.command });
+    paintCLIButton(b, c, cliBusy.has(a.id));
+    b.onclick = (e) => { e.stopPropagation(); updateCLI(a, b); };
+    box.append(b);
+  }
+  return box;
+}
+
+function paintCLIButton(b, c, busy) {
+  b.classList.toggle("busy", busy);
+  b.setAttribute("aria-busy", String(busy));
+  b.replaceChildren(svg(busy ? CLI_SPIN : CLI_UP, 11, 1.8), el("span", "", busy ? t("Updating…") : t("Update to {v}", { v: c.latest })));
+}
+
+// paintCLI draws an agent's CLI again where it is, the row left as it is
+function paintCLI(id) {
+  const a = state?.agents?.find((x) => x.id === id);
+  if (!a) return;
+  for (const old of document.querySelectorAll(`#agents .row.agent[data-id="${CSS.escape(id)}"] .ag-cli`)) old.replaceWith(cliTag(a));
+}
+
+let cliLoading = null;
+async function loadCLIs(again = 0) {
+  if (mode === "panel" || cliLoading) return;
+  cliLoading = (async () => {
+    let r;
+    try { r = await api("agents/cli"); } catch { return; } // it just isn't shown
+    const next = r?.agents || {};
+    const was = cliInfo;
+    cliInfo = next;
+    for (const id of new Set([...Object.keys(was), ...Object.keys(next)])) {
+      if (JSON.stringify(was[id]) !== JSON.stringify(next[id])) paintCLI(id);
+    }
+    // some were still being asked: they are ready in a moment
+    if (r?.pending && again < 3) setTimeout(() => loadCLIs(again + 1), 4000);
+  })();
+  try { await cliLoading; } finally { cliLoading = null; }
+}
+
+async function updateCLI(a, btn) {
+  if (cliBusy.has(a.id)) return;
+  cliBusy.add(a.id);
+  paintCLIButton(btn, cliInfo[a.id] || {}, true); // in place: what was clicked stays
+  try {
+    const c = await api("agents/cli/" + encodeURIComponent(a.id), {});
+    cliInfo[a.id] = c;
+    status(t("{agent} updated to {v}", { agent: a.name, v: c.version }), "ok");
+  } catch (e) {
+    status(e.message, "err", 12000);
+    cliBusy.delete(a.id);
+    await loadCLIs(); // what it is now
+  } finally {
+    cliBusy.delete(a.id);
+    paintCLI(a.id);
   }
 }
 
@@ -867,6 +951,7 @@ async function load() {
     if (applyPrefs(state.settings) && view === "library") window.loadLibrary?.();
     tintPanel();
     renderAgents();
+    loadCLIs(); // after the rows, never holding them up
     if (mode === "panel") { renderPanelQuota(); loadQuotas(); }
     // an open provider editor is someone typing: coming back to the window
     // must not rebuild it under them

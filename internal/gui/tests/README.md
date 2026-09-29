@@ -35,10 +35,17 @@ with the quota as its field, the New-Api-User header is asked for until it
 is typed, Check balance asks as the form has it and says the fix plainly,
 and the Usage page's card does too.
 
+`cli-update.test.cjs` draws the agents' CLI versions on the Agents page
+(#202) from a faked API: the version after each name, "Update to x.y.z" only
+where magpie knows how the CLI was installed, the rows' height kept, an
+update clicked with the view scrolled (busy, then the new version, the page
+left where it was), a failed one giving its reason and the pill back, and
+the words in Chinese. Nothing is installed.
+
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

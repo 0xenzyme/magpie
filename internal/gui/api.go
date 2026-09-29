@@ -264,6 +264,28 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		}
 		writeJSON(rw, out)
 	})
+	// the agents' CLIs: their versions and the newest (#202), as far as
+	// they're known within a moment — the rest are asked on meanwhile, and
+	// pending says to ask again soon
+	mux.HandleFunc("GET /api/agents/cli", func(rw http.ResponseWriter, r *http.Request) {
+		clis, pending := agent.CLIs(3 * time.Second)
+		writeJSON(rw, map[string]any{"agents": clis, "pending": pending})
+	})
+	// updates one the way it was installed; what it is afterwards comes
+	// back with an error too
+	mux.HandleFunc("POST /api/agents/cli/{id}", func(rw http.ResponseWriter, r *http.Request) {
+		a, err := agent.Find(r.PathValue("id"))
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		c, err := a.UpdateCLI()
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, c)
+	})
 	mux.HandleFunc("POST /api/agents/{action}/{id}", func(rw http.ResponseWriter, r *http.Request) {
 		a, err := agent.Find(r.PathValue("id"))
 		if err != nil {
