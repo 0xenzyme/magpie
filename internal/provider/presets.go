@@ -140,6 +140,20 @@ var presets = []PresetDef{
 			{ID: "plan-ams", Name: "Plan · Europe", Chat: "https://token-plan-ams.xiaomimimo.com/v1", Responses: "https://token-plan-ams.xiaomimimo.com/v1", Anthropic: "https://token-plan-ams.xiaomimimo.com/anthropic"},
 			{ID: "api", Name: "Pay as you go", Chat: "https://api.xiaomimimo.com/v1", Responses: "https://api.xiaomimimo.com/v1", Anthropic: "https://api.xiaomimimo.com/anthropic"},
 		}},
+	// Baidu Qianfan's Token Plan (个人版): a personal plan's quota is spent
+	// only at its own endpoints under qianfan.baidubce.com (v2 for chat
+	// completions and Responses, anthropic for messages), on a plan key of
+	// its own that the pay-as-you-go API turns away. It serves no model
+	// list, so the plan's documented models are given — deepseek-v4-flash
+	// and kimi-k2.6 retire 2026-09-29; qianfan-code-latest is whichever the
+	// console has picked.
+	{ID: "qianfan-token-plan", Name: "Baidu Qianfan Token Plan", Icon: "baiducloud-color", Kind: KindVendor,
+		Chat: "https://qianfan.baidubce.com/v2/tokenplan/personal", Responses: "https://qianfan.baidubce.com/v2/tokenplan/personal", Anthropic: "https://qianfan.baidubce.com/anthropic/tokenplan/personal",
+		Note:    "Token Plan · 个人版",
+		Website: "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6", KeysURL: "https://console.bce.baidu.com/qianfan/resource/token-plan",
+		NoList:  true,
+		Models:  []string{"qianfan-code-latest", "deepseek-v4.1-flash", "deepseek-v4-pro", "deepseek-v4-pro-0813", "deepseek-v4-flash-0731",
+			"glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-5.1", "kimi-k2.6"}},
 	// Tencent Cloud's Token Plan (TokenHub): a general and a Hy plan on one
 	// sk-tp- key, served at their own endpoints under /plan, chat completions
 	// and Anthropic messages only (its Codex page asks for wire_api "chat").
