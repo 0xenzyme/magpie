@@ -263,8 +263,9 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	// the magpie serving the gateway, and only it, keeps the saved accounts
 	// signed in, so two never refresh one sign-in at once
 	go provider.KeepLoginsAlive(ctx)
-	// and signs Codex in to its next account when the one it is on is out
-	go provider.KeepCodexOnAnAccountWithRoom(ctx)
+	// and signs Codex and Claude Code in to their next account when the
+	// one they are on is spent
+	go provider.KeepOnAnAccountWithRoom(ctx)
 	// and, when settings say to, starts its accounts' next windows as the last reset
 	go provider.KeepCodexWindowsWarm(ctx)
 	go provider.KeepClaudeWindowsWarm(ctx, warmClaude)

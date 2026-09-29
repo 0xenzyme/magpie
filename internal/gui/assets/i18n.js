@@ -301,6 +301,7 @@ const I18N = {
     "Routing": "路由",
     "Tick every key to use; Routing says how requests spread over them.": "勾选的密钥会同时启用；请求怎么分给它们，由下面的「路由」决定。",
     "Tick every account to use; Routing says how requests spread over them.": "勾选的账号会同时启用；请求怎么分给它们，由下面的「路由」决定。",
+    "Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is 98% used.": "经过 magpie 的请求由路由挑选账号；{agent} 自己直连时用的是它登录的账号——这个账号用到 98% 时，magpie 会把 {agent} 登录到下一个已勾选且还有余量的账号。",
     "Smart": "智能",
     "The first takes requests while it has quota to spare; when it runs low, the one with the most left takes over. One out of credit sits out half an hour, one out of quota until it resets, one rate limited as long as the vendor asks, and one that fails a minute, longer each time it fails again.": "额度充足时请求都给第一个（保持缓存命中）；额度快用完时，自动换到剩余额度最多的那个。欠费的暂停半小时，额度用完的暂停到额度重置，被限流的按厂商要求的时间暂停，出错的暂停一分钟、连续出错则越停越久——期间请求自动转给其他可用的。",
     "In order": "按顺序",

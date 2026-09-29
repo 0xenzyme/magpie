@@ -105,7 +105,7 @@ func TestCodexOwnModelMovesToNextAccount(t *testing.T) {
 }
 
 // Codex signed in to the next account once the one it was on is out
-// (provider.SwitchCodexWhenUsedUp): the one out still rests, now beside it,
+// (provider.SwitchWhenSpent): the one out still rests, now beside it,
 // and the one it is on now doesn't take that rest over.
 func TestCodexSwitchedAccountRestsAsItself(t *testing.T) {
 	codexSignedIn(t, "spare@example.com")

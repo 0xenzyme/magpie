@@ -3751,7 +3751,14 @@ function renderRouting(p) {
     const r = ROUTINGS.find(([id]) => id === routing);
     accountAction("provider/route", { id: p.id, routing }, t("{name}: {routing}", { name: p.name, routing: t(r[1]) }));
   });
-  return field(t("Routing"), pick, t(cur[2]));
+  // what Codex or Claude Code sends past magpie goes to the account it is
+  // signed in to, which magpie moves on once Smart would count it spent
+  // (provider.KeepOnAnAccountWithRoom, #209)
+  const a = p.account;
+  const own = a && (a.agent === "codex" || a.agent === "claude")
+    ? " " + t("Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is 98% used.", { agent: a.agentName })
+    : "";
+  return field(t("Routing"), pick, t(cur[2]) + own);
 }
 
 // renderFallback: where requests go when this provider can't take them —
