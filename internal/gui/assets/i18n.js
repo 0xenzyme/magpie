@@ -852,6 +852,7 @@ const I18N = {
     "As a turn begins, this model is asked which of the intents the message is — once; a small, fast one without reasoning is best. If it fails or can't say, no intent matches. Its calls show in the usage as magpie’s own.": "每一轮开始时，问这个模型一次：用户这条消息属于哪个意图。建议选小而快、不带推理的模型。它出错或给不出答案时，所有意图条件都不命中。它的调用在用量里显示为 magpie 自己的调用。",
     "Choose the model that tells which intent a message is": "请选择用来判断消息意图的模型",
     "the classifier": "意图判断模型",
+    "A routing group classifies as any request to it goes: if its first model fails, the next is asked.": "路由组作判断模型时，与发给它的任何请求一样：第一个模型失败，就换下一个来问。",
     "said before, for the same message": "同一条消息之前已判断过",
     "in {ms}": "用时 {ms}",
     "{by} was to tell which of {kinds} turn {turn} is, but couldn't — {err} — so no rule with an intent matches it.": "{by} 本应判断第 {turn} 轮属于 {kinds} 中的哪一个，但没能给出答案（{err}），所以带意图的规则都不命中。",

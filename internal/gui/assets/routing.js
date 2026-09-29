@@ -1840,14 +1840,21 @@
       if (!on) return;
       const intents = d.rules.some((r) => r.intent?.trim());
       clabel.textContent = t(auto && !intents ? "Decided by" : "Intent told by");
-      const m = [...deciders, ...groups.models].find((x) => x.id === d.classifier);
+      // a model, or another group: its models are asked in turn, failing
+      // over as any request to it does (never this group: it would ask
+      // itself)
+      const m = [...deciders, ...groups.models].find((x) => x.id === d.classifier), sg = subOf(d.classifier);
       const cb = el("button", "rt-cond" + (d.classifier ? " on" : ""));
-      if (d.classifier) cb.append(icon(m?.icon || "generic"), el("span", "", m ? `${m.name || m.id} · ${m.providerName}` : d.classifier));
+      if (sg) cb.append(stackIcon(groupIcons(sg)), el("span", "", `${sg.name} · ${t("routing group")}`));
+      else if (d.classifier) cb.append(icon(m?.icon || "generic"), el("span", "", m ? `${m.name || m.id} · ${m.providerName}` : d.classifier));
       else cb.append(el("span", "", t("choose a model")));
       const opt = (x) => ({ value: x.id, label: x.name || x.id, note: x.providerName, icon: x.icon, group: x.providerName, ref: x.id });
-      cb.onclick = (ev) => openPicker({ id: "", name: "", fields: [] }, { key: "classifier", label: "model", value: d.classifier, options: [...deciders.map(opt), ...groups.models.map(opt)],
+      const subs = groups.groups.filter((x) => !x.hidden && x.id !== g?.id)
+        .map((x) => ({ value: "group/" + x.id, label: x.name, note: "group/" + x.id, icons: groupIcons(x), group: ROUTING_GROUPS, ref: "group/" + x.id }));
+      cb.onclick = (ev) => openPicker({ id: "", name: "", fields: [] }, { key: "classifier", label: "model", value: d.classifier, options: [...deciders.map(opt), ...subs, ...groups.models.map(opt)],
         onPick: (id) => { if (id) d.classifier = id; drawClassifier(); } }, cb, ev);
       cls.replaceChildren(cb,
+        ...(sg ? [el("div", "hint", t("A routing group classifies as any request to it goes: if its first model fails, the next is asked."))] : []),
         el("div", "hint", t(isJev(d.classifier) && !intents
           ? "Jev is asked once as each turn begins, with the message and what it said of the turn before. Its calls show in the usage as magpie’s own."
           : isJev(d.classifier)

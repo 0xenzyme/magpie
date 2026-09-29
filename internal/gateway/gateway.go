@@ -691,6 +691,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	var ruled []provider.Member
 	var ruleAt, words string
 	var ruleReq *Request // parsed for the rules of the group or a group in it
+	// a classifier's own call to a group (a group's classifier may be one)
+	// asks no classifier in turn: one that is, however far round, the group
+	// asking would ask itself for ever
+	ask := s.askClassifier
+	if r.Header.Get("User-Agent") == RouterAgent {
+		ask = nil
+	}
 	if isGroup && slices.ContainsFunc(ms, func(m provider.Member) bool {
 		return g.Ruled() || slices.ContainsFunc(m.Via, provider.Group.Ruled)
 	}) {
@@ -699,7 +706,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		}
 	}
 	if ruleReq != nil && g.Ruled() {
-		hit = ruleFor(ruleAt, g, ms, ruleReq, call.Agent, s.askClassifier)
+		hit = ruleFor(ruleAt, g, ms, ruleReq, call.Agent, ask)
 		ruled = ruleMembers(hit, ms)
 	}
 	// Some clients send images even when the selected model is known to
@@ -805,7 +812,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	var nested []NestedRule
 	var nestedAt []string
 	if ruleReq != nil {
-		nested, nestedAt, cands, pl = s.nestedRules(ruleAt, ruleReq, call.Agent, ms, cands, pl, aff)
+		nested, nestedAt, cands, pl = s.nestedRules(ruleAt, ruleReq, call.Agent, ask, ms, cands, pl, aff)
 	}
 	// the effort a group's decision model picked for the turn: the
 	// outermost group's that did
