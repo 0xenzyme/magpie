@@ -7836,9 +7836,41 @@ addEventListener("keydown", (e) => {
   if (e.key === "Tab" || (!typing && SCROLL_KEYS.has(e.key))) readerScrolls(400);
 }, true);
 const readerAt = new WeakMap();
+// Where the reader is is a number, the view's scrollTop, unless the view
+// names a part of itself to keep in place (keepInView): a part under others
+// that redraw on their own (the Routing page's groups, under the live stage
+// and lists), which the number alone lets slide as what's above it grows or
+// shrinks. Then where the reader is is where that part is on the screen,
+// taken as the reader leaves it (a scroll of theirs, a click held), and the
+// view follows it wherever the parts above take it: scroll anchoring, which
+// WebKit lacked and which putting the number back undid.
+const pinOf = new Map(), pinAt = new WeakMap();
+function keepInView(v, part) {
+  pinOf.set(v, part);
+  v.style.overflowAnchor = "none"; // the browser's own would anchor on another part, and fight this
+  pinSizes.observe(v);
+  for (const c of v.children) pinSizes.observe(c);
+}
+function readerLeaves(v) {
+  readerAt.set(v, v.scrollTop);
+  // a view at its top stays at its top: nothing in it is kept in place
+  const p = pinOf.has(v) && v.scrollTop >= 1 ? pinOf.get(v)() : null;
+  pinAt.set(v, p ? [p, onScreen(p, v)] : null);
+}
+function pinnedAt(v) {
+  const a = pinAt.get(v);
+  return a && a[0].isConnected && a[0].offsetParent ? v.scrollTop + onScreen(a[0], v) - a[1] : null;
+}
+// laid out, not yet painted: a view with a part kept in place follows it
+// as soon as what's above it has changed size, before the reader sees it
+const pinSizes = new ResizeObserver(() => {
+  for (const v of pinOf.keys()) if (!v.hidden && held?.v !== v && performance.now() >= purposeUntil) backToReader(v);
+});
 function backToReader(v) {
   if (v.hidden) return;
-  const want = Math.min(readerAt.get(v) || 0, Math.max(0, v.scrollHeight - v.clientHeight));
+  const pinned = pinnedAt(v);
+  const want = Math.max(0, Math.min(pinned ?? readerAt.get(v) ?? 0, v.scrollHeight - v.clientHeight));
+  if (pinned != null) readerAt.set(v, want);
   if (Math.abs(v.scrollTop - want) < 1) return;
   v.scrollTop = want;
   // a field focused out of sight still comes into view, no further than needed
@@ -7899,7 +7931,7 @@ function hold(h) {
     v.scrollTop = want;
   }
   fitRoom(v);
-  readerAt.set(v, v.scrollTop);
+  readerLeaves(v);
 }
 let holding = false; // one frame loop, whatever the clicks
 // A part that grows or shrinks as it plays (the agents' scroll unrolling
@@ -7932,7 +7964,7 @@ addEventListener("click", (e) => {
 for (const v of document.querySelectorAll(".view")) {
   v.addEventListener("scroll", () => {
     if (v.hidden) return;
-    if (performance.now() < purposeUntil) { fitRoom(v); readerAt.set(v, v.scrollTop); }
+    if (performance.now() < purposeUntil) { fitRoom(v); readerLeaves(v); }
     else if (held?.v === v) hold(held);
     else backToReader(v);
   }, { passive: true });

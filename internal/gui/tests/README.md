@@ -35,6 +35,13 @@ under the model's dated name and ones naming none: only the first is marked
 gpt-6-sol · served gpt-6-luna" in its story, in English and Chinese, and the
 click that picks it leaves the page where it is.
 
+`routing-steady.test.cjs` scrolls the Routing page down to its routing groups,
+opens one in its editor and types into its name, then streams six requests in
+from the trace (new agents and accounts on the stage, failures and retries in
+the story, the lists growing): the groups and the editor stay where they are
+on the screen on every layout and scroll, the view's scrollTop moving by just
+what grew above them, and the field keeps its focus and what was typed.
+
 `balance-fix.test.cjs` opens a custom provider whose balance token sits
 beside new-api's `/api/usage/token` (and a new one with a token and no
 Balance URL): the editor says so, one click moves it to `/api/user/self`
@@ -132,7 +139,7 @@ projects.
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs internal/gui/tests/usage-ledger.test.cjs internal/gui/tests/update-check.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs internal/gui/tests/usage-ledger.test.cjs internal/gui/tests/update-check.test.cjs internal/gui/tests/routing-steady.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the
