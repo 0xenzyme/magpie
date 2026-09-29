@@ -107,6 +107,17 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       for (const i of [3, 7, 5]) {
         const row = () => page.locator(".rt-req").nth(i);
         await scrollTo(`.rt-req >> nth=${i}`);
+        // the list scrolls on its own: the reader brings the row into it
+        // (the click would, before it is measured)
+        const list = await page.locator(".rt-reqs").boundingBox();
+        await page.mouse.move(list.x + list.width / 2, list.y + 20);
+        for (let k = 0; k < 40; k++) {
+          const b = await row().boundingBox();
+          if (b.y + b.height <= list.y + list.height && b.y >= list.y) break;
+          await page.mouse.wheel(0, b.y < list.y ? -20 : 20);
+          await page.waitForTimeout(20);
+        }
+        await page.waitForTimeout(300);
         const was = await row().evaluate((e) => e.getBoundingClientRect().top);
         await row().click();
         await settle(page);

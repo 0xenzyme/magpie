@@ -1023,6 +1023,7 @@
     reqNote.textContent = day ? t(pastCut ? "the last {n} of {day}" : "{n} on {day}", { n: rs.length, day: dayName(day) })
       : t("the last {n} the gateway keeps", { n: rs.length });
     renderDays();
+    if (!reqs.style.maxHeight) requestAnimationFrame(fitReqs); // first shown
     // none yet: what the list is for in its place, and no accounts column
     // to tally nothing
     const none = !rs.length;
@@ -1039,6 +1040,9 @@
       renderActs(rs);
       return;
     }
+    // the list scrolls on its own; WebKit, emptied for a moment, would
+    // send it back to its top from under the row just picked
+    const listTop = reqs.scrollTop;
     reqs.replaceChildren(...rs.map((r) => {
       const [said, how, tr] = outcome(r);
       const b = el("button", "rt-req " + how);
@@ -1071,6 +1075,7 @@
       b.onclick = () => pick(r);
       return b;
     }));
+    if (reqs.scrollTop !== listTop) reqs.scrollTop = listTop;
     renderActs(rs);
   }
 
@@ -1631,7 +1636,9 @@
   const gHead = el("div", "row-head"), gList = el("div", "list rt-groups");
   const pHead = el("div", "row-head"), pList = el("div", "list rt-pools");
   gsec.append(gHead, gList, pHead, pList);
-  more.prepend(gsec);
+  // after the requests: a request picked in the list plays on the stage,
+  // so the list sits right under it
+  more.append(gsec);
   const ROUTE_OPTS = [["", "Smart"], ["order", "In order"], ["rotate", "In turn"], ["usage", "Least used"]];
   const AFF_OPTS = [["", "Auto"], ["session", "Session"], ["turn", "Within a turn"], ["off", "Off"]];
   const AFF_HINT = {
@@ -2066,6 +2073,18 @@
   loadGroups();
 
   new ResizeObserver(() => layout()).observe(stage);
+  // the list is as tall as leaves the stage in sight above it: the reader
+  // scrolls the list, not the page, and a request picked plays in view.
+  // Its top stays where it is as it is sized, so a row just clicked does too
+  function fitReqs() {
+    const v = $("#view-routing");
+    if (v.hidden || !reqs.offsetParent) return;
+    const above = reqs.getBoundingClientRect().top - box.getBoundingClientRect().top;
+    const room = v.clientHeight - above - 28;
+    reqs.style.maxHeight = Math.round(Math.max(216, Math.min(420, room))) + "px";
+  }
+  new ResizeObserver(fitReqs).observe($("#view-routing"));
+  new ResizeObserver(fitReqs).observe(box);
   words();
   requestAnimationFrame(frame);
   poll();
