@@ -309,6 +309,9 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 }
 
 func providersState() providersJSON {
+	// an account signed in since start-up is listed with its vendor's
+	// models, not magpie's own list of them (#204)
+	provider.FetchNew(8 * time.Second)
 	agents := agent.Detected()
 	s := providersJSON{Providers: []providerJSON{}, Presets: []presetJSON{}, Excluded: []excludedJSON{}}
 	for _, x := range provider.Excluded() {
