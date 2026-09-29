@@ -42,6 +42,12 @@ update clicked with the view scrolled (busy, then the new version, the page
 left where it was), a failed one giving its reason and the pill back, and
 the words in Chinese. Nothing is installed.
 
+`panel-profiles.test.cjs` saves a profile in the tray panel with the list
+scrolled to its end: "＋ Save current" opens the name field beside it, the
+list not moving, field and button in sight, one focus ring; the button then
+reads Save and a click on it saves, as Enter does; an empty name keeps the
+field; Escape closes it; in English and Chinese.
+
 With Node.js and Playwright available:
 
 ```sh

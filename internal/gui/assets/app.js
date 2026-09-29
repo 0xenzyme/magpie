@@ -426,6 +426,8 @@ function renderAgents() {
 
   const chips = $("#profiles");
   chips.replaceChildren();
+  $(".profiles > .chip-input")?.remove(); // a name field open goes with the list it was for
+  $("#save").textContent = t("＋ Save current");
   if (!state.profiles.length) chips.append(el("span", "hint", t("none yet · save the setup to switch back in one click")));
   for (const p of state.profiles) {
     const c = el("button", "chip");
@@ -1567,19 +1569,36 @@ async function profileAction(action, name, update) {
   }
 }
 
-$("#save").onclick = () => {
-  const chips = $("#profiles");
-  if (chips.querySelector(".chip-input")) return;
+// ＋ Save current opens a name field beside it, and the button is Save; a
+// click on it saves as Enter does (it did nothing: the field lost focus to
+// it and went). The field goes where the button is, not at the head of the
+// list: in the panel it drew the list up under the tabs, the field's top
+// cut off, or put the button out of sight below it.
+const saveCurrent = $("#save");
+const saveField = () => $(".profiles > .chip-input");
+const closeSave = (input) => {
+  input.remove();
+  if (!saveField()) saveCurrent.textContent = t("＋ Save current");
+};
+saveCurrent.onmousedown = (e) => { if (saveField()) e.preventDefault(); }; // the field keeps focus
+saveCurrent.onclick = () => {
+  const open = saveField();
+  if (open) {
+    if (open.value.trim()) profileAction("save", open.value.trim());
+    else open.focus({ preventScroll: true });
+    return;
+  }
   const input = el("input", "chip-input");
   input.placeholder = t("Profile name");
   input.onkeydown = (e) => {
     if (e.key === "Enter" && input.value.trim()) profileAction("save", input.value.trim());
-    else if (e.key === "Escape") input.remove();
+    else if (e.key === "Escape") closeSave(input);
     e.stopPropagation();
   };
-  input.onblur = () => setTimeout(() => input.remove(), 100);
-  chips.prepend(input);
-  input.focus();
+  input.onblur = () => setTimeout(() => closeSave(input), 100);
+  saveCurrent.before(input);
+  saveCurrent.textContent = t("Save");
+  input.focus({ preventScroll: true });
 };
 
 // ---------- providers view ----------
