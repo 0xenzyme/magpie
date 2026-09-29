@@ -1465,6 +1465,10 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 			r := *req
 			r.CacheKey, req = "", &r
 		}
+		if want := to == provider.Chat && geminiCompat(p.Host(), model) && s.fits(p.ID, thinkingConfigField, to); want != req.GeminiCompat {
+			r := *req
+			r.GeminiCompat, req = want, &r
+		}
 		body := build(to, req, model, p.Host(), p.RejectsTemperature(model))
 		if to == provider.Chat && p.IsBedrock() {
 			body = asCompletionTokens(body)
@@ -1483,6 +1487,13 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 		res.Body.Close()
 		res.Body = io.NopCloser(bytes.NewReader(b))
+		if req.GeminiCompat && refusesThinkingConfig(res.StatusCode, b) {
+			// Gemini's own fields turned away (a proxy that isn't in front
+			// of Google after all, or Google changing them): asked as
+			// before, with reasoning_effort, and not sent them again
+			s.markUnfit(p.ID, thinkingConfigField, to)
+			continue
+		}
 		if to == provider.Chat && res.StatusCode == http.StatusBadRequest && req.Effort != "none" &&
 			toolsWithoutEffort.Match(b) && !s.servesElsewhere(p, model, to) {
 			// tools with reasoning refused on chat, and no Responses API
