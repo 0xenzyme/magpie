@@ -1362,16 +1362,22 @@
     if (p.v > p.total && !playing.size) { endReplay(); return; }
     requestAnimationFrame(step);
   }
+  const setText = (e, s) => { if (e.textContent !== s) e.textContent = s; };
   function replayBar(p, fast) {
     const d = new Date(p.real);
     rClock.textContent = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + "." + Math.floor(d.getMilliseconds() / 100);
     const day = d.toDateString() === new Date().toDateString() ? t("today") : d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-    if (rDay.textContent !== day) rDay.textContent = day;
-    const skip = fast > 1.5 ? t("fast-forwarding · {n}×", { n: Math.round(fast) }) : "";
-    if (rSkip.textContent !== skip) rSkip.textContent = skip;
-    rSpeed.textContent = t("{n}× speed", { n: p.speed });
-    rStop.textContent = t("Stop replay");
-    rTop.firstChild.textContent = t("Replaying");
+    setText(rDay, day);
+    // a quiet stretch cut short: the clock runs fast through it, whatever
+    // the speed picked
+    const skip = fast > 1.5 ? t("skipping a quiet stretch · clock {n}×", { n: Math.round(fast) }) : "";
+    // written only when it changes: WebKit sends no click to a button whose
+    // text was replaced between the press and the release, and this runs
+    // every frame, so Stop and the speed did nothing when clicked
+    setText(rSkip, skip);
+    setText(rSpeed, t("{n}× speed", { n: p.speed }));
+    setText(rStop, t("Stop replay"));
+    setText(rTop.firstChild, t("Replaying"));
     rHead.style.left = Math.max(0, Math.min(100, (p.v / (p.total || 1)) * 100)) + "%";
     // the requests in flight at this moment of the replay, else the last one
     const on = p.plan.filter((g) => playing.has(g.r.id) || (p.routes.has(g.r.id) && !p.routes.get(g.r.id).done));

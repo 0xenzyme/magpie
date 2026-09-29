@@ -971,7 +971,7 @@ const I18N = {
     "Replaying": "重放中",
     "Stop replay": "停止重放",
     "{n}× speed": "{n}× 速度",
-    "fast-forwarding · {n}×": "快进中 · {n}×",
+    "skipping a quiet stretch · clock {n}×": "跳过空闲时段 · 时钟 {n}×",
     "today": "今天",
     "request {i} of {n}": "第 {i}/{n} 个请求",
     "sent {time}": "发出于 {time}",
