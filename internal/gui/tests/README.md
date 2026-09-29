@@ -19,10 +19,14 @@ scrolled to its end, in the tray panel (one agent open) and in the window:
 them and never back up; "Show less", and a row opened and closed, leave what
 was clicked where it is on every frame.
 
+`gateway-fold.test.cjs` folds Connect on the Gateway page with the view
+scrolled: its fields hide, the head keeps the base URL and a copy button, the
+head stays where it was, and the fold is remembered across a reload.
+
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

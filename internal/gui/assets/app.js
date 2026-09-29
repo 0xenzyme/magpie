@@ -43,6 +43,8 @@ let importingApps = null; // the Import from other apps dialog: { sources, picks
 let flavor = params.get("flavor") || localStorage.getItem("magpie.flavor") || "openai"; // which API the snippets speak
 let lang = params.get("lang") || localStorage.getItem("magpie.lang") || "shell";        // which snippet
 let exampleModel = localStorage.getItem("magpie.model") || "";  // the model in the snippets
+let connectFolded = false; // Connect folded away under its heading
+try { connectFolded = localStorage.getItem("magpie.gwConnectFolded") === "1"; } catch {}
 const expandedCalls = new Set(); // recent-call ids whose wire bodies are open
 let savedModelFavorites = [];
 try { savedModelFavorites = JSON.parse(localStorage.getItem("magpie.modelFavorites") || "[]"); } catch {}
@@ -1742,6 +1744,7 @@ function renderGatewayLoading() {
 
   const connect = $("#connect");
   connect.replaceChildren();
+  connect.hidden = connectFolded;
   for (let i = 0; i < 4; i++) {
     connect.append(el("span", "skeleton gw-sk-label"));
     const value = el("div", "gw-sk-field");
@@ -1934,6 +1937,17 @@ function segs(items, current, onPick) {
   return box;
 }
 
+// Connect is set up once and seldom looked at again, so it folds away under
+// its heading, the base URL left beside it; the fold is remembered
+// (connectFolded, with the tab's other choices at the top).
+$("#foldConnect").prepend(svg(CHEV_R, 11, 1.6));
+$("#foldConnect").onclick = () => {
+  connectFolded = !connectFolded;
+  try { localStorage.setItem("magpie.gwConnectFolded", connectFolded ? "1" : "0"); } catch {}
+  renderConnect();
+  backToReader($("#view-gateway"));
+};
+
 function renderConnect() {
   const g = providers.gateway;
   const box = $("#connect");
@@ -1943,7 +1957,16 @@ function renderConnect() {
   const model = exampleModel || "provider/model";
   const f = FLAVORS[flavor] || FLAVORS.openai;
   const base = f.base(g.url);
-  $("#connectNote").textContent = t("Loopback only · the key can be anything");
+  const fold = $("#foldConnect");
+  fold.setAttribute("aria-expanded", String(!connectFolded));
+  fold.title = t(connectFolded ? "Show how to connect" : "Fold Connect away");
+  box.hidden = connectFolded;
+  // folded, the head keeps the one thing reached for: the address, to copy
+  const note = $("#connectNote");
+  note.replaceChildren();
+  note.classList.toggle("brief", connectFolded);
+  if (connectFolded) note.append(el("code", "", base), copyBtn(base, "Base URL"));
+  else note.textContent = t("Loopback only · the key can be anything");
 
   box.append(...field("API", segs(Object.entries(FLAVORS).map(([k, v]) => [k, v.name]), flavor, (id) => { flavor = id; localStorage.setItem("magpie.flavor", id); renderConnect(); }), t(f.note)));
 

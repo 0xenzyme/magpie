@@ -641,6 +641,8 @@ const I18N = {
     "Recent calls": "最近调用",
     "Show the models": "展开模型列表",
     "Fold the models away": "收起模型列表",
+    "Show how to connect": "展开接入",
+    "Fold Connect away": "收起接入",
     "shown by the magpie that serves the gateway": "由提供网关的那个 magpie 显示",
     "No requests yet. Point an agent at a model, or run the example above; every call shows up here as it happens.": "还没有请求。让某个 Agent 使用一个模型，或运行上面的示例；每次调用都会实时显示在这里。",
     "Show request and response bodies": "查看请求体和响应体",
