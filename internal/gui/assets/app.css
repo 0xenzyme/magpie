@@ -1736,6 +1736,10 @@ body.panel .modal { padding: 16px 12px; }
 .si-tip.in { animation: si-tip .5s ease-out; }
 @keyframes si-tip { from { opacity: 0; transform: translateY(4px); } }
 @container (max-width: 420px) { .sess-indexing { flex-direction: column; text-align: center; } .si-bar { margin: 0 auto; width: 100%; } }
+/* Safari before 16 (macOS 12's, #220) has no container queries: the window's width instead */
+@supports not (container-type: inline-size) {
+  @media (max-width: 480px) { .sess-indexing { flex-direction: column; text-align: center; } .si-bar { margin: 0 auto; width: 100%; } }
+}
 @media (prefers-reduced-motion: reduce) {
   .sess-indexing::before, .si-title, .si-bar i, .si-tip.in { animation: none; }
   .si-title { color: var(--fg); background: none; }
