@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -103,6 +104,10 @@ func TestWorkBuddyAI(t *testing.T) {
 	if err := p.Sign(context.Background(), req, Chat, []byte(`{}`)); err != nil ||
 		req.Header.Get("Authorization") != "Bearer ai-access" || req.Header.Get("X-Domain") != "www.codebuddy.ai" {
 		t.Fatalf("sign: %v %v", err, req.Header)
+	}
+	// a chat with no system prompt is given one (#124)
+	if got := string(p.Prepare([]byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))); !strings.HasPrefix(got, `{"messages":[{"content":"`+wbSystem+`","role":"system"},{"content":"hi","role":"user"}]`) {
+		t.Errorf("prepare: %s", got)
 	}
 	// what WorkBuddy's own chats carry besides the account's
 	for h, want := range map[string]string{"X-Requested-With": "XMLHttpRequest", "X-Agent-Intent": "craft",
