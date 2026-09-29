@@ -264,6 +264,9 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 	if !hidden["factory"] {
 		fetches = append(fetches, perLogin(via("factory"), factoryLoginList(), "Factory", "factory")...)
 	}
+	if !hidden[MiMoID] {
+		fetches = append(fetches, perLogin(via(MiMoID), mimoLoginList(), "Xiaomi MiMo", "mimocode")...)
+	}
 	for _, agent := range []string{"gemini", "antigravity"} {
 		if hidden[agent] {
 			continue

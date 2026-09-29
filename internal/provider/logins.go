@@ -484,6 +484,8 @@ func Logins(agent string) []Login {
 		return zedLoginList()
 	case "factory":
 		return factoryLoginList()
+	case MiMoID:
+		return mimoLoginList()
 	case "gemini", "antigravity":
 		return googleLoginList(agent)
 	case "":
@@ -498,6 +500,7 @@ func Logins(agent string) []Login {
 		side = append(side, dimagentLoginList()...)
 		side = append(side, zedLoginList()...)
 		side = append(side, factoryLoginList()...)
+		side = append(side, mimoLoginList()...)
 		side = append(side, googleLoginList("gemini")...)
 		side = append(side, googleLoginList("antigravity")...)
 	}
@@ -553,6 +556,8 @@ func SwitchLogin(agent, user string) error {
 		return switchZedLogin(user)
 	case "factory":
 		return switchFactoryLogin(user)
+	case MiMoID:
+		return switchMiMoLogin(user)
 	case "gemini", "antigravity":
 		return switchGoogleLogin(agent, user)
 	}
@@ -693,6 +698,8 @@ func ForgetLogin(agent, user string) error {
 		return forgetZedLogin(user)
 	case "factory":
 		return forgetFactoryLogin(user)
+	case MiMoID:
+		return forgetMiMoLogin(user)
 	case "gemini", "antigravity":
 		return forgetGoogleLogin(agent, user)
 	}

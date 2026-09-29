@@ -26,6 +26,7 @@ func syncHome(t *testing.T) string {
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 	t.Setenv("HERMES_HOME", "")
+	t.Setenv("MIMOCODE_HOME", "")
 	t.Setenv("HANA_HOME", "")
 	t.Setenv("DSH_HOME", "")
 	noKeychain(t)
@@ -259,6 +260,42 @@ func TestMiMoCodeMirrorsOpenCode(t *testing.T) {
 	}
 	if s := readFile(cfg); s != body {
 		t.Fatalf("%s", s)
+	}
+}
+
+// Xiaomi MiMo, the desktop app, runs MiMo Code's engine and reads its config
+// as it does (#249): the first of mimocode.jsonc, mimocode.json and
+// config.json there is, in $MIMOCODE_HOME/config when that is set.
+func TestMiMoCodeConfigAsTheAppFindsIt(t *testing.T) {
+	home := syncHome(t)
+	plain := filepath.Join(home, ".config", "mimocode", "config.json")
+	writeFile(t, plain, `{"model":"magpie/relay/glm-4.6","provider":{"mine":{"name":"mine"}}}`)
+	a := mimocode(home, filepath.Join(home, ".config"))
+	if a.Path != plain {
+		t.Fatalf("config at %s, want %s", a.Path, plain)
+	}
+	if err := a.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if s := readFile(plain); !strings.Contains(s, `"magpie"`) || !strings.Contains(s, `"mine"`) {
+		t.Fatalf("%s", s)
+	}
+	// its own name comes first
+	own := filepath.Join(home, ".config", "mimocode", "mimocode.json")
+	writeFile(t, own, `{}`)
+	if a := mimocode(home, filepath.Join(home, ".config")); a.Path != own {
+		t.Fatalf("config at %s, want %s", a.Path, own)
+	}
+
+	moved := filepath.Join(home, "mimo-home")
+	t.Setenv("MIMOCODE_HOME", moved)
+	if a := mimocode(home, filepath.Join(home, ".config")); a.Path != filepath.Join(moved, "config", "mimocode.json") {
+		t.Fatalf("with MIMOCODE_HOME, config at %s", a.Path)
+	}
+	// a relative one is refused by the app, and ignored here
+	t.Setenv("MIMOCODE_HOME", "mimo-home")
+	if a := mimocode(home, filepath.Join(home, ".config")); a.Path != own {
+		t.Fatalf("with a relative MIMOCODE_HOME, config at %s", a.Path)
 	}
 }
 

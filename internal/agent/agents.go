@@ -353,9 +353,14 @@ func piThinkingLevels(efforts []string, anthropic bool) map[string]any {
 // (mimocode): a provider block with npm/@ai-sdk/openai-compatible, model and
 // small_model fields, and its own auth file beside its config.
 func openCodeLike(id, name, icon, bin, dir, auth string, ua []string, aliases ...string) *Agent {
+	// the first of its files there is, as the agent looks for them; with
+	// none, a new <id>.json
 	path := filepath.Join(dir, id+".json")
-	if _, err := os.Stat(filepath.Join(dir, id+".jsonc")); err == nil {
-		path = filepath.Join(dir, id+".jsonc")
+	for _, name := range []string{id + ".jsonc", id + ".json", "config.json"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			path = filepath.Join(dir, name)
+			break
+		}
 	}
 	provider := func() any { return magpieProviderJSONFor("opencode", id) }
 	opts := func(key string) func(map[string]string) []Option {
@@ -463,9 +468,16 @@ func opencode(home, cfg string) *Agent {
 		[]string{"opencode"}, "oc")
 }
 
+// mimocode is MiMo Code, the CLI, and the engine inside Xiaomi MiMo, the
+// desktop app (#249): both read the same config, which MIMOCODE_HOME moves
+// to its own config folder.
 func mimocode(home, cfg string) *Agent {
+	dir := filepath.Join(cfg, "mimocode")
+	if h := os.Getenv("MIMOCODE_HOME"); filepath.IsAbs(h) {
+		dir = filepath.Join(h, "config")
+	}
 	return openCodeLike("mimocode", "MiMo Code", "mimocode", "mimo",
-		filepath.Join(cfg, "mimocode"), filepath.Join(home, ".local", "share", "mimocode", "auth.json"),
+		dir, filepath.Join(home, ".local", "share", "mimocode", "auth.json"),
 		[]string{"mimocode"}, "mimo")
 }
 

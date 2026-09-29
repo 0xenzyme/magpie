@@ -248,6 +248,9 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		if a.Agent == "factory" {
 			// a Factory subscription is magpie's own sign-in, not Droid's
 			out.Account.Name, out.Account.Icon = "Factory", "factory"
+		} else if a.Agent == provider.MiMoID {
+			// a Xiaomi MiMo account, not MiMo Code (the agent "mimo" also names)
+			out.Account.Name, out.Account.Icon = "Xiaomi MiMo", "mimocode"
 		} else if ag, err := agent.Find(a.Agent); err == nil {
 			out.Account.Name, out.Account.Icon = ag.Name, ag.Icon
 		} else if a.Agent == "cursor" {

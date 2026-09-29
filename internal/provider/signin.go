@@ -282,6 +282,11 @@ func (s *signInFlow) begin() error {
 		if err := startFactorySignIn(s); err != nil {
 			return err
 		}
+	case MiMoID:
+		// Xiaomi's long-poll sign-in, for the MiMo server's service
+		if err := startMiMoSignIn(s); err != nil {
+			return err
+		}
 	case "zcode":
 		// Z.ai's or BigModel's sign-in, as ZCode makes it
 		if err := startZCodeSignIn(s, s.site); err != nil {
