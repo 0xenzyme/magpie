@@ -962,7 +962,8 @@ func priceOf(model string) (catalog.Price, bool) {
 		}
 	}
 	bare := strings.ToLower(m[strings.LastIndexByte(m, '/')+1:])
-	for _, id := range []string{bare, dated.ReplaceAllString(bare, "")} {
+	// a Grok id at an effort (grok-4.7-high) at its model's price
+	for _, id := range []string{bare, dated.ReplaceAllString(bare, ""), provider.PricedName(bare)} {
 		for _, c := range makers(id) {
 			if pr, ok := catalog.PriceOf(c, id); ok {
 				return pr, true
