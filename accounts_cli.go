@@ -24,7 +24,7 @@ import (
 // — the subscriptions magpie remembers, how much of each one's allowance is
 // used, and switching the agent between them.
 func accountsCmd(args []string) error {
-	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity|dimagent] [--json] | magpie accounts add <claude|codex|gemini|antigravity|dimagent> | magpie accounts refresh [--json] | magpie accounts checkin [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity|dimagent> <email> | magpie accounts project <gemini|antigravity> <email> <gcp-project-id>"
+	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity|dimagent|zed] [--json] | magpie accounts add <claude|codex|gemini|antigravity|dimagent|zed> | magpie accounts refresh [--json] | magpie accounts checkin [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity|dimagent|zed> <email> | magpie accounts project <gemini|antigravity> <email> <gcp-project-id>"
 	agentID := func(s string) (string, error) {
 		switch strings.ToLower(s) {
 		case "claude", "cc":
@@ -37,8 +37,10 @@ func accountsCmd(args []string) error {
 			return "antigravity", nil
 		case "dimagent":
 			return "dimagent", nil
+		case "zed":
+			return "zed", nil
 		}
-		return "", fmt.Errorf("%q: only Claude Code, Codex, Gemini CLI, Antigravity and DimAgent accounts can be added and switched\n%s", s, usage)
+		return "", fmt.Errorf("%q: only Claude Code, Codex, Gemini CLI, Antigravity, DimAgent and Zed accounts can be added and switched\n%s", s, usage)
 	}
 	if len(args) > 1 && args[1] == "project" {
 		if len(args) != 5 {

@@ -48,6 +48,8 @@ func LoginUsage(ctx context.Context, agent string) map[string]SubscriptionQuota 
 		logins = loginsOf(qoderLogins())
 	case "dimagent":
 		logins = dimagentLoginList()
+	case "zed":
+		logins = zedLoginList()
 	case "gemini", "antigravity":
 		logins = googleLoginList(agent)
 	case "cursor": // one account, the one cursor-agent is signed in to
@@ -100,6 +102,9 @@ func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
 	}
 	if l.Agent == "dimagent" {
 		return dimagentLoginQuota(ctx, l)
+	}
+	if l.Agent == "zed" {
+		return zedLoginQuota(ctx, l)
 	}
 	if l.Agent == "cursor" {
 		return cursorSubscriptionUsage(ctx, l.Plan)

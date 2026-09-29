@@ -1859,6 +1859,7 @@ function accountPlan(a) {
   if (a.agent === "workbuddy-ai") return a.plan || "WorkBuddy AI";
   if (a.agent === "commandcode-plan") return "Command Code" + (a.plan ? " " + t(a.plan) : "");
   if (a.agent === "qoder") return "Qoder" + (a.plan ? " " + t(a.plan) : "");
+  if (a.agent === "zed") return "Zed" + (a.plan ? " " + t(a.plan) : "");
   return t("signed in");
 }
 
@@ -4146,6 +4147,9 @@ const SUBS = [
   // DimAgent's own subscription: the browser's sign-in at dimagent.cn, its relay serving the vendor's models
   { agent: "dimagent", name: "DimAgent", icon: "dimagent", plans: "Credits", own: true, risk: true,
     riskNote: "DimAgent serves this API to its own desktop client; magpie signs requests as that client would, which DimAgent may treat as third-party use and act on. Use an account you can afford to lose." },
+  // Zed's hosted models (Zed Pro, its trial), signed in at zed.dev as the editor is
+  { agent: "zed", name: "Zed", icon: "zed", plans: "Pro · Student · Business", own: true, risk: true,
+    riskNote: "Zed serves these models to its own editor; magpie signs requests as the editor would, which Zed may treat as third-party use and act on. Use an account you can afford to lose." },
   // Kiro's own sign-in page (Google, GitHub, Builder ID, Identity Center); kiro-cli's or the IDE's is read too
   { agent: "kiro", name: "Kiro", icon: "kiro-color", plans: "Free · Pro · Pro+ · Power", own: true },
   // Google's sign-ins; Gemini CLI's own account is read too
@@ -4580,7 +4584,7 @@ function renderLoginImport(sub) {
   const say = importSay(sub.agent);
   tt.append(el("span", "n", t("Import {name} accounts", { name: sub.name })), el("span", "s", say.intro));
   if (say.spent) tt.append(el("span", "s", say.spent));
-  if (sub.risk) tt.append(el("span", "s", t("Google may suspend an Antigravity account it sees used outside Antigravity. Use one you can afford to lose.")));
+  if (sub.risk) tt.append(el("span", "s", t(sub.riskNote || "Google may suspend an Antigravity account it sees used outside Antigravity. Use one you can afford to lose.")));
   const area = el("textarea");
   area.rows = 3;
   area.spellcheck = false;

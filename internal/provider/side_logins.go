@@ -255,7 +255,7 @@ func addSideLogin(l savedLogin, ownUser string, dup func(savedLogin)) error {
 // agent's own store as Claude Code's and Codex's are.
 func sideAgent(agent string) bool {
 	switch agent {
-	case "grok", "copilot", "zcode", "kiro", "devin", "workbuddy", WorkBuddyAIID, CommandCodePlanID, "gemini", "antigravity", "qoder", "dimagent":
+	case "grok", "copilot", "zcode", "kiro", "devin", "workbuddy", WorkBuddyAIID, CommandCodePlanID, "gemini", "antigravity", "qoder", "dimagent", "zed":
 		return true
 	}
 	return false

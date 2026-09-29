@@ -262,6 +262,12 @@ func (s *signInFlow) begin() error {
 		if err := startDimAgentSignIn(s); err != nil {
 			return err
 		}
+	case "zed":
+		// Zed's own sign-in: zed.dev sends the browser back to a port magpie
+		// listens on, with the account's token encrypted to magpie's key
+		if err := startZedSignIn(s); err != nil {
+			return err
+		}
 	case "zcode":
 		// Z.ai's sign-in, as ZCode makes it
 		if err := startZCodeSignIn(s); err != nil {

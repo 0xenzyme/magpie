@@ -43,6 +43,8 @@ func SetLoginOn(agent, user string, on bool) error {
 		return setSideLoginOn("qoder", user, on, qoderLogins())
 	case "dimagent":
 		return setDimAgentLoginOn(user, on)
+	case "zed":
+		return setZedLoginOn(user, on)
 	case "gemini", "antigravity":
 		return setGoogleLoginOn(agent, user, on)
 	}
@@ -93,6 +95,9 @@ func (p Provider) AlsoOn() []Provider {
 	}
 	if p.Account != nil && p.Account.Agent == "dimagent" {
 		return dimagentAlsoOn()
+	}
+	if p.Account != nil && p.Account.Agent == "zed" {
+		return zedAlsoOn()
 	}
 	if p.Account != nil && (p.Account.Agent == "gemini" || p.Account.Agent == "antigravity") {
 		return googleAlsoOn(p.Account.Agent)

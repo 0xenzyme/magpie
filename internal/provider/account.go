@@ -767,6 +767,9 @@ func Accounts() []Provider {
 	if p, ok := dimagentAccount(); ok {
 		out = append(out, p)
 	}
+	if p, ok := zedAccount(); ok {
+		out = append(out, p)
+	}
 	for _, agent := range []string{"gemini", "antigravity"} {
 		if p, ok := googleAccountOf(agent); ok {
 			out = append(out, p)

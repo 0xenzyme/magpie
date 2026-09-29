@@ -89,8 +89,14 @@ func (s *Server) serveQoder(w http.ResponseWriter, r *http.Request, from provide
 
 // relayQoder preserves upstream failures before committing a response, including
 // failures after partial non-streaming text. Streaming failures after output
-// has begun are terminal error events. Keep this policy local to Qoder.
+// has begun are terminal error events. Keep this policy to the backends that
+// report their own statuses: Qoder's, and Zed's (relayStatus).
 func relayQoder(w http.ResponseWriter, from provider.Protocol, req *Request, events <-chan Event, usage *Usage, abort context.CancelFunc) (int, string) {
+	return relayStatus(w, from, "Qoder", req, events, usage, abort)
+}
+
+// relayStatus is relayQoder for the backend called name.
+func relayStatus(w http.ResponseWriter, from provider.Protocol, name string, req *Request, events <-chan Event, usage *Usage, abort context.CancelFunc) (int, string) {
 	fail := func(ev Event) (int, string) {
 		abort()
 		code := ev.Status
@@ -111,7 +117,7 @@ func relayQoder(w http.ResponseWriter, from provider.Protocol, req *Request, eve
 			}
 		}
 		if len(head) == 0 || head[len(head)-1].Kind == KStart || head[len(head)-1].Kind == KUsage {
-			return fail(Event{Text: "Qoder ended without an answer"})
+			return fail(Event{Text: name + " ended without an answer"})
 		}
 		enc := encoder(from, newSSEWriter(w), req)
 		see := func(ev Event) bool {

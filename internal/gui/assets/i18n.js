@@ -223,6 +223,7 @@ const I18N = {
     // providers
     "Qoder has no public API for this; magpie signs requests as its desktop client would, which Qoder may treat as third-party use and act on. Use an account you can afford to lose.": "Qoder 没有公开的 API；magpie 会按照其桌面客户端的方式签发请求，Qoder 可能将其视为第三方使用并采取措施。请用一个丢了也不心疼的账号。",
     "DimAgent serves this API to its own desktop client; magpie signs requests as that client would, which DimAgent may treat as third-party use and act on. Use an account you can afford to lose.": "DimAgent 只向其桌面客户端提供这个 API；magpie 会按照该客户端的方式签发请求，DimAgent 可能将其视为第三方使用并采取措施。请用一个丢了也不心疼的账号。",
+    "Zed serves these models to its own editor; magpie signs requests as the editor would, which Zed may treat as third-party use and act on. Use an account you can afford to lose.": "Zed 只向自己的编辑器提供这些模型；magpie 会按照编辑器的方式签发请求，Zed 可能将其视为第三方使用并采取措施。请用一个丢了也不心疼的账号。",
     "sponsored": "赞助",
     "free": "免费",
     "free: it doesn't use the plan's credits": "免费：不消耗套餐积分",

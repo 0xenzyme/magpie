@@ -255,6 +255,9 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 	if !hidden["dimagent"] {
 		fetches = append(fetches, perLogin(via("dimagent"), dimagentLoginList(), "DimAgent", "dimagent")...)
 	}
+	if !hidden["zed"] {
+		fetches = append(fetches, perLogin(via("zed"), zedLoginList(), "Zed", "zed")...)
+	}
 	for _, agent := range []string{"gemini", "antigravity"} {
 		if hidden[agent] {
 			continue
