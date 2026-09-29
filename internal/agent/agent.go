@@ -89,6 +89,10 @@ type Agent struct {
 	// has no fields magpie sets. Added says whether it has magpie already.
 	Import func() string
 	Added  func() bool
+	// Launch, for an agent that takes the gateway only from its
+	// environment (agy), is the command that starts it on magpie, while
+	// it is on one of magpie's models; "" otherwise.
+	Launch func() string
 	// detect, when set, says whether the agent is here in place of looking
 	// for its files and binary: a distro's, probed once.
 	detect func() bool

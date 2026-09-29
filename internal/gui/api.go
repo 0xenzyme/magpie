@@ -76,6 +76,9 @@ type agentJSON struct {
 	// whether it has magpie already
 	Import string `json:"import,omitempty"`
 	Added  bool   `json:"added,omitempty"`
+	// Launch: the command that starts an agent taking the gateway only
+	// from its environment (agy) on magpie, to copy
+	Launch string `json:"launch,omitempty"`
 }
 
 // clientJSON is an agent, or another client the gateway knows, as a
@@ -557,6 +560,9 @@ func state() stateJSON {
 		aj.Drift = a.Drift()
 		if a.Import != nil {
 			aj.Import, aj.Added = a.Import(), a.Added != nil && a.Added()
+		}
+		if a.Launch != nil {
+			aj.Launch = a.Launch()
 		}
 		s.Agents = append(s.Agents, aj)
 	}

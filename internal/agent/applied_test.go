@@ -130,7 +130,9 @@ func TestDriftUnwiredEveryAgent(t *testing.T) {
 	os.MkdirAll(filepath.Join(home, ".hanako", "agents", "hana"), 0o755)
 	os.WriteFile(filepath.Join(home, ".hanako", "agents", "hana", "config.yaml"), []byte("agent:\n  name: Hana\n"), 0o644)
 	for _, a := range All() {
-		if a.Check == nil {
+		// agy's gateway is in the command that starts it, in no file (its
+		// Check is TestAgy's)
+		if a.Check == nil || a.Launch != nil {
 			continue
 		}
 		t.Run(a.ID, func(t *testing.T) {

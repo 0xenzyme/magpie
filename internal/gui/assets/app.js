@@ -235,6 +235,9 @@ function renderAgents() {
       b.onclick = (ev) => openPicker(a, f, b, ev);
       fields.append(b);
     }
+    // an agent that takes the gateway only from its environment (agy): a
+    // square that copies the command starting it on magpie
+    if (a.launch) extras.append(launchButton(a));
     if (extras.childNodes.length) fields.append(extras);
     // an app that takes magpie by a link of its own (Cindy) has nothing to
     // pick: its row opens the link, and the app asks to add magpie
@@ -349,9 +352,9 @@ function renderAgents() {
   };
   // the extras column is there for every row once any agent has one, so the
   // pickers keep lining up down the list
-  list.classList.toggle("extras", state.agents.some((a) => a.fields.some(extra) || tierMenu(a)));
+  list.classList.toggle("extras", state.agents.some((a) => a.fields.some(extra) || tierMenu(a) || a.launch));
   // as wide as the row with the most squares
-  list.style.setProperty("--extras", Math.max(1, ...state.agents.map((a) => a.fields.filter((f) => extra(f) && !TIERS.includes(f.label)).length + (tierMenu(a) ? 1 : 0))));
+  list.style.setProperty("--extras", Math.max(1, ...state.agents.map((a) => a.fields.filter((f) => extra(f) && !TIERS.includes(f.label)).length + (tierMenu(a) ? 1 : 0) + (a.launch ? 1 : 0))));
   if (!folded.length) {
     for (const a of used) list.append(agentRow(a));
   } else {
@@ -859,6 +862,22 @@ function extraField(a, f) {
   b.onclick = (ev) => openPicker(a, f, b, ev);
   return b;
 }
+
+// launchButton copies the command that starts an agent on magpie, for one
+// that takes the gateway only from its environment (agy)
+function launchButton(a) {
+  const b = el("button", "field extra launch");
+  b.type = "button";
+  b.append(svg(LAUNCH_GLYPH, 13, 1.5));
+  b.title = t("{name} takes magpie only from its environment · click to copy the command that starts it:", { name: a.name }) + "\n" + a.launch;
+  b.setAttribute("aria-label", b.title);
+  b.onclick = (ev) => {
+    ev.stopPropagation();
+    copy(a.launch, t("Launch command"), null, t("Copied — run it to start {name} on magpie", { name: a.name }));
+  };
+  return b;
+}
+const LAUNCH_GLYPH = "M2.5 3.5h11v9h-11zM5 6.5l2 1.75L5 10M8.5 10h2.5";
 
 function tierMenu(a) {
   const tiers = a.fields.filter((f) => TIERS.includes(f.label));

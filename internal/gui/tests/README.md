@@ -53,10 +53,15 @@ files: offered from the accounts list and from a browser sign-in under way,
 the box says the refresh spends the file's sign-in, what is pasted is posted
 as it is, and each account's outcome is listed, in English and Chinese.
 
+`agy-launch.test.cjs` gives Antigravity CLI's row the square that copies the
+command starting agy on magpie: the command in its tooltip, a click copying
+it with the page left where it was, none on other agents, in the tray
+panel's opened row too, in English and Chinese.
+
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

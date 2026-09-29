@@ -62,6 +62,7 @@ func All() []*Agent {
 		claudeDesktop(home),
 		codex(home),
 		gemini(home),
+		agy(home),
 		opencode(home, cfg),
 		mimocode(home, cfg),
 		pi(home),
