@@ -1190,6 +1190,8 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
   pointer-events: none;
 }
 .segs .thumb { border-radius: 5px; }
+.segs.regions { max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
+.segs.regions .opt { flex: none; }
 .thumb.still { transition: none; }
 .link { font-size: 12px; color: var(--accent); padding: 3px 4px; white-space: nowrap; }
 .link:hover { text-decoration: underline; text-underline-offset: 2px; }

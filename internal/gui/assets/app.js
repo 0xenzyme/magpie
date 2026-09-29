@@ -2770,7 +2770,8 @@ function renderEditor(p, presetID) {
   // are served at their own: one selector, and the provider's base URLs follow it
   let refreshEndpoints = () => {};
   if (pr?.regions?.length) {
-    const seg = el("div", "segs");
+    // Bedrock's ten regions don't fit the editor's width: they scroll
+    const seg = el("div", "segs regions");
     const cur = pr.regions.find((r) => r.chat && r.chat === (draft.chat || pr.chat)) || pr.regions[0];
     for (const r of pr.regions) {
       const b = el("button", "opt" + (r.id === cur.id ? " on" : ""), t(r.name));
@@ -2782,7 +2783,12 @@ function renderEditor(p, presetID) {
       };
       seg.append(b);
     }
-    queueMicrotask(() => slide(seg, "regions"));
+    queueMicrotask(() => {
+      slide(seg, "regions");
+      // the region in use in view, where they scroll
+      const on = seg.querySelector(":scope > .on");
+      if (on && seg.scrollWidth > seg.clientWidth) seg.scrollLeft = on.offsetLeft - (seg.clientWidth - on.offsetWidth) / 2;
+    });
     ed.append(...field(t(pr.regionLabel || "Region"), seg, t("which endpoint {p} is reached through", { p: pr.name })));
   }
 

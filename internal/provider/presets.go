@@ -38,6 +38,9 @@ type PresetDef struct {
 	// Models are the plan's, for when the list has none of them.
 	Only   string   `json:"only,omitempty"`
 	Models []string `json:"models,omitempty"`
+	// NoList: the vendor has no list of models to ask for (Bedrock's
+	// runtime serves no /models), so Models are its list
+	NoList bool `json:"noList,omitempty"`
 }
 
 // Region is one base-URL option of a preset that offers several. The first
@@ -195,6 +198,25 @@ var presets = []PresetDef{
 	{ID: "groq", Name: "Groq", Icon: "groq", Kind: KindVendor, Catalog: "groq",
 		Chat: "https://api.groq.com/openai/v1", Responses: "https://api.groq.com/openai/v1",
 		Website: "https://console.groq.com", KeysURL: "https://console.groq.com/keys"},
+	// Amazon Bedrock (#176), with a Bedrock API key (AWS_BEARER_TOKEN_BEDROCK),
+	// no SigV4: its runtime serves Claude on Anthropic's messages at
+	// /anthropic/v1/messages and the other models on chat completions at
+	// /openai/v1, each in the region picked. It has no list to ask, so the
+	// models are given: Claude as its global. inference profiles, which
+	// every commercial region routes; one kept in a geography (us., eu.,
+	// apac., jp., au.) is typed in by hand.
+	{ID: "bedrock", Name: "Amazon Bedrock", Icon: "bedrock-color", Kind: KindVendor,
+		Chat: bedrockChat("us-east-1"), Anthropic: bedrockAnthropic("us-east-1"),
+		Note:    "Bedrock API key",
+		Website: "https://aws.amazon.com/bedrock/", KeysURL: "https://console.aws.amazon.com/bedrock/home#/api-keys",
+		Regions: bedrockRegions("us-east-1", "us-east-2", "us-west-2", "eu-central-1", "eu-west-1", "eu-west-3",
+			"ap-northeast-1", "ap-southeast-1", "ap-southeast-2", "ap-south-1"),
+		NoList: true,
+		Models: []string{"global.anthropic.claude-opus-5-5", "global.anthropic.claude-sonnet-5", "global.anthropic.claude-opus-5",
+			"global.anthropic.claude-fable-5-1", "global.anthropic.claude-opus-4-8", "global.anthropic.claude-opus-4-7",
+			"global.anthropic.claude-haiku-4-5-20251001-v1:0",
+			"openai.gpt-oss-120b-1:0", "openai.gpt-oss-20b-1:0", "qwen.qwen3-coder-480b-a35b-v1:0", "deepseek.v3.2",
+			"moonshotai.kimi-k2.5", "zai.glm-5", "minimax.minimax-m2.5"}},
 	// Ollama's own hosted models: the local server's API, at ollama.com with a key
 	{ID: "ollama-cloud", Name: "Ollama Cloud", Icon: "ollama", Kind: KindVendor, Catalog: "ollama-cloud",
 		Chat: "https://ollama.com/v1", Anthropic: "https://ollama.com",
@@ -276,6 +298,26 @@ var presets = []PresetDef{
 	{ID: "lmstudio", Name: "LM Studio", Icon: "lmstudio", Kind: KindLocal, NoKey: true,
 		Chat: "http://localhost:1234/v1",
 		Note: "local server on :1234", Website: "https://lmstudio.ai"},
+}
+
+func bedrockChat(region string) string {
+	return "https://bedrock-runtime." + region + ".amazonaws.com/openai/v1"
+}
+
+// bedrockAnthropic is the base the gateway's /v1/messages goes on:
+// …/anthropic/v1/messages is where the runtime serves Anthropic's API.
+func bedrockAnthropic(region string) string {
+	return "https://bedrock-runtime." + region + ".amazonaws.com/anthropic"
+}
+
+// bedrockRegions are the regions picked between, named by their codes, the
+// ones the AWS console and a key's region are given in.
+func bedrockRegions(ids ...string) []Region {
+	out := make([]Region, len(ids))
+	for i, id := range ids {
+		out[i] = Region{ID: id, Name: id, Chat: bedrockChat(id), Anthropic: bedrockAnthropic(id)}
+	}
+	return out
 }
 
 // Presets lists every preset, sponsored ones first within their kind.

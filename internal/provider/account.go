@@ -77,6 +77,14 @@ func (p Provider) APIs(model string) []Protocol {
 			return out
 		}
 	}
+	// Bedrock has no list to say it: Claude is served on Anthropic's
+	// messages alone, every other model on chat completions alone
+	if p.IsBedrock() {
+		if bedrockClaude(model) {
+			return []Protocol{Anthropic}
+		}
+		return []Protocol{Chat}
+	}
 	// OpenCode serves some models on OpenAI's Responses API only (Grok,
 	// GPT) or Anthropic's (Claude, MiniMax), and turns the others away:
 	// models.dev says which

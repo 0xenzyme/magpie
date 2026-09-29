@@ -693,6 +693,23 @@ func (p Provider) IsOpenCode() bool {
 	return h == "opencode.ai" || strings.HasSuffix(h, ".opencode.ai")
 }
 
+// IsBedrock reports whether the provider is Amazon Bedrock's runtime: made
+// from its preset, or at its host.
+func (p Provider) IsBedrock() bool {
+	if p.Preset == "bedrock" {
+		return true
+	}
+	h := p.Host()
+	return strings.HasPrefix(h, "bedrock-runtime.") && strings.HasSuffix(h, ".amazonaws.com")
+}
+
+// bedrockClaude is a Bedrock id of a Claude model: a model id
+// (anthropic.claude-opus-4-8) or an inference profile's
+// (apac.anthropic.claude-opus-5-5).
+func bedrockClaude(model string) bool {
+	return strings.Contains(strings.ToLower(model), "anthropic.claude")
+}
+
 // HostOf pulls the host out of a URL, for display.
 func HostOf(u string) string {
 	u = strings.TrimSpace(u)

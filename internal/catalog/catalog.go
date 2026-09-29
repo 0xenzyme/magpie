@@ -399,6 +399,9 @@ func ContextOf(id string) int {
 	if w, ok := windows[b]; ok {
 		return w
 	}
+	if r, ok := unprofiled(b); ok {
+		return ContextOf(r)
+	}
 	if i := strings.IndexByte(b, '('); i > 0 && strings.HasSuffix(b, ")") {
 		b = b[:i]
 		if w, ok := windows[b]; ok {
@@ -419,6 +422,9 @@ func OutputOf(id string) int {
 	if o, ok := outputs[b]; ok {
 		return o
 	}
+	if r, ok := unprofiled(b); ok {
+		return OutputOf(r)
+	}
 	if i := strings.IndexAny(b, "(:"); i > 0 {
 		return outputs[b[:i]]
 	}
@@ -436,6 +442,9 @@ func EffortsOf(id string) []string {
 	b := bareID(id)
 	if e, ok := efforts[b]; ok {
 		return slices.Clone(e)
+	}
+	if r, ok := unprofiled(b); ok {
+		return EffortsOf(r)
 	}
 	if i := strings.IndexByte(b, '('); i > 0 && strings.HasSuffix(b, ")") {
 		b = b[:i]
@@ -480,6 +489,22 @@ func bareID(id string) string {
 		id = id[i+1:]
 	}
 	return id
+}
+
+// bedrockGeos are the geographies a Bedrock inference profile's id starts
+// with.
+var bedrockGeos = []string{"global.", "us.", "us-gov.", "eu.", "apac.", "jp.", "au.", "ca.", "in."}
+
+// unprofiled is a Bedrock inference profile's id without its geography
+// (apac.anthropic.claude-opus-5-5 is anthropic.claude-opus-5-5): models.dev
+// lists each model in only some of them, the model id in all.
+func unprofiled(b string) (string, bool) {
+	for _, g := range bedrockGeos {
+		if r, ok := strings.CutPrefix(b, g); ok && strings.Contains(r, ".") {
+			return r, true
+		}
+	}
+	return "", false
 }
 
 func textModel(m mdModel) bool {

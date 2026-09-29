@@ -96,6 +96,11 @@ func (p Provider) Fetch(ctx context.Context) ([]catalog.Model, error) {
 		// are the ones it has, and its endpoint's /models isn't one
 		return p.Account.models(), nil
 	}
+	// a vendor with no list to ask (Bedrock's runtime): the preset's
+	// models are it, unless the user said where one is
+	if pr := Preset(p.Preset); pr != nil && pr.NoList && strings.TrimSpace(p.ModelsURL) == "" {
+		return catalog.Chat(p.planModels(nil)), nil
+	}
 	// Only keys in use. An off key is not asked, and its list does not
 	// join the catalog or take capabilities off a key that is on.
 	if keys := p.KeysOn(); len(keys) > 1 {
