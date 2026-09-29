@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -199,6 +200,28 @@ func (t Totals) Speed() float64 {
 		return 0
 	}
 	return float64(t.DecodeOut) / (float64(t.DecodeMs) / 1000)
+}
+
+// FormatCost renders a list-price cost, kept in USD everywhere it's
+// stored, as the CLI and TUI show it: at amountUSD's own price when
+// currency isn't "cny", else converted at rate (CNY per one USD, from
+// internal/fx; a rate of 0 or below also falls back to USD, a stale or
+// missing rate being no reason to hide the number). Whole dollars or yuan
+// above 100, cents above 1, else thousandths, so a fraction of a cent
+// still shows as something.
+func FormatCost(amountUSD float64, currency string, rate float64) string {
+	amount, sign := amountUSD, "$"
+	if currency == "cny" && rate > 0 {
+		amount, sign = amountUSD*rate, "¥"
+	}
+	switch {
+	case amount >= 100:
+		return fmt.Sprintf("%s%.0f", sign, amount)
+	case amount >= 1:
+		return fmt.Sprintf("%s%.2f", sign, amount)
+	default:
+		return fmt.Sprintf("%s%.3f", sign, amount)
+	}
 }
 
 func (t *Totals) add(r Record, price *catalog.Price) {

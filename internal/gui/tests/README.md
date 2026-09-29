@@ -58,10 +58,16 @@ command starting agy on magpie: the command in its tooltip, a click copying
 it with the page left where it was, none on other agents, in the tray
 panel's opened row too, in English and Chinese.
 
+`currency.test.cjs` shows a cost in dollars by default and in yuan, at
+magpie's cached exchange rate, once the Settings page's Currency row picks
+cny (#212): the Usage page's total converts, the row's tooltip carries the
+rate, picking it with the settings list scrolled well down moves nothing,
+and the choice survives a reload — in English and Chinese.
+
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

@@ -25,6 +25,12 @@ type Settings struct {
 	Theme string `json:"theme,omitempty"` // system | light | dark
 	Lang  string `json:"lang,omitempty"`  // system | en | zh
 	Tray  string `json:"tray,omitempty"`  // what clicking the tray icon opens: panel | window
+	// Currency is what a cost — the Usage page's, the tray panel's, the
+	// TUI's and the CLI's — is shown converted to: usd (its native
+	// currency, list prices being in dollars) or cny, at a live exchange
+	// rate (see internal/fx). A vendor's own balance, already in its own
+	// currency (a Chinese relay's ¥), is never touched by this.
+	Currency string `json:"currency,omitempty"`
 	// Dock keeps magpie in the Mac's Dock as well as the menu bar, for a
 	// menu bar too full to show its icon.
 	Dock bool `json:"dock,omitempty"`
@@ -153,9 +159,10 @@ func Arrange[T any](s Settings, items []T, id func(T) string) (shown, hidden []T
 
 // Themes and Langs are the accepted values, in the order the UI offers them.
 var (
-	Themes = []string{"system", "light", "dark"}
-	Langs  = []string{"system", "en", "zh"}
-	Trays  = []string{"panel", "window"}
+	Themes     = []string{"system", "light", "dark"}
+	Langs      = []string{"system", "en", "zh"}
+	Trays      = []string{"panel", "window"}
+	Currencies = []string{"usd", "cny"}
 	// Warmups are CodexWarmup's and ClaudeWarmup's values, off as "".
 	Warmups = []string{"", "week", "all"}
 	// TrayEvery are TrayUsageEvery's values, in minutes.
@@ -194,6 +201,9 @@ func Save(s Settings) error {
 	}
 	if !slices.Contains(Trays, s.Tray) {
 		return fmt.Errorf("tray must be one of %v, not %q", Trays, s.Tray)
+	}
+	if !slices.Contains(Currencies, s.Currency) {
+		return fmt.Errorf("currency must be one of %v, not %q", Currencies, s.Currency)
 	}
 	if !slices.Contains(Warmups, s.CodexWarmup) {
 		return fmt.Errorf("codex warm-up must be off, week or all, not %q", s.CodexWarmup)
@@ -253,6 +263,9 @@ func (s Settings) normal() Settings {
 	}
 	if s.Tray == "" {
 		s.Tray = "panel"
+	}
+	if s.Currency == "" {
+		s.Currency = "usd"
 	}
 	if s.CodexWarmup == "off" {
 		s.CodexWarmup = ""

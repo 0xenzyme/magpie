@@ -96,6 +96,7 @@ func parseSessionsArgs(args []string) (sessionsOpts, error) {
 }
 
 func sessionsTo(w io.Writer, args []string, now time.Time) error {
+	loadCostCurrency()
 	o, err := parseSessionsArgs(args)
 	if err != nil {
 		return err

@@ -1,16 +1,42 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/yetone/magpie/internal/agent"
+	"github.com/yetone/magpie/internal/fx"
+	"github.com/yetone/magpie/internal/settings"
 	stats "github.com/yetone/magpie/internal/usage"
 )
+
+// costCurrency and costRate are cost's currency and, for cny, the
+// CNY-per-USD rate to show it at — loadCostCurrency sets them once at a
+// command's start, not again for every row it prints.
+var (
+	costCurrency = "usd"
+	costRate     float64
+)
+
+// loadCostCurrency reads Settings' currency choice and, only for cny, the
+// exchange rate (internal/fx, its own 12h cache — this asks the network
+// only when that's stale).
+func loadCostCurrency() {
+	costCurrency = settings.Load().Currency
+	costRate = 0
+	if costCurrency == "cny" {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		costRate = fx.Get(ctx).CNYPerUSD
+		cancel()
+	}
+}
 
 // usageCmd: `magpie usage [today|7d|30d|all]` — tokens and cost per agent,
 // model and session
 func usageCmd(args []string) error {
+	loadCostCurrency()
 	period := stats.Month
 	if len(args) > 1 {
 		switch strings.ToLower(args[1]) {
@@ -129,20 +155,14 @@ func fmtTokens(n int) string {
 	return fmt.Sprint(n)
 }
 
-// cost renders list-price cost, saying when some calls could not be priced.
+// cost renders list-price cost, saying when some calls could not be
+// priced, in costCurrency at costRate (set once per command by
+// loadCostCurrency).
 func cost(t stats.Totals) string {
 	if t.Cost == 0 && t.Unpriced > 0 {
 		return faint.Render("no price")
 	}
-	var s string
-	switch {
-	case t.Cost >= 100:
-		s = fmt.Sprintf("$%.0f", t.Cost)
-	case t.Cost >= 1:
-		s = fmt.Sprintf("$%.2f", t.Cost)
-	default:
-		s = fmt.Sprintf("$%.3f", t.Cost)
-	}
+	s := stats.FormatCost(t.Cost, costCurrency, costRate)
 	if t.Unpriced > 0 {
 		s += muted.Render("+")
 	}

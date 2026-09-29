@@ -26,6 +26,19 @@ func TestRoundTrip(t *testing.T) {
 	if Save(Settings{}) != nil || Load().Theme != "system" {
 		t.Fatal("empty means system")
 	}
+	// costs show in dollars unless cny is chosen
+	if s := Load(); s.Currency != "usd" {
+		t.Fatalf("default currency: %+v", s)
+	}
+	if err := Save(Settings{Currency: "cny"}); err != nil {
+		t.Fatal(err)
+	}
+	if s := Load(); s.Currency != "cny" {
+		t.Fatalf("saved currency: %+v", s)
+	}
+	if Save(Settings{Currency: "eur"}) == nil {
+		t.Fatal("bad currency accepted")
+	}
 	if filepath.Base(Path()) != "settings.json" {
 		t.Fatal(Path())
 	}

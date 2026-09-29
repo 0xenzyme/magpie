@@ -4944,11 +4944,25 @@ function fmtN(n) {
   if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
   return String(n);
 }
+// currency is Settings' choice of what a cost shows as: usd (its own price)
+// or cny, converted with fx (the rate this session last got from magpie,
+// with when that was and whether it's stale — kept only for the tooltip;
+// see applyPrefs, which fills both from what /api/settings answers).
+let currency = "usd";
+let fx = { rate: 0, at: null, stale: true };
 function fmtCost(t) {
   if (!t.cost && t.unpriced) return "";
-  const c = t.cost;
+  let c = t.cost, sign = "$";
+  if (currency === "cny" && fx.rate > 0) { c = c * fx.rate; sign = "¥"; }
   const s = c >= 100 ? c.toFixed(0) : c >= 1 ? c.toFixed(2) : c.toFixed(3);
-  return "$" + s + (t.unpriced ? "+" : "");
+  return sign + s + (t.unpriced ? "+" : "");
+}
+// renderCosts redraws whatever on the Usage page shows a cost, once the
+// currency changes — the numbers alone, not the page around them, so a
+// click on the setting never moves anything it isn't showing (#212)
+function renderCosts() {
+  if (usage) renderUsage();
+  if (sessions) renderSessions();
 }
 const tokensOf = (t) => t.input + t.output;
 
@@ -5923,6 +5937,7 @@ $("#sessQ").onkeydown = (e) => { if (e.key === "Escape" && e.target.value) { e.s
 const THEMES = [["system", "System"], ["light", "Light"], ["dark", "Dark"]];
 const LOCALES = [["system", "System"], ["en", "English"], ["zh", "中文"]];
 const TRAYS = [["panel", "Quick panel"], ["window", "Main window"]];
+const CURRENCIES = [["usd", "$ USD"], ["cny", "¥ CNY"]];
 
 // applyPrefs paints and speaks as the saved settings say. A ?theme= or
 // ?locale= in the URL wins, so a forced look stays forced.
@@ -5949,6 +5964,11 @@ function applyPrefs(s) {
   if (quotaLeft !== !!s.quotaLeft) {
     quotaLeft = !!s.quotaLeft;
     if (applyPrefs.painted) renderQuotas();
+  }
+  if (s.fx) fx = s.fx;
+  if (currency !== (s.currency || "usd")) {
+    currency = s.currency || "usd";
+    if (applyPrefs.painted) renderCosts();
   }
   applyPrefs.painted = true;
   const was = locale;
@@ -6279,6 +6299,11 @@ const trayCardID = (q) => q.user ? q.provider + "|" + q.user : q.provider;
 function renderTrayUsage(s, keep) {
   $("#quotaLeftSegs").replaceChildren(segs([[false, t("Used")], [true, t("Left")]], !!s.quotaLeft,
     (on) => { if (on !== quotaLeft) setQuotaLeft(on); }));
+  $("#currencySegs").replaceChildren(segs(CURRENCIES.map(([id, name]) => [id, t(name)]), s.currency || "usd", (v) => savePrefs({ ...keep, currency: v })));
+  const rate = s.fx?.rate;
+  const currencySub = $("#currencySub");
+  currencySub.textContent = t("What a cost — the Usage page's, the tray panel's, the TUI's and the CLI's — is shown as; a vendor's own balance, already in its own currency, is never converted");
+  currencySub.title = rate ? t("1 USD = {rate} CNY{when}", { rate: rate.toFixed(2), when: s.fx.at ? " · " + (s.fx.stale ? t("last fetched {when}", { when: syncWhen(s.fx.at) }) : t("fetched {when}", { when: syncWhen(s.fx.at) })) : "" }) : "";
   $("#trayUsageRow").hidden = web;
   if (web) return;
   const mac = document.body.classList.contains("mac");
@@ -6672,7 +6697,7 @@ function prefsKeep(s) {
   return { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, proxy: s.proxy || "",
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, noStats: !!s.noStats,
-    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, vision: s.vision || "", imageGen: s.imageGen || "" };
+    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, vision: s.vision || "", imageGen: s.imageGen || "", currency: s.currency || "usd" };
 }
 
 // savePrefs sends what the page was drawn with (prefsBase) and the choice
