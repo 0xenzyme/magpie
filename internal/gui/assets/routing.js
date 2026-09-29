@@ -127,6 +127,16 @@
     const hm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     return d.toDateString() === n.toDateString() ? hm : d.toLocaleDateString([], { weekday: "short" }) + " " + hm;
   }
+  // how long a reply took to begin, and how fast it wrote after (#196)
+  const speedOf = (out, ms, ttft) => out && ttft && ms > ttft ? out / ((ms - ttft) / 1000) : 0;
+  function firstNote(r, tr) {
+    if (!tr.ttft) return "";
+    let s = " · " + t("first token in {ms}", { ms: took(tr.ttft) });
+    if (tr.firstText > tr.ttft) s += " · " + t("first text in {ms}", { ms: took(tr.firstText) });
+    const v = speedOf(r.out, tr.ms, tr.ttft);
+    if (v) s += " · " + t("{n} tok/s", { n: Math.round(v) });
+    return s;
+  }
   const tokens = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(Math.round(n));
   const pct = (n) => Math.round(n) + "%";
   const FAIL = { rate: "rate limited", credit: "out of credit", quota: "quota used up", other: "failed", canceled: "canceled", foreign: "another account's reasoning", floor: "reply too short", verify: "needs verification" };
@@ -429,7 +439,7 @@
     if (tr.effort) name += " " + t("at {level} reasoning", { level: tr.effort });
     if (!tr.done) return t("{who} is answering…", { who: name });
     if (tr.status < 400) {
-      const tk = r.tokens ? " · " + t("{n} tokens", { n: tokens(r.tokens) }) : "";
+      const tk = (r.tokens ? " · " + t("{n} tokens", { n: tokens(r.tokens) }) : "") + firstNote(r, tr);
       return i > 0
         ? t("{who} answered in {ms}{tk}. {agent} got one clean reply and never saw the {n} that failed first.", { who: name, ms: took(tr.ms), tk, agent, n: i })
         : t("{who} answered in {ms}{tk}.", { who: name, ms: took(tr.ms), tk });
@@ -1024,6 +1034,7 @@
       const meta = [];
       if (r.tries.length > 1) meta.push(t("{n} tries", { n: r.tries.length }));
       if (r.done && r.ms) meta.push(took(r.ms));
+      if (r.done && r.ttft) meta.push(t("TTFT {ms}", { ms: took(r.ttft) }));
       if (r.tokens) meta.push(t("{n} tokens", { n: tokens(r.tokens) }));
       b.append(when, asked, to, el("span", "meta", meta.join(" · ")));
       b.title = `${agentName(r.agent)} · ${r.model} → ${r.provider}`;

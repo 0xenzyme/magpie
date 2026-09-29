@@ -43,6 +43,12 @@ type Route struct {
 	Error    string       `json:"error,omitempty"`
 	Millis   int64        `json:"ms,omitempty"`
 	Tokens   int          `json:"tokens,omitempty"`
+	Output   int          `json:"out,omitempty"` // of Tokens, the reply's
+	// TTFT: ms from the request to its reply's first content (text,
+	// reasoning or a tool call), FirstText to its first text, as Millis
+	// counts: streamed replies only (#196)
+	TTFT      int64 `json:"ttft,omitempty"`
+	FirstText int64 `json:"firstText,omitempty"`
 }
 
 // GroupRef is the routing group a request asked for.
@@ -145,10 +151,14 @@ type Try struct {
 	Done   bool      `json:"done"`
 	Status int       `json:"status,omitempty"`
 	Millis int64     `json:"ms,omitempty"`
-	Fail   string    `json:"fail,omitempty"` // why it failed, as rest tells it
-	Error  string    `json:"error,omitempty"`
-	Rest   *Rest     `json:"rest,omitempty"`  // how long it now sits out; none when it was the last to try
-	Again  int64     `json:"again,omitempty"` // ms waited before it was tried again, the last one left
+	// TTFT: ms from Start to its reply's first content, FirstText to its
+	// first text, when it streamed any (#196)
+	TTFT      int64  `json:"ttft,omitempty"`
+	FirstText int64  `json:"firstText,omitempty"`
+	Fail      string `json:"fail,omitempty"` // why it failed, as rest tells it
+	Error     string `json:"error,omitempty"`
+	Rest      *Rest  `json:"rest,omitempty"`  // how long it now sits out; none when it was the last to try
+	Again     int64  `json:"again,omitempty"` // ms waited before it was tried again, the last one left
 }
 
 type planned struct {

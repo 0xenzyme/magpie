@@ -474,10 +474,12 @@ type holdWriter struct {
 
 	ended bool   // the stream's last event was written: the reply is whole
 	tail  []byte // the end of the last write, for a marker split across two
+
+	first firstToken // when its first content and text came (#196)
 }
 
 func newHoldWriter(w http.ResponseWriter, hold bool) *holdWriter {
-	return &holdWriter{w: w, hold: hold, header: http.Header{}}
+	return &holdWriter{w: w, hold: hold, header: http.Header{}, first: firstToken{start: time.Now()}}
 }
 
 func (h *holdWriter) Header() http.Header { return h.header }
@@ -513,6 +515,7 @@ func (h *holdWriter) Write(b []byte) (int, error) {
 		h.WriteHeader(http.StatusOK)
 	}
 	h.see(b)
+	h.first.see(b)
 	if h.passing {
 		return h.w.Write(b)
 	}

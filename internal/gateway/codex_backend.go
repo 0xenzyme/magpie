@@ -215,7 +215,8 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 	// a turn goes in the Routing view's live trace as the others do, to
 	// the one it can go to: Codex's own sign-in, or its key
 	var tr *Route
-	end := func(status int, msg string, tokens int) {}
+	first := firstToken{start: start} // the reply's first tokens (#196), counted as ms are
+	end := func(status int, msg string, tokens, out int) {}
 	if rest == "/responses" {
 		who := "Codex's own sign-in"
 		if base == codexAPIBase {
@@ -225,11 +226,14 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 		seat := Weighed{ID: "codex", Provider: "openai", Name: "OpenAI", Icon: "openai", Who: who, Kind: "account", Agent: "codex", Model: model}
 		tr = s.trace.begin(Route{Time: start, Agent: agentOf(r), Model: model, Provider: "openai",
 			Order: []Weighed{seat}, Tries: []Try{{ID: seat.ID, Model: model, Start: start}}})
-		end = func(status int, msg string, tokens int) {
+		end = func(status int, msg string, tokens, out int) {
 			ms := time.Since(start).Milliseconds()
+			ttft, text := first.ms()
 			s.trace.update(tr, func(t *Route) {
 				t.Tries[0].Done, t.Tries[0].Status, t.Tries[0].Millis, t.Tries[0].Error = true, status, ms, msg
+				t.Tries[0].TTFT, t.Tries[0].FirstText = ttft, text
 				t.Done, t.Status, t.Error, t.Millis, t.Tokens = true, status, msg, ms, tokens
+				t.Output, t.TTFT, t.FirstText = out, ttft, text
 			})
 		}
 	}
@@ -238,7 +242,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 		req, err := http.NewRequestWithContext(r.Context(), r.Method, u, bytes.NewReader(body))
 		if err != nil {
 			writeError(w, provider.Responses, 502, err.Error())
-			end(502, err.Error(), 0)
+			end(502, err.Error(), 0, 0)
 			return
 		}
 		copyHeaders(req.Header, r.Header)
@@ -246,7 +250,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 		req.Header.Del("Accept-Encoding")
 		if res, err = s.client.Do(req); err != nil {
 			writeError(w, provider.Responses, 502, "OpenAI: "+err.Error())
-			end(502, "OpenAI: "+err.Error(), 0)
+			end(502, "OpenAI: "+err.Error(), 0, 0)
 			return
 		}
 		if rest != "/responses" || tries >= 3 || (res.StatusCode != 400 && res.StatusCode != 404) {
@@ -275,7 +279,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 		s.record(Call{Time: start, From: provider.Responses, To: provider.Responses, Model: modelOf(body),
 			Provider: "openai", Agent: agentOf(r), Status: res.StatusCode,
 			Millis: time.Since(start).Milliseconds(), Error: res.Status})
-		end(res.StatusCode, res.Status, 0)
+		end(res.StatusCode, res.Status, 0, 0)
 		return
 	}
 	for k, vs := range res.Header {
@@ -300,6 +304,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 		if n > 0 {
 			if sniff != nil {
 				sniff.write(buf[:n])
+				first.see(buf[:n])
 			}
 			if _, werr := w.Write(buf[:n]); werr != nil {
 				break
@@ -318,17 +323,18 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 	call := Call{Time: start, From: provider.Responses, To: provider.Responses, Model: modelOf(body),
 		Provider: "openai", Agent: agentOf(r), Status: res.StatusCode,
 		Millis: time.Since(start).Milliseconds()}
+	call.TTFT, call.FirstText = first.ms()
 	var uu Usage
 	uu.add(sniff.usage())
 	call.Usage = uu
 	if res.StatusCode >= 400 {
 		call.Error = res.Status
 	}
-	end(call.Status, call.Error, uu.Input+uu.Output+uu.CacheRead+uu.CacheWrite)
+	end(call.Status, call.Error, uu.Input+uu.Output+uu.CacheRead+uu.CacheWrite, uu.Output)
 	s.record(call)
 	usage.Append(usage.Record{Time: start, Agent: call.Agent, Provider: call.Provider, Host: provider.HostOf(base), Model: call.Model,
 		Input: uu.Input, Output: uu.Output, CacheRead: uu.CacheRead, CacheWrite: uu.CacheWrite,
-		Reasoning: uu.Reasoning, Millis: call.Millis, Status: call.Status, Session: sessionOf(r.Header)})
+		Reasoning: uu.Reasoning, Millis: call.Millis, TTFT: call.TTFT, FirstText: call.FirstText, Status: call.Status, Session: sessionOf(r.Header)})
 }
 
 // unreadableItem is the item OpenAI's refusal names: sealed content it
