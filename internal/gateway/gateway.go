@@ -1114,6 +1114,16 @@ func (s *Server) forward(ctx context.Context, p provider.Provider, to provider.P
 				req.Header.Set(h, v)
 			}
 		}
+		if p.Account == nil && fromClaudeCode(in) {
+			// a relay that serves only Claude Code (#179: "only accessible
+			// via the official Claude CLI") knows it by its own headers,
+			// which go on as it sent them; its key to magpie never does
+			for k, vs := range in {
+				if claudeCodeHeader(k) {
+					req.Header[k] = slices.Clone(vs)
+				}
+			}
+		}
 	}
 	if p.IsOpenCode() {
 		req.Header.Set("x-opencode-session", conversationID(in, body))
@@ -1122,6 +1132,28 @@ func (s *Server) forward(ctx context.Context, p provider.Provider, to provider.P
 		return nil, err
 	}
 	return s.client.Do(req)
+}
+
+// fromClaudeCode is a request Claude Code sent, by the User-Agent it gives
+// (claude-cli/2.1.0 (external, cli)).
+func fromClaudeCode(in http.Header) bool {
+	return strings.HasPrefix(in.Get("User-Agent"), "claude-cli/")
+}
+
+// claudeCodeHeader is one of the headers Claude Code tells itself by: its
+// User-Agent, x-app, the anthropic- ones, its SDK's X-Stainless- ones and
+// its x-claude-code- ones. Never the key it was given.
+func claudeCodeHeader(k string) bool {
+	k = strings.ToLower(k)
+	if k == "user-agent" || k == "x-app" {
+		return true
+	}
+	for _, p := range []string{"anthropic-", "x-stainless-", "x-claude-code-"} {
+		if strings.HasPrefix(k, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // passthrough relays a request the provider understands as-is, with the
@@ -1149,7 +1181,11 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	if e := fitEffort(asked, p.Efforts(model)); asked != "" && e != asked {
 		body = withBodyEffort(proto, body, e)
 	}
-	res, err := s.forward(r.Context(), p, proto, pathOf(proto), p.Prepare(body), r.Header)
+	path := pathOf(proto)
+	if proto == provider.Anthropic && p.Account == nil && fromClaudeCode(r.Header) && r.URL.Query().Get("beta") == "true" {
+		path += "?beta=true" // as Claude Code asks it
+	}
+	res, err := s.forward(r.Context(), p, proto, path, p.Prepare(body), r.Header)
 	if err != nil {
 		return writeError(w, proto, 502, p.Name+": "+err.Error()), err.Error(), true
 	}
@@ -1160,7 +1196,7 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		res.Body.Close()
 		res.Body = io.NopCloser(bytes.NewReader(b))
 		if effortLevelsNamed.Match(b) {
-			if res, err = s.forward(r.Context(), p, proto, pathOf(proto), p.Prepare(withBodyEffort(proto, body, "low")), r.Header); err != nil {
+			if res, err = s.forward(r.Context(), p, proto, path, p.Prepare(withBodyEffort(proto, body, "low")), r.Header); err != nil {
 				return writeError(w, proto, 502, p.Name+": "+err.Error()), err.Error(), true
 			}
 		}
@@ -1172,7 +1208,7 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		res.Body.Close()
 		res.Body = io.NopCloser(bytes.NewReader(b))
 		if nb, ok := withoutThinkingOff(body); ok && alwaysThinks.Match(b) {
-			if res, err = s.forward(r.Context(), p, proto, pathOf(proto), p.Prepare(nb), r.Header); err != nil {
+			if res, err = s.forward(r.Context(), p, proto, path, p.Prepare(nb), r.Header); err != nil {
 				return writeError(w, proto, 502, p.Name+": "+err.Error()), err.Error(), true
 			}
 		}
