@@ -331,7 +331,32 @@
 .rt-day:hover { color: var(--fg); }
 .rt-day.on { color: var(--fg); border-color: var(--fg); }
 
-/* the tray panel's Routing tab: the gateway's latest requests, two lines each */
+/* the tray panel's Routing tab: a small stage, then the gateway's latest
+   requests, two lines each */
+.pr-stage { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr); column-gap: 38px; align-items: center; height: 104px; padding: 0 10px; border-radius: 11px; background: var(--card); box-shadow: var(--card-edge); overflow: hidden; }
+.ps-wires, .ps-sky { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.ps-wire { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-linecap: round; transition: stroke .25s; }
+.ps-wire.on { stroke: color-mix(in srgb, var(--agent, var(--accent)) 55%, transparent); }
+.ps-col { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ps-from { align-items: flex-end; }
+.ps-to { align-items: flex-start; }
+.ps-node { display: flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0; height: 22px; padding: 0 8px; border-radius: 7px; font-size: 11.5px; color: var(--fg); background: var(--card-2); box-shadow: inset 0 0 0 1px var(--line); }
+.ps-node .ic, .ps-node .ic img, .ps-node .ic svg { width: 13px; height: 13px; flex: none; }
+.ps-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.ps-name small { margin-left: 4px; font-size: 10.5px; font-weight: 400; color: var(--muted); }
+.ps-dst > i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.ps-dst.bad > i { background: var(--red); }
+.ps-dst.wait > i { background: var(--muted); animation: rtlive 1.8s infinite; }
+.ps-hub { position: relative; z-index: 1; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: var(--fg); background: var(--card); box-shadow: inset 0 0 0 1px var(--line), 0 1px 3px rgba(0, 0, 0, .08); }
+.ps-hub svg { width: 24px; height: 24px; }
+.ps-hub.busy { animation: ps-ring 1.8s ease-out infinite; }
+@keyframes ps-ring { 0% { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 0 color-mix(in srgb, var(--fg) 16%, transparent); } 70%, 100% { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 7px transparent; } }
+.ps-dot { fill: var(--agent, var(--accent)); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--agent, var(--accent)) 60%, transparent)); transition: fill .2s, opacity .3s; }
+.ps-dot.ok { fill: var(--green); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--green) 60%, transparent)); }
+.ps-dot.bad { fill: var(--red); filter: drop-shadow(0 0 3px color-mix(in srgb, var(--red) 60%, transparent)); }
+.ps-dot.wait { animation: ps-wait 1.2s ease-in-out infinite; }
+.ps-dot.gone { opacity: 0; }
+@keyframes ps-wait { 50% { opacity: .45; } }
 .panel-routing { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 2px 2px 6px; }
 .pr-head { display: flex; align-items: center; gap: 8px; min-height: 22px; padding: 0 2px 0 4px; font-size: 12px; color: var(--muted); }
 .pr-head .rt-livedot { margin-left: 0; flex: none; }
@@ -346,21 +371,20 @@
 .pr-req { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; padding: 6px 8px; border-radius: 8px; font: inherit; font-size: 12px; text-align: left; color: var(--fg-2); background: none; border: 0; cursor: pointer; }
 .pr-req:hover { background: var(--card-2); }
 .pr-a, .pr-to { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.pr-a i.ag { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--agent); }
 .pr-a .ic, .pr-a .ic img, .pr-a .ic svg { width: 14px; height: 14px; flex: none; }
 .pr-who { flex: none; color: var(--fg); font-weight: 550; }
 .pr-a .m { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg-2); background: var(--card-2); border-radius: 5px; padding: 0 5px; }
 .pr-a .kind { flex: 0 100 auto; min-width: 3.2em; max-width: 8em; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; line-height: 16px; padding: 0 5px; border-radius: 5px; color: var(--muted); background: var(--card-2); border: 1px solid var(--line); white-space: nowrap; }
-.pr-req .at { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 11px; }
-.pr-to { padding-left: 2px; color: var(--fg); }
-.pr-to > i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
-.pr-req.moved .pr-to > i { background: var(--accent); }
+.pr-req .at { justify-self: end; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 11px; }
+.pr-to { padding-left: 20px; gap: 5px; color: var(--fg-2); }
+.pr-to > i { flex: none; width: 14px; margin-left: -20px; margin-right: 1px; text-align: center; font-style: normal; font-size: 11px; color: var(--faint); }
+.pr-req.moved .pr-to > i { color: var(--accent); }
 .pr-req.bad .pr-to { color: var(--red); }
-.pr-req.bad .pr-to > i { background: var(--red); }
-.pr-req.wait .pr-to > i { background: var(--muted); animation: rtlive 1.8s infinite; }
+.pr-req.bad .pr-to > i { color: var(--red); }
+.pr-req.wait .pr-to > i { color: var(--fg-2); animation: ps-wait 1.2s ease-in-out infinite; }
 .pr-where { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pr-m { flex: 0 2 auto; min-width: 2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .pr-m::before { content: "· "; }
 .pr-to .swap { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; line-height: 16px; padding: 0 5px; border-radius: 5px; color: var(--amber); background: var(--amber-soft); white-space: nowrap; }
-.pr-req .meta { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
-@media (prefers-reduced-motion: reduce) { .pr-req.wait .pr-to > i { animation: none; } }
+.pr-req .meta { justify-self: end; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+@media (prefers-reduced-motion: reduce) { .pr-req.wait .pr-to > i, .ps-dst.wait > i, .ps-hub.busy, .ps-dot.wait { animation: none; } }

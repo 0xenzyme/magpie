@@ -7,8 +7,11 @@
 // "served …" mark on one a vendor answered with another, how it ended and
 // when — under today's calls and tokens. The allowances' tab is named so.
 // A click opens the window's Routing page on that request and leaves the
-// panel where it is; the window opened so has that request picked. No
-// backend: the API is faked here.
+// panel where it is; the window opened so has that request picked. Over the
+// list a small stage (#feedback: 这个页面有点乱…迷你版的路由动画): the agents
+// that asked lately, magpie and where their requests went, each new request
+// a dot flying there and back; the rows' times and totals line up on the
+// right, with one mark for how each went. No backend: the API is faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -33,7 +36,7 @@ const routes = [
     tries: [ok(claude, 3)], done: true, status: 200, ms: 1500, tokens: 3000 },
 ];
 
-function serve(lang, opened) {
+function serve(lang, opened, live) {
   const state = { agents: [{ id: "codex", name: "Codex", path: "/test/config.toml", fields: [] }, { id: "claude", name: "Claude Code", path: "/test/settings.json", fields: [] }], profiles: [], settings: { lang, theme: "light" } };
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
@@ -42,6 +45,10 @@ function serve(lang, opened) {
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json(state);
     if (url.pathname === "/api/gateway/trace") {
+      // live: one more request, under way and then answered, after the first
+      const after = Number(url.searchParams.get("after"));
+      if (live && after === 103) { await live.shown; await new Promise((r) => setTimeout(r, 300)); return json({ mine: true, now: new Date().toISOString(), seq: 104, totals: { requests: 5, rerouted: 0, errors: 1 }, routes: [{ ...live, tries: [{ ...live.tries[0], done: false, status: 0 }], done: false, status: 0 }] }); }
+      if (live && after === 104) { await new Promise((r) => setTimeout(r, 2500)); return json({ mine: true, now: new Date().toISOString(), seq: 105, totals: { requests: 5, rerouted: 0, errors: 1 }, routes: [live] }); }
       if (url.searchParams.get("wait")) await new Promise((r) => setTimeout(r, 20e3));
       return json({ mine: true, now: now.toISOString(), seq: 103, totals: { requests: 4, rerouted: 0, errors: 1 }, routes });
     }
@@ -78,12 +85,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         }
         await browser.close();
       });
-      const open = async (url, viewport, opened) => {
-        const page = await (await browser.newContext({ viewport, reducedMotion: "reduce" })).newPage();
+      const open = async (url, viewport, opened, live) => {
+        const page = await (await browser.newContext({ viewport, reducedMotion: live ? "no-preference" : "reduce" })).newPage();
         pages.push(page);
         page.setDefaultTimeout(5000);
         page.on("pageerror", (e) => errors.push(e.message));
-        await page.route("**/*", serve(lang, opened));
+        await page.route("**/*", serve(lang, opened, live));
         await page.goto(url);
         return page;
       };
@@ -124,6 +131,27 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // no row runs out of the panel
       const over = await page.locator(".pr-req").evaluateAll((rs) => rs.filter((r) => r.scrollWidth > r.clientWidth + 1).length);
       assert.equal(over, 0);
+      // the times and the totals line up on the right; one mark a row
+      const rights = await page.locator(".pr-req").evaluateAll((rs) => rs.map((r) => [r.querySelector(".at").getBoundingClientRect().right, r.querySelector(".meta").getBoundingClientRect().right, r.querySelectorAll("i").length]));
+      for (const [at, meta, marks] of rights) {
+        assert(Math.abs(at - rights[0][0]) < 1 && Math.abs(meta - rights[0][0]) < 1, JSON.stringify(rights));
+        assert.equal(marks, 1);
+      }
+
+      // the stage: the agents that asked, magpie, the accounts they went to
+      const stage = await page.locator(".pr-stage").evaluate((s) => ({
+        from: [...s.querySelectorAll(".ps-ag .ps-name")].map((e) => e.textContent),
+        to: [...s.querySelectorAll(".ps-dst")].map((e) => e.querySelector(".ps-name").textContent + ":" + e.className.split(" ").pop()),
+        wires: [...s.querySelectorAll(".ps-wire")].filter((w) => (w.getAttribute("d") || "").startsWith("M")).length,
+        hub: !!s.querySelector(".ps-hub use"), below: s.getBoundingClientRect().bottom <= document.querySelector(".pr-list").getBoundingClientRect().top,
+        inside: [...s.querySelectorAll(".ps-node")].every((n) => { const a = n.getBoundingClientRect(), b = s.getBoundingClientRect(); return a.left >= b.left && a.right <= b.right && a.top >= b.top && a.bottom <= b.bottom; }),
+        border: getComputedStyle(s.querySelector(".ps-node")).borderLeftWidth,
+      }));
+      assert.deepEqual(stage.from, ["Codex", "Claude Code"]);
+      assert.deepEqual(stage.to, ["Relayteam:ok", "Claudeann@example.com:ok"]);
+      assert.equal(stage.wires, 4);
+      assert(stage.hub && stage.below && stage.inside, JSON.stringify(stage));
+      assert.equal(stage.border, "0px", "no border stripe");
 
       // today's calls and tokens, over the list
       await page.waitForFunction((re) => new RegExp(re).test(document.querySelector(".pr-today").textContent), want[lang].today.source);
@@ -162,6 +190,25 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(picked.length, 1);
       assert.match(picked[0], /429/);
       assert.match(await win.locator(".rt-log-head").textContent(), want[lang].story);
+
+      // a request as it comes: a dot flies from its agent, waits at the
+      // account while it answers, and comes home green
+      const live = { id: 104, seq: 104, time: new Date().toISOString(), agent: "claude", model: "claude/claude-opus-5", provider: "claude", order: [claude],
+        tries: [ok(claude, 0)], done: true, status: 200, ms: 900, tokens: 500 };
+      let show;
+      live.shown = new Promise((r) => { show = r; }); // it comes once the tab is shown
+      const lp = await open("http://magpie.test/?mode=panel", { width: 440, height: 640 }, [], live);
+      await lp.locator('[data-ptab="routing"]').click();
+      await lp.locator(".pr-stage").waitFor();
+      show();
+      await lp.locator(".ps-dot").waitFor({ state: "attached" });
+      await lp.waitForFunction(() => document.querySelector(".ps-wire.on") && document.querySelector(".ps-hub.busy"));
+      await lp.locator(".ps-dot.wait").waitFor({ state: "attached" });
+      const waitAt = await lp.evaluate(() => { const d = document.querySelector(".ps-dot").getBoundingClientRect(), n = [...document.querySelectorAll(".ps-dst")].find((e) => e.textContent.startsWith("Claude")).getBoundingClientRect(); return Math.abs((d.top + d.bottom) / 2 - (n.top + n.bottom) / 2) < 3 && d.right <= n.left + 1; });
+      assert(waitAt, "the dot waits by the account answering");
+      await lp.locator(".ps-dot.ok").waitFor({ state: "attached" });
+      await lp.waitForFunction(() => !document.querySelector(".ps-dot") && !document.querySelector(".ps-hub.busy") && !document.querySelector(".ps-wire.on"), null, { timeout: 5000 });
+      assert.equal(await lp.locator(".pr-req").first().locator(".meta").textContent().then((s) => /500/.test(s)), true);
       assert.deepEqual(errors, []);
     });
   }
