@@ -276,6 +276,17 @@ var presets = []PresetDef{
 	{ID: "siliconflow", Name: "SiliconFlow", Icon: "siliconcloud-color", Kind: KindRelay, Catalog: "siliconflow",
 		Chat:    "https://api.siliconflow.cn/v1",
 		Website: "https://cloud.siliconflow.cn", KeysURL: "https://cloud.siliconflow.cn/account/ak"},
+	// NVIDIA's hosted NIM endpoints (#197): chat completions only; its
+	// /v1/responses answers for a few models alone, 404 for the rest
+	{ID: "nvidia", Name: "NVIDIA NIM", Icon: "nvidia-color", Kind: KindRelay, Catalog: "nvidia",
+		Chat:    "https://integrate.api.nvidia.com/v1",
+		Website: "https://build.nvidia.com", KeysURL: "https://build.nvidia.com/settings/api-keys"},
+	// 魔搭's API-Inference (#197), a ModelScope access token as the key; not
+	// DashScope, the Qwen presets' API
+	{ID: "modelscope", Name: "ModelScope", Icon: "modelscope-color", Kind: KindRelay, Catalog: "modelscope",
+		Chat: "https://api-inference.modelscope.cn/v1", Responses: "https://api-inference.modelscope.cn/v1",
+		Note:    "魔搭 · API-Inference",
+		Website: "https://modelscope.cn/docs/model-service/API-Inference/intro", KeysURL: "https://modelscope.cn/my/myaccesstoken"},
 	{ID: "aihubmix", Name: "AiHubMix", Icon: "aihubmix-color", Kind: KindRelay,
 		Chat: "https://aihubmix.com/v1", Anthropic: "https://aihubmix.com",
 		Website: "https://aihubmix.com", KeysURL: "https://console.aihubmix.com/token"},
