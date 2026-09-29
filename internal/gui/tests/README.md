@@ -108,6 +108,19 @@ filters shown with no page and says where the file went. At the window's
 narrowest (560) the table scrolls in its box and no tab scrolls the page
 sideways; no left-border stripe; in English and Chinese, light and dark.
 
+`sessions-overview.test.cjs` checks the Usage page's Sessions overview: six
+figures (sessions with their median and p90, tokens, cost, cache read, active
+time, projects with the top one's share), the range as bars up to 100 days
+and a calendar past them, counted in tokens, cost, sessions or active time
+(active time off while a model is picked), the week by hour in the local
+time zone, projects and models as bars that filter without moving the page,
+and the top sessions opened in place from their files; nothing overflowing
+at 1100 or 560 wide; in English and Chinese. It also checks the heatmap by
+messages and output tokens, the session shape by messages, minutes and
+autonomy (remembered, the page left where it was), tool use (the top tools,
+their kinds and weeks) and the top skills with their last use, agents and
+projects.
+
 With Node.js and Playwright available:
 
 ```sh

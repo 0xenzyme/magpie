@@ -30,8 +30,10 @@ async function serve(route) {
   if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: 'window.bootPrefs = {lang:"en",theme:"light",web:true};' });
   if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
   if (url.pathname === "/api/state") return json(state);
+  if (url.pathname === "/api/sessions/progress") return json({ indexing: false });
   if (url.pathname === "/api/sessions") return json({ sessions, dirs: ["/test/sessions"] });
   if (url.pathname === "/api/sessions/stats") return json({ from: date, to: date, days: [{ date, usage, active: [] }], agents: { fixture: "Fixture" } });
+  if (url.pathname === "/api/sessions/overview") return json({ count: sessions.length, days: [sessions.length], top: { tokens: [], cost: [], active: [] } });
   if (url.pathname === "/api/update" || url.pathname === "/api/drift") return json({});
   if (url.pathname === "/api/agents/cli") return json({ agents: {}, pending: false });
   if (url.pathname === "/api/groups") return json({ groups: [] });
