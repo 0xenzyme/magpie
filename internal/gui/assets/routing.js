@@ -885,16 +885,16 @@
   }
 
   // pick sets the stage to a past request, or back to live with the newest;
-  // the page goes up to the stage only when the reader picked a request in
-  // the list (look), never on a day or Live picked in the list's own bar
-  function pick(r, look = true) {
+  // the page goes up to the stage only for a request the reader clicked in
+  // the list (e, that click), never for a day or Live picked in its bar
+  function pick(r, e) {
     pinned = r.id === newest()?.id ? null : r;
     if (rp) { rp = null; rbar.hidden = true; }
     stopPlays();
     cur = r;
     sync(true); renderAll();
     say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r));
-    if (pinned && look) { scrollOnPurpose(); box.scrollIntoView({ block: "nearest", behavior: still() ? "auto" : "smooth" }); }
+    if (pinned && e && scrollOnPurpose(e)) { box.scrollIntoView({ block: "nearest", behavior: still() ? "auto" : "smooth" }); }
   }
 
   // who answered a request, or what its agent got
@@ -924,7 +924,7 @@
       days = res.days || [];
       if (d && d === day) { past = res.routes || []; pastCut = !!res.cut; }
     } catch {}
-    renderDays();
+    renderHist(); // shown once there are days, though none are live
   }
   async function lookAt(d) {
     if (rp) endReplay(true);
@@ -933,7 +933,7 @@
     if (d) await loadDays(d);
     pinned = null;
     const r = d ? listed()[0] : newest();
-    if (r && d) pick(r, false);
+    if (r && d) pick(r);
     else if (r) { stopPlays(); cur = r; sync(true); say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r)); }
     renderAll();
   }
@@ -1006,7 +1006,7 @@
       if (r.tokens) meta.push(t("{n} tokens", { n: tokens(r.tokens) }));
       b.append(when, asked, to, el("span", "meta", meta.join(" · ")));
       b.title = `${agentName(r.agent)} · ${r.model} → ${r.provider}`;
-      b.onclick = () => pick(r);
+      b.onclick = (e) => pick(r, e);
       return b;
     }));
     renderActs(rs);
@@ -1484,7 +1484,8 @@
     hubText();
     list.replaceChildren(el("li", "idle", t("No request yet")));
     say(t("Every request an agent sends to magpie shows up here, routed for real."));
-    log.hidden = hist.hidden = true;
+    log.hidden = true;
+    renderHist(); // none live, but the days the history keeps are still there to look at
     layout();
   }
 
