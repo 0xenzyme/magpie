@@ -6037,8 +6037,51 @@ function renderRedact(s, keep) {
   i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") save(); else if (e.key === "Escape") { i.value = words; i.blur(); } };
   i.onblur = save;
   row(t("Masked words"), t("Your own words to keep from vendors, separated by commas"), i);
+  renderRedactRules(s, row);
   row(t("Count me as a user"), t("Once a day, a random id for this computer with magpie's version and system — nothing you use magpie for"),
     onOff(!s.noStats, (on) => savePrefs({ ...keep, noStats: !on })));
+}
+
+// renderRedactRules: the user's own rules for secrets magpie's don't know, a
+// gateway's oc_sk_… key say (#195) — one row each, and a row to add one by a
+// prefix or a regular expression. They are set on their own, all of them each
+// time, so one magpie can't use (a pattern that doesn't compile) is said in
+// the row, what was typed kept, and the rest stay as they were.
+let ruleDraft = { kind: "", by: "prefix", match: "", err: "" };
+function renderRedactRules(s, row) {
+  const rules = s.redactRules || [];
+  const set = (next, done) => writingPrefs(api("settings/redact-rules", { rules: next }))
+    .then((ns) => { prefs = ns; ruleDraft.err = ""; done?.(); renderSettings(); status(t("Saved"), "ok", 1500); })
+    .catch((e) => { ruleDraft.err = e.message; status(e.message, "err"); renderSettings(); });
+  const d = ruleDraft;
+  const kind = input(d.kind, "API_KEY");
+  const match = input(d.match, d.by === "prefix" ? "oc_sk_" : "oc_sk_[A-Za-z0-9]{20,}");
+  kind.className = "words rule-kind";
+  match.className = "words rule-match";
+  const by = segs([["prefix", t("Prefix")], ["regex", t("Regex")]], d.by, (v) => { d.by = v; match.placeholder = v === "prefix" ? "oc_sk_" : "oc_sk_[A-Za-z0-9]{20,}"; });
+  const add = el("button", "text", t("Add"));
+  add.onclick = () => {
+    d.kind = kind.value; d.match = match.value.trim();
+    if (!d.match) return match.focus();
+    const r = { kind: d.kind.trim(), [d.by === "prefix" ? "prefix" : "regex"]: d.match };
+    d.err = "";
+    set([...rules, r], () => { ruleDraft = { kind: "", by: d.by, match: "", err: "" }; });
+  };
+  for (const i of [kind, match]) {
+    i.oninput = () => { d.kind = kind.value; d.match = match.value; };
+    i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") add.onclick(); };
+  }
+  row(t("Masking rules"), d.err || t("Secrets magpie doesn't know, such as a gateway's own keys: what they start with, or a regular expression. Masked while Mask secrets is on"),
+    kind, by, match, add);
+  const head = $("#redactList").lastElementChild;
+  head.querySelector(".val").classList.add("rule-add");
+  if (d.err) head.querySelector(".sub").classList.add("err");
+  // and the rules under it, each by the name its placeholders have
+  rules.forEach((r, n) => {
+    const x = el("button", "text", t("Remove"));
+    x.onclick = () => set(rules.filter((_, i) => i !== n));
+    row(r.kind, r.prefix ? t("Starts with {p}", { p: r.prefix }) : t("Matches {re}", { re: r.regex }), x);
+  });
 }
 
 // renderLAN: the gateway shared on the local network, for agents on other

@@ -23,6 +23,7 @@ import (
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/profile"
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/redact"
 	"github.com/yetone/magpie/internal/settings"
 )
 
@@ -369,6 +370,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// who sees them, and sharing on the network, set on its own
 		in.Visible, in.ModelNames, in.ModelEfforts = cur.Visible, cur.ModelNames, cur.ModelEfforts
 		in.LAN, in.LANKey = cur.LAN, cur.LANKey
+		in.RedactRules = cur.RedactRules // the masking rules, set on their own
 		// used or left is the Usage page's toggle as much as Settings', set on its own
 		in.QuotaLeft = cur.QuotaLeft
 		if v := strings.TrimSpace(in.Vision); v != "" && v != "off" && v != cur.Vision {
@@ -464,6 +466,22 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 				fail(rw, err)
 				return
 			}
+		}
+		writeJSON(rw, settingsState())
+	})
+	// the user's own masking rules, all of them each time: set on their own,
+	// so a pattern that doesn't compile is said and the rest are kept (#195)
+	mux.HandleFunc("POST /api/settings/redact-rules", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ Rules []redact.Rule }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		s := settings.Load()
+		s.RedactRules = in.Rules
+		if err := settings.Save(s); err != nil {
+			fail(rw, err)
+			return
 		}
 		writeJSON(rw, settingsState())
 	})

@@ -1308,6 +1308,11 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .proxy-segs input.proxy:focus, input.words:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
 .proxy-segs input.proxy::placeholder, input.words::placeholder { color: var(--faint); }
 input.words { width: 240px; max-width: 100%; }
+/* the masking rules' add row: a name, prefix or regex, the match, Add */
+.prefs .val.rule-add { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+input.words.rule-kind { width: 92px; }
+input.words.rule-match { width: 180px; }
+.row.pref .sub.err { color: var(--red); white-space: normal; }
 .warm-at { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
 .warm-at input.at { width: auto; height: 27px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums; outline: none; transition: border-color .12s, box-shadow .12s; }
 .warm-at input.at:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
