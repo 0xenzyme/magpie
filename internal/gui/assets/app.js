@@ -824,9 +824,17 @@ if (mode === "panel") {
 
 // extra is room about to be taken (or given back), e.g. by agents unrolling;
 // glide moves the panel's edge there over time instead of at once.
+// The panel is as tall as its tallest tab, not the one showing, so it keeps
+// its height as the tabs change and a shorter tab leaves room below (#124):
+// every tab is laid out at once for the measure, before anything is drawn.
 function fit(extra = 0, glide) {
   if (mode !== "panel") return;
-  const h = $(".top").offsetHeight + $("#ptabs").offsetHeight + $("#agents").offsetHeight + $(".profiles").offsetHeight + $("#panelQuota").offsetHeight + $(".foot").offsetHeight + 4 + extra;
+  const body = document.body, tab = body.dataset.ptab;
+  delete body.dataset.ptab;
+  // extra is only ever the agents' (a row opening, the scroll unrolling)
+  const tallest = Math.max($("#agents").offsetHeight + extra, $(".profiles").offsetHeight, $("#panelQuota").offsetHeight);
+  if (tab) body.dataset.ptab = tab;
+  const h = $(".top").offsetHeight + $("#ptabs").offsetHeight + tallest + $(".foot").offsetHeight + 4;
   if (h === fit.last) return;
   fit.last = h;
   const still = !glide || matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -4018,15 +4026,16 @@ async function setQuotaLeft(on) {
 }
 
 // resetClock is when a window starts again, on the clock: "14:30" today,
-// "tomorrow 09:00", "Thu 14:30" within the week, else "Oct 12 08:05".
-function resetClock(at) {
+// "tomorrow 09:00", "Thu 14:30" later this week (Monday to Sunday), else
+// "Oct 12 08:05": a bare weekday in next week read as this week's (#181).
+function resetClock(at, now = new Date()) {
   const lang = locale === "zh" ? "zh-CN" : undefined;
   const time = at.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", hour12: false });
   const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const days = Math.round((day(at) - day(new Date())) / 864e5);
+  const days = Math.round((day(at) - day(now)) / 864e5);
   if (days <= 0) return time;
   if (days === 1) return t("tomorrow {time}", { time });
-  if (days < 7) return at.toLocaleDateString(lang, { weekday: "short" }) + " " + time;
+  if (days <= 6 - ((now.getDay() + 6) % 7)) return at.toLocaleDateString(lang, { weekday: "short" }) + " " + time;
   return at.toLocaleDateString(lang, { month: "short", day: "numeric" }) + " " + time;
 }
 
