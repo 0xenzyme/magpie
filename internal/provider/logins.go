@@ -465,6 +465,8 @@ func Logins(agent string) []Login {
 		return wbLoginList(wbSiteOf(agent))
 	case CommandCodePlanID:
 		return cmdLoginList()
+	case "qoder":
+		return loginsOf(qoderLogins())
 	case "gemini", "antigravity":
 		return googleLoginList(agent)
 	case "":
@@ -475,6 +477,7 @@ func Logins(agent string) []Login {
 		side = append(side, wbLoginList(wbCN)...)
 		side = append(side, wbLoginList(wbAI)...)
 		side = append(side, cmdLoginList()...)
+		side = append(side, loginsOf(qoderLogins())...)
 		side = append(side, googleLoginList("gemini")...)
 		side = append(side, googleLoginList("antigravity")...)
 	}
@@ -522,6 +525,8 @@ func SwitchLogin(agent, user string) error {
 		return switchWorkBuddyLogin(wbSiteOf(agent), user)
 	case CommandCodePlanID:
 		return switchCommandCodeLogin(user)
+	case "qoder":
+		return switchSideLogin("qoder", user, qoderLogins())
 	case "gemini", "antigravity":
 		return switchGoogleLogin(agent, user)
 	}
@@ -651,6 +656,8 @@ func ForgetLogin(agent, user string) error {
 		return forgetWorkBuddyLogin(wbSiteOf(agent), user)
 	case CommandCodePlanID:
 		return forgetCommandCodeLogin(user)
+	case "qoder":
+		return forgetQoderLogin(user)
 	case "gemini", "antigravity":
 		return forgetGoogleLogin(agent, user)
 	}

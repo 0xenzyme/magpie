@@ -207,6 +207,7 @@ const I18N = {
     "No matches.": "没有匹配项。",
 
     // providers
+    "Qoder has no public API for this; magpie signs requests as its desktop client would, which Qoder may treat as third-party use and act on. Use an account you can afford to lose.": "Qoder 没有公开的 API；magpie 会按照其桌面客户端的方式签发请求，Qoder 可能将其视为第三方使用并采取措施。请用一个丢了也不心疼的账号。",
     "sponsored": "赞助",
     "free": "免费",
     "free: it doesn't use the plan's credits": "免费：不消耗套餐积分",

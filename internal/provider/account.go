@@ -755,6 +755,9 @@ func Accounts() []Provider {
 	if p, ok := commandCodeAccount(); ok {
 		out = append(out, p)
 	}
+	if p, ok := qoderAccount(); ok {
+		out = append(out, p)
+	}
 	for _, agent := range []string{"gemini", "antigravity"} {
 		if p, ok := googleAccountOf(agent); ok {
 			out = append(out, p)

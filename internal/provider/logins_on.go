@@ -39,6 +39,8 @@ func SetLoginOn(agent, user string, on bool) error {
 		return setWorkBuddyLoginOn(wbSiteOf(agent), user, on)
 	case CommandCodePlanID:
 		return setCommandCodeLoginOn(user, on)
+	case "qoder":
+		return setSideLoginOn("qoder", user, on, qoderLogins())
 	case "gemini", "antigravity":
 		return setGoogleLoginOn(agent, user, on)
 	}
@@ -83,6 +85,9 @@ func (p Provider) AlsoOn() []Provider {
 	}
 	if p.Account != nil && p.Account.Agent == CommandCodePlanID {
 		return commandCodeAlsoOn()
+	}
+	if p.Account != nil && p.Account.Agent == "qoder" {
+		return qoderAlsoOn()
 	}
 	if p.Account != nil && (p.Account.Agent == "gemini" || p.Account.Agent == "antigravity") {
 		return googleAlsoOn(p.Account.Agent)
