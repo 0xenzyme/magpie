@@ -446,8 +446,15 @@ func askClaudeStatus() (user, plan string, signedOut, ok bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	// signed out, `claude auth status` exits 1 but still prints the JSON
-	out, _ := proc.CommandContext(ctx, path, "auth", "status", "--json").Output()
+	// signed out, `claude auth status` exits 1 but still prints the JSON.
+	// Not with a token or endpoint from magpie's own environment: the CLI
+	// would tell of that, not of its sign-in. magpie's wiring in
+	// settings.json it applies itself (auth status takes no
+	// --setting-sources), and then answers with no email; claudeSignedInUser
+	// names the account from ~/.claude.json instead (#177).
+	cmd := proc.CommandContext(ctx, path, "auth", "status", "--json")
+	cmd.Env = withoutClaudeWiring(os.Environ())
+	out, _ := cmd.Output()
 	var status struct {
 		LoggedIn         *bool  `json:"loggedIn"`
 		Email            string `json:"email"`
@@ -460,6 +467,20 @@ func askClaudeStatus() (user, plan string, signedOut, ok bool) {
 		return "", "", true, true
 	}
 	return strings.TrimSpace(status.Email), strings.TrimSpace(status.SubscriptionType), false, true
+}
+
+// withoutClaudeWiring is env less what points Claude Code at another
+// endpoint or token than its own sign-in.
+func withoutClaudeWiring(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		switch k, _, _ := strings.Cut(kv, "="); k {
+		case "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN":
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }
 
 func claudeAccount() (Provider, bool) {
@@ -475,11 +496,10 @@ func claudeAccount() (Provider, bool) {
 	if statusPlan != "" {
 		plan = statusPlan
 	}
-	if acct, ok := claudeProfileAccount(); ok && user != "" {
-		if email, _ := acct["emailAddress"].(string); strings.EqualFold(email, user) {
-			user = claudeUser(user, plan, acct)
-		}
-	}
+	// named as its saved login is (liveLogin): it is then the account Logins
+	// flags Active, not served a second time beside itself, and its
+	// allowances and limits are found under its name (#177)
+	user, _ = claudeSignedInUser(c.OAuth.SubscriptionType, statusPlan, user)
 	if user == "" {
 		user = "Claude account"
 		if plan != "" {

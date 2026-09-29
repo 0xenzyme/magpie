@@ -292,6 +292,23 @@ func claudeProfileAccount() (map[string]any, bool) {
 	return acct, err == nil && acct != nil
 }
 
+// claudeSignedInUser names the account Claude Code is signed in to, by the
+// one name both the account (claudeAccount) and its saved login (liveLogin)
+// go by: ~/.claude.json's, or status, what `claude auth status` said, when
+// that has none. plan is the credentials', or else the CLI's; acct is the
+// profile it was named from.
+func claudeSignedInUser(plan, statusPlan, status string) (user string, acct map[string]any) {
+	if plan == "" {
+		plan = statusPlan
+	}
+	if acct, ok := claudeProfileAccount(); ok {
+		if email, _ := acct["emailAddress"].(string); strings.TrimSpace(email) != "" {
+			return claudeUser(strings.TrimSpace(email), plan, acct), acct
+		}
+	}
+	return status, nil
+}
+
 // savedButSignedOut is, for each agent with accounts saved in magpie that
 // isn't signed in where magpie looks, why none of them is offered: they
 // are served beside the account the agent is signed in to, and there is
@@ -356,18 +373,14 @@ func liveLogin(agent string) (savedLogin, bool) {
 		}
 		// credentials a logout left behind are not a sign-in: Claude Code
 		// says so, and the account is not a provider either (claudeAccount)
-		user, _, signedOut := claudeIdentity()
+		user, plan, signedOut := claudeIdentity()
 		if signedOut {
 			return savedLogin{}, false
 		}
 		l := savedLogin{Agent: agent, Plan: c.OAuth.SubscriptionType, Auth: b}
-		if acct, ok := claudeProfileAccount(); ok {
-			email, _ := acct["emailAddress"].(string)
-			l.User = claudeUser(email, l.Plan, acct)
+		var acct map[string]any
+		if l.User, acct = claudeSignedInUser(l.Plan, plan, user); acct != nil {
 			l.Profile, _ = json.Marshal(acct)
-		}
-		if l.User == "" {
-			l.User = user
 		}
 		if l.User == "" {
 			return savedLogin{}, false
@@ -612,6 +625,15 @@ func ForgetLogin(agent, user string) error {
 		return fmt.Errorf("no saved %s account %q", agent, user)
 	}
 	return writeLogins(out)
+}
+
+// ForgetAccounts makes the next look at the accounts read them afresh, for
+// a caller that changed a sign-in behind magpie's back (a test's home).
+func ForgetAccounts() {
+	loginsMu.Lock()
+	loginsSeenAt = time.Time{}
+	loginsMu.Unlock()
+	forgetAccountCaches()
 }
 
 // forgetAccountCaches makes the next look at the accounts read them afresh.
