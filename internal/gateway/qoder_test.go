@@ -432,3 +432,100 @@ func TestServeQoder(t *testing.T) {
 		}
 	}
 }
+
+// Thinking turned off reaches Qoder as off: reasoning_effort "none", which
+// Effort reads as low for other vendors, and Anthropic's thinking disabled.
+func TestQoderThinkingOff(t *testing.T) {
+	model := testQoderModel(t)
+	always, err := qoder.ModelConfigs([]byte(`{"chat":[{"key":"gf","enable":true,"is_reasoning":true,"thinking_config":{"enabled":{"is_default":true,"efforts":{"max":{"is_default":true},"high":{},"low":{}}}}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		from provider.Protocol
+		body string
+	}{
+		{provider.Chat, `{"model":"m","reasoning_effort":"none","messages":[{"role":"user","content":"hi"}]}`},
+		{provider.Responses, `{"model":"m","reasoning":{"effort":"none"},"input":"hi"}`},
+		{provider.Anthropic, `{"model":"m","max_tokens":100,"thinking":{"type":"disabled"},"messages":[{"role":"user","content":"hi"}]}`},
+	} {
+		req, err := parse(tt.from, []byte(tt.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tt.from != provider.Anthropic && req.Effort != "low" {
+			t.Errorf("%s: other vendors' effort changed: %q", tt.from, req.Effort)
+		}
+		b, _ := qoderChatBody(req, model)
+		if gjson.GetBytes(b, "parameters.enable_thinking").Bool() || gjson.GetBytes(b, "parameters.reasoning_effort").Exists() {
+			t.Errorf("%s: thinking off on a model that can stop: %s", tt.from, gjson.GetBytes(b, "parameters").Raw)
+		}
+		b, _ = qoderChatBody(req, always[0])
+		if !gjson.GetBytes(b, "parameters.enable_thinking").Bool() || gjson.GetBytes(b, "parameters.reasoning_effort").String() != "low" {
+			t.Errorf("%s: thinking off on an always-thinking model: %s", tt.from, gjson.GetBytes(b, "parameters").Raw)
+		}
+	}
+	// thinking not mentioned is the model's own default, as before
+	req, _ := parse(provider.Anthropic, []byte(`{"model":"m","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`))
+	b, _ := qoderChatBody(req, always[0])
+	if gjson.GetBytes(b, "parameters.reasoning_effort").String() != "max" {
+		t.Errorf("unmentioned thinking: %s", gjson.GetBytes(b, "parameters").Raw)
+	}
+}
+
+// Only a sign-in that is gone is a 401 (the agent asks to log in again); a
+// refresh that timed out or failed on the network is a 502.
+func TestQoderCredentialStatus(t *testing.T) {
+	done := qoderUpstream(t, nil)
+	defer done()
+	s := New()
+	for _, tt := range []struct {
+		err  error
+		want int
+	}{
+		{fmt.Errorf("Qoder: refresh: %w", context.DeadlineExceeded), 502},
+		{errors.New("dial tcp: connection refused"), 502},
+		{fmt.Errorf("one@x's Qoder sign-in has expired — sign in again (%w)", provider.ErrQoderSignIn), 401},
+	} {
+		qoderAuth = func(context.Context, string) (*qoder.Credential, error) { return nil, tt.err }
+		ch, status, _ := s.askQoder("qfmodel", "one@x")(context.Background(), &Request{Model: "qfmodel"})
+		if ch != nil || status != tt.want {
+			t.Errorf("%v: status %d, want %d", tt.err, status, tt.want)
+		}
+	}
+}
+
+// A tool turn holds text only, so a tool's images follow in a user turn,
+// joined to the user's own next turn.
+func TestQoderToolResultImages(t *testing.T) {
+	png := Part{Kind: Image, MediaType: "image/png", Data: "iVBOR"}
+	msgs := qoderMessages([]Message{
+		{Role: "user", Parts: []Part{{Kind: Text, Text: "look"}}},
+		{Role: "assistant", Parts: []Part{{Kind: ToolCall, ID: "call_A", Name: "screenshot", Args: json.RawMessage(`{}`)}}},
+		{Role: "user", Parts: []Part{
+			{Kind: ToolResult, CallID: "call_A", Text: "shot taken", Images: []Part{png}},
+			{Kind: Text, Text: "what do you see?"}}},
+		{Role: "assistant", Parts: []Part{{Kind: ToolCall, ID: "call_B", Name: "screenshot", Args: json.RawMessage(`{}`)}}},
+		{Role: "user", Parts: []Part{{Kind: ToolResult, CallID: "call_B", Images: []Part{png, png}}}},
+	})
+	b, _ := json.Marshal(msgs)
+	got := gjson.ParseBytes(b)
+	if len(msgs) != 7 {
+		t.Fatalf("turns %s", b)
+	}
+	if got.Get("2.role").String() != "tool" || !strings.Contains(got.Get("2.content").String(), "shot taken") ||
+		!strings.Contains(got.Get("2.content").String(), "an image; it follows") {
+		t.Fatalf("tool turn %s", got.Get("2").Raw)
+	}
+	u := got.Get("3")
+	if u.Get("role").String() != "user" || !strings.Contains(u.Get("content.0.text").String(), "screenshot (tool call call_A)") ||
+		u.Get("content.1.image_url.url").String() != "data:image/png;base64,iVBOR" || u.Get("content.2.text").String() != "what do you see?" {
+		t.Fatalf("images with the user's turn %s", u.Raw)
+	}
+	if got.Get("5.role").String() != "tool" || !strings.Contains(got.Get("5.content").String(), "2 images") {
+		t.Fatalf("second tool turn %s", got.Get("5").Raw)
+	}
+	if got.Get("6.role").String() != "user" || got.Get("6.content.#").Int() != 3 {
+		t.Fatalf("trailing images %s", got.Get("6").Raw)
+	}
+}

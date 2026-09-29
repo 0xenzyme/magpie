@@ -2,8 +2,10 @@ package gateway
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -151,7 +153,13 @@ func (s *Server) askQoder(model, user string) round {
 	return func(ctx context.Context, req *Request) (<-chan Event, int, string) {
 		cred, err := qoderAuth(ctx, user)
 		if err != nil {
-			return nil, 401, "Qoder: " + err.Error()
+			// only a sign-in that is gone asks the agent to log in again;
+			// a refresh that timed out or never reached Qoder may pass
+			status := 502
+			if errors.Is(err, provider.ErrQoderSignIn) {
+				status = 401
+			}
+			return nil, status, "Qoder: " + err.Error()
 		}
 		config, err := qoderModel(ctx, user, model)
 		if err != nil {
@@ -234,7 +242,11 @@ func qoderChatBody(req *Request, model qoder.ModelInfo) ([]byte, error) {
 	sys := map[string]any{"type": "text", "text": qoderSysText(req)}
 	all := []any{map[string]any{"role": "system", "content": []any{sys}}}
 
-	thinking, effort := qoderEffort(req.Effort, model)
+	asked := req.Effort
+	if req.ThinkOff {
+		asked = "none" // Effort reads none as low
+	}
+	thinking, effort := qoderEffort(asked, model)
 	maxTok := int64(32000)
 	if req.MaxTokens > 0 {
 		maxTok = int64(req.MaxTokens)
@@ -269,13 +281,55 @@ func qoderChatBody(req *Request, model qoder.ModelInfo) ([]byte, error) {
 // qoderMessages renders magpie's turns as OpenAI turns, the format Qoder's
 // chat endpoint takes: an assistant's tool calls as tool_calls and their
 // results as tool turns named by tool_call_id, so a result is paired with
-// its call and not by order.
+// its call and not by order. A tool turn holds text only, so the images a
+// tool returned go after the tool turns in a user turn — as the start of
+// the user's own turn when one comes next — the way buildChat sends them.
 func qoderMessages(ms []Message) []any {
 	var out []any
+	names := map[string]string{}
+	var seen []any
+	seeLater := func(p Part) int {
+		var ims []any
+		for _, im := range p.Images {
+			if im.Data != "" {
+				ims = append(ims, map[string]any{"type": "image_url",
+					"image_url": map[string]any{"url": "data:" + im.MediaType + ";base64," + im.Data}})
+			}
+		}
+		if len(ims) == 0 {
+			return 0
+		}
+		of := "tool call " + p.CallID
+		if name := cmp.Or(names[p.CallID], p.Name); name != "" {
+			of = name + " (" + of + ")"
+		}
+		seen = append(seen, map[string]any{"type": "text", "text": "[From the result of " + of + ":]"})
+		seen = append(seen, ims...)
+		return len(ims)
+	}
+	showSeen := func() {
+		if len(seen) > 0 {
+			out = append(out, map[string]any{"role": "user", "content": seen})
+			seen = nil
+		}
+	}
 	for _, m := range ms {
 		var blocks []any
 		var calls []map[string]any
 		var text string
+		flush := func() {
+			if len(blocks) == 0 {
+				return
+			}
+			if m.Role == "user" && len(seen) > 0 {
+				blocks, seen = append(seen, blocks...), nil
+			}
+			out = append(out, map[string]any{"role": m.Role, "content": blocks})
+			blocks = nil
+		}
+		if m.Role != "user" {
+			showSeen()
+		}
 		for _, p := range m.Parts {
 			switch p.Kind {
 			case Text:
@@ -296,16 +350,24 @@ func qoderMessages(ms []Message) []any {
 				if id == "" {
 					id = "call_" + qoder.NewID()
 				}
+				names[id] = p.Name
 				calls = append(calls, map[string]any{"id": id, "type": "function",
 					"function": map[string]any{"name": p.Name, "arguments": string(argsOf(p))}})
 			case ToolResult:
-				if len(blocks) > 0 {
-					out = append(out, map[string]any{"role": m.Role, "content": blocks})
-					blocks = nil
-				}
+				flush()
 				txt := p.Text
 				if p.IsError {
 					txt = "Error: " + txt
+				}
+				if n := seeLater(p); n > 0 {
+					note := fmt.Sprintf("[The tool returned %d images; they follow in the next message.]", n)
+					if n == 1 {
+						note = "[The tool returned an image; it follows in the next message.]"
+					}
+					if strings.TrimSpace(txt) != "" {
+						txt += "\n\n"
+					}
+					txt += note
 				}
 				out = append(out, map[string]any{"role": "tool", "tool_call_id": p.CallID, "content": txt})
 			}
@@ -314,10 +376,9 @@ func qoderMessages(ms []Message) []any {
 			out = append(out, map[string]any{"role": "assistant", "content": text, "tool_calls": calls})
 			continue
 		}
-		if len(blocks) > 0 {
-			out = append(out, map[string]any{"role": m.Role, "content": blocks})
-		}
+		flush()
 	}
+	showSeen()
 	return out
 }
 

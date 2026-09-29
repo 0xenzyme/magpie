@@ -92,20 +92,17 @@ func qoderPersist(l savedLogin, c qoder.Credential, renewed bool) error {
 	return nil
 }
 
-// qoderRefreshFailed marks the account lapsed when Qoder refused its refresh
-// token: that sign-in is gone and has to be made again. A refresh that never
-// got an answer marks nothing.
+// ErrQoderSignIn is under every error that says the Qoder sign-in itself is
+// gone — not signed in, unreadable, or its refresh refused — as against a
+// refresh that timed out or never reached Qoder, which may pass.
+var ErrQoderSignIn = errors.New("Qoder sign-in")
+
+// qoderRefreshFailed marks the account lapsed when Qoder refused its job
+// refresh token: that sign-in is gone and has to be made again. A refresh
+// that never got an answer marks nothing.
 func qoderRefreshFailed(user string, err error) error {
 	var job *qoder.JobTokenRefreshHTTPError
-	var device *qoder.DeviceTokenRefreshHTTPError
-	status := 0
-	switch {
-	case errors.As(err, &job):
-		status = job.StatusCode
-	case errors.As(err, &device):
-		status = device.StatusCode
-	}
-	if status != http.StatusUnauthorized && status != http.StatusForbidden {
+	if !errors.As(err, &job) || job.StatusCode != http.StatusUnauthorized && job.StatusCode != http.StatusForbidden {
 		return err
 	}
 	msg := user + "'s Qoder sign-in has expired — sign in again"
@@ -118,7 +115,7 @@ func qoderRefreshFailed(user string, err error) error {
 		}
 	}
 	_ = writeLogins(ls)
-	return fmt.Errorf("%s (%w)", msg, err)
+	return fmt.Errorf("%s (%w)", msg, errors.Join(ErrQoderSignIn, err))
 }
 
 func qoderWho(c qoder.Credential) string { return firstNonEmpty(c.Email, c.UID) }
@@ -204,7 +201,7 @@ func QoderCredential(ctx context.Context, user string) (*qoder.Credential, error
 	if user == "" {
 		ls := qoderLogins()
 		if len(ls) == 0 {
-			return nil, fmt.Errorf("Qoder: not signed in")
+			return nil, fmt.Errorf("Qoder: not signed in (%w)", ErrQoderSignIn)
 		}
 		user = ls[0].User
 	}
@@ -215,11 +212,11 @@ func QoderCredential(ctx context.Context, user string) (*qoder.Credential, error
 	}
 	l, found := qoderLookup(user)
 	if !found {
-		return nil, fmt.Errorf("no Qoder account %q", user)
+		return nil, fmt.Errorf("no Qoder account %q (%w)", user, ErrQoderSignIn)
 	}
 	c, ok, changed := qoderCurrent(l)
 	if !ok {
-		return nil, fmt.Errorf("Qoder: unreadable sign-in")
+		return nil, fmt.Errorf("Qoder: unreadable sign-in (%w)", ErrQoderSignIn)
 	}
 	if c.MachineID == "" {
 		c.MachineID = qoder.NewMachineID()
@@ -231,6 +228,9 @@ func QoderCredential(ctx context.Context, user string) (*qoder.Credential, error
 		fresh, err := c.Refresh(rctx, qoderClient)
 		cancel()
 		if err != nil {
+			if c.RefreshToken == "" { // nothing to refresh with: sign in again
+				err = errors.Join(ErrQoderSignIn, err)
+			}
 			return nil, qoderRefreshFailed(l.User, err)
 		}
 		c, changed, renewed = fresh, true, true

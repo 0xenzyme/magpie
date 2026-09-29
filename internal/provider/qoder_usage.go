@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/yetone/magpie/internal/qoder"
 )
@@ -61,7 +62,13 @@ func qoderRefreshDevice(ctx context.Context, user, attempted string) (string, er
 	dt, err := qoder.RefreshDeviceToken(rctx, qoderClient, "", c.DeviceRefresh)
 	cancel()
 	if err != nil {
-		return "", qoderRefreshFailed(l.User, err)
+		// The device token serves only the account pages (usage); chat
+		// runs on the job token, so a refused one doesn't lapse the account.
+		var refused *qoder.DeviceTokenRefreshHTTPError
+		if errors.As(err, &refused) && (refused.StatusCode == http.StatusUnauthorized || refused.StatusCode == http.StatusForbidden) {
+			return "", fmt.Errorf("Qoder usage is unavailable: Qoder refused the account-page sign-in (chat still works) — sign in again to see usage (%w)", err)
+		}
+		return "", err
 	}
 	c.DeviceToken, c.DeviceRefresh = dt.Token, dt.RefreshToken
 	if err := qoderPersist(l, c, false); err != nil {

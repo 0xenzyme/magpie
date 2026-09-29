@@ -194,14 +194,39 @@ func TestQoderRefusedRefreshLapses(t *testing.T) {
 		}
 		return ""
 	}
-	if _, err := qoderRefreshDevice(context.Background(), "one@x", c.DeviceToken); err == nil || lapsed() == "" {
+	// the device token serves only usage: chat still works, so the
+	// account isn't lapsed and usage says why it is missing
+	if _, err := qoderRefreshDevice(context.Background(), "one@x", c.DeviceToken); err == nil || lapsed() != "" ||
+		!strings.Contains(err.Error(), "usage is unavailable") || errors.Is(err, ErrQoderSignIn) {
 		t.Fatalf("device refresh refused: %v lapsed %q", err, lapsed())
+	}
+	if _, err := QoderCredential(context.Background(), "one@x"); err == nil || lapsed() == "" || !errors.Is(err, ErrQoderSignIn) {
+		t.Fatalf("job refresh refused: %v lapsed %q", err, lapsed())
 	}
 	if err := qoderSave(c); err != nil || lapsed() != "" {
 		t.Fatalf("sign-in again keeps lapsed: %v", err)
 	}
-	if _, err := QoderCredential(context.Background(), "one@x"); err == nil || lapsed() == "" {
-		t.Fatalf("job refresh refused: %v lapsed %q", err, lapsed())
+}
+
+// A job refresh that never got an answer is no refused sign-in.
+func TestQoderRefreshNetworkErrorNotSignIn(t *testing.T) {
+	signIn(t)
+	qoderTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic(http.ErrAbortHandler)
+	}))
+	c := qoderTestCredential("one")
+	c.ExpiresAt = time.Now().Add(time.Minute).UnixMilli()
+	if err := qoderSave(c); err != nil {
+		t.Fatal(err)
+	}
+	_, err := QoderCredential(context.Background(), "one@x")
+	if err == nil || errors.Is(err, ErrQoderSignIn) {
+		t.Fatalf("network failure read as a lapsed sign-in: %v", err)
+	}
+	for _, l := range Logins("qoder") {
+		if l.Lapsed != "" {
+			t.Fatalf("lapsed on a network failure: %q", l.Lapsed)
+		}
 	}
 }
 

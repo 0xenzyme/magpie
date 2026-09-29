@@ -96,9 +96,13 @@ type Request struct {
 	Stream     bool
 	Effort     string // low | medium | high | xhigh | max, when the client asked
 	Thinking   bool   // the client asked for visible reasoning
-	Parallel   *bool  // parallel tool calls allowed
-	WebSearch  bool   // the client offered its provider's own web search
-	Fast       bool   // the client asked for priority processing: service_tier priority (Codex's Fast mode)
+	// ThinkOff is the client turning reasoning off: effort "none" (which
+	// Effort reads as low, for vendors with no way to turn it off) or an
+	// Anthropic request with thinking disabled.
+	ThinkOff  bool
+	Parallel  *bool // parallel tool calls allowed
+	WebSearch bool  // the client offered its provider's own web search
+	Fast      bool  // the client asked for priority processing: service_tier priority (Codex's Fast mode)
 	// CacheKey is the client's prompt_cache_key (Codex sends its thread's
 	// id), which OpenAI, and relays in front of it, route a conversation by
 	// to where its prompt is cached.
