@@ -124,6 +124,19 @@ var presets = []PresetDef{
 			{ID: "plan", Name: "Step Plan", Chat: "https://api.stepfun.com/step_plan/v1", Anthropic: "https://api.stepfun.com/step_plan"},
 			{ID: "api", Name: "Pay as you go", Chat: "https://api.stepfun.com/v1", Anthropic: "https://api.stepfun.com"},
 		}},
+	// Xiaomi MiMo (#174): a Token Plan's tp- key is spent at its region's
+	// own host (China, Singapore, Europe), pay as you go at api.xiaomimimo.com;
+	// each serves chat completions, Responses and Anthropic messages
+	{ID: "xiaomi", Name: "Xiaomi MiMo", Icon: "mimocode", Kind: KindVendor, Catalog: "xiaomi-token-plan-cn, xiaomi",
+		Chat: "https://token-plan-cn.xiaomimimo.com/v1", Responses: "https://token-plan-cn.xiaomimimo.com/v1", Anthropic: "https://token-plan-cn.xiaomimimo.com/anthropic",
+		Note:    "Token Plan · pay as you go",
+		Website: "https://platform.xiaomimimo.com", KeysURL: "https://platform.xiaomimimo.com/token-plan",
+		Regions: []Region{
+			{ID: "plan-cn", Name: "Plan · China", Chat: "https://token-plan-cn.xiaomimimo.com/v1", Responses: "https://token-plan-cn.xiaomimimo.com/v1", Anthropic: "https://token-plan-cn.xiaomimimo.com/anthropic"},
+			{ID: "plan-sgp", Name: "Plan · Singapore", Chat: "https://token-plan-sgp.xiaomimimo.com/v1", Responses: "https://token-plan-sgp.xiaomimimo.com/v1", Anthropic: "https://token-plan-sgp.xiaomimimo.com/anthropic"},
+			{ID: "plan-ams", Name: "Plan · Europe", Chat: "https://token-plan-ams.xiaomimimo.com/v1", Responses: "https://token-plan-ams.xiaomimimo.com/v1", Anthropic: "https://token-plan-ams.xiaomimimo.com/anthropic"},
+			{ID: "api", Name: "Pay as you go", Chat: "https://api.xiaomimimo.com/v1", Responses: "https://api.xiaomimimo.com/v1", Anthropic: "https://api.xiaomimimo.com/anthropic"},
+		}},
 	// Tencent Cloud's Token Plan (TokenHub): a general and a Hy plan on one
 	// sk-tp- key, served at their own endpoints under /plan, chat completions
 	// and Anthropic messages only (its Codex page asks for wire_api "chat").
