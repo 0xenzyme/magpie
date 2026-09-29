@@ -1172,7 +1172,15 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		if strings.HasSuffix(p.Host(), "openai.com") {
 			body = withoutFields(body, "enable_thinking")
 		}
+		if p.IsBedrock() {
+			body = asCompletionTokens(body)
+		}
 	case provider.Anthropic:
+		if p.IsBedrock() {
+			// Claude Code's metadata.user_id, a JSON string these days, is
+			// not the plain id Bedrock checks it against (#176)
+			body = withoutFields(body, "metadata")
+		}
 		if !anthropicModel.MatchString(model) {
 			body = thinkingOffUnlessAsked(body)
 		}
@@ -1361,6 +1369,9 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 			r.CacheKey, req = "", &r
 		}
 		body := build(to, req, model, p.Host(), p.RejectsTemperature(model))
+		if to == provider.Chat && p.IsBedrock() {
+			body = asCompletionTokens(body)
+		}
 		if to == provider.CodeAssist && p.Account != nil {
 			body = buildCodeAssist(req, model, p.Account.Agent)
 		}
@@ -1929,6 +1940,34 @@ func withFields(body []byte, fields map[string]any) []byte {
 // withoutFields drops fields the vendor refuses to see: Qoder asks every
 // model for Qwen's enable_thinking, which OpenAI turns away as an
 // unrecognized argument.
+// asCompletionTokens asks a chat request's reply length as
+// max_completion_tokens in place of max_tokens, as Bedrock's OpenAI
+// endpoint takes it: its GPT models turn max_tokens away (#176).
+func asCompletionTokens(body []byte) []byte {
+	if !bytes.Contains(body, []byte(`"max_tokens"`)) {
+		return body
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+	var m map[string]any
+	if dec.Decode(&m) != nil {
+		return body
+	}
+	n, ok := m["max_tokens"]
+	if !ok {
+		return body
+	}
+	delete(m, "max_tokens")
+	if _, has := m["max_completion_tokens"]; !has {
+		m["max_completion_tokens"] = n
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
 func withoutFields(body []byte, fields ...string) []byte {
 	found := false
 	for _, f := range fields {

@@ -23,6 +23,7 @@ type bedrockCall struct {
 	path  string
 	head  http.Header
 	model string
+	body  map[string]any
 }
 
 func (b *bedrock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -31,8 +32,10 @@ func (b *bedrock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Model string `json:"model"`
 	}
 	json.Unmarshal(body, &v)
+	var m map[string]any
+	json.Unmarshal(body, &m)
 	b.mu.Lock()
-	b.calls = append(b.calls, bedrockCall{r.URL.Path, r.Header.Clone(), v.Model})
+	b.calls = append(b.calls, bedrockCall{r.URL.Path, r.Header.Clone(), v.Model, m})
 	b.mu.Unlock()
 	w.Header().Set("Content-Type", "text/event-stream")
 	switch r.URL.Path {
@@ -90,16 +93,16 @@ func TestBedrockRoutes(t *testing.T) {
 		anthropic                             bool
 	}{
 		{"claude on messages", "/v1/messages",
-			`{"model":"bedrock/apac.anthropic.claude-opus-5-5","max_tokens":20,"messages":[{"role":"user","content":"hi"}]}`,
+			`{"model":"bedrock/apac.anthropic.claude-opus-5-5","max_tokens":20,"metadata":{"user_id":"{\"device_id\":\"d\"}"},"messages":[{"role":"user","content":"hi"}]}`,
 			"/anthropic/v1/messages", "apac.anthropic.claude-opus-5-5", "from claude", true},
 		{"claude on chat", "/v1/chat/completions",
-			`{"model":"bedrock/apac.anthropic.claude-opus-5-5","max_tokens":20,"messages":[{"role":"user","content":"hi"}]}`,
+			`{"model":"bedrock/apac.anthropic.claude-opus-5-5","max_tokens":20,"metadata":{"user_id":"{\"device_id\":\"d\"}"},"messages":[{"role":"user","content":"hi"}]}`,
 			"/anthropic/v1/messages", "apac.anthropic.claude-opus-5-5", "from claude", true},
 		{"gpt-oss on messages", "/v1/messages",
-			`{"model":"bedrock/openai.gpt-oss-120b-1:0","max_tokens":20,"messages":[{"role":"user","content":"hi"}]}`,
+			`{"model":"bedrock/openai.gpt-oss-120b-1:0","max_tokens":20,"metadata":{"user_id":"{\"device_id\":\"d\"}"},"messages":[{"role":"user","content":"hi"}]}`,
 			"/openai/v1/chat/completions", "openai.gpt-oss-120b-1:0", "from chat", false},
 		{"gpt-oss on chat", "/v1/chat/completions",
-			`{"model":"bedrock/openai.gpt-oss-120b-1:0","max_tokens":20,"messages":[{"role":"user","content":"hi"}]}`,
+			`{"model":"bedrock/openai.gpt-oss-120b-1:0","max_tokens":20,"metadata":{"user_id":"{\"device_id\":\"d\"}"},"messages":[{"role":"user","content":"hi"}]}`,
 			"/openai/v1/chat/completions", "openai.gpt-oss-120b-1:0", "from chat", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -112,11 +115,16 @@ func TestBedrockRoutes(t *testing.T) {
 				t.Fatalf("upstream: %s %q", c.path, c.model)
 			}
 			if tc.anthropic {
+				if _, ok := c.body["metadata"]; ok {
+					t.Fatalf("metadata sent: %v", c.body)
+				}
 				if c.head.Get("x-api-key") != "ABSK-test" || c.head.Get("Authorization") != "" || c.head.Get("anthropic-version") != "2023-06-01" {
 					t.Fatalf("headers: %v", c.head)
 				}
 			} else if c.head.Get("Authorization") != "Bearer ABSK-test" {
 				t.Fatalf("headers: %v", c.head)
+			} else if _, ok := c.body["max_tokens"]; ok || c.body["max_completion_tokens"] != float64(20) {
+				t.Fatalf("length asked as: %v", c.body)
 			}
 		})
 	}
