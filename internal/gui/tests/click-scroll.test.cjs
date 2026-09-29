@@ -100,6 +100,28 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       }
     });
 
+    await t.test("a request picked in the list, and Replay them all, stay under the pointer", async () => {
+      await reset();
+      await page.locator(".rt-day").nth(1).click();
+      await settle(page);
+      for (const i of [3, 7, 5]) {
+        const row = () => page.locator(".rt-req").nth(i);
+        await scrollTo(`.rt-req >> nth=${i}`);
+        const was = await row().evaluate((e) => e.getBoundingClientRect().top);
+        await row().click();
+        await settle(page);
+        assert.equal(await row().getAttribute("aria-pressed"), "true");
+        const is = await row().evaluate((e) => e.getBoundingClientRect().top);
+        assert(Math.abs(is - was) <= 1, `picking request ${i} moved the page ${Math.round(is - was)}px`);
+      }
+      const reqs = ".rt-req >> nth=0";
+      const was = await top(page, reqs);
+      await page.getByRole("button", { name: "Replay them all" }).click();
+      await settle(page);
+      const is = await top(page, reqs);
+      assert(Math.abs(is - was) <= 1, `Replay them all moved the list ${Math.round(is - was)}px`);
+    });
+
     await t.test("code can't take the page from a click", async () => {
       await reset();
       await page.locator(view).evaluate((v) => {

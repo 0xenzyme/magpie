@@ -58,9 +58,9 @@
       // the newest request whose agent got an error, to see what it got
       s.classList.add("rt-errs");
       s.title = t("Show the latest request that failed");
-      s.addEventListener("click", (e) => {
+      s.addEventListener("click", () => {
         const r = listed().find((x) => x.done && x.status >= 400);
-        if (r) pick(r, e);
+        if (r) pick(r);
       });
     }
     statB.push(b);
@@ -915,17 +915,17 @@
     steps.replaceChildren(...items.map(([s, c]) => el("li", c, s)));
   }
 
-  // pick sets the stage to a past request, or back to live with the newest;
-  // the page goes up to the stage only for a request the reader clicked in
-  // the list (e, that click), never for a day or Live picked in its bar
-  function pick(r, e) {
+  // pick sets the stage to a past request, or back to live with the newest.
+  // The page stays where it is: a request clicked in the list stays under
+  // the pointer, and the stage and its story change above it (it used to
+  // go up to the stage, which read as the page jumping to its top)
+  function pick(r) {
     pinned = r.id === newest()?.id ? null : r;
     if (rp) { rp = null; rbar.hidden = true; }
     stopPlays();
     cur = r;
     sync(true); renderAll();
     say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r));
-    if (pinned && e && scrollOnPurpose(e)) { box.scrollIntoView({ block: "nearest", behavior: still() ? "auto" : "smooth" }); }
   }
 
   // who answered a request, or what its agent got
@@ -1038,7 +1038,7 @@
       if (r.tokens) meta.push(t("{n} tokens", { n: tokens(r.tokens) }));
       b.append(when, asked, to, el("span", "meta", meta.join(" · ")));
       b.title = `${agentName(r.agent)} · ${r.model} → ${r.provider}`;
-      b.onclick = (e) => pick(r, e);
+      b.onclick = () => pick(r);
       return b;
     }));
     renderActs(rs);
