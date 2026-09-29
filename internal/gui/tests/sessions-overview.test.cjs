@@ -157,12 +157,18 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.match(await page.locator("#sessHours .sess-card-foot > span").first().innerText(), want[lang].busiest);
       });
 
-      await t.test("session shape, by messages, time and autonomy", async () => {
+      await t.test("session shape, by messages, time and tool calls", async () => {
         const shape = page.locator("#sessShape");
         assert.equal(await shape.locator(".label").innerText(), lang === "en" ? "SESSION SHAPE" : "会话形态");
         assert.equal(await shape.locator(".tz").innerText(), lang === "en" ? "42 sessions" : "42 个会话");
         assert.deepEqual(await shape.locator(".col > span").allInnerTexts(), ["1–5", "6–15", "16–30", "31–60", "61–120", "121+"]);
-        assert.deepEqual(await shape.locator(".col > b").allInnerTexts(), ["3", "10", "14", "9", "4", "2"]);
+        assert.deepEqual(await shape.locator(".col .plot > b").allInnerTexts(), ["3", "10", "14", "9", "4", "2"]);
+        // no grey column behind the bars, the busiest bin in full, the axes said
+        assert.equal(await shape.locator(".track").count(), 0);
+        assert.deepEqual(await shape.locator(".col").evaluateAll((cs) => cs.map((c) => c.classList.contains("peak"))), [false, false, true, false, false, false]);
+        assert.equal((await shape.locator(".sess-card-foot").innerText()).trim(), lang === "en" ? "Across: messages in a session, prompts and replies · Height: sessions" : "横轴：一个会话里的消息数（提示加回复） · 柱高：会话数");
+        const hs = await shape.locator(".plot > i").evaluateAll((is) => is.map((i) => i.getBoundingClientRect().height));
+        assert.ok(hs[2] > hs[1] && hs[1] > hs[3] && hs[3] > hs[0], String(hs));
         // wheeled to, as a person would: WebKit paints a scroll set from script late
         await page.mouse.move(500, 400);
         for (let i = 0; i < 20 && (await shape.boundingBox()).y > 300; i++) await page.mouse.wheel(0, 200);
@@ -170,10 +176,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const y = (await shape.boundingBox()).y;
         await shape.locator(".segs .opt").nth(2).click();
         assert.equal(await shape.locator(".col > span").first().innerText(), "<1");
-        assert.deepEqual(await shape.locator(".col > b").allInnerTexts(), ["5", "7", "10", "12", "6", "2"]);
+        assert.equal(await shape.locator(".segs .opt").nth(2).innerText(), lang === "en" ? "Tool calls" : "工具调用");
+        assert.match(await shape.locator(".sess-card-foot").innerText(), lang === "en" ? /tool calls the agent made on its own for each prompt/ : /你每发一条提示，Agent 自己调用工具的次数/);
+        assert.deepEqual(await shape.locator(".col .plot > b").allInnerTexts(), ["5", "7", "10", "12", "6", "2"]);
         await shape.locator(".segs .opt").nth(1).click();
         assert.equal(await shape.locator(".col > span").first().innerText(), lang === "en" ? "1–5m" : "1–5 分钟");
-        assert.equal(await shape.locator(".col > b").last().innerText(), "");
+        // an empty bin says 0 over a stub
+        assert.equal(await shape.locator(".col .plot > b").last().innerText(), "0");
+        assert.equal(await shape.locator(".plot > i").last().getAttribute("class"), "none");
         assert.equal(await page.evaluate(() => localStorage.getItem("magpie.sessShape")), "minutes");
         assert.equal((await shape.boundingBox()).y, y);
         await shape.locator(".segs .opt").nth(0).click();
