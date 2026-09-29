@@ -4157,7 +4157,10 @@ const SUBS = [
   // signed in with GitHub's device code; the editors' own sign-in stays theirs
   { agent: "copilot", name: "Copilot", icon: "githubcopilot", plans: "Pro · Pro+ · Business", own: true },
   // Z.ai's GLM Coding Plan, signed in as ZCode does; ZCode's own account is read too
-  { agent: "zcode", name: "ZCode (GLM Coding Plan)", icon: "zcode", plans: "Lite · Pro · Max", own: true },
+  // sites: where the account is, Z.ai's or BigModel's (智谱), asked before
+  // the sign-in opens; a team's plan (团队套餐) is signed in on its site too
+  { agent: "zcode", name: "ZCode (GLM Coding Plan)", icon: "zcode", plans: "Lite · Pro · Max · Team", own: true,
+    sites: [["zai", "Z.ai", "z.ai"], ["bigmodel", "BigModel (智谱)", "bigmodel.cn"]] },
   // Tencent's CodeBuddy plan, signed in as WorkBuddy does; WorkBuddy's own account is read too
   { agent: "workbuddy", name: "WorkBuddy (CodeBuddy)", icon: "workbuddy-color", plans: "Free · Pro", own: true },
   // the same plan sold abroad, WorkBuddy AI (workbuddy.ai / codebuddy.ai), its accounts its own
@@ -4209,7 +4212,7 @@ let signing = null; // the sign-in under way: { id, agent, url, state, installin
 const signingOpen = () => signing?.state === "waiting" || signing?.state === "installing";
 let justAdded = ""; // the account that just came in, to greet it
 
-async function startSignIn(agent, risky) {
+async function startSignIn(agent, risky, site) {
   if (signingOpen()) api("signin/" + signing.id + "/cancel", {}).catch(() => {});
   // an account Google may suspend is added only once that is said
   if (subOf(agent)?.risk && !risky) {
@@ -4217,15 +4220,22 @@ async function startSignIn(agent, risky) {
     renderProviders();
     return;
   }
-  signing = { agent, state: "starting" };
+  // one on more than one site says which first
+  if (subOf(agent)?.sites && !site) {
+    signing = { agent, state: "site" };
+    renderProviders();
+    return;
+  }
+  signing = { agent, site, state: "starting" };
   renderProviders();
   try {
-    signing = await api("signin", { agent });
+    signing = await api("signin", site ? { agent, site } : { agent });
+    signing.site = site;
     if (web && signing.url) api("open", { url: signing.url });
     renderProviders();
     followSignIn(signing.id);
   } catch (e) {
-    signing = { agent, state: "failed", error: e.message };
+    signing = { agent, site, state: "failed", error: e.message };
     renderProviders();
   }
 }
@@ -4239,7 +4249,7 @@ async function followSignIn(id) {
     if (st.state === "waiting" || st.state === "installing") {
       // the CLI it needed is in: now the vendor's page can open
       if (signing.state === "installing" && st.state === "waiting" && st.url) api("open", { url: st.url }).catch(() => {});
-      if (signing.state !== st.state || signing.url !== st.url) { signing = st; renderProviders(); }
+      if (signing.state !== st.state || signing.url !== st.url) { signing = { ...st, site: signing.site }; renderProviders(); }
       continue;
     }
     if (st.state === "done") {
@@ -4258,7 +4268,7 @@ async function followSignIn(id) {
       setTimeout(() => { justAdded = ""; }, 2000);
       return;
     }
-    signing = st.state === "canceled" ? null : st;
+    signing = st.state === "canceled" ? null : { ...st, site: signing.site };
     renderProviders();
   }
 }
@@ -4348,13 +4358,30 @@ function renderSigning(sub) {
     } else box.append(close, go);
     return box;
   }
+  if (signing.state === "site") {
+    // ZCode: a Z.ai account or a BigModel (智谱) one, a team's seat included
+    tt.append(el("span", "n", t("Where is your {name} account?", { name: sub.name })),
+      el("span", "s", t("Sign in where your GLM Coding Plan was bought, a team's plan too: z.ai, or bigmodel.cn for 智谱.")));
+    box.append(tt);
+    const close = el("button", "text", t("Cancel"));
+    close.onclick = cancelSignIn;
+    box.append(close);
+    for (const [id, label, host] of sub.sites) {
+      const b = el("button", "text primary", t(label));
+      b.dataset.site = id;
+      b.title = host;
+      b.onclick = () => startSignIn(sub.agent, true, id);
+      box.append(b);
+    }
+    return box;
+  }
   if (signing.state === "import" || signing.state === "importing" || signing.state === "imported") return renderLoginImport(sub);
   if (signing.state === "failed") {
     box.append(el("span", "mark", "!"));
     tt.append(el("span", "n", t("Sign-in didn't finish")), el("span", "s", signing.error || ""));
     box.append(tt);
     const again = el("button", "text primary", t("Try again"));
-    again.onclick = () => startSignIn(sub.agent, true);
+    again.onclick = () => startSignIn(sub.agent, true, signing.site);
     const close = el("button", "text", t("Cancel"));
     close.onclick = cancelSignIn;
     box.append(close, again);
@@ -5381,7 +5408,7 @@ function renderQuotas() {
         const use = el("button", "text", t("Use a reset"));
         use.title = resetUseTitle(sub.resets);
         use.onclick = () => askCodexReset(sub);
-        r.append(use);
+        if (!sub.resets.byWindow) r.append(use); // a GLM team's are spent on bigmodel.cn
         card.append(r);
       }
     }
@@ -5616,16 +5643,31 @@ function panelQuotaCard(q) {
     const use = el("button", "pq-use", t("Use one…"));
     use.title = resetUseTitle(q.resets);
     use.onclick = () => askCodexReset(q);
-    r.append(use);
+    if (!q.resets.byWindow) r.append(use);
     card.append(r);
   }
   return card;
 }
 
 // resetsWords: a Codex account's rate-limit resets, "↺ 2 resets · until
-// Sat 22:30", the date only when one of them runs out.
+// Sat 22:30", the date only when one of them runs out. A GLM Coding team
+// plan's are counted by window, "↺ 2 five-hour resets · 1 weekly reset",
+// and spent on the vendor's page, not here.
 function resetsWords(r) {
   const w = el("span", "resets-words");
+  if (r.byWindow) {
+    const parts = [];
+    if (r.fiveHour) parts.push(t(r.fiveHour === 1 ? "1 five-hour reset" : "{n} five-hour resets", { n: r.fiveHour }));
+    if (r.weekly) parts.push(t(r.weekly === 1 ? "1 weekly reset" : "{n} weekly resets", { n: r.weekly }));
+    w.append(el("span", "resets-n", "↺ " + parts.join(" · ")));
+    w.title = t("The team plan's resets, used on bigmodel.cn or z.ai");
+    if (r.until) {
+      const at = new Date(r.until);
+      w.append(el("span", "resets-until", " · " + t("until {when}", { when: resetClock(at) })));
+      w.title += "\n" + t("The first runs out {when}", { when: at.toLocaleString() });
+    }
+    return w;
+  }
   w.append(el("span", "resets-n", "↺ " + t(r.count === 1 ? "1 reset" : "{n} resets", { n: r.count })));
   if (r.until) {
     const at = new Date(r.until);

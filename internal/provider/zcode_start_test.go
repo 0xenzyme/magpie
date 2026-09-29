@@ -222,20 +222,20 @@ func TestZCodeSignInStartPlan(t *testing.T) {
 	u.balance = zcodeActiveStart(time.Now(), "active")
 	ctx := context.Background()
 
-	k, plan, err := zcodeSignedIn(ctx, "zai-tok", jwt)
+	k, plan, err := zcodeSignedIn(ctx, "zai", "zai-tok", jwt)
 	if err != nil || plan != "Start Plan" || k.Key != "key.secret" || k.JWT != jwt || !zcodeOnStart(ctx, k) {
 		t.Fatalf("start plan: %v %q %+v", err, plan, k)
 	}
 	u.plans = []any{map[string]any{"productName": "GLM Coding Pro", "status": "VALID"}}
-	if k, plan, err := zcodeSignedIn(ctx, "zai-tok", jwt); err != nil || plan != "GLM Coding Pro" || k.JWT != jwt {
+	if k, plan, err := zcodeSignedIn(ctx, "zai", "zai-tok", jwt); err != nil || plan != "GLM Coding Pro" || k.JWT != jwt {
 		t.Fatalf("coding plan: %v %q %+v", err, plan, k)
 	}
 	u.plans = []any{}
 	u.balance = zcodeActiveStart(time.Now(), "expired")
-	if _, _, err := zcodeSignedIn(ctx, "zai-tok", jwt); err == nil || !strings.Contains(err.Error(), "Start Plan") {
+	if _, _, err := zcodeSignedIn(ctx, "zai", "zai-tok", jwt); err == nil || !strings.Contains(err.Error(), "Start Plan") {
 		t.Fatalf("neither: %v", err)
 	}
-	if _, _, err := zcodeSignedIn(ctx, "zai-tok", ""); err == nil {
+	if _, _, err := zcodeSignedIn(ctx, "zai", "zai-tok", ""); err == nil {
 		t.Fatal("no token, no plan: signed in")
 	}
 }

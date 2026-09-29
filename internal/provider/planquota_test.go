@@ -192,6 +192,12 @@ func TestPlanQuotas(t *testing.T) {
 			w.Write([]byte(`{"success":true,"data":{"level":"lite","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":90}]}}`))
 		case "open.bigmodel.cn/api/monitor/usage/quota/limit glm-payg":
 			w.Write([]byte(`{"success":true,"data":{"limits":[]}}`))
+		case "bigmodel.cn/api/monitor/usage/quota/limit glm-payg":
+			// no plan of its own: asked as a team's key too (#236), and not one
+			if r.URL.Query().Get("type") != "2" {
+				t.Errorf("team quota asked without type=2: %s", r.URL)
+			}
+			w.Write([]byte(`{"code":500,"msg":"no team","success":false}`))
 		case "open.bigmodel.cn/api/biz/subscription/list glm-a":
 			w.Write([]byte(`{"code":200,"success":true,"data":[{"productName":"GLM Coding Pro","status":"VALID","autoRenew":1,"nextRenewTime":"2026-10-18 10:00:00"}]}`))
 		case "open.bigmodel.cn/api/biz/subscription/list glm-b":

@@ -64,7 +64,7 @@ type zcodeRoute struct {
 // when the last answer is old; with ctx nil it only says what was found
 // last (the Coding Plan when nothing was).
 func zcodeOnStart(ctx context.Context, k zcodeKey) bool {
-	if k.JWT == "" {
+	if k.JWT == "" || k.team() { // a team's seat is on the team's plan (zcode_team.go)
 		return false
 	}
 	if k.Key == "" {

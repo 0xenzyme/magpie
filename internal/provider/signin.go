@@ -72,6 +72,7 @@ type signInFlow struct {
 	kiro              *kiroFlow
 	dimagentDone      chan dimagentCallback
 	dimagentSubmitted bool
+	site              string // where to sign in, for an agent with more than one (ZCode: "zai" or "bigmodel")
 	done              chan struct{}
 }
 
@@ -92,7 +93,15 @@ func randomToken(n int) string {
 // An agent signed in with a CLI that isn't installed has it installed first:
 // the sign-in is then "installing", and gets its URL when that is done.
 func StartSignIn(agent string) (SignInState, error) {
-	s := &signInFlow{verifier: randomToken(48), state: randomToken(24), done: make(chan struct{})}
+	// "zcode:bigmodel" is ZCode signed in on BigModel (智谱)
+	agent, site, _ := strings.Cut(agent, ":")
+	return StartSignInAt(agent, site)
+}
+
+// StartSignInAt is StartSignIn on one of the sites an agent signs in on:
+// ZCode's "zai" (the default) or "bigmodel".
+func StartSignInAt(agent, site string) (SignInState, error) {
+	s := &signInFlow{verifier: randomToken(48), state: randomToken(24), done: make(chan struct{}), site: site}
 	s.st = SignInState{ID: randomToken(9), Agent: agent, State: "waiting"}
 	cli, install := missingCLI(agent)
 	var installing context.Context
@@ -269,8 +278,8 @@ func (s *signInFlow) begin() error {
 			return err
 		}
 	case "zcode":
-		// Z.ai's sign-in, as ZCode makes it
-		if err := startZCodeSignIn(s); err != nil {
+		// Z.ai's or BigModel's sign-in, as ZCode makes it
+		if err := startZCodeSignIn(s, s.site); err != nil {
 			return err
 		}
 	case "gemini", "antigravity":

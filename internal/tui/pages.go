@@ -676,10 +676,7 @@ func quotaLines(qs []provider.SubscriptionQuota, asked, left bool, width int, no
 			cells = append(cells, quotaCell(w, left, now))
 		}
 		if r := q.Resets; r != nil {
-			c := sText.Render("↺ 1 reset")
-			if r.Count != 1 {
-				c = sText.Render(fmt.Sprintf("↺ %d resets", r.Count))
-			}
+			c := sText.Render("↺ " + r.Words())
 			if r.Until != nil {
 				c += sFaint.Render(" until " + provider.ResetClock(*r.Until, now))
 			}

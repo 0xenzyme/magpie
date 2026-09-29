@@ -104,6 +104,9 @@ func readZhipuPlan(b []byte) (string, []QuotaWindow, error) {
 			w.Name, w.Aside = "MCP · Month", true
 		case l.Unit == 3:
 			n := max(l.Number, 1)
+			if l.Number <= 0 { // a team's five hours come with no number
+				n = 5
+			}
 			w.Name, w.Span = fmt.Sprintf("%d hours", n), time.Duration(n)*time.Hour
 		case l.Unit == 6:
 			w.Name, w.Span = "7 days", 7*24*time.Hour
@@ -354,6 +357,14 @@ func PlanQuotas(ctx context.Context) []SubscriptionQuota {
 			defer wg.Done()
 			q := SubscriptionQuota{Provider: j.p.ID, Name: j.p.Name, Icon: j.p.Icon, User: j.user, Windows: []QuotaWindow{}}
 			plan, ws, err := planWindows(j.p.Via(ctx), j.src, j.key)
+			team := false
+			if zhipu := strings.HasSuffix(j.src.url, "/api/monitor/usage/quota/limit"); zhipu && (err != nil || len(ws) == 0) {
+				// no plan of the key's own: a team's key, whose windows are
+				// asked with type=2 (zcode_team.go)
+				if tplan, tws, terr := zhipuKeyTeamWindows(j.p.Via(ctx), j.src.url, j.key); terr == nil && len(tws) > 0 {
+					plan, ws, err, team = tplan, tws, nil, true
+				}
+			}
 			switch {
 			case err != nil && !j.src.sure, err == nil && len(ws) == 0:
 				return // a key with no plan
@@ -361,7 +372,7 @@ func PlanQuotas(ctx context.Context) []SubscriptionQuota {
 				q.Error = err.Error()
 			default:
 				q.Plan, q.Windows = plan, ws
-				if strings.HasSuffix(j.src.url, "/api/monitor/usage/quota/limit") { // Zhipu, Z.ai
+				if strings.HasSuffix(j.src.url, "/api/monitor/usage/quota/limit") && !team { // Zhipu, Z.ai
 					q.Until, q.Renew = zhipuTerm(ctx, zcodeRoot(j.src.url), j.key)
 				}
 			}
@@ -384,4 +395,35 @@ func PlanQuotas(ctx context.Context) []SubscriptionQuota {
 		c.Unlock()
 	}
 	return out
+}
+
+// zhipuKeyTeamWindows is a GLM key's windows on a team's GLM Coding Plan:
+// the quota asked with type=2 where ZCode asks it (bigmodel.cn, api.z.ai),
+// with the team's organization and project in the headers when the key is
+// a ZCode account's team key magpie holds (a key pasted alone is asked
+// without them, which is a guess: ZCode always sends them).
+func zhipuKeyTeamWindows(ctx context.Context, quotaURL, key string) (string, []QuotaWindow, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, zcodeBizRoot(quotaURL)+"/api/monitor/usage/quota/limit?type=2", nil)
+	if err != nil {
+		return "", nil, err
+	}
+	req.Header.Set("Authorization", key)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Language", "en-US,en")
+	if org, project := zhipuTeamOf(key); org != "" {
+		for k, v := range zcodeTeamHeaders(quotaURL, org, project) {
+			req.Header.Set(k, v)
+		}
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", nil, err
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if res.StatusCode >= 300 {
+		return "", nil, fmt.Errorf("%s", res.Status)
+	}
+	_, ws, err := readZhipuPlan(b)
+	return "GLM Coding Team", ws, err
 }

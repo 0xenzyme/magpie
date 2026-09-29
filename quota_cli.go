@@ -91,7 +91,7 @@ func quotaCmd(args []string) error {
 // resetsCell is a Codex account's rate-limit resets in a line: "↺ 2
 // resets until Oct 3 14:30", no date when they don't run out.
 func resetsCell(r *provider.ResetCredits) string {
-	cell := "↺ " + plural(r.Count, "reset")
+	cell := "↺ " + r.Words()
 	if r.Until != nil {
 		cell += muted.Render(" until " + provider.ResetClock(*r.Until, time.Now()))
 	}

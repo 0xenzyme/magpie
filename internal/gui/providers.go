@@ -825,12 +825,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 	// Adding a subscription: magpie opens the vendor's sign-in in the
 	// browser and the window follows it until the account is in.
 	mux.HandleFunc("POST /api/signin", func(rw http.ResponseWriter, r *http.Request) {
-		var in struct{ Agent string }
+		var in struct{ Agent, Site string } // Site: ZCode's "zai" or "bigmodel"
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			fail(rw, err)
 			return
 		}
-		st, err := provider.StartSignIn(in.Agent)
+		st, err := provider.StartSignInAt(in.Agent, in.Site)
 		if err != nil {
 			fail(rw, err)
 			return
