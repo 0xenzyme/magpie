@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/yetone/magpie/internal/agent"
+	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
@@ -772,6 +773,7 @@ func keyNote() string {
 func serve() error {
 	s := gateway.New()
 	go stats.Run(version, "serve")
+	go catalog.KeepFresh() // new models' prices, in a gateway left running
 	fmt.Println(green.Render("●"), "magpie gateway on", bold.Render(gateway.URL()))
 	fmt.Println(muted.Render("  OpenAI  "), gateway.URL()+"/v1/chat/completions", muted.Render("·"), gateway.URL()+"/v1/responses")
 	fmt.Println(muted.Render("  Anthropic"), gateway.URL()+"/v1/messages")

@@ -135,11 +135,14 @@ func (m mdModel) window() int {
 	return m.Limit.Context
 }
 
-const modelsDevURL = "https://models.dev/api.json"
+var modelsDevURL = "https://models.dev/api.json" // a var for tests
 
 var (
-	once sync.Once
-	mdev map[string]mdProvider
+	// loadMu guards loading and Reset: a background Sync (fresh.go) resets
+	// while a call is pricing its model
+	loadMu sync.Mutex
+	loaded bool
+	mdev   map[string]mdProvider
 	// images are the models, by bare id, most of the providers serving
 	// them say take images (a few mislabel a text model)
 	images map[string]bool
@@ -180,82 +183,89 @@ func Source() string {
 }
 
 func load() map[string]mdProvider {
-	once.Do(func() {
-		for _, p := range []string{CachePath(), opencodeCache()} {
-			b, err := os.ReadFile(p)
-			if err != nil {
-				continue
-			}
-			var m map[string]mdProvider
-			if json.Unmarshal(b, &m) == nil && len(m) > 0 {
-				mdev = m
-				votes := map[string]int{}
-				sizes, outs := map[string]map[int]int{}, map[string]map[int]int{}
-				levels := map[string]map[string]int{}
-				// one vote a provider for each list it gives a model: a
-				// gateway listing it under each host it routes to
-				// (llmgateway's deepinfra/…, xiaomi/…) votes once, not once
-				// a host
-				voted := map[string]bool{}
-				for pid, p := range m {
-					for id, x := range p.Models {
-						if e := x.efforts(); len(e) > 0 {
-							l := strings.Join(e, ",")
-							if levels[bareID(id)] == nil {
-								levels[bareID(id)] = map[string]int{}
+	loadMu.Lock()
+	defer loadMu.Unlock()
+	if !loaded {
+		loaded = true
+		func() {
+			for _, p := range []string{CachePath(), opencodeCache()} {
+				b, err := os.ReadFile(p)
+				if err != nil {
+					continue
+				}
+				var m map[string]mdProvider
+				if json.Unmarshal(b, &m) == nil && len(m) > 0 {
+					mdev = m
+					votes := map[string]int{}
+					sizes, outs := map[string]map[int]int{}, map[string]map[int]int{}
+					levels := map[string]map[string]int{}
+					// one vote a provider for each list it gives a model: a
+					// gateway listing it under each host it routes to
+					// (llmgateway's deepinfra/…, xiaomi/…) votes once, not once
+					// a host
+					voted := map[string]bool{}
+					for pid, p := range m {
+						for id, x := range p.Models {
+							if e := x.efforts(); len(e) > 0 {
+								l := strings.Join(e, ",")
+								if levels[bareID(id)] == nil {
+									levels[bareID(id)] = map[string]int{}
+								}
+								if k := pid + "\x00" + bareID(id) + "\x00" + l; !voted[k] {
+									voted[k] = true
+									levels[bareID(id)][l]++
+								}
 							}
-							if k := pid + "\x00" + bareID(id) + "\x00" + l; !voted[k] {
-								voted[k] = true
-								levels[bareID(id)][l]++
+							if slices.Contains(x.Modalities.Input, "image") {
+								votes[bareID(id)]++
+							} else {
+								votes[bareID(id)]--
 							}
-						}
-						if slices.Contains(x.Modalities.Input, "image") {
-							votes[bareID(id)]++
-						} else {
-							votes[bareID(id)]--
-						}
-						if w := x.window(); w > 0 {
-							if sizes[bareID(id)] == nil {
-								sizes[bareID(id)] = map[int]int{}
+							if w := x.window(); w > 0 {
+								if sizes[bareID(id)] == nil {
+									sizes[bareID(id)] = map[int]int{}
+								}
+								sizes[bareID(id)][w]++
 							}
-							sizes[bareID(id)][w]++
-						}
-						if o := x.Limit.Output; o > 0 {
-							if outs[bareID(id)] == nil {
-								outs[bareID(id)] = map[int]int{}
+							if o := x.Limit.Output; o > 0 {
+								if outs[bareID(id)] == nil {
+									outs[bareID(id)] = map[int]int{}
+								}
+								outs[bareID(id)][o]++
 							}
-							outs[bareID(id)][o]++
 						}
 					}
-				}
-				windows = map[string]int{}
-				for id, by := range sizes {
-					windows[id] = mostGiven(by)
-				}
-				outputs = map[string]int{}
-				for id, by := range outs {
-					outputs[id] = mostGiven(by)
-				}
-				efforts = map[string][]string{}
-				for id, by := range levels {
-					efforts[id] = strings.Split(mostListed(by), ",")
-				}
-				images = map[string]bool{}
-				for id, v := range votes {
-					if v > 0 {
-						images[id] = true
+					windows = map[string]int{}
+					for id, by := range sizes {
+						windows[id] = mostGiven(by)
 					}
+					outputs = map[string]int{}
+					for id, by := range outs {
+						outputs[id] = mostGiven(by)
+					}
+					efforts = map[string][]string{}
+					for id, by := range levels {
+						efforts[id] = strings.Split(mostListed(by), ",")
+					}
+					images = map[string]bool{}
+					for id, v := range votes {
+						if v > 0 {
+							images[id] = true
+						}
+					}
+					return
 				}
-				return
 			}
-		}
-	})
+		}()
+	}
 	return mdev
 }
 
 // Reset forgets the loaded catalog so the next call re-reads the cache.
 func Reset() {
-	once = sync.Once{}
+	loadMu.Lock()
+	defer loadMu.Unlock()
+	loaded = false
 	mdev, images, windows, outputs, efforts = nil, nil, nil, nil, nil
 }
 
@@ -297,14 +307,15 @@ func Sync(ctx context.Context) error {
 	return nil
 }
 
-// Stale reports whether no catalog exists or the cache is older than a week.
+// Stale reports whether no catalog exists or the cache is older than a day
+// (fresh.go).
 func Stale() bool {
 	src := Source()
 	if src == "" {
 		return true
 	}
 	st, err := os.Stat(src)
-	return err != nil || time.Since(st.ModTime()) > 7*24*time.Hour
+	return err != nil || time.Since(st.ModTime()) > staleAfter
 }
 
 // ProviderEnv lists the env vars that unlock a models.dev provider.

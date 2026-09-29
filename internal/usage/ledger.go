@@ -123,6 +123,8 @@ func pricer() func(Record) *catalog.Price {
 		}
 		if ok {
 			pr = &v
+		} else {
+			catalog.Missing() // models.dev may list it by now
 		}
 		prices[k] = pr
 		return pr
