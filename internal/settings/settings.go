@@ -63,6 +63,10 @@ type Settings struct {
 	// with CodexWarmup or without it. ClaudeWarmAt is the Claude accounts'.
 	CodexWarmAt  string `json:"codexWarmAt,omitempty"`
 	ClaudeWarmAt string `json:"claudeWarmAt,omitempty"`
+	// WorkBuddyCheckin presses WorkBuddy's daily check-in (签到) for each
+	// signed-in WorkBuddy (China) account once a Beijing day, claiming the
+	// credits it gives while its event runs.
+	WorkBuddyCheckin bool `json:"workbuddyCheckin,omitempty"`
 	// NoStats stops the one event a day that counts magpie's users (see
 	// internal/stats).
 	NoStats bool `json:"noStats,omitempty"`

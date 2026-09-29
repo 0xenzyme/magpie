@@ -5469,6 +5469,12 @@ function renderSettings() {
   renderWarmAt($("#claudeWarmAtSegs"), $("#claudeWarmAtSub"), s.claudeWarmAt, s.claudeWarmup,
     t("Start each Claude account's 5-hour window at this time every day, through Claude Code: 06:00 gives three by 21:00"),
     (v) => savePrefs({ ...keep, claudeWarmAt: v }));
+  // WorkBuddy's daily check-in pressed for each account, shown while one is signed in
+  $("#wbCheckinRow").hidden = !s.workbuddy && !s.workbuddyCheckin;
+  $("#wbCheckinSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.workbuddyCheckin ? "on" : "off",
+    (v) => savePrefs({ ...keep, workbuddyCheckin: v === "on" })));
+  $("#wbCheckinSub").textContent = [t("Claim the daily check-in credits for each signed-in WorkBuddy (China) account once a day, as pressing 签到 in WorkBuddy does"),
+    ...(s.workbuddyCheckins || []).map(wbCheckinLine)].filter(Boolean).join(" · ");
   renderTrayUsage(s, keep);
   renderProxy(s, keep);
   renderImages(s, keep);
@@ -6020,11 +6026,32 @@ async function renderUpdate(r, u) {
   }
 }
 
+// wbCheckinLine is how an account's last WorkBuddy check-in went: today's
+// (a Beijing day) with the credits and the streak, an earlier one by its day.
+function wbCheckinLine(r) {
+  const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+  if (r.day !== today) {
+    return r.outcome === "claimed" || r.outcome === "done" ? t("{user} checked in {day}", { user: r.user, day: r.day }) : "";
+  }
+  switch (r.outcome) {
+    case "claimed":
+    case "done":
+      return t("{user} checked in today", { user: r.user }) + (r.credit ? " +" + r.credit : "")
+        + (r.streak ? ", " + t("{n}-day streak", { n: r.streak }) : "");
+    case "ineligible":
+      return t("{user} is not eligible", { user: r.user });
+    case "inactive":
+      return t("{user}: no check-in event now", { user: r.user });
+    default:
+      return t("{user} couldn't check in, tried again later", { user: r.user });
+  }
+}
+
 // prefsKeep is what the settings page sends of s, all of it each time.
 function prefsKeep(s) {
   return { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, proxy: s.proxy || "",
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
-    claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", noStats: !!s.noStats,
+    claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, noStats: !!s.noStats,
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, vision: s.vision || "", imageGen: s.imageGen || "" };
 }
 

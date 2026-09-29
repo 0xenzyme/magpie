@@ -134,6 +134,10 @@ type settingsJSON struct {
 	CodexWarmed *time.Time `json:"codexWarmed,omitempty"`
 	// and the Claude warm-up
 	ClaudeWarmed *time.Time `json:"claudeWarmed,omitempty"`
+	// whether a WorkBuddy (China) account is signed in, and each one's
+	// last daily check-in
+	WorkBuddy         bool                        `json:"workbuddy"`
+	WorkBuddyCheckins []provider.WorkBuddyCheckin `json:"workbuddyCheckins,omitempty"`
 }
 
 func settingsState() settingsJSON {
@@ -144,6 +148,7 @@ func settingsState() settingsJSON {
 		s.LANURLs = gateway.LANURLs()
 	}
 	s.CodexWarmed, s.ClaudeWarmed = latest(provider.CodexWarmed()), latest(provider.ClaudeWarmed())
+	s.WorkBuddy, s.WorkBuddyCheckins = provider.HasWorkBuddy(), provider.WorkBuddyCheckins()
 	s.VisionAuto, s.VisionModels = gateway.AutoVision(), []modelRef{}
 	for _, e := range provider.Served() {
 		if e.Images && (e.ImageInput == nil || *e.ImageInput) && (e.Group != "" || e.Provider.Ready()) {

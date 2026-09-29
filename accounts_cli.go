@@ -22,7 +22,7 @@ import (
 // — the subscriptions magpie remembers, how much of each one's allowance is
 // used, and switching the agent between them.
 func accountsCmd(args []string) error {
-	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity] [--json] | magpie accounts add <claude|codex|gemini|antigravity> | magpie accounts refresh [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity> <email> | magpie accounts project <gemini|antigravity> <email> <gcp-project-id>"
+	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity] [--json] | magpie accounts add <claude|codex|gemini|antigravity> | magpie accounts refresh [--json] | magpie accounts checkin [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity> <email> | magpie accounts project <gemini|antigravity> <email> <gcp-project-id>"
 	agentID := func(s string) (string, error) {
 		switch strings.ToLower(s) {
 		case "claude", "cc":
@@ -56,6 +56,9 @@ func accountsCmd(args []string) error {
 	}
 	if len(args) > 1 && args[1] == "refresh" {
 		return refreshAccounts(len(args) > 2 && args[2] == "--json")
+	}
+	if len(args) > 1 && args[1] == "checkin" {
+		return checkinWorkBuddy(len(args) > 2 && args[2] == "--json")
 	}
 	if len(args) > 1 && args[1] == "add" {
 		if len(args) != 3 {
@@ -348,6 +351,58 @@ func refreshAccounts(asJSON bool) error {
 	}
 	if failed > 0 {
 		return fmt.Errorf("%d of %d accounts couldn't be renewed", failed, len(rs))
+	}
+	return nil
+}
+
+// checkinWorkBuddy: `magpie accounts checkin` — WorkBuddy's daily check-in
+// (签到) for each WorkBuddy (China) account not in yet today, now, and how
+// each stands. The setting does it on its own once a day.
+func checkinWorkBuddy(asJSON bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	rs := provider.CheckInWorkBuddy(ctx)
+	if rs == nil {
+		rs = []provider.WorkBuddyCheckin{}
+	}
+	if asJSON {
+		b, _ := json.MarshalIndent(rs, "", "  ")
+		fmt.Println(string(b))
+	}
+	failed := 0
+	for _, r := range rs {
+		if r.Outcome == provider.CheckinFailed {
+			failed++
+		}
+		if asJSON {
+			continue
+		}
+		switch r.Outcome {
+		case provider.CheckinClaimed, provider.CheckinDone:
+			line := fmt.Sprint(green.Render("✓"), " ", r.User, " checked in today")
+			if r.Credit > 0 {
+				line += fmt.Sprintf(" +%g", r.Credit)
+			}
+			if r.Streak > 0 {
+				line += muted.Render(fmt.Sprintf(" · a %d-day streak", r.Streak))
+			}
+			if r.Outcome == provider.CheckinDone || !r.Asked {
+				line += muted.Render(" · already")
+			}
+			fmt.Println(line)
+		case provider.CheckinIneligible:
+			fmt.Println(muted.Render("·"), r.User, muted.Render("not eligible for the check-in"))
+		case provider.CheckinInactive:
+			fmt.Println(muted.Render("·"), r.User, muted.Render("no check-in event now"))
+		default:
+			fmt.Println(muted.Render("✗"), r.User, muted.Render(r.Msg))
+		}
+	}
+	if !asJSON && len(rs) == 0 {
+		fmt.Println(muted.Render("no WorkBuddy (China) account is signed in"))
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d of %d WorkBuddy accounts couldn't check in", failed, len(rs))
 	}
 	return nil
 }
