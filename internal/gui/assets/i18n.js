@@ -205,6 +205,7 @@ const I18N = {
     "free": "免费",
     "free: it doesn't use the plan's credits": "免费：不消耗套餐积分",
     "free: so its name says": "免费：模型名称如此标明",
+    "holds {n} tokens": "上下文 {n} tokens",
     "{n} model": "{n} 个模型",
     "{n} models": "{n} 个模型",
     "{n} image model": "{n} 个图像模型",

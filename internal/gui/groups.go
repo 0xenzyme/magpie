@@ -51,6 +51,7 @@ type modelRef struct {
 	Provider string `json:"provider"`
 	PName    string `json:"providerName"`
 	Icon     string `json:"icon,omitempty"`
+	Context  int    `json:"context,omitempty"` // the tokens it takes, when known
 }
 
 type poolJSON struct {
@@ -118,7 +119,7 @@ func groupsState() groupsJSON {
 	served := provider.Served()
 	for _, e := range served {
 		if e.Group == "" {
-			out.Models = append(out.Models, modelRef{ID: e.ID, Name: e.Name, Provider: e.Provider.ID, PName: e.Provider.Name, Icon: e.Provider.Icon})
+			out.Models = append(out.Models, modelRef{ID: e.ID, Name: e.Name, Provider: e.Provider.ID, PName: e.Provider.Name, Icon: e.Provider.Icon, Context: e.Context})
 		}
 	}
 	for _, g := range provider.Groups() {

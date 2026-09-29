@@ -1301,6 +1301,18 @@ function freeBadge(plan) {
   return f;
 }
 
+// contextTag: the small grey 1M by a model that holds a million tokens or
+// more (Cursor's names said it, and no longer do); the usual 128K–400K
+// aren't marked, as nearly every model has one of those; nor is a name
+// that says it itself ("GPT-5.5 Mini (1M)", kept to tell it from another)
+function contextTag(n, name) {
+  if (!(n >= 1e6) || /\b\d+M\b/.test(name || "")) return null;
+  const m = n / 1e6;
+  const tag = el("span", "badge ctx", (Number.isInteger(m) ? m : m.toFixed(1)) + "M");
+  tag.title = t("holds {n} tokens", { n: n.toLocaleString() });
+  return tag;
+}
+
 function renderList() {
   const list = $("#list");
   list.replaceChildren();
@@ -1319,6 +1331,8 @@ function renderList() {
     const own = pick.field.label === "sign-in";
     words.append(el("span", "v", own ? t(o.label || o.value) : o.label || o.value));
     if (o.free || (pick.modelPicker && o.value && namedFree(o.value, o.label))) words.append(freeBadge(o.free));
+    const ctx = contextTag(o.context, o.label);
+    if (ctx) words.append(ctx);
     let note = o.note && o.note !== (o.label || o.value) ? (own ? t(o.note) : o.note) : "";
     if (q && o.group && !note) note = o.group;
     if (note) words.append(el("span", "n", note));
@@ -1885,7 +1899,7 @@ function gatewayModels() {
   // the routing groups first, as the agents' pickers list them
   const out = (providers.gateway.groups || []).map((g) => ({ id: g.id, name: g.name, icons: g.icons, group: true,
     provider: { name: [t("routing group"), g.providers.join(", ")].filter(Boolean).join(" · ") } }));
-  for (const p of providers.providers) for (const m of p.models) if (m.on) out.push({ id: `${p.id}/${m.id}`, name: m.name, provider: p });
+  for (const p of providers.providers) for (const m of p.models) if (m.on) out.push({ id: `${p.id}/${m.id}`, name: m.name, provider: p, context: m.context });
   return out;
 }
 
@@ -2041,6 +2055,8 @@ function renderGatewayModels() {
     const who = el("div", "who");
     const name = el("div", "name", m.id);
     if (namedFree(m.id, m.name)) name.append(freeBadge(false));
+    const ctx = contextTag(m.context, m.name);
+    if (ctx) name.append(ctx);
     who.append(name, el("div", "sub", m.name && m.name !== m.id.split("/")[1] ? `${m.name} · ${m.provider.name}` : m.provider.name));
     row.append(m.group ? stackIcon(m.icons) : icon(m.provider.icon || "generic"), who, copyBtn(m.id, t("Model id")));
     row.title = t("Use this model in the snippets");
@@ -3355,6 +3371,8 @@ function renderModels(p) {
       // or one its vendor names free (#185)
       const free = m.free || namedFree(m.id, m.name);
       if (free) c.append(el("span", "badge free", t("free")));
+      const ctx = contextTag(m.context, m.name);
+      if (ctx) c.append(ctx);
       if (m.default) c.title = `${m.id} · ${m.default}`;
       else if (m.name && m.name !== m.id) c.title = m.id;
       if (free) c.title = (c.title || m.id) + " · " + t(m.free ? "free: it doesn't use the plan's credits" : "free: so its name says");
