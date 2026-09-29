@@ -1108,8 +1108,29 @@ func markOpenRouterSharedPool(w http.ResponseWriter) {
 	}
 }
 
-// forward sends a request to the provider.
+// forward sends a request to the provider. On Anthropic's messages, a
+// provider that turns away betas it doesn't know by name (Bedrock's: 400
+// Unexpected value(s) `x` for the `anthropic-beta` header) is asked again
+// once without them, and they're left out for it from then on.
 func (s *Server) forward(ctx context.Context, p provider.Provider, to provider.Protocol, path string, body []byte, in http.Header) (*http.Response, error) {
+	res, err := s.forwardOnce(ctx, p, to, path, body, in)
+	if err != nil || to != provider.Anthropic || res.StatusCode != http.StatusBadRequest {
+		return res, err
+	}
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	res.Body.Close()
+	res.Body = io.NopCloser(bytes.NewReader(b))
+	if len(s.refuseBetas(p, b)) == 0 {
+		return res, nil
+	}
+	return s.forwardOnce(ctx, p, to, path, body, in)
+}
+
+// forwardOnce is one request to the provider, as forward makes it.
+func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provider.Protocol, path string, body []byte, in http.Header) (*http.Response, error) {
+	if to == provider.Anthropic {
+		body = s.bodyBetas(p, body)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Base(to)+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -1133,6 +1154,11 @@ func (s *Server) forward(ctx context.Context, p provider.Provider, to provider.P
 					req.Header[k] = slices.Clone(vs)
 				}
 			}
+		}
+		if bs := s.betas(p, in.Values("anthropic-beta")); len(bs) > 0 {
+			req.Header.Set("anthropic-beta", strings.Join(bs, ","))
+		} else {
+			req.Header.Del("anthropic-beta")
 		}
 	}
 	if p.IsOpenCode() {

@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -134,5 +136,102 @@ func TestBedrockRoutes(t *testing.T) {
 		if c.path != "/anthropic/v1/messages" && c.path != "/openai/v1/chat/completions" {
 			t.Errorf("asked at %s", c.path)
 		}
+	}
+}
+
+// betaBedrock is a Bedrock runtime that, as the real one does, turns away
+// the whole request for an anthropic-beta it doesn't know, naming them.
+type betaBedrock struct {
+	bedrock
+	known []string
+}
+
+func (b *betaBedrock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var bad []string
+	for _, v := range strings.Split(r.Header.Get("anthropic-beta"), ",") {
+		if v = strings.TrimSpace(v); v != "" && !slices.Contains(b.known, v) {
+			bad = append(bad, "`"+v+"`")
+		}
+	}
+	if len(bad) > 0 {
+		body, _ := io.ReadAll(r.Body)
+		var m map[string]any
+		json.Unmarshal(body, &m)
+		b.mu.Lock()
+		b.calls = append(b.calls, bedrockCall{r.URL.Path, r.Header.Clone(), "", m})
+		b.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, `{"type":"error","error":{"type":"invalid_request_error","message":"Unexpected value(s) `+strings.Join(bad, ", ")+" for the `anthropic-beta` header. Please consult our documentation at platform.claude.com/docs or try again without the header.\"}}")
+		return
+	}
+	b.bedrock.ServeHTTP(w, r)
+}
+
+// Claude Code's betas at Bedrock (#176: 400 Unexpected value(s)
+// `advanced-tool-use-2025-11-20`, `prompt-caching-scope-2026-01-05`,
+// `redact-thinking-2026-02-12` for the `anthropic-beta` header): tool
+// search is asked by Bedrock's name for it, the ones Bedrock refuses are
+// left out, and one it refuses that magpie didn't know of is dropped on a
+// second try and not sent again.
+func TestBedrockBetas(t *testing.T) {
+	fresh(t)
+	up := &betaBedrock{known: []string{"claude-code-20250219", "interleaved-thinking-2025-05-14",
+		"context-management-2025-06-27", "tool-search-tool-2025-10-19"}}
+	srv := httptest.NewServer(up)
+	t.Cleanup(srv.Close)
+	p, err := provider.FromPreset("bedrock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Key = "ABSK-test"
+	p.Anthropic, p.Chat = srv.URL+"/anthropic", srv.URL+"/openai/v1"
+	p.Models = []string{"global.anthropic.claude-opus-5-5"}
+	if err := provider.Save(p); err != nil {
+		t.Fatal(err)
+	}
+	s := New()
+	ask := func(body string) (int, string) {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/v1/messages?beta=true", strings.NewReader(body))
+		req.Header.Set("User-Agent", "claude-cli/2.1.90 (external, cli)")
+		req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,"+
+			"advanced-tool-use-2025-11-20,prompt-caching-scope-2026-01-05,redact-thinking-2026-02-12,brand-new-2026-09-01")
+		s.Handler().ServeHTTP(rec, req)
+		return rec.Code, rec.Body.String()
+	}
+	calls := func() int {
+		up.mu.Lock()
+		defer up.mu.Unlock()
+		return len(up.calls)
+	}
+	msg := `{"model":"bedrock/global.anthropic.claude-opus-5-5","max_tokens":20,"stream":true,"messages":[{"role":"user","content":"hi"}]}`
+	want := "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,tool-search-tool-2025-10-19"
+
+	code, body := ask(msg)
+	if code != 200 || !strings.Contains(body, "from claude") {
+		t.Fatalf("status %d: %s", code, body)
+	}
+	if n := calls(); n != 2 || up.last().head.Get("anthropic-beta") != want {
+		t.Fatalf("%d calls, betas %q", n, up.last().head.Get("anthropic-beta"))
+	}
+
+	// the one it refused isn't asked again
+	code, body = ask(msg)
+	if code != 200 || !strings.Contains(body, "from claude") {
+		t.Fatalf("again: status %d: %s", code, body)
+	}
+	if n := calls(); n != 3 || up.last().head.Get("anthropic-beta") != want {
+		t.Fatalf("again: %d calls, betas %q", n, up.last().head.Get("anthropic-beta"))
+	}
+
+	// betas in the body are fitted alike
+	code, body = ask(`{"model":"bedrock/global.anthropic.claude-opus-5-5","max_tokens":20,"stream":true,` +
+		`"anthropic_beta":["redact-thinking-2026-02-12","brand-new-2026-09-01","context-1m-2025-08-07"],"messages":[{"role":"user","content":"hi"}]}`)
+	if code != 200 {
+		t.Fatalf("body betas: status %d: %s", code, body)
+	}
+	if got := up.last().body["anthropic_beta"]; !reflect.DeepEqual(got, []any{"context-1m-2025-08-07"}) {
+		t.Fatalf("body betas sent: %v", got)
 	}
 }
