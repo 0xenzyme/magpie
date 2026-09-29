@@ -583,7 +583,8 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				return
 			}
 			if len(req.Test) > 0 {
-				ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+				// an image model's test draws a picture, which takes longer
+				ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 				defer cancel()
 				writeJSON(rw, map[string]any{"results": p.TestModels(ctx, req.Test)})
 				return
