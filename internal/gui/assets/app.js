@@ -7540,8 +7540,20 @@ function applyPrefs(s, rate) {
   return was !== locale;
 }
 
+// Omarchy's bar: magpie's icon there as a widget of its own (Settings → Bar
+// icon), offered only in the app on Omarchy
+let barIcon = null;
+function renderBarIcon() {
+  $("#barIconRow").hidden = !barIcon?.available;
+  if (!barIcon?.available) return;
+  $("#barIconSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], barIcon.on ? "on" : "off", (v) =>
+    api("omarchy/widget", { on: v === "on" }).then((b) => { barIcon = b; renderBarIcon(); })
+      .catch((e) => { status(t(e.message), "err"); renderBarIcon(); })));
+}
+
 async function loadSettings() {
   const since = prefsWrites;
+  if (window.bootPrefs?.omarchy && !barIcon) api("omarchy/widget").then((b) => { barIcon = b; renderBarIcon(); }).catch(() => {});
   const s = await api("settings");
   if (!prefsSettled(since) && prefs) return; // the save draws the page when it's in
   prefs = s;
@@ -7638,6 +7650,7 @@ function renderSettings() {
   $("#dockSegs").replaceChildren(segs([["off", t("Hide")], ["window", t("With window")], ["on", t("Show")]],
     s.dock ? "on" : s.dockWindow ? "window" : "off", (v) => savePrefs({ ...keep, dock: v === "on", dockWindow: v === "window" })));
   renderSessionTerminal(s, keep);
+  renderBarIcon();
   // the system's record, set on its own, not with the other choices
   $("#loginSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.login ? "on" : "off", (v) =>
     writingPrefs(api("settings/login", { on: v === "on" })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));

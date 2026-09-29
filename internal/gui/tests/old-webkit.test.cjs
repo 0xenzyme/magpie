@@ -132,9 +132,12 @@ test("no built-in newer than Safari 15.0 unless compat.js fills it in", async ()
 
 test("compat.js is the first of the page's own scripts", async () => {
   const html = await read("index.html");
-  const srcs = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]).filter((s) => s !== "boot.js");
+  // boot.js and omarchy.js run in the head, before the first paint:
+  // omarchy.js does nothing off Omarchy, whose WebKitGTK is a current one
+  const all = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
+  const srcs = all.filter((s) => s !== "boot.js" && s !== "omarchy.js");
   assert.equal(srcs[0], "compat.js", "loaded first: " + srcs.join(", "));
-  for (const f of await scripts()) assert(srcs.includes(f), f + " is not loaded by index.html");
+  for (const f of await scripts()) assert(all.includes(f), f + " is not loaded by index.html");
 });
 
 test("the styles hold up in Safari 15.0", async () => {

@@ -20,6 +20,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/yetone/magpie/internal/library"
+	"github.com/yetone/magpie/internal/omarchy"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/shortcut"
 	"github.com/yetone/magpie/internal/stats"
@@ -72,6 +73,8 @@ type host struct {
 	panelHeight int          // the panel's, in points
 	panelPage   int          // what its page last asked for, in CSS pixels
 	textSize    atomic.Int64 // Settings' text size, in percent (settings.TextSizes)
+	hyprRoom    int          // how tall it may grow under Hyprland's bar; 0 elsewhere
+	clicks      sync.Once    // Hyprland's clicks heard, to close the panel on one outside it
 	glides      atomic.Int64 // the newest panel glide; older ones stop
 	query       string       // what the windows' URLs carry (a forced theme)
 
@@ -125,6 +128,10 @@ func (h *host) ChooseFolder(title string) (string, error) {
 		SetTitle(title).AttachToWindow(h.main).PromptForSingleSelection()
 }
 
+// panelTitle names the panel for Hyprland's rule, which places it (the
+// main window is "magpie")
+const panelTitle = "magpie panel"
+
 // FitPanel grows or shrinks the panel to its content and keeps it anchored
 // under the tray icon; a shown panel glides there when g says how. height
 // is the page's, in its CSS pixels: at a larger text size the panel is
@@ -155,6 +162,9 @@ func (h *host) panelW() int { return zoomed(panelWidth, h.zoom()) }
 // panelRoom is how tall the panel can be on its screen: the work area,
 // less the gap under the menu bar (or over the taskbar) and a little air.
 func (h *host) panelRoom() int {
+	if h.hyprRoom > 0 { // under Hyprland's bar, down to the work area's foot
+		return h.hyprRoom
+	}
 	if _, rh := screenRoom(h.panel); rh > 0 {
 		return rh - 16
 	}
@@ -358,6 +368,11 @@ func Run(version string, showMain bool, link string) error {
 	}()
 
 	h.tray = h.app.SystemTray.New()
+	if runtime.GOOS == "linux" {
+		// set before the tray starts, it is the item's id too, which
+		// Omarchy's bar pins it by (Wails calls it "Wails" otherwise)
+		h.tray.SetLabel("magpie")
+	}
 	h.tray.SetTooltip("magpie")
 	if runtime.GOOS == "darwin" {
 		h.tray.SetTemplateIcon(trayIcon)
@@ -377,7 +392,7 @@ func Run(version string, showMain bool, link string) error {
 			h.ShowMain("")
 			return
 		}
-		h.tray.ToggleWindow()
+		h.togglePanel()
 	})
 
 	// Wails shows a Windows webview 3s after Show whether or not WebView2
@@ -389,6 +404,7 @@ func Run(version string, showMain bool, link string) error {
 	} else {
 		h.app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 			plainTitlebar(h.main) // Linux: the page's header is the title bar
+			nameWindow(h.panel, panelTitle)
 			markReady()
 		})
 	}
@@ -400,6 +416,9 @@ func Run(version string, showMain bool, link string) error {
 	}
 	if showMain {
 		h.whenReady(func() { h.ShowMain("") })
+	}
+	if OpenPanel {
+		h.whenReady(func() { application.InvokeAsync(h.togglePanel) })
 	}
 	if link != "" {
 		h.Import(link)
@@ -439,6 +458,8 @@ func singleInstance(h *host) *application.SingleInstanceOptions {
 			case ImportLink(args) != "":
 				h.Import(ImportLink(args))
 			case len(args) == 1 && args[0] == "tray":
+			case len(args) == 1 && args[0] == "panel":
+				h.whenReady(func() { application.InvokeAsync(h.togglePanel) })
 			default:
 				h.whenReady(func() { h.ShowMain("") })
 			}
@@ -507,4 +528,60 @@ func panelOptions(goos, theme string) application.WebviewWindowOptions {
 		o.CloseButtonState = application.ButtonHidden
 	}
 	return o
+}
+
+// OpenPanel has Run open the quick panel once it starts, as `magpie panel`
+// does; a second `magpie panel` toggles it in the running one. Omarchy's bar
+// icon runs it (see omarchy.AddWidget).
+var OpenPanel bool
+
+// togglePanel opens the quick panel by the tray icon, or closes it.
+func (h *host) togglePanel() {
+	if omarchy.Hyprland() {
+		if h.panel.IsVisible() {
+			h.hidePanel()
+			return
+		}
+		h.placePanel()
+	}
+	h.tray.ToggleWindow()
+}
+
+// placePanel puts the panel, about to open, under Hyprland's bar at the
+// click, the way Omarchy's own drop-downs sit: a Wayland window can't place
+// itself, so Hyprland is given a rule for it (see omarchy.PlacePanel).
+func (h *host) placePanel() {
+	x, y, room, ok := omarchy.PanelAt(h.panelW())
+	if !ok {
+		return
+	}
+	if err := omarchy.PlacePanel(panelTitle, x, y); err != nil {
+		log.Println("hyprland:", err)
+		return
+	}
+	h.hyprRoom = room
+	h.clicks.Do(func() {
+		go omarchy.WatchClicks(func() {
+			switch {
+			case !h.panel.IsVisible(): // Escape closed it
+				omarchy.StopClicks()
+			case omarchy.ClickedOutside(panelTitle):
+				application.InvokeAsync(h.hidePanel)
+			}
+		})
+	})
+	if err := omarchy.ReportClicks(); err != nil {
+		log.Println("hyprland:", err)
+	}
+	if _, ht := h.panel.Size(); ht > room && room >= panelMin {
+		h.panelHeight = room
+		h.panel.SetSize(h.panelW(), room)
+	}
+}
+
+// hidePanel closes the panel on Hyprland, where it has no focus-lost to
+// close on (see omarchy.ReportClicks).
+func (h *host) hidePanel() {
+	h.panel.Hide()
+	go omarchy.StopClicks()
 }

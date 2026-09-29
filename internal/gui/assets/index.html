@@ -5,9 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>magpie</title>
 <script src="boot.js"></script>
+<script src="omarchy.js"></script>
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="routing.css">
 <link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="omarchy.css">
 </head>
 <body>
 <header class="top" style="--wails-draggable:drag">
@@ -158,8 +160,8 @@
   <div class="row-head"><span class="label" data-t>Preferences</span></div>
   <div class="list prefs">
     <div class="row pref">
-      <div class="who"><div class="name" data-t>Appearance</div><div class="sub" data-t>Light or dark, or whatever the system is showing</div></div>
-      <div id="themeSegs"></div>
+      <div class="who"><div class="name" data-t>Appearance</div><div class="sub om-hide" data-t>Light or dark, or whatever the system is showing</div><div class="sub om-only" data-t>Follows the Omarchy theme, as picked in Omarchy's menu</div></div>
+      <div id="themeSegs" class="om-hide"></div><span class="om-only om-theme-name"></span>
     </div>
     <div class="row pref">
       <div class="who"><div class="name" data-t>Language</div><div class="sub" data-t>Applies at once, no restart</div></div>
@@ -172,6 +174,10 @@
     <div class="row pref">
       <div class="who"><div class="name" data-t>Tray icon</div><div class="sub" data-t>What clicking magpie’s icon in the menu bar or tray opens</div></div>
       <div id="traySegs"></div>
+    </div>
+    <div class="row pref" id="barIconRow" hidden>
+      <div class="who"><div class="name" data-t>Bar icon</div><div class="sub" data-t>magpie’s icon beside Omarchy’s own in the bar; right-click opens the window</div></div>
+      <div id="barIconSegs"></div>
     </div>
     <div class="row pref" id="trayUsageRow">
       <div class="who"><div class="name" data-t>Usage in the menu bar</div><div class="sub" id="trayUsageSub"></div></div>

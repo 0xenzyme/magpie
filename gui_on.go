@@ -15,3 +15,11 @@ func runGUI(showMain bool, link string) error {
 	proc.UserPath()
 	return gui.Run(version, showMain, link)
 }
+
+// runPanel starts the app with its quick panel open, or toggles the panel
+// of the one already running.
+func runPanel() error {
+	proc.UserPath()
+	gui.OpenPanel = true
+	return gui.Run(version, false, "")
+}

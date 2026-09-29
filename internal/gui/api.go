@@ -267,11 +267,26 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		s := settings.Load()
 		// and the text size, which the Mac's header measures against the
 		// traffic lights
-		b, _ := json.Marshal(map[string]any{"lang": s.Lang, "theme": s.Theme, "textSize": s.TextSize, "web": isWeb(w)})
+		boot := map[string]any{"lang": s.Lang, "theme": s.Theme, "textSize": s.TextSize, "web": isWeb(w)}
+		// on Omarchy the page takes its theme's look before it paints
+		if th, ok := omarchyTheme(); ok {
+			boot["omarchy"] = th
+		}
+		b, _ := json.Marshal(boot)
 		rw.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		rw.Header().Set("Cache-Control", "no-store")
 		rw.Write(append(append([]byte("window.bootPrefs = "), b...), ";\n"...))
 	})
+	// the Omarchy theme as it is now, asked again every few seconds so a
+	// theme picked in Omarchy's menu reaches the page at once; null off Omarchy
+	mux.HandleFunc("GET /api/omarchy", func(rw http.ResponseWriter, r *http.Request) {
+		if th, ok := omarchyTheme(); ok {
+			writeJSON(rw, th)
+			return
+		}
+		writeJSON(rw, nil)
+	})
+	omarchyRoutes(mux, w)
 	mux.HandleFunc("GET /api/state", func(rw http.ResponseWriter, r *http.Request) {
 		writeJSON(rw, state())
 	})
