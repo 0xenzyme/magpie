@@ -215,14 +215,15 @@ var presets = []PresetDef{
 	// Amazon Bedrock (#176), with a Bedrock API key (AWS_BEARER_TOKEN_BEDROCK),
 	// no SigV4: its runtime serves Claude on Anthropic's messages at
 	// /anthropic/v1/messages and the other models on chat completions at
-	// /openai/v1, each in the region picked. It has no list to ask, so the
+	// /openai/v1, and OpenAI's GPT models (not gpt-oss) on the Responses
+	// API there too, each in the region picked. It has no list to ask, so the
 	// models are given: Claude and GPT-6 as their global. inference
 	// profiles, which every commercial region routes (GPT-6 has no in-region
 	// id there), then the in-region ids of the others, which not every
 	// region serves (gpt-oss isn't in ap-southeast-1); one kept in a
 	// geography (us., eu., apac., jp., au.) is typed in by hand.
 	{ID: "bedrock", Name: "Amazon Bedrock", Icon: "bedrock-color", Kind: KindVendor,
-		Chat: bedrockChat("us-east-1"), Anthropic: bedrockAnthropic("us-east-1"),
+		Chat: bedrockChat("us-east-1"), Responses: bedrockChat("us-east-1"), Anthropic: bedrockAnthropic("us-east-1"),
 		Note:    "Bedrock API key",
 		Website: "https://aws.amazon.com/bedrock/", KeysURL: "https://console.aws.amazon.com/bedrock/home#/api-keys",
 		Regions: bedrockRegions("us-east-1", "us-east-2", "us-west-2", "eu-central-1", "eu-west-1", "eu-west-3",
@@ -343,7 +344,7 @@ func bedrockAnthropic(region string) string {
 func bedrockRegions(ids ...string) []Region {
 	out := make([]Region, len(ids))
 	for i, id := range ids {
-		out[i] = Region{ID: id, Name: id, Chat: bedrockChat(id), Anthropic: bedrockAnthropic(id)}
+		out[i] = Region{ID: id, Name: id, Chat: bedrockChat(id), Responses: bedrockChat(id), Anthropic: bedrockAnthropic(id)}
 	}
 	return out
 }

@@ -15,10 +15,11 @@ func TestBedrockPreset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// the runtime's own endpoints: /openai/v1 for chat completions, and
-	// /anthropic under which the gateway's /v1/messages is Bedrock's
+	// the runtime's own endpoints: /openai/v1 for chat completions and
+	// Responses, and /anthropic under which the gateway's /v1/messages is
+	// Bedrock's
 	if p.Chat != "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1" ||
-		p.Anthropic != "https://bedrock-runtime.us-east-1.amazonaws.com/anthropic" || p.Responses != "" {
+		p.Anthropic != "https://bedrock-runtime.us-east-1.amazonaws.com/anthropic" || p.Responses != p.Chat {
 		t.Fatalf("endpoints: %q %q %q", p.Chat, p.Responses, p.Anthropic)
 	}
 	if !p.IsBedrock() || p.Icon != "bedrock-color" {
@@ -30,7 +31,8 @@ func TestBedrockPreset(t *testing.T) {
 	}
 	i := slices.IndexFunc(pr.Regions, func(r Region) bool { return r.ID == "ap-southeast-1" })
 	if i < 0 || pr.Regions[i].Anthropic+"/v1/messages" != "https://bedrock-runtime.ap-southeast-1.amazonaws.com/anthropic/v1/messages" ||
-		pr.Regions[i].Chat+"/chat/completions" != "https://bedrock-runtime.ap-southeast-1.amazonaws.com/openai/v1/chat/completions" {
+		pr.Regions[i].Chat+"/chat/completions" != "https://bedrock-runtime.ap-southeast-1.amazonaws.com/openai/v1/chat/completions" ||
+		pr.Regions[i].Responses+"/responses" != "https://bedrock-runtime.ap-southeast-1.amazonaws.com/openai/v1/responses" {
 		t.Fatalf("Singapore: %+v", pr.Regions)
 	}
 
@@ -51,6 +53,19 @@ func TestBedrockPreset(t *testing.T) {
 		if got := p.Native(model); got != want {
 			t.Errorf("%s: Native %s, want %s", model, got, want)
 		}
+	}
+
+	// OpenAI's GPT models on Responses first, chat completions too (#176:
+	// tools with reasoning are refused on chat)
+	for _, model := range []string{"global.openai.gpt-6-luna", "us.openai.gpt-6-sol"} {
+		if got := p.APIs(model); !slices.Equal(got, []Protocol{Responses, Chat}) || p.Native(model) != Responses {
+			t.Errorf("%s: APIs %v, Native %s", model, got, p.Native(model))
+		}
+	}
+	// saved before the preset had Responses: given it where chat is
+	old := normalize(Provider{ID: "bedrock", Preset: "bedrock", Key: "k", Chat: "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1"})
+	if old.Responses != old.Chat || old.Native("global.openai.gpt-6-luna") != Responses {
+		t.Errorf("old provider: %+v", old)
 	}
 
 	// no list to ask: the preset's models, without a request
@@ -98,6 +113,9 @@ func TestBedrockAuth(t *testing.T) {
 	}
 	if h := AuthHeaders(p, Chat); h["Authorization"] != "Bearer ABSK-key" {
 		t.Fatalf("chat: %v", h)
+	}
+	if h := AuthHeaders(p, Responses); h["Authorization"] != "Bearer ABSK-key" {
+		t.Fatalf("responses: %v", h)
 	}
 }
 

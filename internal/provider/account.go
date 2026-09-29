@@ -80,10 +80,15 @@ func (p Provider) APIs(model string) []Protocol {
 		}
 	}
 	// Bedrock has no list to say it: Claude is served on Anthropic's
-	// messages alone, every other model on chat completions alone
+	// messages alone, OpenAI's GPT models on Responses and chat
+	// completions, every other model (gpt-oss too) on chat completions
+	// alone
 	if p.IsBedrock() {
 		if bedrockClaude(model) {
 			return []Protocol{Anthropic}
+		}
+		if bedrockGPT(model) && p.Responses != "" {
+			return []Protocol{Responses, Chat}
 		}
 		return []Protocol{Chat}
 	}

@@ -1269,6 +1269,18 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			}
 		}
 	}
+	if proto == provider.Chat && res.StatusCode == http.StatusBadRequest && bodyEffort(proto, body) != "none" {
+		// tools with reasoning refused on chat, and no Responses API to
+		// take them to: asked again without reasoning (#176)
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		res.Body.Close()
+		res.Body = io.NopCloser(bytes.NewReader(b))
+		if toolsWithoutEffort.Match(b) && !s.servesElsewhere(p, model, proto) {
+			if res, err = s.forward(r.Context(), p, proto, path, p.Prepare(withBodyEffort(proto, body, "none")), r.Header); err != nil {
+				return writeError(w, proto, 502, p.Name+": "+err.Error()), err.Error(), true
+			}
+		}
+	}
 	if proto == provider.Anthropic && res.StatusCode == http.StatusBadRequest {
 		// a model that always thinks refuses thinking turned off: asked
 		// again with it left to the model
@@ -1441,6 +1453,14 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 		res.Body.Close()
 		res.Body = io.NopCloser(bytes.NewReader(b))
+		if to == provider.Chat && res.StatusCode == http.StatusBadRequest && req.Effort != "none" &&
+			toolsWithoutEffort.Match(b) && !s.servesElsewhere(p, model, to) {
+			// tools with reasoning refused on chat, and no Responses API
+			// to take them to: asked again without reasoning (#176)
+			r := *req
+			r.Effort, req = "none", &r
+			continue
+		}
 		if req.CacheKey != "" && badRequest(res.StatusCode) && !wrongEndpoint(res.StatusCode, b) {
 			// a vendor that turns away fields it doesn't know is asked again
 			// without the cache key, and not sent it again once that works —
@@ -1465,6 +1485,20 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 		}
 		to = next[0]
 	}
+}
+
+// toolsWithoutEffort is a chat completions endpoint refusing function tools
+// with reasoning, which it takes on Responses or with reasoning_effort
+// "none": Bedrock's for its GPT models (#176: "Function tools with
+// reasoning_effort are not supported for global.openai.gpt-6-luna in
+// /v1/chat/completions. To use function tools, use /v1/responses or set
+// reasoning_effort to 'none'.").
+var toolsWithoutEffort = regexp.MustCompile(`(?is)tools with reasoning_effort are not supported.*reasoning_effort to .?none`)
+
+// servesElsewhere reports whether p serves model on an API besides proto
+// that hasn't turned it away.
+func (s *Server) servesElsewhere(p provider.Provider, model string, proto provider.Protocol) bool {
+	return slices.ContainsFunc(s.usable(p, model), func(x provider.Protocol) bool { return x != proto })
 }
 
 // cacheKeyField is the client's prompt cache key as a request carries it
