@@ -117,6 +117,21 @@ kiro-cli's own sign-in behind one of magpie's, then alone and first: its
 Remove is there both times, its title saying magpie only hides it and it
 shows again when Kiro signs in anew, and it posts login/forget; magpie's
 own account in use first has no Remove; in English and Chinese.
+`old-webkit.test.cjs` holds the page to Safari 15.0, the WebKit macOS 12 can
+have (#220: a regex lookbehind in app.js, a syntax error before Safari 16.4,
+left the panel with its headings and nothing working). Every script in
+`assets/` is parsed (with the Babel parser Playwright bundles) and may have
+no regex lookbehind, v flag or modifiers, class static block, decorator,
+import attributes or `using`, in a literal or `new RegExp("…")`; no built-in
+newer than 15.0 (`.at`, `findLast`, `structuredClone`, `Object.hasOwn`,
+`toSorted`, Set methods, `Object.groupBy`, `Promise.withResolvers` …) unless
+`compat.js`, loaded before the rest, fills it in; the styles no `:has()`, no
+`:focus-visible` in a list with other selectors, no nesting or dvh units, and
+container queries, `subgrid` columns and a `color-mix()` custom property
+only with an `@supports not (…)` fallback in the same file. Then, in WebKit
+with those built-ins deleted, the panel's tabs and the window's pages are
+drawn with no page error. It cannot run an old engine, so syntax is judged
+by the parse, not by running it.
 
 `usage-ledger.test.cjs` opens the Usage page's Requests, a row per request
 from a faked `/api/usage/requests`: the columns, the model asked for, the
@@ -145,7 +160,7 @@ projects.
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs internal/gui/tests/usage-ledger.test.cjs internal/gui/tests/update-check.test.cjs internal/gui/tests/routing-steady.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs internal/gui/tests/usage-ledger.test.cjs internal/gui/tests/update-check.test.cjs internal/gui/tests/routing-steady.test.cjs internal/gui/tests/old-webkit.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

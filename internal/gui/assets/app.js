@@ -438,6 +438,7 @@ function renderProfiles() {
   const chips = $("#profiles");
   chips.replaceChildren();
   $(".profiles > .chip-input")?.remove(); // a name field open goes with the list it was for
+  $(".profiles").classList.remove("naming");
   $("#save").textContent = t("＋ Save current");
   if (!state.profiles.length) chips.append(el("span", "hint", t("none yet · save the setup to switch back in one click")));
   for (const p of state.profiles) {
@@ -1629,7 +1630,7 @@ const saveCurrent = $("#save");
 const saveField = () => $(".profiles > .chip-input");
 const closeSave = (input) => {
   input.remove();
-  if (!saveField()) saveCurrent.textContent = t("＋ Save current");
+  if (!saveField()) { saveCurrent.textContent = t("＋ Save current"); $(".profiles").classList.remove("naming"); }
 };
 saveCurrent.onmousedown = (e) => { if (saveField()) e.preventDefault(); }; // the field keeps focus
 saveCurrent.onclick = () => {
@@ -1648,6 +1649,7 @@ saveCurrent.onclick = () => {
   };
   input.onblur = () => setTimeout(() => closeSave(input), 100);
   saveCurrent.before(input);
+  $(".profiles").classList.add("naming"); // for the panel's hint: :has() came in Safari 15.4 (#220)
   saveCurrent.textContent = t("Save");
   input.focus({ preventScroll: true });
 };
@@ -2164,11 +2166,23 @@ const KEYWORDS = {
 function highlight(code, lang) {
   const re = lang === "node"
     ? /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\/\/.*)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)(?=\s*\()|([A-Za-z_$][\w$]*)|(\s+|.)/g
-    : /("(?:[^"\\]|\\.)*"|'[^']*'|(?<==)\S+)|(#.*)|(\b\d+(?:\.\d+)?\b(?=[,\s\]}]))|(-{1,2}[A-Za-z][\w-]*)|([A-Z][A-Z0-9_]+)(?==)|([A-Za-z_][\w.]*)(?=\s*\()|([A-Za-z_][\w.]*)|(\\\n|`\n)|(\s+|.)/g;
+    : /("(?:[^"\\]|\\.)*"|'[^']*')|(#.*)|(\b\d+(?:\.\d+)?\b(?=[,\s\]}]))|(-{1,2}[A-Za-z][\w-]*)|([A-Z][A-Z0-9_]+)(?==)|([A-Za-z_][\w.]*)(?=\s*\()|([A-Za-z_][\w.]*)|(\\\n|`\n)|(\s+|.)/g;
   const out = document.createDocumentFragment();
   const kw = KEYWORDS[lang] || KEYWORDS.shell;
   let m;
   while ((m = re.exec(code))) {
+    // an unquoted value after "=" is a string too; found here, as a
+    // lookbehind in the pattern is a syntax error before Safari 16.4 (#220)
+    if (lang !== "node" && !m[1] && code[m.index - 1] === "=") {
+      const v = /\S+/y;
+      v.lastIndex = m.index;
+      const s = v.exec(code);
+      if (s) {
+        out.append(el("span", "tk-s", s[0]));
+        re.lastIndex = m.index + s[0].length;
+        continue;
+      }
+    }
     let cls = "";
     if (lang === "node") {
       if (m[1]) cls = "s"; else if (m[2]) cls = "c"; else if (m[3]) cls = "n";
@@ -4190,6 +4204,7 @@ function renderAccounts(a) {
       row.append(forget, use);
     }
     row.append(accountQuota(l.lapsed ? { [l.user]: { error: l.lapsed } } : quota, l.user));
+    row.classList.add("with-aq"); // not :has(.aq), which Safari 15.0 lacks (#220)
     list.append(row);
   }
   if (a.agent === "codex" && providers?.codexDaemon) list.append(renderCodexDaemon(providers.codexDaemon));
