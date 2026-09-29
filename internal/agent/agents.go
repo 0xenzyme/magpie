@@ -273,7 +273,7 @@ func magpieProviderJSONFor(shape, catalog string) any {
 			if m.Images {
 				e["input"] = []string{"text", "image"}
 			}
-			if levels := piThinkingLevels(m.Efforts); levels != nil {
+			if levels := piThinkingLevels(m.Efforts, e["api"] == "anthropic-messages"); levels != nil {
 				e["thinkingLevelMap"] = levels
 			}
 			// without it Pi takes every model for a 128K one, and compacts
@@ -314,18 +314,37 @@ func openCodeVariants(efforts []string) map[string]any {
 	return out
 }
 
-// piThinkingLevels is the thinkingLevelMap for a model's efforts. Pi offers
-// xhigh and max only for models that map them, so without it a model whose
-// top level is max stopped at high in Pi.
-func piThinkingLevels(efforts []string) map[string]any {
-	var levels map[string]any
-	for _, e := range efforts {
-		if e == "xhigh" || e == "max" {
-			if levels == nil {
-				levels = map[string]any{}
-			}
-			levels[e] = e
+// piThinkingLevels is the thinkingLevelMap for a model's efforts: every one
+// of Pi's levels (piLevels, pi-ai's EXTENDED_THINKING_LEVELS), the model's
+// own mapped to themselves and the others null. Pi builds /thinking from
+// the map (getSupportedThinkingLevels): a level set to null is hidden and
+// skipped, while one left out is offered (all but xhigh and max), so a map
+// naming only max had Pi offer minimal and medium too, which the vendor
+// turned away (#243). Pi's off is the model's none when it takes one. A
+// model without none has off hidden — Pi's off asks a Responses model for
+// effort none and leaves a Chat model on the vendor's default thinking —
+// except on Anthropic's Messages API, where Pi's off sends thinking
+// disabled, which Claude takes whatever its levels; there off is left out,
+// for Pi to offer as before. A model whose levels magpie doesn't know gets
+// no map: Pi's own defaults, as before.
+func piThinkingLevels(efforts []string, anthropic bool) map[string]any {
+	if len(efforts) == 0 {
+		return nil
+	}
+	levels := map[string]any{}
+	for _, l := range piLevels {
+		e := l
+		if l == "off" {
+			e = "none"
 		}
+		if slices.Contains(efforts, e) {
+			levels[l] = e
+		} else {
+			levels[l] = nil
+		}
+	}
+	if levels["off"] == nil && anthropic {
+		delete(levels, "off")
 	}
 	return levels
 }
