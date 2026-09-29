@@ -1777,8 +1777,8 @@ function accountPlan(a) {
 // copy asks magpie to put text on the clipboard, as the page's own
 // clipboard API is refused inside the app's window; a browser tab on the
 // dev UI falls back to it.
-async function copy(text, what, btn) {
-  const done = () => { status(t("{what} copied", { what }), "ok"); flashCopied(btn); };
+async function copy(text, what, btn, message) {
+  const done = () => { status(message || t("{what} copied", { what }), "ok"); flashCopied(btn); };
   const res = await fetch("/api/copy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) }).catch(() => null);
   if (res && res.ok) return done();
   try { await navigator.clipboard.writeText(text); done(); }
@@ -1804,11 +1804,11 @@ function flashCopied(b) {
   }, 1200);
 }
 
-function copyBtn(text, what) {
+function copyBtn(text, what, message) {
   const b = el("button", "copy");
   b.title = t("Copy");
   b.append(svg(COPY_ICON, 12, 1.5));
-  b.onclick = (ev) => { ev.stopPropagation(); copy(text, what, b); };
+  b.onclick = (ev) => { ev.stopPropagation(); copy(text, what, b, message); };
   return b;
 }
 
@@ -6423,6 +6423,7 @@ function renderRedactRules(s, row) {
 
 // renderLAN: the gateway shared on the local network, for agents on other
 // machines — the addresses they use it at and the key they must send.
+let lanSelectedURL = "", lanProtocol = "openai";
 function renderLAN(s) {
   const box = $("#lanList");
   box.replaceChildren();
@@ -6436,6 +6437,7 @@ function renderLAN(s) {
     val.append(...tools);
     r.append(who, val);
     box.append(r);
+    return r;
   };
   const set = (body) => writingPrefs(api("settings/lan", body)).then((ns) => { prefs = ns; renderSettings(); })
     .catch((e) => { status(t(e.message), "err"); renderSettings(); });
@@ -6444,7 +6446,38 @@ function renderLAN(s) {
   if (!s.lan) return;
   const urls = s.lanURLs || [];
   if (!urls.length) row(t("Address"), t("This computer has no local network address right now"), "");
-  for (const u of urls) row(t("Address"), t("OpenAI: {u}/v1 · Anthropic: {u}", { u }), u, copyBtn(u, t("Address")));
+  else {
+    if (!urls.includes(lanSelectedURL)) lanSelectedURL = urls[0];
+    const controls = el("div", "lan-address-controls");
+    const address = urls.length === 1 ? el("code", "lan-address-text") : el("button", "proto pick lan-interface");
+    if (urls.length > 1) {
+      address.type = "button";
+      address.setAttribute("aria-label", t("Address"));
+      address.onclick = (e) => {
+        e.stopPropagation();
+        if (address.classList.contains("open")) return closeProtoMenu();
+        const suffix = lanProtocol === "openai" ? "/v1" : "";
+        openProtoMenu(address, urls.map((u) => ({ v: u, name: u + suffix, note: "" })), lanSelectedURL,
+          (v) => { lanSelectedURL = v; update(); }, "Address", "lan-address-menu");
+      };
+    }
+    const copyControl = el("span", "lan-copy");
+    const update = () => {
+      const label = lanProtocol === "openai" ? "OpenAI" : "Anthropic";
+      const url = lanSelectedURL + (lanProtocol === "openai" ? "/v1" : "");
+      if (urls.length === 1) address.textContent = url;
+      else address.replaceChildren(el("span", "lan-url", url), svg(CHEV, 11, 1.6));
+      address.title = url;
+      const what = t("{label} address", { label });
+      const button = copyBtn(url, what, t("Copied {label} address", { label }));
+      button.setAttribute("aria-label", t("Copy") + " " + what);
+      copyControl.replaceChildren(button);
+    };
+    controls.append(segs([["openai", "OpenAI"], ["anthropic", "Anthropic"]], lanProtocol,
+      (v) => { lanProtocol = v; update(); }), address, copyControl);
+    row(t("Address"), "", "", controls).classList.add("lan-address-row");
+    update();
+  }
   const again = el("button", "text", t("New key"));
   again.onclick = () => set({ on: true, newKey: true });
   row(t("API key"), t("Other computers send it as their API key; a new one stops the old from working"),
