@@ -943,6 +943,8 @@ const I18N = {
     "requests": "请求",
     "rerouted": "改道",
     "errors your agent saw": "Agent 收到的错误",
+    "It said: {error}": "原话：{error}",
+    "Show the latest request that failed": "查看最近一个失败的请求",
     "rate limited": "限流",
     "out of credit": "余额不足",
     "quota used up": "额度用尽",

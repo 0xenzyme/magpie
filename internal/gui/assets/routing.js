@@ -54,6 +54,15 @@
     const s = el("span"), b = el("b", "", "0");
     s.append(b, el("span", "", k));
     s.dataset.label = k;
+    if (k === "errors your agent saw") {
+      // the newest request whose agent got an error, to see what it got
+      s.classList.add("rt-errs");
+      s.title = t("Show the latest request that failed");
+      s.addEventListener("click", (e) => {
+        const r = listed().find((x) => x.done && x.status >= 400);
+        if (r) pick(r, e);
+      });
+    }
     statB.push(b);
     stats.append(s);
   }
@@ -887,7 +896,11 @@
     items.push([affWhy(r, true) || ruleWhy(r, true) || firstWhy(r), "why"]);
     for (const s of nestedWhy(r)) items.push([s, "why"]);
     for (const a of asides(r)) items.push([a, "aside"]);
-    r.tries.forEach((_, i) => items.push([tryWhy(r, i), r.tries[i].done ? (r.tries[i].status < 400 ? "ok" : "bad") : "wait"]));
+    r.tries.forEach((tr, i) => {
+      items.push([tryWhy(r, i), tr.done ? (tr.status < 400 ? "ok" : "bad") : "wait"]);
+      // what the vendor said, word for word: the why above is magpie's reading of it
+      if (tr.done && tr.status >= 400 && tr.error) items.push([t("It said: {error}", { error: tr.error.length > 600 ? tr.error.slice(0, 600) + "…" : tr.error }), "aside said"]);
+    });
     if (r.done && !r.tries.length) items.push([t("Nothing was tried: {error}", { error: r.error || r.status }), "bad"]);
     steps.replaceChildren(...items.map(([s, c]) => el("li", c, s)));
   }
