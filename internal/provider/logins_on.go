@@ -45,6 +45,8 @@ func SetLoginOn(agent, user string, on bool) error {
 		return setDimAgentLoginOn(user, on)
 	case "zed":
 		return setZedLoginOn(user, on)
+	case "factory":
+		return setFactoryLoginOn(user, on)
 	case "gemini", "antigravity":
 		return setGoogleLoginOn(agent, user, on)
 	}
@@ -98,6 +100,9 @@ func (p Provider) AlsoOn() []Provider {
 	}
 	if p.Account != nil && p.Account.Agent == "zed" {
 		return zedAlsoOn()
+	}
+	if p.Account != nil && p.Account.Agent == "factory" {
+		return factoryAlsoOn()
 	}
 	if p.Account != nil && (p.Account.Agent == "gemini" || p.Account.Agent == "antigravity") {
 		return googleAlsoOn(p.Account.Agent)

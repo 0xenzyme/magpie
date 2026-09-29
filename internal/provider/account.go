@@ -79,6 +79,10 @@ func (p Provider) APIs(model string) []Protocol {
 			return out
 		}
 	}
+	// Factory serves each model on the one API droid sends it on
+	if p.ID == "factory" && p.Account != nil {
+		return factoryAPIs(model)
+	}
 	// Bedrock has no list to say it: Claude is served on Anthropic's
 	// messages alone, OpenAI's GPT models on Responses and chat
 	// completions, every other model (gpt-oss too) on chat completions
@@ -768,6 +772,9 @@ func Accounts() []Provider {
 		out = append(out, p)
 	}
 	if p, ok := zedAccount(); ok {
+		out = append(out, p)
+	}
+	if p, ok := factoryAccount(); ok {
 		out = append(out, p)
 	}
 	for _, agent := range []string{"gemini", "antigravity"} {

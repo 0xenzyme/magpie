@@ -245,7 +245,10 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 	}
 	if a := p.Account; a != nil {
 		out.Account = &accountJSON{Account: *a, Agent: a.Agent, Name: a.Agent, Icon: "generic"}
-		if ag, err := agent.Find(a.Agent); err == nil {
+		if a.Agent == "factory" {
+			// a Factory subscription is magpie's own sign-in, not Droid's
+			out.Account.Name, out.Account.Icon = "Factory", "factory"
+		} else if ag, err := agent.Find(a.Agent); err == nil {
 			out.Account.Name, out.Account.Icon = ag.Name, ag.Icon
 		} else if a.Agent == "cursor" {
 			// a Cursor subscription is served by the gateway, not an agent magpie configures

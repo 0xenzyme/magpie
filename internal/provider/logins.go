@@ -482,6 +482,8 @@ func Logins(agent string) []Login {
 		return dimagentLoginList()
 	case "zed":
 		return zedLoginList()
+	case "factory":
+		return factoryLoginList()
 	case "gemini", "antigravity":
 		return googleLoginList(agent)
 	case "":
@@ -495,6 +497,7 @@ func Logins(agent string) []Login {
 		side = append(side, loginsOf(qoderLogins())...)
 		side = append(side, dimagentLoginList()...)
 		side = append(side, zedLoginList()...)
+		side = append(side, factoryLoginList()...)
 		side = append(side, googleLoginList("gemini")...)
 		side = append(side, googleLoginList("antigravity")...)
 	}
@@ -548,6 +551,8 @@ func SwitchLogin(agent, user string) error {
 		return switchDimAgentLogin(user)
 	case "zed":
 		return switchZedLogin(user)
+	case "factory":
+		return switchFactoryLogin(user)
 	case "gemini", "antigravity":
 		return switchGoogleLogin(agent, user)
 	}
@@ -686,6 +691,8 @@ func ForgetLogin(agent, user string) error {
 		return forgetDimAgentLogin(user)
 	case "zed":
 		return forgetZedLogin(user)
+	case "factory":
+		return forgetFactoryLogin(user)
 	case "gemini", "antigravity":
 		return forgetGoogleLogin(agent, user)
 	}

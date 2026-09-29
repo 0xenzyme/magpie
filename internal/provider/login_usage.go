@@ -50,6 +50,8 @@ func LoginUsage(ctx context.Context, agent string) map[string]SubscriptionQuota 
 		logins = dimagentLoginList()
 	case "zed":
 		logins = zedLoginList()
+	case "factory":
+		logins = factoryLoginList()
 	case "gemini", "antigravity":
 		logins = googleLoginList(agent)
 	case "cursor": // one account, the one cursor-agent is signed in to
@@ -106,6 +108,9 @@ func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
 	}
 	if l.Agent == "zed" {
 		return zedLoginQuota(ctx, l)
+	}
+	if l.Agent == "factory" {
+		return factoryLoginQuota(ctx, l)
 	}
 	if l.Agent == "cursor" {
 		return cursorSubscriptionUsage(ctx, l.Plan)

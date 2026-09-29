@@ -261,6 +261,9 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 	if !hidden["zed"] {
 		fetches = append(fetches, perLogin(via("zed"), zedLoginList(), "Zed", "zed")...)
 	}
+	if !hidden["factory"] {
+		fetches = append(fetches, perLogin(via("factory"), factoryLoginList(), "Factory", "factory")...)
+	}
 	for _, agent := range []string{"gemini", "antigravity"} {
 		if hidden[agent] {
 			continue

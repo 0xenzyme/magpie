@@ -24,7 +24,7 @@ import (
 // — the subscriptions magpie remembers, how much of each one's allowance is
 // used, and switching the agent between them.
 func accountsCmd(args []string) error {
-	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity|dimagent|zed] [--json] | magpie accounts add <claude|codex|gemini|antigravity|dimagent|zed> | magpie accounts refresh [--json] | magpie accounts checkin [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity|dimagent|zed> <email> | magpie accounts project <gemini|antigravity> <email> <gcp-project-id>"
+	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity|dimagent|zed|factory] [--json] | magpie accounts add <claude|codex|gemini|antigravity|dimagent|zed|factory> | magpie accounts refresh [--json] | magpie accounts checkin [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity|dimagent|zed|factory> <email> | magpie accounts project <gemini|antigravity> <email> <gcp-project-id>"
 	agentID := func(s string) (string, error) {
 		switch strings.ToLower(s) {
 		case "claude", "cc":
@@ -39,8 +39,10 @@ func accountsCmd(args []string) error {
 			return "dimagent", nil
 		case "zed":
 			return "zed", nil
+		case "factory", "droid":
+			return "factory", nil
 		}
-		return "", fmt.Errorf("%q: only Claude Code, Codex, Gemini CLI, Antigravity, DimAgent and Zed accounts can be added and switched\n%s", s, usage)
+		return "", fmt.Errorf("%q: only Claude Code, Codex, Gemini CLI, Antigravity, DimAgent, Zed and Factory accounts can be added and switched\n%s", s, usage)
 	}
 	if len(args) > 1 && args[1] == "project" {
 		if len(args) != 5 {
@@ -290,6 +292,9 @@ func addAccount(agentID string) error {
 	}
 	fmt.Println("Finish signing in in your browser. If it didn't open, go to:")
 	fmt.Println(faint.Render(st.URL))
+	if st.Code != "" {
+		fmt.Println("and confirm the code", st.Code)
+	}
 	openInBrowser(st.URL)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
