@@ -1027,6 +1027,7 @@ const I18N = {
     "its plan doesn't list {model}": "套餐不包含 {model}",
     "{name}'s list for this key has no {model}": "{name} 给这个 key 的模型列表里没有 {model}",
     "answering…": "回答中…",
+    "answering another request…": "在回答另一个请求…",
     "answered this request": "回答了这个请求",
     "answered {agent}": "回答了 {agent}",
     "routing group": "路由组",

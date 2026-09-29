@@ -805,7 +805,9 @@
       let s;
       if (w.unlisted) s = unlistedWord(w);
       else if (resting) s = `${failWord(rest.why)} · ${restWhen(rest)}`;
-      else if (trying.has(id)) s = t("answering…");
+      // a row another request weighed, answering that one: the header
+      // tells of this request, so it says the answer is not this one's
+      else if (trying.has(id)) s = r.id !== cur.id && agents.size <= 1 ? t("answering another request…") : t("answering…");
       else if (answered.has(id)) s = agents.size > 1 ? t("answered {agent}", { agent: agentName(r.agent) }) : t("answered this request");
       else if (gave.has(id)) s = t("{status} · {fail} · passed to {agent}", { status: gave.get(id).status, fail: failWord(gave.get(id).fail), agent: agentName(r.agent) });
       else if (w.kind === "account" && w.known) {
