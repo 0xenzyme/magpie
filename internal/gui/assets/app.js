@@ -396,7 +396,7 @@ function renderAgents() {
       fit();
     };
     fold.addEventListener("transitionend", (e) => { if (e.target === fold) settled(); });
-    more.onclick = () => {
+    more.onclick = (e) => {
       showAllAgents = !showAllAgents;
       // the panel's edge moves with the scroll, on the same beat and curve
       const room = inner.scrollHeight;
@@ -410,8 +410,13 @@ function renderAgents() {
       if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
         label.animate([{ opacity: 0, transform: "translateY(3px)" }, { opacity: 1, transform: "none" }], { duration: 260, easing: "cubic-bezier(.22, 1, .36, 1)" });
       }
+      if (showAllAgents) unrollInView(fold, more, e);
     };
-    list.append(fold, more);
+    // the button, then what it unrolls: the rest come in under it, and the
+    // rows above stay where they are (the scroll unrolling above the button
+    // pushed it off the foot of a panel at its tallest, or, held there, drew
+    // the whole list up past it)
+    list.append(more, fold);
   }
 
   const chips = $("#profiles");
@@ -4501,6 +4506,36 @@ function unrollSheet(view, sheet, e) {
   requestAnimationFrame(follow);
 }
 
+// unrollInView: the agents' scroll unrolls under the button clicked for it,
+// and in a view with no more room below (the panel at its tallest, the
+// window scrolled to its end) the view goes down with it, led by the scroll's
+// foot frame by frame, so what unrolls comes into sight — but never so far
+// that the button goes out of it at the top. The reader scrolling meanwhile
+// has the view from then on.
+function unrollInView(fold, button, e) {
+  const v = fold.closest(".view");
+  if (!v || !scrollOnPurpose(e, UNROLL.ms + 400)) return;
+  let set = v.scrollTop;
+  const until = performance.now() + UNROLL.ms + 300;
+  const step = () => {
+    if (Math.abs(v.scrollTop - set) > 2) return false; // the reader took it
+    const b = v.getBoundingClientRect(), pad = parseFloat(getComputedStyle(v).paddingBottom) || 0;
+    const want = v.scrollTop + Math.min(fold.getBoundingClientRect().bottom + pad - b.bottom, button.getBoundingClientRect().top - b.top - 4);
+    const to = Math.round(Math.max(set, Math.min(want, v.scrollHeight - v.clientHeight)));
+    if (to !== v.scrollTop) v.scrollTop = to;
+    set = v.scrollTop;
+    return true;
+  };
+  // on each frame's layout, before it is painted, as well as on the frame
+  const grown = new ResizeObserver(() => { if (!step()) grown.disconnect(); });
+  grown.observe(fold);
+  const frame = () => {
+    if (step() && performance.now() < until) requestAnimationFrame(frame);
+    else grown.disconnect();
+  };
+  requestAnimationFrame(frame);
+}
+
 // rollUpSheet closes it the other way, quicker, and then does what closing
 // it does.
 function rollUpSheet(sheet, then) {
@@ -6376,7 +6411,16 @@ function backToReader(v) {
 // there of its neighbours, its parents and theirs; one moving as it plays
 // (a row springing open) is passed over, so the page doesn't follow the play.
 const onScreen = (n, v) => n.getBoundingClientRect().top - v.getBoundingClientRect().top;
-const atRest = (n) => n.isConnected && n.offsetParent && !n.getAnimations().some((a) => a.playState === "running");
+// Only a play that moves it counts: a colour or a fade easing in (the hover
+// of the button just clicked, its label fading to its new words) leaves it
+// where it is. Were those passed over too, the page would be held by
+// something further up while the button slid away, and snap back to the
+// button once its hover had faded — and a button slid out from under the
+// pointer and back fades its hover again, so the page swung between the two.
+const MOVES = /^(transform|translate|rotate|scale|top|bottom|left|right|inset|margin|offset-|position)/;
+const moving = (a) => a.playState === "running" && (a.transitionProperty ? MOVES.test(a.transitionProperty)
+  : !a.effect?.getKeyframes || a.effect.getKeyframes().some((k) => Object.keys(k).some((p) => MOVES.test(p.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())))));
+const atRest = (n) => n.isConnected && n.offsetParent && !n.getAnimations().some(moving);
 // The room is an empty block last in the view (padding at its foot would
 // count in its height only a frame later), put back when a redraw of the
 // view takes it out.
@@ -6410,10 +6454,16 @@ function hold(h) {
   readerAt.set(v, v.scrollTop);
 }
 let holding = false; // one frame loop, whatever the clicks
+// A part that grows or shrinks as it plays (the agents' scroll unrolling
+// above the button that unrolls it) is held again as soon as it is laid out,
+// before it's painted: a frame's loop sees it only as the frame before left
+// it, a frame late, so what was clicked would tremble by as much as it grew
+// in a frame.
+const heldSizes = new ResizeObserver(() => { if (held) hold(held); });
 function keepHeld() {
   const h = held;
   if (h && (h.v.hidden || performance.now() > h.until)) held = null;
-  if (!held) { holding = false; return; }
+  if (!held) { holding = false; heldSizes.disconnect(); return; }
   hold(held);
   requestAnimationFrame(keepHeld);
 }
@@ -6427,6 +6477,8 @@ addEventListener("click", (e) => {
     for (const m of [n, n.previousElementSibling, n.nextElementSibling]) if (m instanceof HTMLElement && m.offsetParent) chain.push([m, onScreen(m, v)]);
   }
   held = chain.length ? { v, chain, until: performance.now() + 4000 } : null;
+  heldSizes.disconnect();
+  if (held) for (const c of v.children) if (!c.classList.contains("view-room")) heldSizes.observe(c);
   if (held && !holding) { holding = true; requestAnimationFrame(keepHeld); }
 }, true);
 for (const v of document.querySelectorAll(".view")) {

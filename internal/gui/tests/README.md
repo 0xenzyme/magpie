@@ -13,10 +13,16 @@ shared helper; a control under what it unrolls (`data-unrolls`) going down
 with it; a click that asks to go somewhere with `scrollOnPurpose(e)`;
 the room kept at the foot going as the reader scrolls back; and the wheel.
 
+`panel-fold.test.cjs` expands and collapses on the Agents page with the list
+scrolled to its end, in the tray panel (one agent open) and in the window:
+"Show {n} more" unrolls the rest under the button, the view going down with
+them and never back up; "Show less", and a row opened and closed, leave what
+was clicked where it is on every frame.
+
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the
