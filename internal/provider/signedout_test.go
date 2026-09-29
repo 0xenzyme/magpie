@@ -73,3 +73,28 @@ func TestSavedButSignedOutClaudeSaysWhy(t *testing.T) {
 		t.Fatalf("signed out: %q", w)
 	}
 }
+
+// Claude Code's sign-in is read from the keychain as Claude Code reads it,
+// under its account: another item for the same service (one an earlier
+// sign-in left) that comes first by service alone isn't taken for it.
+func TestClaudeKeychainReadsItsAccount(t *testing.T) {
+	home := claudeHome(t)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("USER", "tester")
+	bin := filepath.Join(home, "bin")
+	os.MkdirAll(bin, 0o755)
+	// the leftover comes first unless the account is asked for
+	os.WriteFile(filepath.Join(bin, "security"), []byte(`#!/bin/sh
+case "$*" in
+*"-a tester"*) echo '{"claudeAiOauth":{"accessToken":"live","subscriptionType":"max"}}' ;;
+*) echo '{}' ;;
+esac
+`), 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	claudeKeychain = true
+	forgetClaudeCredential()
+	c, loc, ok := claudeCredential()
+	if !ok || c.OAuth.AccessToken != "live" || !loc.keychain || loc.account != "tester" {
+		t.Fatalf("read %v %+v %+v", ok, c.OAuth, loc)
+	}
+}
