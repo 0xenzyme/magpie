@@ -55,6 +55,11 @@ func (p Provider) Available() []catalog.Model {
 		}
 		return catalog.Decorate(live, known)
 	}
+	if p.IsAzure() {
+		// an Azure resource serves its deployments alone, named as the
+		// user likes: the catalog only names the ones its list gave
+		return nil
+	}
 	if signedIn {
 		if p.ID == "devin" { // with the variants the user picked
 			return withDevinContexts(devinCollapse(known, nil, p.Models))
@@ -170,6 +175,10 @@ func (p Provider) fetchOne(ctx context.Context) ([]catalog.Model, string, error)
 			return nil, u, err
 		}
 		return catalog.WithDrawers(p.planModels(ms), catalog.PublicDrawers(ctx, u)), u, nil
+	}
+	if p.IsAzure() && (p.Chat != "" || p.Responses != "") {
+		// its deployments, asked with the key in api-key
+		return p.azureModels(ctx)
 	}
 	var errs []string
 	for _, proto := range p.Speaks() {

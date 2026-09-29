@@ -64,7 +64,7 @@ func tiny(q Provider, proto Protocol, model string) (url, body string) {
 func tinyBody(q Provider, proto Protocol, model string) (url, body string) {
 	switch proto {
 	case Chat:
-		if q.IsBedrock() {
+		if q.IsBedrock() || q.IsAzure() {
 			return q.Chat + "/chat/completions", fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hi"}],"max_completion_tokens":16}`, model)
 		}
 		return q.Chat + "/chat/completions", fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hi"}],"max_tokens":16}`, model)
@@ -243,9 +243,17 @@ func isClaude(id string) bool {
 // AuthHeaders is how a request to the vendor proves who it is. Anthropic's
 // own API wants x-api-key alone, and so does Bedrock's, which turns away a
 // request with both (#176); other compatible vendors take either, so both.
+// Azure OpenAI takes a key in api-key alone: a Bearer there is an Entra ID
+// token, and the key sent as one is turned away.
 func AuthHeaders(p Provider, proto Protocol) map[string]string {
 	if p.Key == "" {
 		return map[string]string{}
+	}
+	if p.IsAzure() {
+		if proto == Anthropic {
+			return map[string]string{"x-api-key": p.Key}
+		}
+		return map[string]string{"api-key": p.Key}
 	}
 	if proto == Anthropic {
 		if strings.HasSuffix(p.Host(), "anthropic.com") || p.IsBedrock() {

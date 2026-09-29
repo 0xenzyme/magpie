@@ -327,6 +327,9 @@ func Save(p Provider) error {
 			return fmt.Errorf("%q is the id of the %s subscription; pick another name", p.ID, p.ID)
 		}
 		if p.Chat == "" && p.Responses == "" && p.Anthropic == "" && p.Decide == "" {
+			if p.Preset == AzurePreset {
+				return errors.New("Azure OpenAI needs your resource's endpoint, e.g. https://<resource>.openai.azure.com")
+			}
 			return errors.New("a provider needs a base URL")
 		}
 		if p.Key == "" && !keyOptional(p) {
@@ -555,6 +558,9 @@ func normalize(p Provider) Provider {
 	if p.Responses == "" && strings.HasSuffix(p.Chat, "/openai/v1") && p.IsBedrock() {
 		p.Responses = p.Chat
 	}
+	// Azure OpenAI's resource, however its endpoint was pasted, is asked
+	// on its v1 API, chat completions and Responses both (azure.go)
+	p.azureEndpoints()
 	// a preset's provider keeps its headers too: the preset gives the
 	// endpoints and catalog, the headers say which workspace or app it is
 	p.Headers = cleanHeaders(p.Headers)
@@ -662,7 +668,9 @@ func (p Provider) ResponsesFirst(model string) bool {
 	if p.Responses != "" && p.IsBedrock() {
 		return bedrockGPT(model)
 	}
-	if p.Responses == "" || (p.ID != "copilot" && HostOf(p.Responses) != "api.openai.com") {
+	// Azure OpenAI's deployments are named as the user likes; one named
+	// for its model (gpt-5-codex, o4-mini) is taken for it
+	if p.Responses == "" || (p.ID != "copilot" && HostOf(p.Responses) != "api.openai.com" && !p.IsAzure()) {
 		return false
 	}
 	m := strings.ToLower(model[strings.LastIndex(model, "/")+1:])

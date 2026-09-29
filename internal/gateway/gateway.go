@@ -1252,12 +1252,15 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	switch proto {
 	case provider.Chat:
 		body = developerAsSystem(body)
-		if strings.HasSuffix(p.Host(), "openai.com") {
+		if strings.HasSuffix(p.Host(), "openai.com") || p.IsAzure() {
 			// Qwen's switch and Kimi Code's (thinking: {type: …}), which
-			// OpenAI turns away as arguments it doesn't know
+			// OpenAI turns away as arguments it doesn't know, and Azure
+			// OpenAI as well
 			body = withoutFields(body, "enable_thinking", "thinking")
 		}
-		if p.IsBedrock() {
+		if p.IsBedrock() || p.IsAzure() {
+			// Azure's reasoning deployments (o4-mini, gpt-5) turn
+			// max_tokens away as Bedrock's GPT models do
 			body = asCompletionTokens(body)
 		}
 	case provider.Anthropic:
@@ -1476,7 +1479,7 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 			r.GeminiCompat, req = want, &r
 		}
 		body := build(to, req, model, p.Host(), p.RejectsTemperature(model))
-		if to == provider.Chat && p.IsBedrock() {
+		if to == provider.Chat && (p.IsBedrock() || p.IsAzure()) {
 			body = asCompletionTokens(body)
 		}
 		if to == provider.CodeAssist && p.Account != nil {

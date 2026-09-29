@@ -3112,6 +3112,18 @@ function renderEditor(p, presetID) {
     return ed;
   }
 
+  // a vendor reached at the user's own resource (Azure OpenAI): no URL of
+  // the preset's, the one the resource is at is typed or pasted here, and
+  // magpie puts it on the API the preset speaks when it is saved
+  let endpoint = null;
+  if (pr?.endpoint) {
+    if (draft.chat === undefined) { draft.chat = p?.chat || ""; draft.responses = p?.responses || ""; }
+    endpoint = input(draft.chat || draft.responses || "", pr.endpoint, "url");
+    endpoint.classList.add("endpoint");
+    endpoint.oninput = () => { draft.chat = draft.responses = endpoint.value.trim(); refreshEndpoints(); };
+    ed.append(...field(t("Endpoint"), endpoint, pr.endpointHint ? t(pr.endpointHint) : ""));
+  }
+
   const key = input(draft.key || "", p?.key.set ? t("{masked} · paste a new key to replace it", { masked: p.key.masked }) : t(pr?.noKey || p?.key.optional ? "optional for local servers" : "paste an API key"), "password");
   key.oninput = () => { draft.key = key.value; };
   key.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter" && isNew) save(); else if (e.key === "Escape") cancelEdit(); };
@@ -3353,6 +3365,7 @@ function renderEditor(p, presetID) {
     else if (draft.clearBalanceToken) body.clearBalanceToken = true;
     if (isNew && custom && !body.name) { name.focus(); return editorError(t("Give it a name"), "warn"); }
     if (isNew && custom && !body.chat && !body.anthropic && !body.responses) { url.focus(); return editorError(t("A base URL is needed"), "warn"); }
+    if (endpoint && !body.chat && !body.responses) { endpoint.focus(); return editorError(t("Your resource's endpoint is needed"), "warn"); }
     editorError("");
     saveBtn.classList.add("busy");
     providerAction("save", body, t(isNew ? "{name} added" : "{name} saved", { name: draft.name || draft.id }));
@@ -3360,7 +3373,7 @@ function renderEditor(p, presetID) {
   saveBtn.onclick = save;
   bar.append(cancel, saveBtn);
   ed.append(bar);
-  setTimeout(() => (isNew ? (custom || another ? name : key) : null)?.focus(), 0);
+  setTimeout(() => (isNew ? (custom || another ? name : endpoint || key) : null)?.focus(), 0);
   return ed;
 }
 
