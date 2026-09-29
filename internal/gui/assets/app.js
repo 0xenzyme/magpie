@@ -3643,6 +3643,8 @@ const SUBS = [
   { agent: "commandcode-plan", name: "Command Code", icon: "commandcode", plans: "Pro · GOAT · Max · Ultra", own: true },
   // devin's credentials.toml keeps one account too
   { agent: "devin", name: "Devin", icon: "devin", plans: "Pro · Enterprise", single: true },
+  // Kiro's own sign-in page (Google, GitHub, Builder ID, Identity Center); kiro-cli's or the IDE's is read too
+  { agent: "kiro", name: "Kiro", icon: "kiro-color", plans: "Free · Pro · Pro+ · Power", single: true },
   // Google's sign-ins; Gemini CLI's own account is read too
   { agent: "gemini", name: "Gemini CLI", icon: "geminicli-color", plans: "Code Assist Standard · Enterprise", own: true },
   // accounts can also come from another tool's export (Antigravity Cockpit, Antigravity Manager, CLIProxyAPI)

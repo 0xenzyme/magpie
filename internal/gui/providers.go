@@ -212,7 +212,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 			// a Cursor subscription is served by the gateway, not an agent magpie configures
 			out.Account.Name, out.Account.Icon = "Cursor CLI", "cursor"
 		} else if a.Agent == "kiro" {
-			// Kiro's sign-in is kiro-cli's or the Kiro IDE's
+			// Kiro's sign-in is magpie's own, kiro-cli's or the Kiro IDE's
 			out.Account.Name, out.Account.Icon = "Kiro", "kiro-color"
 		} else if a.Agent == "antigravity" {
 			out.Account.Name, out.Account.Icon = "Antigravity", "antigravity-color"
