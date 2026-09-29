@@ -1163,6 +1163,10 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .editor .ehead .note { font-size: 12px; color: var(--muted); }
 .editor label { font-size: 12px; color: var(--muted); text-align: right; padding-top: 5px; }
 .editor .hint { font-size: 11px; color: var(--faint); margin-top: 4px; }
+.stepplan .state { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); line-height: 1.4; }
+.stepplan .steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.stepplan .steps .pair { margin-top: 2px; }
+.stepplan .bookmarklet { display: inline-block; padding: 1px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--fg); background: var(--pill); text-decoration: none; cursor: grab; white-space: nowrap; }
 .editor input[type="text"], .editor input[type="password"], .editor input[type="url"] {
   height: 27px; padding: 0 9px; border-radius: 7px;
   border: 1px solid var(--line); background: var(--card);

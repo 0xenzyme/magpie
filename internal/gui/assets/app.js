@@ -2797,6 +2797,11 @@ function renderEditor(p, presetID) {
     ed.append(...field(t("Account balance"), pair, tokHelp));
   }
 
+  // StepFun tells a Step Plan's 5-hour, weekly and credit windows only to
+  // its platform's sign-in, never to a key: signed in once in a window of
+  // magpie's, the Usage page shows them
+  if (p?.stepPlan) ed.append(...field(t("Step Plan usage"), renderStepPlan(p.stepPlan), t("A key tells only the balance. The Step Plan's 5-hour, weekly and credit windows are told only to a StepFun sign-in: bring yours here once and magpie keeps it (for 30 days), used for nothing else.")));
+
   // a relay that offers several regional endpoints, or a vendor whose plans
   // are served at their own: one selector, and the provider's base URLs follow it
   let refreshEndpoints = () => {};
@@ -3725,6 +3730,63 @@ async function followSignIn(id) {
     signing = st.state === "canceled" ? null : st;
     renderProviders();
   }
+}
+
+// renderStepPlan: a StepFun provider's platform sign-in, which the user
+// makes in their own browser and brings here with magpie's bookmarklet
+function renderStepPlan(sp) {
+  const box = el("div", "stepplan");
+  if (sp.signedIn) {
+    const row = el("div", "pair");
+    const side = el("div", "side");
+    const out = el("button", "text", t("Sign out"));
+    out.onclick = async () => {
+      try { providers = await api("stepfun/" + sp.site + "/signout", {}); renderProviders(); } catch (e) { status(e.message, "err"); }
+    };
+    side.append(out);
+    row.append(el("span", "state", t("Signed in · the Usage page shows the Step Plan")), side);
+    box.append(row);
+    return box;
+  }
+  const steps = el("ol", "steps");
+  const s1 = el("li");
+  const open = el("button", "link", t("Sign in to StepFun in your browser ↗"));
+  open.onclick = () => api("open", { url: sp.url });
+  s1.append(open);
+  const s2 = el("li");
+  // dragged to the bookmarks bar it is a bookmark; a click here does nothing
+  const bm = el("a", "bookmarklet", "magpie · StepFun");
+  bm.href = sp.bookmarklet;
+  bm.onclick = (e) => e.preventDefault();
+  const cp = el("button", "link", t("copy it"));
+  cp.onclick = () => copy(sp.bookmarklet, t("Bookmarklet"), cp);
+  s2.append(document.createTextNode(t("Drag ")), bm, document.createTextNode(t(" to the bookmarks bar (or ")), cp, document.createTextNode(t(" as a bookmark's URL), then click it on the signed-in page")));
+  const s3 = el("li");
+  const pair = el("div", "pair");
+  const paste = input("", t("paste what it copied"), "password");
+  const go = el("button", "text", t("Save"));
+  const save = async () => {
+    if (!paste.value.trim()) return;
+    go.disabled = paste.disabled = true;
+    try {
+      providers = await api("stepfun/" + sp.site + "/session", { text: paste.value });
+      renderProviders();
+      status(t("Signed in to StepFun"), "ok");
+    } catch (e) {
+      go.disabled = paste.disabled = false;
+      status(e.message, "err");
+    }
+  };
+  go.onclick = save;
+  paste.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") save(); };
+  paste.onpaste = () => setTimeout(save);
+  const side = el("div", "side");
+  side.append(go);
+  pair.append(paste, side);
+  s3.append(pair);
+  steps.append(s1, s2, s3);
+  box.append(steps);
+  return box;
 }
 
 function cancelSignIn() {

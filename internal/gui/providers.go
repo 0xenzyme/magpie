@@ -58,6 +58,10 @@ type providerJSON struct {
 		Takes bool `json:"takes"`
 		Set   bool `json:"set"`
 	} `json:"balanceToken"`
+	// a StepFun provider's Step Plan windows, told only to a platform
+	// sign-in: which site's, and whether one is kept
+	StepPlan *stepPlanJSON `json:"stepPlan,omitempty"`
+
 	Key struct {
 		Set      bool   `json:"set"`
 		Masked   string `json:"masked"`
@@ -80,6 +84,15 @@ type providerJSON struct {
 	Sponsored bool               `json:"sponsored"`
 	KeyList   []provider.KeyInfo `json:"keyList"`           // its keys, in the order requests try them
 	Account   *accountJSON       `json:"account,omitempty"` // a signed-in agent, see provider.Account
+}
+
+// stepPlanJSON: whether a StepFun provider's platform sign-in is kept, and
+// where and how the user gets one
+type stepPlanJSON struct {
+	Site        string `json:"site"`
+	SignedIn    bool   `json:"signedIn"`
+	URL         string `json:"url"`
+	Bookmarklet string `json:"bookmarklet"`
 }
 
 type accountJSON struct {
@@ -195,6 +208,9 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		out.Key.Optional = pr.NoKey
 	}
 	out.BalanceToken.Takes, out.BalanceToken.Set = provider.TakesBalanceToken(p), p.BalanceToken != ""
+	if site := provider.StepFunSite(p); site != "" {
+		out.StepPlan = &stepPlanJSON{site, provider.StepFunSignedIn(site), provider.StepFunSignInURL(site), provider.StepFunBookmarklet()}
+	}
 	out.Key.Set = p.Key != ""
 	out.Key.Masked = provider.Mask(p.Key)
 	out.KeyList = p.KeyList()
@@ -781,6 +797,34 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			Results   []provider.ImportedAccount `json:"results"`
 			Providers providersJSON              `json:"providers"`
 		}{res, providersState()})
+	})
+	// StepFun's Step Plan windows: the session the user copied from their
+	// browser with magpie's bookmarklet
+	mux.HandleFunc("POST /api/stepfun/{site}/session", func(rw http.ResponseWriter, r *http.Request) {
+		site := r.PathValue("site")
+		if provider.StepFunSignInURL(site) == "" {
+			http.NotFound(rw, r)
+			return
+		}
+		var in struct{ Text string }
+		if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		if err := provider.SaveStepFunPaste(ctx, site, in.Text); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, providersState())
+	})
+	mux.HandleFunc("POST /api/stepfun/{site}/signout", func(rw http.ResponseWriter, r *http.Request) {
+		if err := provider.SignOutStepFun(r.PathValue("site")); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, providersState())
 	})
 	// the page copies through here first: in the app's window the
 	// clipboard API is refused or missing, depending on the system
