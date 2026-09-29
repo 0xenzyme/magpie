@@ -77,6 +77,7 @@ func All() []*Agent {
 		devin(home, cfg),
 		hermes(home),
 		kimi(home),
+		droid(home),
 		cline(home),
 		qoder(home),
 		qoderCN(home),
