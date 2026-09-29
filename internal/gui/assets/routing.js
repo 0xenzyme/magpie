@@ -884,15 +884,17 @@
     steps.replaceChildren(...items.map(([s, c]) => el("li", c, s)));
   }
 
-  // pick sets the stage to a past request, or back to live with the newest
-  function pick(r) {
+  // pick sets the stage to a past request, or back to live with the newest;
+  // the page goes up to the stage only when the reader picked a request in
+  // the list (look), never on a day or Live picked in the list's own bar
+  function pick(r, look = true) {
     pinned = r.id === newest()?.id ? null : r;
     if (rp) { rp = null; rbar.hidden = true; }
     stopPlays();
     cur = r;
     sync(true); renderAll();
     say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r));
-    if (pinned) { scrollOnPurpose(); box.scrollIntoView({ block: "nearest", behavior: still() ? "auto" : "smooth" }); }
+    if (pinned && look) { scrollOnPurpose(); box.scrollIntoView({ block: "nearest", behavior: still() ? "auto" : "smooth" }); }
   }
 
   // who answered a request, or what its agent got
@@ -931,7 +933,7 @@
     if (d) await loadDays(d);
     pinned = null;
     const r = d ? listed()[0] : newest();
-    if (r && d) pick(r);
+    if (r && d) pick(r, false);
     else if (r) { stopPlays(); cur = r; sync(true); say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r)); }
     renderAll();
   }
@@ -961,6 +963,22 @@
     reqNote.textContent = day ? t(pastCut ? "the last {n} of {day}" : "{n} on {day}", { n: rs.length, day: dayName(day) })
       : t("the last {n} the gateway keeps", { n: rs.length });
     renderDays();
+    // none yet: what the list is for in its place, and no accounts column
+    // to tally nothing
+    const none = !rs.length;
+    reqNote.hidden = none;
+    reqs.classList.toggle("none", none);
+    colB.hidden = none;
+    hist.classList.toggle("solo", none);
+    if (none) {
+      const p = el("div", "empty-state");
+      p.append(el("b", "", day ? t("Nothing on {day}", { day: dayName(day) }) : t("No requests since magpie started")),
+        t("Each request an agent sends through magpie shows up here: who answered it, why, and each try."));
+      if (!day && days.length) p.append(" " + t("Earlier ones are kept by day, in the bar above."));
+      reqs.replaceChildren(p);
+      renderActs(rs);
+      return;
+    }
     reqs.replaceChildren(...rs.map((r) => {
       const [said, how, tr] = outcome(r);
       const b = el("button", "rt-req " + how);
