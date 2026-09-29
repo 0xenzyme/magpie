@@ -414,9 +414,14 @@ func (s *signInFlow) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	l, err := s.exchange(ctx, q.Get("code"))
 	if err == nil && s.st.Agent == "devin" {
-		// devin keeps the one account it is signed in to: the exchange
-		// already wrote it; there is nothing beside it to keep
-		s.finish(SignInState{State: "done", User: l.User, Plan: l.Plan, Using: true})
+		// the exchange kept it already: the CLI's own, or one beside it
+		using := false
+		for _, d := range devinLogins() {
+			if strings.EqualFold(d.User, l.User) {
+				using = d.Active
+			}
+		}
+		s.finish(SignInState{State: "done", User: l.User, Plan: l.Plan, Using: using})
 		signInPage(w, true, "You're signed in", fmt.Sprintf("%s is added to magpie. You can close this tab.", l.User))
 		return
 	}

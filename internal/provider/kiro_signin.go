@@ -6,8 +6,8 @@ package provider
 // Google and GitHub come back with a code Kiro's auth service trades for
 // tokens; Builder ID and Identity Center come back with where to sign in
 // at AWS, which is then done with a client registered for it, as the IDE
-// does. The sign-in is magpie's own, kept beside logins.json, so kiro-cli's
-// and the IDE's are left as they are; while it is there it is the one used.
+// does. Each account signed in is magpie's own, kept in a home of its own
+// (kiro_accounts.go), so kiro-cli's and the IDE's are left as they are.
 
 import (
 	"bytes"
@@ -48,10 +48,7 @@ var kiroIDEUA = func() string {
 	return "KiroIDE-1.1.70-" + hex.EncodeToString(sum[:])
 }()
 
-// kiroSignInPath is magpie's own Kiro sign-in.
-func kiroSignInPath() string { return filepath.Join(filepath.Dir(Path()), "kiro-auth-token.json") }
-
-// kiroSaved is magpie's Kiro sign-in as it is kept: the IDE's shape, with
+// kiroSaved is a Kiro sign-in of magpie's as it is kept: the IDE's shape, with
 // an AWS sign-in's client beside it.
 type kiroSaved struct {
 	AccessToken  string `json:"accessToken"`
@@ -65,9 +62,8 @@ type kiroSaved struct {
 	ClientSecret string `json:"clientSecret,omitempty"`
 }
 
-// readKiroMagpie reads the sign-in made in magpie.
-func readKiroMagpie() (kiroCred, bool) {
-	path := kiroSignInPath()
+// readKiroFile reads a sign-in made in magpie.
+func readKiroFile(path string) (kiroCred, bool) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return kiroCred{}, false
@@ -246,20 +242,32 @@ func (s *signInFlow) kiroCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	home, err := newKiroHome()
+	if err != nil {
+		fail(err.Error())
+		return
+	}
 	b, _ := json.MarshalIndent(saved, "", "  ")
-	if err := writePrivate(kiroSignInPath(), append(b, '\n')); err != nil {
+	if err := writePrivate(filepath.Join(home, kiroTokenFile), append(b, '\n')); err != nil {
+		removeKiroHome(home)
+		fail(err.Error())
+		return
+	}
+	user, err := addKiroLogin(home)
+	if err != nil {
+		removeKiroHome(home)
 		fail(err.Error())
 		return
 	}
 	forgetAccountCaches()
-	user, plan := askKiroIdentity("")
-	kiroStatus.Lock()
-	kiroStatus.key, kiroStatus.user, kiroStatus.plan, kiroStatus.at = "", user, plan, time.Now()
-	kiroStatus.Unlock()
-	if user == "" {
-		user = "Kiro account"
+	var plan string
+	using := false
+	for _, l := range kiroLogins() {
+		if strings.EqualFold(l.User, user) {
+			plan, using = l.Plan, l.Active
+		}
 	}
-	s.finish(SignInState{State: "done", User: user, Plan: plan, Using: true})
+	s.finish(SignInState{State: "done", User: user, Plan: plan, Using: using})
 	signInPage(w, true, "You're signed in", fmt.Sprintf("%s is added to magpie. You can close this tab.", user))
 }
 

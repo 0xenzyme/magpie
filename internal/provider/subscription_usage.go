@@ -225,8 +225,10 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 			}
 		}
 	}
-	if _, ok := kiroAccount(); ok && !hidden["kiro"] {
-		fetches = append(fetches, func() SubscriptionQuota { return kiroSubscriptionUsage(ctx) })
+	if key := kiroKey(); key != "" && !hidden["kiro"] {
+		fetches = append(fetches, func() SubscriptionQuota { return kiroQuotaAt(ctx, key, "") })
+	} else if !hidden["kiro"] {
+		fetches = append(fetches, perLogin(ctx, kiroLoginList(), "Kiro", "kiro-color")...)
 	}
 	if !hidden["zcode"] {
 		fetches = append(fetches, perLogin(ctx, zcodeLoginList(), "ZCode", "zcode")...)

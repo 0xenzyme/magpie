@@ -1055,10 +1055,11 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 		call.To = from
 		return s.serveCursor(w, r, from, model, body, &call.Usage)
 	}
-	// Devin's through the API its CLI talks to, with the CLI's sign-in
+	// Devin's through the API its CLI talks to, with the CLI's sign-in or
+	// one magpie keeps beside it
 	if p.Account != nil && p.Account.Agent == "devin" {
 		call.To = from
-		return s.serveDevin(w, r, from, model, body, &call.Usage)
+		return s.serveDevin(w, r, from, p.Account.Home, model, body, &call.Usage)
 	}
 	// Kiro's is served through its own API, with kiro-cli's or the Kiro
 	// IDE's sign-in, or a Kiro API key saved on the provider

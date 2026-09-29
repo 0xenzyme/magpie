@@ -44,8 +44,10 @@ type Account struct {
 	// a non-streaming request instead of relaying it.
 	Stream bool `json:"-"`
 
-	// Home is where a Grok account keeps its sign-in: the CLI's own home,
-	// or one of magpie's for a further account (see grok_accounts.go).
+	// Home is where a Grok, Kiro or Devin account keeps its sign-in: the
+	// agent's own (the CLI's home for Grok, "" for Kiro and Devin), or one
+	// of magpie's for a further account (grok_accounts.go, kiro_accounts.go,
+	// devin_accounts.go).
 	Home string `json:"-"`
 
 	// token is set on a saved sign-in in use beside the agent's own (see

@@ -61,14 +61,17 @@ func devinIdentity() (user, plan string, ok bool) { return devinStatus.get() }
 
 func forgetDevinStatus() { devinStatus.forget() }
 
-func askDevinIdentity() (user, plan string, ok bool) {
+func askDevinIdentity() (user, plan string, ok bool) { return askDevinIdentityAt("") }
+
+// askDevinIdentityAt asks the CLI who is signed in in home ("" for its own).
+func askDevinIdentityAt(home string) (user, plan string, ok bool) {
 	path := DevinExecutable()
 	if path == "" {
 		return "", "", false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	out, err := agentCommand(ctx, path, "auth", "status").Output()
+	out, err := devinCommand(ctx, home, path, "auth", "status").Output()
 	if err != nil {
 		return "", "", false
 	}
@@ -109,19 +112,32 @@ func parseDevinStatus(out string) (user, plan string, ok bool) {
 	return user, plan, true
 }
 
+// devinAccount is the Devin account in use first.
 func devinAccount() (Provider, bool) {
-	user, plan, ok := devinIdentity()
-	if !ok {
+	ls := devinLogins()
+	if len(ls) == 0 {
 		return Provider{}, false
 	}
-	acct := &Account{Agent: "devin", User: user, Plan: plan}
+	return devinProvider(ls[0]), true
+}
+
+// devinProvider is one of the Devin accounts; the CLI's own has the plan
+// the CLI says now.
+func devinProvider(l devinLogin) Provider {
+	home, plan := l.Home, l.Plan
+	if home == "" {
+		if _, p, ok := devinIdentity(); ok {
+			plan = p
+		}
+	}
+	acct := &Account{Agent: "devin", User: l.User, Plan: plan, Home: home}
 	acct.models = func() []catalog.Model {
 		// what a fetch or a picker visit last asked the CLI — never spawn
 		// one here: Available() runs on every gateway request
 		return devinModels(devinCached())
 	}
 	acct.fetch = func(ctx context.Context) ([]catalog.Model, error) {
-		families, err := askDevinFamilies(ctx)
+		families, err := askDevinFamiliesAt(ctx, home)
 		if err != nil {
 			return nil, err
 		}
@@ -129,7 +145,7 @@ func devinAccount() (Provider, bool) {
 		devinFamiliesCached(families)
 		return ms, catalog.SaveLive("devin", "", ms)
 	}
-	return Provider{ID: "devin", Name: "Devin", Icon: "devin", Website: "https://devin.ai", Account: acct}, true
+	return Provider{ID: "devin", Name: "Devin", Icon: "devin", Website: "https://devin.ai", Account: acct}
 }
 
 // DevinFamily is one entry of `devin models list`: a name that follows the
@@ -324,14 +340,18 @@ func devinFamiliesCached(families []DevinFamily) {
 	devinFamiliesCache.Unlock()
 }
 
-func askDevinFamilies(ctx context.Context) ([]DevinFamily, error) {
+func askDevinFamilies(ctx context.Context) ([]DevinFamily, error) { return askDevinFamiliesAt(ctx, "") }
+
+// askDevinFamiliesAt is the model list of the account signed in in home
+// ("" for the CLI's own).
+func askDevinFamiliesAt(ctx context.Context, home string) ([]DevinFamily, error) {
 	path := DevinExecutable()
 	if path == "" {
 		return nil, errors.New("devin is not installed")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	out, err := agentCommand(ctx, path, "models", "list", "--format", "json").Output()
+	out, err := devinCommand(ctx, home, path, "models", "list", "--format", "json").Output()
 	if err != nil {
 		return nil, errorf("devin models list: %v", err)
 	}
@@ -421,8 +441,27 @@ func devinExchange(ctx context.Context, code, verifier, redirect string) (savedL
 		return savedLogin{}, errors.New("Devin's exchange returned no session token")
 	}
 	creds := devinCredentials(key, devinAPIServer, res.DevinWebappHost, res.DevinAPIURL)
-	// devin keeps the one account it is signed in to: writing the file is
-	// signing it in, and puts the file where `devin auth status` reads it
+	if _, _, err := DevinAuth(); err == nil {
+		// the CLI is signed in already: this account signs in in a home of
+		// magpie's, beside it
+		home, err := newDevinHome()
+		if err != nil {
+			return savedLogin{}, err
+		}
+		if err := writePrivate(devinCredentialsAt(home), creds); err != nil {
+			removeDevinHome(home)
+			return savedLogin{}, err
+		}
+		user, plan, err := addDevinLogin(home)
+		if err != nil {
+			removeDevinHome(home)
+			return savedLogin{}, err
+		}
+		forgetAccountCaches()
+		return savedLogin{Agent: "devin", User: user, Plan: plan, Home: home}, nil
+	}
+	// the CLI has no account: writing its file is signing it in, and puts
+	// the file where `devin auth status` reads it
 	if err := writePrivate(DevinCredentialsPath(), creds); err != nil {
 		return savedLogin{}, err
 	}
@@ -470,10 +509,18 @@ func tomlString(s string) string {
 // DevinAuth is the key the CLI signed in with and the server its API is
 // on, read from credentials.toml; WINDSURF_API_SERVER_URL moves the server,
 // as it does the CLI's.
-func DevinAuth() (key, server string, err error) {
-	b, err := os.ReadFile(DevinCredentialsPath())
+func DevinAuth() (key, server string, err error) { return DevinAuthAt("") }
+
+// DevinAuthAt is DevinAuth for the account signed in in home, "" for the
+// CLI's own.
+func DevinAuthAt(home string) (key, server string, err error) {
+	path := devinCredentialsAt(home)
+	b, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			if home != "" {
+				return "", "", errors.New("this Devin account's sign-in is gone; add it again in magpie")
+			}
 			return "", "", errors.New("Devin isn't signed in; sign in from magpie's Providers page or run `devin auth login`")
 		}
 		return "", "", err
@@ -483,10 +530,10 @@ func DevinAuth() (key, server string, err error) {
 		Server string `toml:"api_server_url"`
 	}
 	if err := toml.Unmarshal(b, &c); err != nil {
-		return "", "", fmt.Errorf("%s: %w", DevinCredentialsPath(), err)
+		return "", "", fmt.Errorf("%s: %w", path, err)
 	}
 	if c.Key == "" {
-		return "", "", errors.New("Devin isn't signed in: " + DevinCredentialsPath() + " has no key")
+		return "", "", errors.New("Devin isn't signed in: " + path + " has no key")
 	}
 	server = strings.TrimRight(c.Server, "/")
 	if v := os.Getenv("WINDSURF_API_SERVER_URL"); v != "" {

@@ -457,6 +457,10 @@ func Logins(agent string) []Login {
 		return copilotLoginList()
 	case "zcode":
 		return zcodeLoginList()
+	case "kiro":
+		return kiroLoginList()
+	case "devin":
+		return devinLoginList()
 	case "workbuddy", WorkBuddyAIID:
 		return wbLoginList(wbSiteOf(agent))
 	case CommandCodePlanID:
@@ -466,6 +470,8 @@ func Logins(agent string) []Login {
 	case "":
 		side = append(grokLoginList(), copilotLoginList()...)
 		side = append(side, zcodeLoginList()...)
+		side = append(side, kiroLoginList()...)
+		side = append(side, devinLoginList()...)
 		side = append(side, wbLoginList(wbCN)...)
 		side = append(side, wbLoginList(wbAI)...)
 		side = append(side, cmdLoginList()...)
@@ -508,6 +514,10 @@ func SwitchLogin(agent, user string) error {
 		return switchCopilotLogin(user)
 	case "zcode":
 		return switchZCodeLogin(user)
+	case "kiro":
+		return switchKiroLogin(user)
+	case "devin":
+		return switchDevinLogin(user)
 	case "workbuddy", WorkBuddyAIID:
 		return switchWorkBuddyLogin(wbSiteOf(agent), user)
 	case CommandCodePlanID:
@@ -633,6 +643,10 @@ func ForgetLogin(agent, user string) error {
 		return forgetCopilotLogin(user)
 	case "zcode":
 		return forgetZCodeLogin(user)
+	case "kiro":
+		return forgetKiroLogin(user)
+	case "devin":
+		return forgetDevinLogin(user)
 	case "workbuddy", WorkBuddyAIID:
 		return forgetWorkBuddyLogin(wbSiteOf(agent), user)
 	case CommandCodePlanID:
