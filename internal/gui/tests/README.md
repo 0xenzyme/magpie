@@ -28,10 +28,17 @@ a title, memories, a turn on Luna Reserve, a kind it does not know yet): each
 has a grey tag by its model in the Requests list, in English and Chinese, the
 model keeping its room first, and the request's story says what it was.
 
+`balance-fix.test.cjs` opens a custom provider whose balance token sits
+beside new-api's `/api/usage/token` (and a new one with a token and no
+Balance URL): the editor says so, one click moves it to `/api/user/self`
+with the quota as its field, the New-Api-User header is asked for until it
+is typed, Check balance asks as the form has it and says the fix plainly,
+and the Usage page's card does too.
+
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

@@ -2808,23 +2808,35 @@ function renderEditor(p, presetID) {
 
   // a vendor that tells the whole account's balance only to a token of its
   // own (AiHubMix's system access token), where a key knows just its own
-  if (p?.balanceToken?.takes) {
-    const tok = input(draft.balanceToken || "", p.balanceToken.set && !draft.clearBalanceToken ? t("saved · paste a new one to replace it") : t("optional · the account's system access token"), "password");
+  // — or a custom provider's, whose Balance URL may not be named yet: a
+  // token pasted there says at once which URL it wants (balanceFix)
+  let balFix = null;
+  if (p?.balanceToken?.takes || custom) {
+    const saved = !!p?.balanceToken?.set;
+    const tok = input(draft.balanceToken || "", saved && !draft.clearBalanceToken ? t("saved · paste a new one to replace it") : t("optional · the account's system access token"), "password");
     tok.oninput = () => { draft.balanceToken = tok.value.trim(); };
     tok.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") cancelEdit(); };
     const pair = el("div", "pair");
     pair.append(tok);
-    if (p.balanceToken.set && !draft.clearBalanceToken) {
+    if (saved && !draft.clearBalanceToken) {
       const side = el("div", "side");
       const drop = el("button", "text", t("Remove"));
-      drop.onclick = () => { draft.clearBalanceToken = true; draft.balanceToken = ""; tok.value = ""; tok.placeholder = t("optional · the account's system access token"); drop.remove(); };
+      drop.onclick = () => { draft.clearBalanceToken = true; draft.balanceToken = ""; tok.value = ""; tok.placeholder = t("optional · the account's system access token"); drop.remove(); balFix?.refresh(); };
       side.append(drop);
       pair.append(side);
     }
-    const tokHelp = p.balanceURL
+    const tokHelp = custom || p.balanceURL
       ? t("What the Balance URL is asked with in place of the key, when it wants the account's own token: a new-api relay's System Access Token, or a sub2api panel's login token (a JWT, sent as a Bearer); it is used for nothing else.")
       : t("A key tells only what is left on itself. For the whole account's balance on the Usage page, generate a System Access Token in {p}'s settings and paste it here; it is used for nothing else.", { p: pr?.name || p.name });
-    ed.append(...field(t("Account balance"), pair, tokHelp));
+    const [label, wrap] = field(t("Account balance"), pair, tokHelp);
+    if (custom) {
+      balFix = balanceFix(p);
+      wrap.append(balFix);
+      // whatever is typed — the token, the Balance URL, a header — may
+      // make it or unmake it
+      ed.addEventListener("input", () => balFix.refresh());
+    }
+    ed.append(label, wrap);
   }
 
   // StepFun tells a Step Plan's 5-hour, weekly and credit windows only to
@@ -2921,11 +2933,40 @@ function renderEditor(p, presetID) {
     cat.oninput = () => { draft.catalog = cat.value; };
     inner.append(...field(t("Catalog"), cat, t("Display names and reasoning levels for the models; for a gateway that serves several vendors, list them all, first match wins")));
     const bal = input(draft.balanceURL, "https://…/api/usage/token", "url");
+    bal.classList.add("bal-url");
     bal.oninput = () => { draft.balanceURL = bal.value; };
     inner.append(...field(t("Balance URL"), bal, t("Where the vendor tells what is left on the key, asked with it like a chat request; shown on the Usage page")));
     const balPath = input(draft.balancePath, "data.balance");
+    balPath.classList.add("bal-path");
     balPath.oninput = () => { draft.balancePath = balPath.value; };
-    inner.append(...field(t("Balance field"), balPath, t("Where the amount is in the reply, e.g. data.balance; it can be a sum with + - * / and brackets, e.g. data.total / 500000 or (1 - credits.used / 70) %; \"$\" in front adds the sign, \"%\" after it shows a percent; several, each with a label, go apart by \";\", e.g. 5h: a.used / a.cap %; $credits.left")));
+    // asked as the form has it, before a Save: what the Usage page would show
+    const balPair = el("div", "pair");
+    balPair.append(balPath);
+    if (p) {
+      const side = el("div", "side");
+      const check = el("button", "text action", t("Check balance"));
+      check.title = t("Ask the Balance URL now, as the form has it");
+      side.append(check);
+      balPair.append(side);
+      const res = el("div", "bal-res");
+      check.onclick = async () => {
+        check.classList.add("busy");
+        res.className = "bal-res wait"; res.textContent = "…"; res.title = "";
+        const body = { id: p.id, balanceURL: (draft.balanceURL || "").trim(), balancePath: (draft.balancePath || "").trim(), headers: headersOf(draft.headers) };
+        if (draft.balanceToken) body.balanceToken = draft.balanceToken;
+        else if (draft.clearBalanceToken) body.clearBalanceToken = true;
+        try {
+          const r = await api("provider/balance", body);
+          res.className = "bal-res " + (r.error ? "bad" : r.ok ? "ok" : "");
+          res.textContent = r.error ? balanceError(r.error) || r.error : r.ok ? t("Balance") + " " + r.amount : t("No Balance URL to ask");
+          res.title = r.error || "";
+        } catch (e) { res.className = "bal-res bad"; res.textContent = e.message; }
+        check.classList.remove("busy");
+      };
+      balPair.append(res);
+      balPair.classList.add("wrap");
+    }
+    inner.append(...field(t("Balance field"), balPair, t("Where the amount is in the reply, e.g. data.balance; it can be a sum with + - * / and brackets, e.g. data.total / 500000 or (1 - credits.used / 70) %; \"$\" in front adds the sign, \"%\" after it shows a percent; several, each with a label, go apart by \";\", e.g. 5h: a.used / a.cap %; $credits.left")));
     more.append(inner);
     ed.append(more);
   }
@@ -4122,7 +4163,69 @@ function quotaError(err) {
   if (/violation of Terms of Service/i.test(err)) return t("Google has suspended this account — hover for details");
   if (/access token is invalid or expired|didn't take the access token/.test(err)) return t("AiHubMix didn't take the access token — paste a new one in the provider's settings");
   if (/this key has no limit/.test(err)) return t("This key has no limit — add the account's access token in the provider's settings to see its balance");
-  return t("Usage unavailable");
+  return balanceError(err) || t("Usage unavailable");
+}
+
+// balanceError: a balance that couldn't be read, said plainly where magpie
+// knows the fix (see balance.go); "" for any other.
+function balanceError(err) {
+  if (/takes the API key, not the access token/.test(err)) return t("The Balance URL …/api/usage/token takes the API key, not the access token — set it to …/api/user/self in the provider's settings");
+  if (/New-Api-User/i.test(err)) return t("Add the header New-Api-User = your user ID (shown in the site's personal settings) to the provider's Headers");
+  return "";
+}
+
+// balanceFix: under a custom provider's balance token, what its Balance URL
+// wants in place of what is there, with the one click that sets it:
+// new-api's /api/usage/token is asked with the key alone and never with the
+// token (balance.go doesn't send it there), and a token without a URL is
+// asked nowhere; new-api's /api/user/self takes the token, with the user's
+// id in New-Api-User, which is said too while no such header is set. A URL
+// of any other kind (a sub2api panel's) is left alone: a token's shape
+// can't tell the two apart, new-api's own sign-ins being JWTs too.
+function balanceFix(p) {
+  const box = el("div", "bal-fix");
+  const origin = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.origin : ""; } catch { return ""; } };
+  box.refresh = () => {
+    box.replaceChildren();
+    box.className = "bal-fix";
+    const tok = !!draft.balanceToken || (!!p?.balanceToken?.set && !draft.clearBalanceToken);
+    if (!tok) return;
+    const u = (draft.balanceURL || "").trim();
+    let path = "";
+    try { path = new URL(u).pathname.replace(/\/+$/, ""); } catch {}
+    let why = "";
+    if (path === "/api/usage/token") why = t("…/api/usage/token takes the API key, not this token: a new-api relay tells the account's balance to the token at /api/user/self.");
+    else if (!u) why = t("The token needs a Balance URL: a new-api relay tells the account's balance to it at /api/user/self.");
+    if (why) {
+      box.classList.add("warn");
+      box.append(el("span", "", why));
+      const site = origin(u) || origin(draft.chat || draft.anthropic || draft.responses || "");
+      if (!site) return;
+      const to = site + "/api/user/self";
+      const use = el("button", "text action", t("Use {url}", { url: to }));
+      use.onclick = () => {
+        draft.balanceURL = to;
+        // /api/usage/token's fields aren't in /api/user/self's reply; the
+        // account's quota is, $1 to 500000 of it
+        if (!(draft.balancePath || "").trim() || /total_(available|granted|used)|unlimited_quota/.test(draft.balancePath)) draft.balancePath = "$data.quota / 500000";
+        const ed = box.closest(".editor");
+        const set = (sel, v) => { const i = ed?.querySelector(sel); if (i) i.value = v; };
+        set(".bal-url", draft.balanceURL);
+        set(".bal-path", draft.balancePath);
+        // what changed, in view below
+        const more = ed?.querySelector("details.more");
+        if (more) more.open = true;
+        box.refresh();
+      };
+      box.append(use);
+      return;
+    }
+    if (path === "/api/user/self" && !(draft.headers || []).some((h) => (h[0] || "").trim().toLowerCase() === "new-api-user" && (h[1] || "").trim())) {
+      box.append(el("span", "", t("A new-api relay also wants the header New-Api-User = your user ID (shown in the site's personal settings): add it under Headers.")));
+    }
+  };
+  box.refresh();
+  return box;
 }
 
 // accountQuota: an account's allowance as a line of small meters under its

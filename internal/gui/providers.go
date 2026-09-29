@@ -621,6 +621,34 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				Provider providerJSON      `json:"provider"`
 			}{p.Test(ctx), providerInfo(*p, agentUses(agent.Detected(), provider.GroupFinder()))})
 			return
+		case "balance":
+			// the editor's check of a balance as it stands in the form,
+			// before a Save: the saved provider with the form's URL, field,
+			// headers and token (a blank one keeping the saved)
+			p, err := provider.Find(in.ID)
+			if err != nil {
+				fail(rw, err)
+				return
+			}
+			q := *p
+			q.BalanceURL, q.BalancePath = strings.TrimSpace(in.BalanceURL), strings.TrimSpace(in.BalancePath)
+			if in.Headers != nil {
+				q.Headers = in.Headers
+			}
+			if in.BalanceToken != "" {
+				q.BalanceToken = in.BalanceToken
+			} else if req.ClearBalanceToken {
+				q.BalanceToken = ""
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+			defer cancel()
+			amount, ok, err := provider.Balance(ctx, q)
+			out := map[string]any{"ok": ok, "amount": amount}
+			if err != nil {
+				out["error"] = err.Error()
+			}
+			writeJSON(rw, out)
+			return
 		case "unfetch":
 			// the vendor's list, forgotten until the next Refresh
 			if err := catalog.SaveLive(in.ID, "", nil); err != nil {

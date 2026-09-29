@@ -1167,6 +1167,17 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .editor .ehead .note { font-size: 12px; color: var(--muted); }
 .editor label { font-size: 12px; color: var(--muted); text-align: right; padding-top: 5px; }
 .editor .hint { font-size: 11px; color: var(--faint); margin-top: 4px; }
+/* what a balance token's URL wants instead, and a balance checked in the form */
+.editor .bal-fix { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.editor .bal-fix:empty { display: none; }
+.editor .bal-fix.warn { color: var(--amber); }
+.editor .bal-fix .text.action { height: 24px; font-size: 11.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor .pair.wrap { flex-wrap: wrap; }
+.editor .bal-res { flex-basis: 100%; font-size: 12px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.editor .bal-res:empty { display: none; }
+.editor .bal-res.ok { color: var(--green); }
+.editor .bal-res.bad { color: var(--red); }
+.editor .bal-res.wait { color: var(--faint); }
 .stepplan .state { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); line-height: 1.4; }
 .stepplan .steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: var(--muted); line-height: 1.5; }
 .stepplan .steps .pair { margin-top: 2px; }
