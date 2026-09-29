@@ -45,7 +45,7 @@ const full = (key) => ({
 });
 const sessions = [0, 1, 2].map((i) => ({ ...full("claude:s" + i), title: "Latest " + i }));
 
-function serve(lang, seen) {
+function serve(lang, seen, ctl = {}) {
   const state = { agents: [{ id: "claude", name: "Claude Code", path: "/test/settings.json", fields: [] }], profiles: [], settings: { lang, theme: "light" } };
   return async (route) => {
     const url = new URL(route.request().url());
@@ -54,10 +54,11 @@ function serve(lang, seen) {
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"light",web:true};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json(state);
-    if (url.pathname === "/api/sessions/progress") return json({ indexing: false });
+    if (url.pathname === "/api/sessions/progress") return json(ctl.progress ? ctl.progress() : { indexing: false });
     if (url.pathname === "/api/sessions") return json({ sessions, dirs: ["/test/sessions"] });
     const n = +q.get("days") || allDays.length;
     const days = allDays.slice(-n);
+    if (url.pathname === "/api/sessions/stats" && ctl.delay) await new Promise((r) => setTimeout(r, ctl.delay));
     if (url.pathname === "/api/sessions/stats") return json({ from: days[0].date, to: iso(to), days, agents: { claude: "Claude Code", codex: "Codex" } });
     if (url.pathname === "/api/sessions/overview") {
       seen.push(q.toString());
@@ -106,9 +107,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const context = await browser.newContext({ viewport: { width: 1100, height: 760 }, reducedMotion: "reduce", timezoneId: "Asia/Shanghai" });
       const page = await context.newPage();
       page.setDefaultTimeout(5000);
-      const errors = [], seen = [];
+      const errors = [], seen = [], ctl = {};
       page.on("pageerror", (e) => errors.push(e.message));
-      await page.route("**/*", serve(lang, seen));
+      await page.route("**/*", serve(lang, seen, ctl));
       await page.addInitScript(() => { localStorage.setItem("magpie.usageTab", "sessions"); localStorage.setItem("magpie.sessRange", "all"); });
       t.after(async () => {
         if (process.env.ARTIFACT_DIR) {
@@ -271,6 +272,51 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.waitForFunction(() => document.querySelectorAll("#sessChart .bars .bar").length === 90);
         await page.locator("#sessRange .opt").nth(4).click();
         await page.waitForFunction(() => document.querySelectorAll("#sessChart .sess-cal i").length === 200);
+      });
+
+      await t.test("the search sits by the latest sessions it filters, and stays with no match", async () => {
+        const q = page.locator("#sessListHead #sessQ");
+        assert.equal(await q.count(), 1);
+        assert.equal(await page.locator(".sess-tools #sessQ").count(), 0);
+        const head = await page.locator("#sessListHead").boundingBox();
+        const box = await q.boundingBox();
+        assert(box.x + box.width >= head.x + head.width - 4, "at the heading's right: " + JSON.stringify([box, head]));
+        assert(Math.abs((box.y + box.height / 2) - (head.y + head.height / 2)) <= 2, "on the heading's line");
+        assert.equal(await page.locator("#sessList .row.sess").count(), 3);
+        await q.fill("latest 1");
+        await page.waitForFunction(() => document.querySelectorAll("#sessList .row.sess").length === 1);
+        await q.fill("nothing like it");
+        await page.locator("#sessList .empty-state").waitFor();
+        assert.equal(await page.locator("#sessList .empty-state").innerText(), lang === "en" ? "No session matches." : "没有匹配的会话。");
+        assert(await q.isVisible());
+        await q.press("Escape");
+        await page.waitForFunction(() => document.querySelectorAll("#sessList .row.sess").length === 3);
+      });
+
+      await t.test("the indexing show: not for a catch-up read, once for a long one", async () => {
+        // how many times the show is put on the page
+        await page.evaluate(() => {
+          window.heroes = 0;
+          new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains("sess-indexing")) window.heroes++; })
+            .observe(document.querySelector("#sessStats"), { childList: true });
+        });
+        // a range picked while an agent writes: a few changed files read again
+        const started = Date.now();
+        ctl.delay = 450;
+        ctl.progress = () => ({ indexing: Date.now() - started < 400, files: 2, done: 1, bytes: 40000, read: 20000 });
+        await page.locator("#sessRange .opt").nth(1).click();
+        await page.waitForFunction(() => document.querySelectorAll("#sessChart .bars .bar").length === 7);
+        assert.equal(await page.evaluate(() => window.heroes), 0);
+        // a first index, a while long: shown once, up to its end, never again from nought
+        const at = Date.now();
+        ctl.delay = 2200;
+        ctl.progress = () => { const f = Math.min(1, (Date.now() - at) / 2000); return { indexing: f < 1, files: 300, done: Math.round(300 * f), bytes: 4e9, read: 4e9 * f }; };
+        await page.locator("#sessRange .opt").nth(4).click();
+        await page.locator("#sessStats .sess-indexing").waitFor();
+        await page.waitForFunction(() => document.querySelectorAll("#sessChart .sess-cal i").length === 200, null, { timeout: 8000 });
+        assert.equal(await page.evaluate(() => window.heroes), 1);
+        delete ctl.delay;
+        delete ctl.progress;
       });
 
       await t.test("nothing overflows, wide or narrow", async () => {

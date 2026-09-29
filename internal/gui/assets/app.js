@@ -6099,20 +6099,27 @@ function renderSessionsLoading() {
   $("#sessNote").textContent = t("Reading the agents' session files…");
 }
 
+const SESS_INDEX_SHOW = 700;
+
 // sessWatchIndex asks how far the reading of the session files has got
 // while the page waits on it; a read of the kept index, over in a moment,
 // shows the skeleton alone, and one that takes a while the indexing show.
 // It returns the stop.
 function sessWatchIndex() {
-  let on = true, timer = 0, shown = false;
+  let on = true, timer = 0, shown = false, since = 0;
   const tick = async () => {
     if (!on) return;
     let p = null;
     try { p = await api("sessions/progress"); } catch {}
     if (!on) return;
     // only a real indexing run is shown: a read of the kept index, however
-    // long, keeps the skeleton, so the page never flashes the show on and off
-    if (p && (p.indexing || shown) && view === "usage" && usageTab === "sessions") {
+    // long, keeps the skeleton, and so does the catch-up read of the few
+    // files the agents wrote to since (every reload has some, while an agent
+    // is at work), over well before SESS_INDEX_SHOW; the show would play
+    // again from nought for it
+    since = p?.indexing ? since || Date.now() : 0;
+    const long = since && Date.now() - since >= SESS_INDEX_SHOW;
+    if (p && (long || shown) && view === "usage" && usageTab === "sessions") {
       const stats = $("#sessStats");
       let hero = stats.querySelector(".sess-indexing");
       if (!hero) {
@@ -6538,7 +6545,8 @@ function renderSessions() {
     box.hidden = true;
     chart.hidden = true;
     grid.hidden = true;
-    head.hidden = true;
+    // the search stays where it was typed, to be cleared
+    head.hidden = !q;
   } else {
     stats.classList.remove("empty");
     stats.classList.add("six");
@@ -6575,9 +6583,10 @@ function renderSessions() {
     renderSessShape();
     renderSessTools();
     renderSessSkills();
-    head.hidden = !list.length;
-    box.hidden = !list.length;
+    head.hidden = !list.length && !q;
+    box.hidden = !list.length && !q;
     for (const s of list) box.append(sessionItem(s));
+    if (!list.length && q) box.append(el("div", "empty-state", t("No session matches.")));
   }
   const dirs = (sessions?.dirs || []).join(" · ");
   $("#sessNote").textContent = t("Totals count every session in the agents' own files; the list is the latest {n} by activity · {dirs}", { n: all.length, dirs });
