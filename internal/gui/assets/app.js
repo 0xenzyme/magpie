@@ -978,7 +978,7 @@ async function load() {
     state = next;
     load.done = true;
     // the library may have drawn itself before the saved language was known
-    if (applyPrefs(state.settings) && view === "library") window.loadLibrary?.();
+    if (applyPrefs(state.settings, state.fx) && view === "library") window.loadLibrary?.();
     tintPanel();
     renderAgents();
     loadCLIs(); // after the rows, never holding them up
@@ -7207,9 +7207,10 @@ const LOCALES = [["system", "System"], ["en", "English"], ["zh", "中文"]];
 const TRAYS = [["panel", "Quick panel"], ["window", "Main window"]];
 const CURRENCIES = [["usd", "$ USD"], ["cny", "¥ CNY"]];
 
-// applyPrefs paints and speaks as the saved settings say. A ?theme= or
-// ?locale= in the URL wins, so a forced look stays forced.
-function applyPrefs(s) {
+// applyPrefs paints and speaks as the saved settings say, costs at the
+// exchange rate given (rate, /api/state's fx) or the settings' own. A
+// ?theme= or ?locale= in the URL wins, so a forced look stays forced.
+function applyPrefs(s, rate) {
   s = s || {};
   const root = document.documentElement;
   if (!params.get("theme")) {
@@ -7233,8 +7234,15 @@ function applyPrefs(s) {
     quotaLeft = !!s.quotaLeft;
     if (applyPrefs.painted) renderQuotas();
   }
-  if (s.fx) fx = s.fx;
-  if (currency !== (s.currency || "usd")) {
+  // the rate comes in /api/settings' answer (s.fx) or, from /api/state,
+  // beside the settings rather than in them (rate): a cost drawn at start,
+  // before Settings is ever opened, needs it from there (#212: cny still
+  // picked after a restart, yet every cost back in $, the rate being 0).
+  // A rate of 0 is state's for usd, which never looks one up: kept out.
+  const got = rate?.rate > 0 ? rate : s.fx?.rate > 0 ? s.fx : null;
+  const moved = !!got && got.rate !== fx.rate;
+  if (got) fx = got;
+  if (currency !== (s.currency || "usd") || (moved && currency === "cny")) {
     currency = s.currency || "usd";
     if (applyPrefs.painted) renderCosts();
   }
