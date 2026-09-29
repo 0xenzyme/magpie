@@ -254,8 +254,13 @@ func find(ps []Provider, id string) (Provider, bool) {
 func Find(id string) (*Provider, error) {
 	q := strings.ToLower(strings.TrimSpace(id))
 	all := All()
+	// an id before a name: a provider of the user's called WorkBuddy isn't
+	// the workbuddy subscription
+	if i := slices.IndexFunc(all, func(p Provider) bool { return p.ID == q }); i >= 0 {
+		return &all[i], nil
+	}
 	for _, p := range all {
-		if p.ID == q || strings.ToLower(p.Name) == q {
+		if strings.ToLower(p.Name) == q {
 			return &p, nil
 		}
 	}
