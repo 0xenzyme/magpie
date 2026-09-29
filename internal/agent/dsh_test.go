@@ -197,3 +197,61 @@ func TestDshModelLimits(t *testing.T) {
 		t.Fatalf("models:\n%s", s)
 	}
 }
+
+// The desktop app's profile made after the web's was set up (Discord 莫:
+// the web version lists magpie's models, the desktop one DeepSeek's alone)
+// is reported and, on the next sync, given the model the web's has.
+func TestDshProfileMadeLater(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("DSH_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	if err := provider.Save(provider.Provider{ID: "deepseek", Name: "DeepSeek", Chat: "https://api.deepseek.com/v1", Key: "k", Models: []string{"pro", "flash"}}); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(home, ".dsh")
+	template := "# Your patch layer for this dsh profile.\n[]\n"
+	web, desktop, mine := filepath.Join(dir, "profiles", "web", "cordis.patch.yml"), filepath.Join(dir, "profiles", "desktop", "cordis.patch.yml"), filepath.Join(dir, "profiles", "mine", "cordis.patch.yml")
+	os.MkdirAll(filepath.Dir(web), 0o755)
+	os.WriteFile(web, []byte(template), 0o644)
+	a := dsh(home)
+	if err := a.Field("model").Set("magpie/deepseek/pro"); err != nil {
+		t.Fatal(err)
+	}
+	if d := a.Check(); d != "" {
+		t.Fatalf("wired: %s", d)
+	}
+	// dsh's desktop app opened for the first time, and a profile with the
+	// user's own llm-deepseek
+	own := "- id: llm-deepseek\n  config:\n    baseURL: https://example.com\n"
+	for p, body := range map[string]string{desktop: template, mine: own} {
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(body), 0o644)
+	}
+	if d := a.Check(); !strings.Contains(d, "desktop profile") {
+		t.Fatalf("the new profile isn't reported: %q", d)
+	}
+	if err := a.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(desktop)
+	for _, want := range []string{"- id: llm-deepseek # magpie", "apiKeyEnv: " + dshKeyRef, "- id: agent-default-model # magpie", `model: "deepseek/pro"`} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("missing %q in the desktop profile:\n%s", want, b)
+		}
+	}
+	if b, _ := os.ReadFile(mine); string(b) != own {
+		t.Fatalf("the user's own entry was changed:\n%s", b)
+	}
+	// the user's own profile is still reported, until the model is set again
+	if d := a.Check(); !strings.Contains(d, "mine profile") {
+		t.Fatalf("got %q", d)
+	}
+	if err := a.Field("model").Set("magpie/deepseek/pro"); err != nil {
+		t.Fatal(err)
+	}
+	if d := a.Check(); d != "" {
+		t.Fatalf("after setting it again: %s", d)
+	}
+}

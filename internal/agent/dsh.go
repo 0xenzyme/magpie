@@ -210,6 +210,15 @@ func dshCheck(dir string) string {
 	if len(files) > 0 {
 		path = files[0]
 	}
+	// a profile of dsh's (its desktop app's) with none of magpie's entries:
+	// sessions there list dsh's own models alone
+	for _, f := range files[min(1, len(files)):] {
+		if _, items, err := dshRead(f); err == nil {
+			if i := dshFind(items, "llm-deepseek"); i < 0 || !items[i].magpie {
+				return "DeepSeek Harness's " + filepath.Base(filepath.Dir(f)) + " profile (" + f + ") has none of magpie's models, so sessions there list DeepSeek's own alone"
+			}
+		}
+	}
 	_, items, _ := dshRead(path)
 	base := ""
 	if i := dshFind(items, "llm-deepseek"); i >= 0 {
@@ -446,6 +455,8 @@ func dshSync(dir string) error {
 	files := dshProfiles(dir)
 	if len(files) == 0 {
 		files = []string{filepath.Join(dir, "config.yaml")}
+	} else if err := dshFillNewProfiles(files); err != nil {
+		return err
 	}
 	for _, f := range files {
 		head, items, err := dshRead(f)
@@ -470,6 +481,44 @@ func dshSync(dir string) error {
 			out = append(out, it.lines...)
 		}
 		if err := edit.WriteAtomic(f, []byte(strings.Join(out, "\n")+"\n")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dshFillNewProfiles gives a profile dsh made after magpie set it up — the
+// desktop app's, opened for the first time after the web's was wired —
+// the model magpie set in the others: until then it lists dsh's own models
+// alone. A profile with an llm-deepseek entry of the user's is left alone.
+func dshFillNewProfiles(files []string) error {
+	model := ""
+	var bare []string
+	for _, f := range files {
+		_, items, err := dshRead(f)
+		if err != nil {
+			continue
+		}
+		i := dshFind(items, "llm-deepseek")
+		switch {
+		case i < 0:
+			bare = append(bare, f)
+		case items[i].magpie && model == "":
+			if j := dshFind(items, "agent-default-model"); j >= 0 && items[j].magpie {
+				for _, l := range items[j].lines {
+					if m := dshModelLine.FindStringSubmatch(l); m != nil {
+						model = yamlScalar(m[1])
+						break
+					}
+				}
+			}
+		}
+	}
+	if model == "" {
+		return nil
+	}
+	for _, f := range bare {
+		if err := dshSetFile(f, magpieID+"/"+model, true); err != nil {
 			return err
 		}
 	}
