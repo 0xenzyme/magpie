@@ -17,6 +17,8 @@ var devinListed = []DevinFamily{
 		{ID: "swe-2-medium", Name: "SWE-2 Medium", Provider: "devin", Context: 262000, Output: 128000},
 		{ID: "swe-2-high", Name: "SWE-2 High", Provider: "devin", Context: 262000, Output: 128000},
 		{ID: "swe-2-max", Name: "SWE-2 Max", Provider: "devin", Context: 262000, Output: 128000},
+		{ID: "swe-2-low-fast", Name: "SWE-2 Low Fast", Provider: "devin", Context: 262000, Output: 128000},
+		{ID: "swe-2-high-fast", Name: "SWE-2 High Fast", Provider: "devin", Context: 262000, Output: 128000},
 	}},
 	{UID: "claude-sonnet-5-5", Label: "Claude Sonnet 5.5", Models: []catalog.Model{
 		{ID: "MODEL_CLAUDE_SONNET_5_5_MEDIUM", Name: "Claude Sonnet 5.5 Medium", Provider: "devin", Context: 1000000, Output: 64000},
@@ -40,16 +42,20 @@ func devinOffered(ms []catalog.Model) string {
 
 // Devin's list is offered as its families, each with the efforts its
 // variants are at, so the effort is picked as any model's is; a variant
-// that is no effort (a 1M window, a fast one) stays a model of its own.
+// that is no effort (a 1M window) stays a model of its own, and a family's
+// fast variants are one more model, the family's fast run.
 func TestDevinModelsOfferFamilies(t *testing.T) {
 	got := devinOffered(devinModels(devinListed))
-	want := "swe-2|low,medium,high,max claude-sonnet-5-5|medium,high claude-sonnet-5-5-high-fast| glm-5.2| glm-5-2| glm-5-2-1m| kimi-k3|"
+	want := "swe-2|low,medium,high,max swe-2-fast|low,high claude-sonnet-5-5|medium,high claude-sonnet-5-5-fast|high glm-5.2| glm-5-2| glm-5-2-1m| kimi-k3|"
 	if got != want {
 		t.Fatalf("offered\n %s\nwant\n %s", got, want)
 	}
 	for _, m := range devinModels(devinListed) {
 		if m.ID == "swe-2" && (m.Name != "SWE-2" || m.Context != 262000) {
 			t.Fatalf("a family keeps its name and window: %+v", m)
+		}
+		if m.ID == "swe-2-fast" && (m.Name != "SWE-2 Fast" || m.Context != 262000 || m.Output != 128000) {
+			t.Fatalf("a fast run is named for its family, with its window: %+v", m)
 		}
 	}
 }
@@ -59,8 +65,8 @@ func TestDevinModelsOfferFamilies(t *testing.T) {
 // picked: those stay, at the one effort each id is at.
 func TestDevinCollapseKeepsPickedVariants(t *testing.T) {
 	flat := devinModelsFlatten(devinListed)
-	got := devinOffered(devinCollapse(flat, devinListed, []string{"swe-2-medium", "MODEL_CLAUDE_SONNET_5_5_MEDIUM"}))
-	want := "swe-2|low,medium,high,max swe-2-medium|medium claude-sonnet-5-5|medium,high MODEL_CLAUDE_SONNET_5_5_MEDIUM|medium claude-sonnet-5-5-high-fast| glm-5.2| glm-5-2| glm-5-2-1m| kimi-k3|"
+	got := devinOffered(devinCollapse(flat, devinListed, []string{"swe-2-medium", "MODEL_CLAUDE_SONNET_5_5_MEDIUM", "claude-sonnet-5-5-high-fast"}))
+	want := "swe-2|low,medium,high,max swe-2-fast|low,high swe-2-medium|medium claude-sonnet-5-5|medium,high claude-sonnet-5-5-fast|high MODEL_CLAUDE_SONNET_5_5_MEDIUM|medium claude-sonnet-5-5-high-fast|high glm-5.2| glm-5-2| glm-5-2-1m| kimi-k3|"
 	if got != want {
 		t.Fatalf("collapsed\n %s\nwant\n %s", got, want)
 	}
@@ -88,6 +94,17 @@ func TestDevinVariantIn(t *testing.T) {
 		{"swe-2-medium", "max", "swe-2-medium"},
 		{"MODEL_CLAUDE_SONNET_5_5_MEDIUM", "max", "MODEL_CLAUDE_SONNET_5_5_MEDIUM"},
 		{"claude-sonnet-5-5-high-fast", "low", "claude-sonnet-5-5-high-fast"},
+		{"swe-2-high-fast", "low", "swe-2-high-fast"},
+		// a family's fast run is its fast variant at the effort, the
+		// nearest it has, or at the family's default effort
+		{"swe-2-fast", "", "swe-2-low-fast"},
+		{"swe-2-fast", "high", "swe-2-high-fast"},
+		{"swe-2-fast", "medium", "swe-2-high-fast"}, // a tie goes up
+		{"swe-2-fast", "max", "swe-2-high-fast"},
+		{"swe-fast", "low", "swe-2-low-fast"},
+		{"claude-sonnet-5-5-fast", "", "claude-sonnet-5-5-high-fast"},
+		{"claude-sonnet-5-5-fast", "low", "claude-sonnet-5-5-high-fast"},
+		{"glm-5.2-fast", "high", "glm-5.2-fast"},
 		{"unknown", "high", "unknown"},
 	} {
 		if got := devinVariantIn(devinListed, c.model, c.effort); got != c.want {
@@ -113,6 +130,7 @@ func TestDevinEfforts(t *testing.T) {
 	for model, want := range map[string]string{
 		"swe-2": "low,medium,high,max", "claude-sonnet-5-5": "medium,high",
 		"swe-2-medium": "medium", "MODEL_CLAUDE_SONNET_5_5_HIGH": "high", "glm-5-2-1m": "",
+		"swe-2-fast": "low,high", "claude-sonnet-5-5-fast": "high", "swe-2-high-fast": "high",
 	} {
 		if got := strings.Join(p.Efforts(model), ","); got != want {
 			t.Errorf("%s: %q, want %q", model, got, want)
@@ -121,5 +139,67 @@ func TestDevinEfforts(t *testing.T) {
 	ex := p.Exposed()
 	if len(ex) != 2 || ex[1].ID != "swe-2-medium" || ex[1].Context != 262000 || strings.Join(ex[1].Efforts, ",") != "medium" {
 		t.Fatalf("exposed %+v", ex)
+	}
+}
+
+// Devin's list as it is: a family's fast and priority variants are a model
+// each (claude-opus-5-5-fast, gpt-6-sol-priority), while an id that ends in
+// fast with no effort before it (swe-1-6-fast, its own family) stays itself
+// and isn't taken for swe-1.6's fast run.
+func TestDevinTiers(t *testing.T) {
+	families := []DevinFamily{
+		{UID: "claude-opus-5-5", Label: "Claude Opus 5.5", Models: []catalog.Model{
+			{ID: "claude-opus-5-5-medium"}, {ID: "claude-opus-5-5-low"}, {ID: "claude-opus-5-5-high"},
+			{ID: "claude-opus-5-5-low-fast"}, {ID: "claude-opus-5-5-medium-fast"}, {ID: "claude-opus-5-5-max-fast"},
+		}},
+		{UID: "gpt-6-sol", Label: "GPT-6 Sol", Models: []catalog.Model{
+			{ID: "gpt-6-sol-medium"}, {ID: "gpt-6-sol-none"}, {ID: "gpt-6-sol-high"},
+			{ID: "gpt-6-sol-none-priority"}, {ID: "gpt-6-sol-high-priority"},
+		}},
+		{UID: "swe-1.6", Label: "SWE-1.6", Models: []catalog.Model{{ID: "swe-1-6"}}},
+		{UID: "swe-1.6-fast", Label: "SWE-1.6 Fast", Models: []catalog.Model{{ID: "swe-1-6-fast"}}},
+	}
+	got := devinOffered(devinModels(families))
+	want := "claude-opus-5-5|low,medium,high claude-opus-5-5-fast|low,medium,max gpt-6-sol|none,medium,high gpt-6-sol-priority|none,high swe-1.6| swe-1.6-fast|"
+	if got != want {
+		t.Fatalf("offered\n %s\nwant\n %s", got, want)
+	}
+	for _, c := range []struct{ model, effort, want string }{
+		{"claude-opus-5-5-fast", "", "claude-opus-5-5-medium-fast"},
+		{"claude-opus-5-5-fast", "xhigh", "claude-opus-5-5-max-fast"},
+		{"claude-opus-5-5-fast", "high", "claude-opus-5-5-medium-fast"},
+		{"gpt-6-sol-priority", "minimal", "gpt-6-sol-none-priority"},
+		{"gpt-6-sol-priority", "", "gpt-6-sol-high-priority"}, // medium, the family default
+		{"swe-1.6-fast", "high", "swe-1-6-fast"},
+	} {
+		if got := devinVariantIn(families, c.model, c.effort); got != c.want {
+			t.Errorf("%s at %q: %s, want %s", c.model, c.effort, got, c.want)
+		}
+	}
+	// an id Devin's config holds, as the picker shows it, and back
+	for _, c := range []struct{ id, model, effort string }{
+		{"claude-opus-5-5-high", "claude-opus-5-5", "high"},
+		{"claude-opus-5-5-max-fast", "claude-opus-5-5-fast", "max"},
+		{"gpt-6-sol-none-priority", "gpt-6-sol-priority", "none"},
+		{"claude-opus-5-5", "claude-opus-5-5", ""},
+		{"swe-1-6-fast", "swe-1-6-fast", ""},
+		{"gone-model-high", "gone-model-high", ""},
+	} {
+		m, e := DevinSplit(families, c.id)
+		if m != c.model || e != c.effort {
+			t.Errorf("split %s: %s at %q, want %s at %q", c.id, m, e, c.model, c.effort)
+		}
+		if back := DevinPick(families, m, e); back != c.id {
+			t.Errorf("pick %s at %q: %s, want %s", m, e, back, c.id)
+		}
+	}
+	if got := DevinPick(families, "claude-opus-5-5-fast", ""); got != "claude-opus-5-5-medium-fast" {
+		t.Errorf("a fast run with no effort is its variant at the family's default: %s", got)
+	}
+	// the agent's picker has Adaptive and Fusion too, which Devin's own
+	// agent runs, as one model each
+	withOwn := append([]DevinFamily{{UID: "Adaptive", Label: "Adaptive", Models: []catalog.Model{{ID: "adaptive"}}}}, families...)
+	if got := devinOffered(DevinOffered(withOwn)); !strings.HasPrefix(got, "Adaptive| claude-opus-5-5|") {
+		t.Errorf("offered to the agent: %s", got)
 	}
 }

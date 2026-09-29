@@ -364,7 +364,7 @@ func (p Provider) Known(model string) []string {
 	// one of Devin's variants an agent was set to, which the list offers as
 	// its family: the one effort its id runs at, whatever effort is asked
 	if p.ID == "devin" {
-		if l := devinLevel(model); l != "" {
+		if l := devinEffortOf(model); l != "" {
 			return []string{l}
 		}
 	}
