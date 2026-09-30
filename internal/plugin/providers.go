@@ -42,16 +42,18 @@ type Model struct {
 
 // Provider is a provider a plugin signs in to.
 type Provider struct {
-	ID        string   `json:"id"`   // OpenCode's: google, github-copilot
-	Spec      string   `json:"spec"` // the plugin
-	Name      string   `json:"name"`
-	NPM       string   `json:"npm"`
-	API       string   `json:"api"`
-	Methods   []Method `json:"methods"`
-	SignedIn  bool     `json:"signedIn"`
-	AuthType  string   `json:"authType"`
-	AccountID string   `json:"accountId"`
-	Models    []Model  `json:"models"`
+	ID      string   `json:"id"`   // OpenCode's: google, github-copilot
+	Spec    string   `json:"spec"` // the plugin
+	Name    string   `json:"name"`
+	NPM     string   `json:"npm"`
+	API     string   `json:"api"`
+	Methods []Method `json:"methods"`
+	// Usage says the plugin tells each account's allowance (auth.usage)
+	Usage     bool    `json:"usage"`
+	SignedIn  bool    `json:"signedIn"`
+	AuthType  string  `json:"authType"`
+	AccountID string  `json:"accountId"`
+	Models    []Model `json:"models"`
 	// Accounts are the accounts signed in to it, the one kept under its
 	// own id first; SignedIn, AuthType and AccountID are that one's.
 	Accounts []Account `json:"accounts"`
@@ -460,4 +462,46 @@ func Take(ctx context.Context, provider string, keys []string) (map[string]map[s
 // Restore puts auth back as provider's account key.
 func Restore(ctx context.Context, provider, key string, auth map[string]any) error {
 	return Call(ctx, "import", map[string]any{"provider": provider, "key": key, "auth": auth}, nil)
+}
+
+// Usage is how much of its allowance one account has used, as the
+// plugin's auth.usage tells it (host.js has the shape).
+type Usage struct {
+	Plan    string        `json:"plan"`
+	Until   string        `json:"until"` // RFC 3339, "" when not told
+	Renew   string        `json:"renew"`
+	Balance string        `json:"balance"`
+	Error   string        `json:"error"`
+	User    string        `json:"user"`
+	Windows []UsageWindow `json:"windows"`
+	Resets  *UsageResets  `json:"resets"`
+}
+
+// UsageResets are the rate-limit resets an account may spend.
+type UsageResets struct {
+	Count    int    `json:"count"`
+	Until    string `json:"until"`
+	ByWindow bool   `json:"byWindow"`
+	FiveHour int    `json:"fiveHour"`
+	Weekly   int    `json:"weekly"`
+}
+
+type UsageWindow struct {
+	Name      string   `json:"name"`
+	Used      float64  `json:"used"`     // percent
+	ResetsAt  string   `json:"resetsAt"` // RFC 3339
+	ResetSecs int64    `json:"resetSecs"`
+	Display   string   `json:"display"`
+	Span      float64  `json:"span"` // seconds
+	Model     string   `json:"model"`
+	Models    []string `json:"models"`
+	NotModels []string `json:"notModels"`
+	Aside     bool     `json:"aside"`
+}
+
+// AccountUsage asks the plugin for account's usage of provider.
+func AccountUsage(ctx context.Context, provider, account string) (Usage, error) {
+	var u Usage
+	err := Call(ctx, "usage", map[string]any{"provider": provider, "account": account}, &u)
+	return u, err
 }

@@ -213,6 +213,13 @@ func TestMoveToPlugin(t *testing.T) {
 	if plugin.SignedIn("fakeco") {
 		t.Fatal("the plugin kept accounts moved back")
 	}
+	loginsMu.Lock()
+	for _, l := range readLogins() {
+		if l.Agent == "plugin:fakeco" {
+			t.Errorf("the plugin's row of %s stayed after moving back", l.User)
+		}
+	}
+	loginsMu.Unlock()
 	// the user moved it back: it isn't moved again by itself
 	Retiring = []string{"fakeco"}
 	t.Cleanup(func() { Retiring = nil })

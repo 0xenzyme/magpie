@@ -632,6 +632,12 @@ func MoveBack(ctx context.Context, id string) error {
 		return ls
 	}
 	arrange := func(ls []savedLogin, users map[string]string) []savedLogin {
+		// the plugin's rows of the accounts going back go with them, or
+		// the accounts page lists each twice, the plugin's copy empty
+		ls = slices.DeleteFunc(ls, func(l savedLogin) bool {
+			_, back := users[l.Home]
+			return l.Agent == "plugin:"+id && (back || len(keys) == 0)
+		})
 		firstUser := ""
 		for i, k := range keys {
 			user := users[k]

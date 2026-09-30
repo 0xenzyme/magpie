@@ -273,6 +273,7 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 			fetches = append(fetches, func() SubscriptionQuota { return l.acct.quota(viaLogin(agent, l.User), l.Plan) })
 		}
 	}
+	fetches = append(fetches, pluginUsageFetches(via, hidden)...)
 	out := make([]SubscriptionQuota, len(fetches))
 	var wg sync.WaitGroup
 	for i, f := range fetches {
