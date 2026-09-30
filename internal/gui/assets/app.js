@@ -562,7 +562,10 @@ function cliTag(a) {
 function paintCLIButton(b, c, busy) {
   b.classList.toggle("busy", busy);
   b.setAttribute("aria-busy", String(busy));
-  b.replaceChildren(svg(busy ? CLI_SPIN : CLI_UP, 11, 1.8), el("span", "", busy ? t("Updating…") : t("Update to {v}", { v: c.latest })));
+  const text = busy ? t("Updating…") : t("Update to {v}", { v: c.latest });
+  // named even where a tight row shows only the arrow
+  b.setAttribute("aria-label", text);
+  b.replaceChildren(svg(busy ? CLI_SPIN : CLI_UP, 11, 1.8), el("span", "", text));
 }
 
 // paintCLI draws an agent's CLI again where it is, the row left as it is
@@ -962,6 +965,32 @@ if (mode === "panel") {
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => tintPanel(450));
 }
 
+// tintTitleBar paints Windows' own title bar the window's page colour, dark
+// or light as the page is, so the bar and the page are one surface as on the
+// Mac, not a grey strip above it (light over a dark page). wait lets a change
+// of theme finish fading first: the colour read is where it ends.
+function tintTitleBar(wait = 0) {
+  if (mode !== "window" || web || !document.documentElement.classList.contains("win")) return;
+  clearTimeout(tintTitleBar.t);
+  tintTitleBar.t = setTimeout(async () => {
+    const c = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    c.fillStyle = "#fff";
+    c.fillRect(0, 0, 1, 1);
+    c.fillStyle = getComputedStyle(document.body).backgroundColor;
+    c.fillRect(0, 0, 1, 1);
+    const [r, g, b] = c.getImageData(0, 0, 1, 1).data;
+    const rgba = [r, g, b, 255].join(",");
+    if (rgba === tintTitleBar.last) return;
+    tintTitleBar.last = rgba;
+    // the bar's own text and buttons light on a dark page, dark on a light one
+    const dark = 0.2126 * r + 0.7152 * g + 0.0722 * b < 128;
+    try { await api("window/titlebar?c=" + rgba + "&dark=" + (dark ? 1 : 0), {}); } catch { tintTitleBar.last = null; }
+  }, wait);
+}
+if (mode === "window") {
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => tintTitleBar(460));
+}
+
 // extra is room about to be taken (or given back), e.g. by agents unrolling;
 // glide moves the panel's edge there over time instead of at once.
 // The panel is as tall as its tallest tab, not the one showing, so it keeps
@@ -998,6 +1027,7 @@ async function load() {
     // the library may have drawn itself before the saved language was known
     if (applyPrefs(state.settings, state.fx) && view === "library") window.loadLibrary?.();
     tintPanel();
+    tintTitleBar();
     renderAgents();
     loadCLIs(); // after the rows, never holding them up
     if (mode === "panel") { renderPanelQuota(); loadQuotas(); }
@@ -7540,7 +7570,7 @@ function applyPrefs(s, rate) {
         applyPrefs.t = setTimeout(() => root.classList.remove("theming"), 450);
       }
       if (want) root.dataset.theme = want; else delete root.dataset.theme;
-      if (applyPrefs.ready) tintPanel(450);
+      if (applyPrefs.ready) { tintPanel(450); tintTitleBar(460); }
     }
   }
   applyPrefs.ready = true;

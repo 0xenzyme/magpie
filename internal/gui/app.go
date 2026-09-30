@@ -3,6 +3,7 @@
 package gui
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -288,6 +289,9 @@ func Run(version string, showMain bool, link string) error {
 	}
 	// and no smaller than its page's least at the text size
 	minW, minH := windowMin(zoom, 0, 0)
+	// Windows' title bar in the page's colour from the first frame; the
+	// page keeps it so as its theme changes (TintTitleBar)
+	winOpts, winBg := windowChrome(cmp.Or(os.Getenv("MAGPIE_THEME"), settings.Load().Theme))
 	h.main = h.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:      "main",
 		Title:     "magpie",
@@ -303,6 +307,8 @@ func Run(version string, showMain bool, link string) error {
 			// it, tabs included; the header marks what drags instead
 			TitleBar: application.MacTitleBarHiddenInset,
 		},
+		Windows:          winOpts,
+		BackgroundColour: winBg,
 	})
 	// A resize is kept once it settles; a maximised or full-screen window
 	// is the screen's size, not one the user gave it.

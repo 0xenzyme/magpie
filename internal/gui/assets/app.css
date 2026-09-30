@@ -318,8 +318,17 @@ body.window .ag-handle { width: 28px; height: 28px; }
 .ag-fix.busy svg { animation: spin .8s linear infinite; }
 /* the agent's CLI on its name's line (#202): its version faint, and a quiet
    pill that updates it when a newer one is out — the row keeps its height */
-body.window .row.agent .who { display: flex; align-items: center; gap: 7px; }
-body.window .row.agent .who .name { flex: 0 1 auto; }
+body.window .row.agent .who { display: flex; align-items: center; gap: 7px; container-type: inline-size; }
+/* the name is the last to give way: where the row is tight the update
+   pill keeps only its arrow, then the version goes, and only then is the
+   name cut (it was "C." beside a full pill at the window's first width) */
+body.window .row.agent .who .name { flex: 0 0 auto; max-width: 100%; }
+body.window .row.agent .who .ag-cli { flex: 0 1 auto; overflow: hidden; }
+@container (max-width: 250px) {
+  body.window .row.agent .ag-up { padding: 0 6px; }
+  body.window .row.agent .ag-up > span { display: none; }
+}
+@container (max-width: 150px) { body.window .row.agent .ag-ver { display: none; } }
 .ag-cli { display: inline-flex; align-items: center; gap: 6px; flex: none; min-width: 0; }
 .ag-cli:empty { display: none; }
 .ag-ver { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
