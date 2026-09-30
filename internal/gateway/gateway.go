@@ -1334,6 +1334,10 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		}
 		if !anthropicModel.MatchString(model) {
 			body = thinkingOffUnlessAsked(body)
+			// Claude Code's auto mode classifier, on a vendor's model that
+			// may think whatever it is told (#250); a Claude model's request
+			// goes as it was sent, safeguards and all
+			body = autoModeClassifierBody(model, body)
 		}
 		if effortInOutputConfig.MatchString(model) {
 			body = withOutputEffort(body, p.Efforts(model))
@@ -1677,6 +1681,11 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 	request, err := parse(from, body)
 	if err != nil {
 		return writeError(w, from, 400, err.Error()), err.Error()
+	}
+	if from == provider.Anthropic {
+		// Claude Code's auto mode classifier, on a model that reasons
+		// whatever it is told (#250)
+		fitAutoModeClassifier(p, model, request)
 	}
 	if request.WebSearch && !searching(r.Context()) {
 		// an API on which the provider searches by itself comes first;
