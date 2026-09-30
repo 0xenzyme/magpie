@@ -1648,6 +1648,7 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		search = &searchTidy{}
 	}
 	buf := make([]byte, 32<<10)
+	var rerr error
 	for {
 		n, err := rd.Read(buf)
 		if n > 0 {
@@ -1667,6 +1668,7 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			}
 		}
 		if err != nil {
+			rerr = err
 			break
 		}
 	}
@@ -1676,7 +1678,55 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	if search != nil {
 		w.Write(search.flush())
 	}
+	if sse && r.Context().Err() == nil && !sniff.whole() {
+		// the upstream died mid-reply, or ended it short of its last
+		// event: say so in the stream rather than end it as if whole,
+		// which a client reads as a reply cut off for no reason (#370:
+		// dsh's "stream ended before message_stop", not retried). A Chat
+		// stream may end without [DONE] and be whole, so only a read that
+		// failed counts there.
+		var failed string
+		switch {
+		case rerr != nil && rerr != io.EOF:
+			failed = p.Name + ": " + rerr.Error()
+		case proto == provider.Anthropic || proto == provider.Responses:
+			failed = p.Name + ": the reply ended before it was complete"
+		}
+		if failed != "" {
+			w.Write(streamFailure(proto, failed))
+			if f != nil {
+				f.Flush()
+			}
+			return res.StatusCode, failed, true
+		}
+	}
 	return res.StatusCode, "", true
+}
+
+// streamFailure is an error event ending a stream in proto, as each
+// protocol's own server sends one mid-reply.
+func streamFailure(proto provider.Protocol, msg string) []byte {
+	var name string
+	var v map[string]any
+	switch proto {
+	case provider.Chat:
+		v = map[string]any{"error": map[string]any{"message": msg, "type": "api_error"}}
+	case provider.Responses:
+		name = "response.failed"
+		v = map[string]any{"type": name, "response": map[string]any{"object": "response", "status": "failed",
+			"error": map[string]any{"code": "server_error", "message": msg}}}
+	default:
+		name = "error"
+		v = map[string]any{"type": name, "error": map[string]any{"type": "api_error", "message": msg}}
+	}
+	b, _ := json.Marshal(v)
+	var out []byte
+	if name != "" {
+		out = append(out, "event: "+name+"\n"...)
+	}
+	out = append(out, "data: "...)
+	out = append(out, b...)
+	return append(out, "\n\n"...)
 }
 
 // eventStream reports whether a reply is server-sent events. The header
