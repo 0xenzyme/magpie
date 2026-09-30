@@ -92,7 +92,7 @@ type providerJSON struct {
 	Unlisted  bool               `json:"unlisted"`           // its models serve only through routing groups
 	Off       bool               `json:"off"`                // switched off: kept, but agents get none of its models
 	Contexts  map[string]int     `json:"contexts,omitempty"` // the windows the user set, "*" for all its models
-	Fetched   string             `json:"fetched"`            // "3h ago" when the list came from the vendor
+	Fetched   *time.Time         `json:"fetched,omitempty"`  // when the list came from the vendor; the page says how long ago in its language
 	Agents    []providerAgent    `json:"agents"`             // detected agents, current ones flagged
 	Sponsored bool               `json:"sponsored"`
 	KeyList   []provider.KeyInfo `json:"keyList"`           // its keys, in the order requests try them
@@ -361,7 +361,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 	}
 	out.Draws = len(out.DrawIDs)
 	if t, ok := p.Fetched(); ok {
-		out.Fetched = ago(t)
+		out.Fetched = &t
 	}
 	for _, a := range agents {
 		pa := providerAgent{ID: a.ID, Name: a.Name, Icon: a.Icon, Current: a.pid == p.ID, Model: a.model}
@@ -429,20 +429,6 @@ func providersState() providersJSON {
 	s.CodexDaemon = provider.CodexDaemonStale()
 	s.Plugins = pluginSubs()
 	return s
-}
-
-func ago(t time.Time) string {
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Round(time.Minute).Minutes()))
-	case d < 48*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Round(time.Hour).Hours()))
-	default:
-		return t.Format("Jan 2")
-	}
 }
 
 // failMove is fail with why the move failed, for the page to say it in

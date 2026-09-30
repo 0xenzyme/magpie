@@ -74,7 +74,11 @@ async function api(path, body) {
   try { data = text ? JSON.parse(text) : null; } catch {
     throw new Error(text.trim().slice(0, 200) || `${res.status} ${res.statusText}`);
   }
-  if (!res.ok) throw new Error(data?.error || `${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const err = new Error(data?.error || `${res.status} ${res.statusText}`);
+    if (data?.why) err.why = data.why; // a failed move's reason, said in the reader's language
+    throw err;
+  }
   return data;
 }
 
@@ -2178,7 +2182,11 @@ function renderProviders() {
     // a provider that only draws images (Settings → Image generation) says so
     const models = n ? t(n === 1 ? "{n} model" : "{n} models", { n })
       : p.draws ? t(p.draws === 1 ? "{n} image model" : "{n} image models", { n: p.draws }) : t("no models exposed");
-    who.append(name, el("div", "sub", (p.account ? t("signed in as {user}", { user: p.account.user }) : p.host) + " · " + models));
+    // every account in use refused by its vendor: signed out, as the
+    // accounts list says of each, not a green "signed in"
+    const inUse = (p.account?.logins || []).filter((l) => l.on || l.active);
+    const lapsed = inUse.length > 0 && inUse.every((l) => l.lapsed);
+    who.append(name, el("div", "sub", (p.account ? t(lapsed ? "{user} is signed out" : "signed in as {user}", { user: p.account.user }) : p.host) + " · " + models));
     const using = p.agents.filter((a) => a.current);
     const uses = el("div", "uses");
     for (const a of using) {
@@ -2190,8 +2198,13 @@ function renderProviders() {
       uses.append(b);
     }
     let key;
-    if (p.account) {
-      key = el("span", "key acct", accountPlan(p.account));
+    if (p.account && lapsed) {
+      key = el("span", "key acct none", t("Signed out"));
+      key.title = t("Signed out — add this account again to use it");
+    } else if (p.account) {
+      // the row names the vendor: a plan too long for the pill goes without it
+      const plan = accountPlan(p.account), bare = plan.startsWith(p.name + " ") ? plan.slice(p.name.length + 1) : "";
+      key = el("span", "key acct", bare && plan.length > 15 ? bare : plan);
       key.title = t("{agent} is signed in; its models are here for every other agent", { agent: p.account.agentName });
     } else {
       key = el("span", "key " + (p.key.set ? (keyPill(p) === p.key.masked ? "on" : "on acct") : p.ready ? "free" : "none"), p.key.set ? keyPill(p) : p.ready ? t("no key") : t("needs a key"));
@@ -2201,7 +2214,7 @@ function renderProviders() {
     const label = key.textContent;
     key.textContent = "";
     key.append(el("span", "", label));
-    if (!key.title.includes(label)) key.title = label + " · " + key.title;
+    if (!key.title.includes(label)) key.title = (p.account && !lapsed ? accountPlan(p.account) : label) + " · " + key.title;
     const chev = el("span", "chev");
     chev.append(svg(CHEV_R, 11, 1.7));
     row.append(icon(p.icon || "generic"), who, uses, key, providerSwitch(p), chev);
@@ -2210,6 +2223,7 @@ function renderProviders() {
     if (open) dialog = renderEditor(p);
   }
   renderExcluded();
+  renderMovable();
   dialog = renderAdd() || dialog;
   if (importing) dialog = renderImport(importing);
   if (importingApps) dialog = renderImportApps(importingApps);
@@ -2251,6 +2265,33 @@ async function switchProvider(p, on, s) {
 
 // Sign-ins magpie found but leaves alone, so nobody wonders why an agent that
 // is clearly logged in is not in the list: the ones the user removed.
+// renderMovable: one quiet line over the list naming the built-in
+// subscriptions a community plugin can run, and Review, which opens the
+// first one's editor at its Runs on. Hidden, it stays hidden until another
+// built-in can move.
+function renderMovable() {
+  const box = $("#movable");
+  if (!box) return;
+  box.replaceChildren();
+  const ps = providers.providers.filter((p) => p.move && p.move.state !== "plugin" && p.account);
+  let hid = "";
+  try { hid = localStorage.getItem("magpie.movableHidden") || ""; } catch {}
+  const ids = ps.map((p) => p.id).join(",");
+  box.hidden = !ps.length || hid === ids;
+  if (box.hidden) return;
+  const names = ps.map((p) => p.name).join(t(", "));
+  const line = el("div", "movable");
+  line.append(el("span", "dot"), el("span", "", t("{names} can run on community plugins, with the same accounts.", { names }) + " "));
+  const review = el("button", "link", t("Take a look"));
+  // the editor opens over the list: the page itself doesn't move
+  review.onclick = () => { editing = ps[0].id; draft = null; renderProviders(); };
+  const hide = el("button", "link", t("Not now"));
+  hide.title = t("Hide this line until another built-in can move");
+  hide.onclick = () => { try { localStorage.setItem("magpie.movableHidden", ids); } catch {} renderMovable(); };
+  line.append(review, " · ", hide);
+  box.append(line);
+}
+
 function renderExcluded() {
   const box = $("#excluded");
   box.replaceChildren();
@@ -2315,23 +2356,34 @@ function askForgetSaved(x) {
   cancel.focus();
 }
 
-// accountPlan names a signed-in account's subscription: "ChatGPT Pro", "GitHub".
+// accountPlan is the account's chip: its vendor and plan, the plan alone
+// when it already names the vendor (a plugin's own "Zed Pro").
 function accountPlan(a) {
-  if (a.agent === "codex") return "ChatGPT" + (a.plan ? " " + a.plan[0].toUpperCase() + a.plan.slice(1) : "");
+  const cap = (s) => s[0].toUpperCase() + s.slice(1);
+  // "Xiaomi MiMo" and "MiMo 高阶" overlap in "MiMo": said once
+  const named = (name, plan) => {
+    if (!plan) return name;
+    const w = name.split(" ");
+    for (let i = 0; i < w.length; i++) {
+      if ((plan.toLowerCase() + " ").startsWith(w.slice(i).join(" ").toLowerCase() + " ")) return [...w.slice(0, i), plan].join(" ");
+    }
+    return name + " " + plan;
+  };
+  if (a.agent === "codex") return named("ChatGPT", a.plan && cap(a.plan));
   if (a.agent === "copilot") return "GitHub";
-  if (a.agent === "claude") return "Claude" + (a.plan ? " " + a.plan[0].toUpperCase() + a.plan.slice(1) : "");
-  if (a.agent === "cursor") return "Cursor" + (a.plan ? " " + a.plan[0].toUpperCase() + a.plan.slice(1) : "");
+  if (a.agent === "claude") return named("Claude", a.plan && cap(a.plan));
+  if (a.agent === "cursor") return named("Cursor", a.plan && cap(a.plan));
   if (a.agent === "grok") return a.plan || "SuperGrok";
   if (a.agent === "gemini" || a.agent === "antigravity") return a.plan || "Google";
   if (a.agent === "zcode") return a.plan || "GLM Coding Plan";
   if (a.agent === "workbuddy") return a.plan || "WorkBuddy";
   if (a.agent === "workbuddy-ai") return a.plan || "WorkBuddy AI";
-  if (a.agent === "commandcode-plan") return "Command Code" + (a.plan ? " " + t(a.plan) : "");
-  if (a.agent === "qoder") return "Qoder" + (a.plan ? " " + t(a.plan) : "");
-  if (a.agent === "qoder-cn") return "Qoder CN" + (a.plan ? " " + t(a.plan) : "");
-  if (a.agent === "zed") return "Zed" + (a.plan ? " " + t(a.plan) : "");
-  if (a.agent === "mimo-app") return "Xiaomi MiMo" + (a.plan ? " " + t(a.plan) : "");
-  return t("signed in");
+  if (a.agent === "commandcode-plan") return named("Command Code", a.plan && t(a.plan));
+  if (a.agent === "qoder") return named("Qoder", a.plan && t(a.plan));
+  if (a.agent === "qoder-cn") return named("Qoder CN", a.plan && t(a.plan));
+  if (a.agent === "zed") return named("Zed", a.plan && t(a.plan));
+  if (a.agent === "mimo-app") return named("Xiaomi MiMo", a.plan && t(a.plan));
+  return a.plan || t("signed in");
 }
 
 // ---------- gateway view ----------
@@ -3711,7 +3763,7 @@ function drawEditor(p, presetID) {
     // the sign-in belongs to the agent; magpie only borrows it
     const a = p.account;
     if (subOf(a.agent)) {
-      ed.append(...field(t("Accounts"), renderAccounts(a), p.routing ? t("Tick every account to use; Routing says how requests spread over them.") : subOf(a.agent).single ? t("{agent} keeps one account; the gateway runs it for every request. Signing in to another replaces it.", { agent: a.agentName }) : subOf(a.agent).plugin ? t("The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota.") : subOf(a.agent).own ? t("The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota. {agent} itself stays signed in as it is.", { agent: a.agentName }) : t("{agent} signs in to the first. Tick more and the gateway moves on to the next when the one before it is out of quota. Sessions already running keep theirs until restarted.", { agent: a.agentName })));
+      ed.append(...field(t("Accounts"), renderAccounts(a), p.routing ? t("Tick every account to use; Routing says how requests spread over them.") : subOf(a.agent).single ? t("{agent} keeps one account; the gateway runs it for every request. Signing in to another replaces it.", { agent: a.agentName }) : subOf(a.agent).own && (a.logins || []).some((l) => l.own) ? t("The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota. {agent} itself stays signed in as it is.", { agent: a.agentName && a.agentName !== a.agent ? a.agentName : p.name }) : subOf(a.agent).own || subOf(a.agent).plugin ? t("The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota.") : t("{agent} signs in to the first. Tick more and the gateway moves on to the next when the one before it is out of quota. Sessions already running keep theirs until restarted.", { agent: a.agentName })));
       if ((a.logins || []).filter((l) => l.active || l.on).length > 1) ed.append(...renderRouting(p));
       if (p.move) ed.append(...renderMove(p));
     } else {
@@ -4696,7 +4748,7 @@ function renderModels(p) {
   foot.append(add, refresh);
   if (!p.decide && !p.account) foot.append(testAll);
   foot.append(rename);
-  if (p.fetched) foot.append(el("span", "hint", t("vendor list · {when}", { when: p.fetched })));
+  if (p.fetched) foot.append(el("span", "hint", t("vendor list · {when}", { when: ago(p.fetched) })));
   // a signed-in account's list, until the vendor gives one, is magpie's own
   else if (p.models.length) foot.append(el("span", "hint", t(p.account ? "magpie's list · Refresh asks the vendor" : p.decide ? "Jev's names · Refresh asks the vendor" : "from models.dev · Refresh asks the vendor")));
   if (p.fetched && !p.account) {
@@ -4881,8 +4933,9 @@ const subOf = (agent) => {
   const own = SUBS.find((x) => x.agent === agent);
   const pl = pluginSubs().find((x) => x.agent === agent);
   if (own && pl && movedSub(agent)) {
+    // own too: the agent's own sign-in stays where it was, and its editor says so as the built-in's does
     const { name, icon, plans, risk, riskNote, hint, sites, importable } = own;
-    return { ...pl, name, icon, plans, risk, riskNote, hint, sites, importable, moved: true };
+    return { ...pl, name, icon, plans, risk, riskNote, hint, sites, importable, own: own.own, moved: true };
   }
   return own || pl;
 };
@@ -5372,7 +5425,7 @@ function renderAccounts(a) {
       dot.title = l.paused ? t("Resume: the gateway uses this account first again") : t("Pause: the gateway uses the other accounts, {agent} stays signed in to this one", { agent: a.agentName });
       dot.onclick = () => accountAction("login/" + (l.paused ? "on" : "off"), { agent: a.agent, user: l.user });
     } else if (l.active) {
-      dot.title = sub?.own ? t("The gateway uses this account first") : t("{agent} is signed in to this account", { agent: a.agentName });
+      dot.title = sub?.own || sub?.plugin ? t("The gateway uses this account first") : t("{agent} is signed in to this account", { agent: a.agentName });
       dot.classList.add("fixed");
     } else {
       dot.title = on ? t("Stop using this account") : t("Use this account too");
@@ -5392,8 +5445,8 @@ function renderAccounts(a) {
       forget.title = l.own ? forgetOwnTitle(a) : t("magpie forgets this account's sign-in; the account itself is untouched");
       forget.onclick = () => accountAction("login/forget", { agent: a.agent, user: l.user }, t("{user} removed", { user: l.user }));
       const use = el("button", "text", on ? t("Make first") : t("Use"));
-      use.title = sub?.own ? t("The gateway uses this account first") : t("Sign {agent} in to this account", { agent: a.agentName });
-      use.onclick = () => { use.classList.add("busy"); accountAction("login/switch", { agent: a.agent, user: l.user }, sub?.own ? t("The gateway now uses {user} first", { user: l.user }) : t("{agent} is now signed in as {user}", { agent: a.agentName, user: l.user })); };
+      use.title = sub?.own || sub?.plugin ? t("The gateway uses this account first") : t("Sign {agent} in to this account", { agent: a.agentName });
+      use.onclick = () => { use.classList.add("busy"); accountAction("login/switch", { agent: a.agent, user: l.user }, sub?.own || sub?.plugin ? t("The gateway now uses {user} first", { user: l.user }) : t("{agent} is now signed in as {user}", { agent: a.agentName, user: l.user })); };
       row.append(forget, use);
     }
     row.append(accountQuota(l.lapsed ? { [l.user]: { error: l.lapsed } } : quota, l.user));
@@ -6031,21 +6084,66 @@ function respellURL(u, api) {
 // renderMove: a built-in subscription a community plugin can run — which
 // of the two runs it, and the way to the other. Accounts, models and the
 // agents on them stay as they are either way.
+// moveWhy is why a move failed, in the reader's language: m is the move
+// as the page has it, {why, error}.
+function moveWhy(m, p) {
+  const a = m.why?.args || {};
+  switch (m.why?.code) {
+    case "offline": return t("magpie couldn't reach npm to install the plugin. Check the network or proxy, then try again.");
+    case "install": return t("npm couldn't install the plugin: {line}", { line: a.line });
+    case "lapsed": return t("every {name} account needs signing in again. Sign one in above, then move.", { name: p.name });
+    case "unserved": return t("the plugin doesn't serve {models}. Untick them under Models, or keep the built-in.", { models: a.models });
+    case "account": return t("{user} doesn't work through the plugin: {error}", { user: a.user, error: a.error });
+  }
+  return m.error || "";
+}
+
+// renderMove: which runs the subscription, magpie's built-in or its
+// community plugin, and the move between them. The editor stays open
+// through it: the button says what it is doing, a failure is said under
+// it, and on success the field turns over where the reader is.
 function renderMove(p) {
   const m = p.move;
   const box = el("div", "stack move");
   const onPlugin = m.state === "plugin";
-  box.append(el("div", "", onPlugin
-    ? t("The community plugin {pkg}, with the accounts you had here.", { pkg: m.package })
-    : t("magpie's built-in sign-in. The community plugin {pkg} can run it instead, with the same accounts and models.", { pkg: m.package })));
-  if (m.state === "failed" && m.error) box.append(el("div", "hint", t("The last move didn't go through, so it stays built-in: {error}", { error: m.error })));
-  const b = el("button", "text", onPlugin ? t("Use the built-in again") : t("Move to the plugin"));
-  b.onclick = () => {
+  const said = el("div", "", onPlugin
+    ? t("The community {name} plugin, with the accounts you had here.", { name: p.name })
+    : t("magpie's built-in · or the community {name} plugin, with the same accounts", { name: p.name }));
+  said.title = m.package; // the npm package: for the curious, not the sentence
+  const why = el("div", "move-why");
+  why.setAttribute("role", "alert");
+  const say = (text) => { why.textContent = text; why.hidden = !text; };
+  const failed = m.state === "failed" && (m.why || m.error);
+  say(failed ? t("It stays built-in: {error}", { error: moveWhy(m, p) }) : "");
+  const idle = () => onPlugin ? t("Use the built-in again") : failed ? t("Try again") : t("Move to the plugin");
+  const b = el("button", "text", idle());
+  b.onclick = async () => {
     b.classList.add("busy");
     b.disabled = true;
-    providerAction(onPlugin ? "moveback" : "move", { id: p.id }, onPlugin ? t("{name} is built-in again", { name: p.name }) : t("{name} runs on its plugin now", { name: p.name }));
+    say("");
+    b.textContent = onPlugin ? t("Moving back…") : t("Installing the plugin and checking each account…");
+    try {
+      providers = await api("provider/" + (onPlugin ? "moveback" : "move"), { id: p.id });
+      draft = null; // the provider changed under it
+      renderProviders(); // the editor stays open, turned over, where it was
+      const now = providers.providers.find((x) => x.id === p.id);
+      const accts = now?.account?.logins?.length || 0, models = (now?.models || []).filter((x) => x.on).length;
+      saidMoved(onPlugin ? t("{name} is built-in again, with its accounts", { name: p.name })
+        : t("{name} now runs on its plugin — {accounts}, {models}. Use the built-in again from here any time.", {
+          name: p.name,
+          accounts: t(accts === 1 ? "{n} account" : "{n} accounts", { n: accts }),
+          models: t(models === 1 ? "{n} model" : "{n} models", { n: models }),
+        }));
+      state = await api("state");
+      renderAgents();
+    } catch (e) {
+      say(onPlugin ? e.message : t("It stays built-in: {error}", { error: moveWhy({ why: e.why, error: e.message }, p) }));
+      b.classList.remove("busy");
+      b.disabled = false;
+      b.textContent = onPlugin ? t("Use the built-in again") : t("Try again");
+    }
   };
-  box.append(b);
+  box.append(said, b, why);
   return field(t("Runs on"), box, onPlugin ? t("Going back puts every account, with the plugin's newer sign-ins, back into the built-in.") : t("If an account doesn't work through the plugin, nothing changes."));
 }
 
