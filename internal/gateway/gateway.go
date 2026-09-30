@@ -2317,7 +2317,9 @@ func withoutFields(body []byte, fields ...string) []byte {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false) // a vendor's <, > and & as it wrote them (#260)
+	enc.Encode(v)
 }
 
 // writeError answers in the client's own error shape.
