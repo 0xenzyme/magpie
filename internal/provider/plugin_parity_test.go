@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/yetone/magpie/internal/catalog"
@@ -72,5 +73,23 @@ func TestPluginCatalogPriceAndImages(t *testing.T) {
 	}
 	if in := got["unsaid"].ImageInput; in != nil {
 		t.Errorf("a model not said of: %v", *in)
+	}
+}
+
+// A built-in moved onto its plugin stands where the built-in stood among
+// the accounts; a plugin's own provider goes last.
+func TestMovedAccountKeepsItsPlace(t *testing.T) {
+	_, grok := movedGrok(t)
+	fake := pluginProvider(plugin.Provider{ID: "fakeco"}, pluginLogin{})
+	out := placeMoved([]Provider{{ID: "claude"}, {ID: "codex"}, {ID: "zed"}, {ID: "gemini"}}, []Provider{fake, grok})
+	var ids []string
+	for _, p := range out {
+		ids = append(ids, p.ID)
+	}
+	if want := []string{"claude", "codex", "grok", "zed", "gemini", "fakeco"}; !slices.Equal(ids, want) {
+		t.Fatalf("accounts %v, want %v", ids, want)
+	}
+	if !out[2].IsPlugin() {
+		t.Fatal("the moved Grok isn't its plugin's")
 	}
 }
