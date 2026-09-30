@@ -314,7 +314,12 @@ func RemoveServer(name string) (*Result, error) {
 		if i < 0 {
 			return fmt.Errorf("no server called %s", name)
 		}
+		k := serverKey(l.MCP[i])
 		l.MCP = slices.Delete(l.MCP, i, i+1)
+		// its icon goes with it, unless another server runs the same thing
+		if !slices.ContainsFunc(l.MCP, func(x *Server) bool { return serverKey(x) == k }) {
+			delete(l.Icons, k)
+		}
 		return nil
 	})
 }

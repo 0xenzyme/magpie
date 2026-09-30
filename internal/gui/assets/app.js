@@ -7607,7 +7607,7 @@ function renderSessChart(chart, st, used, ov, acts) {
   const first = sessDate(st.from), last = sessDate(st.to);
   const n = Math.round((last - first) / 864e5) + 1;
   chart.hidden = !(n >= 2);
-  if (chart.hidden) return;
+  if (chart.hidden) { chart.dataset.drawn = ""; return; }
   const days = [], at = new Map();
   for (let i = 0, d = new Date(first); i < n; i++, d.setDate(d.getDate() + 1)) {
     const x = { day: new Date(d), input: 0, output: 0, cost: 0, unpriced: 0, sessions: perDay?.length === n ? perDay[i] : 0,
@@ -7634,26 +7634,35 @@ function renderSessChart(chart, st, used, ov, acts) {
     return parts.length ? when + " · " + parts.join(" · ") : t("{when} · nothing", { when });
   };
   const shape = n <= 100 ? "day" : n <= 371 ? "calendar" : "week";
+  // the page reads the sessions again every few seconds, and while an agent
+  // is at work today's numbers change each time: the same days by the same
+  // metric keep their bars, filled in again where they are, so the one under
+  // the pointer — today's, as often as not — keeps its tooltip (#309)
+  const drawn = [shape, metric, st.from, n, locale, ...Object.values(off).map(Boolean)].join("|");
+  const same = chart.dataset.drawn === drawn;
+  chart.dataset.drawn = drawn;
+  chart.redraw = () => renderSessChart(chart, st, used, ov, acts); // the metrics kept draw what is in now
 
-  chart.replaceChildren();
-  chart.classList.toggle("cal", shape === "calendar");
-  const head = el("div", "sess-chart-head");
-  const seg = sessSegs(SESS_METRICS.map(([id, name]) => [id, name, off[id]]), metric, (id) => {
-    sessMetric = id;
-    try { localStorage.setItem("magpie.sessMetric", id); } catch {}
-    renderSessChart(chart, st, used, ov, acts);
-  });
-  head.append(el("span", "label", t(shape === "week" ? "By week" : shape === "day" ? "By day" : "Activity")), seg, el("span", "grow"));
-  chart.append(head);
-  slide(seg, "sessMetric");
-
+  if (same && shape === "calendar") {
+    const lv = sessLevels(days.map(value));
+    chart.querySelectorAll(".sess-cal > i").forEach((c, i) => {
+      c.className = "l" + lv(value(days[i]));
+      c.title = tip(days[i], sessDay(days[i].day));
+    });
+    chart.querySelector(".sess-cal-side").replaceWith(sessCalSide(days, value, show));
+    return;
+  }
   if (shape === "calendar") {
+    chart.replaceChildren();
+    chart.classList.add("cal");
+    drawHead();
     const wrap = el("div", "sess-cal-wrap");
     wrap.append(sessCalendar(days, value, tip), sessCalSide(days, value, show));
     chart.append(wrap);
-    head.append(sessLegend());
+    chart.querySelector(".sess-chart-head").append(sessLegend());
     return;
   }
+
   // bars: a day each, or a week
   const step = shape === "week" ? 7 : 1;
   const buckets = [];
@@ -7663,30 +7672,52 @@ function renderSessChart(chart, st, used, ov, acts) {
     buckets.push(b);
   }
   const peak = Math.max(metric === "cost" ? 0.001 : 1, ...buckets.map(value));
-  head.append(el("span", "peak", show(peak)));
+  const fill = (bar, b) => {
+    const [top, low] = bar.children;
+    if (metric === "tokens") {
+      top.style.height = (100 * b.output / peak).toFixed(1) + "%";
+      low.style.height = (100 * b.input / peak).toFixed(1) + "%";
+    } else top.style.height = (100 * value(b) / peak).toFixed(1) + "%";
+    const label = sessDay(b.day);
+    bar.title = tip(b, step === 7 ? t("week of {label}", { label }) : label);
+  };
+  if (same) {
+    chart.querySelector(".sess-chart-head .peak").textContent = show(peak);
+    const bars = chart.querySelectorAll(".bars > .bar");
+    buckets.forEach((b, i) => fill(bars[i], b));
+    return;
+  }
+  chart.replaceChildren();
+  chart.classList.remove("cal");
+  drawHead().append(el("span", "peak", show(peak)));
   const bars = el("div", "bars");
   const labels = el("div", "labels");
   const k = buckets.length;
   const every = k <= 8 ? 1 : k <= 31 ? Math.ceil(k / 6) : Math.ceil(k / 5);
   buckets.forEach((b, i) => {
     const bar = el("div", "bar");
-    if (metric === "tokens") {
-      const inp = el("i", "in"), out = el("i", "out");
-      inp.style.height = (100 * b.input / peak).toFixed(1) + "%";
-      out.style.height = (100 * b.output / peak).toFixed(1) + "%";
-      bar.append(out, inp);
-    } else {
-      const c = el("i", "out");
-      c.style.height = (100 * value(b) / peak).toFixed(1) + "%";
-      bar.append(c);
-    }
-    const label = sessDay(b.day);
-    bar.title = tip(b, step === 7 ? t("week of {label}", { label }) : label);
+    if (metric === "tokens") bar.append(el("i", "out"), el("i", "in"));
+    else bar.append(el("i", "out"));
+    fill(bar, b);
     bars.append(bar);
+    const label = sessDay(b.day);
     const end = i === k - 1 && (k - 1) % every >= every / 2;
     labels.append(el("span", "", i % every === 0 || end ? label : ""));
   });
   chart.append(bars, labels);
+
+  function drawHead() {
+    const head = el("div", "sess-chart-head");
+    const seg = sessSegs(SESS_METRICS.map(([id, name]) => [id, name, off[id]]), metric, (id) => {
+      sessMetric = id;
+      try { localStorage.setItem("magpie.sessMetric", id); } catch {}
+      chart.redraw();
+    });
+    head.append(el("span", "label", t(shape === "week" ? "By week" : shape === "day" ? "By day" : "Activity")), seg, el("span", "grow"));
+    chart.append(head);
+    slide(seg, "sessMetric");
+    return head;
+  }
 }
 
 // sessCalendar is the range as weeks of days, Monday on top, each day as

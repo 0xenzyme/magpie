@@ -310,10 +310,27 @@ works as follows, in English and Chinese:
 - Edit opens the form with S3 picked and the fields as saved. The secret
   field is empty, with "saved" as its placeholder.
 
+`market-have.test.cjs` checks that the Library's Discover cards follow
+the library without the window being focused again (#300). Removing a
+server (Remove from the library) turns its card from "✓ Added" back to
+Add at once and asks the market again; a server added by hand with the
+same name is marked added; a skill removed turns its card back to Add. No
+window focus or visibility change happens during the test, the click does
+not scroll the page, and the checks run in English and Chinese.
+
+`sessions-today.test.cjs` checks that today's bar in Usage › Sessions › By
+day keeps its tooltip while the sessions are read again (#309). The fake API
+has 30 days up to today (Asia/Shanghai), and today's tokens grow with each
+read. The last bar is today, and its title gives today's usage. With the
+pointer on it and the page clock run past the 15-second reread, the same bar
+element is still there and hovered, its title shows the new total, the
+chart still has 30 bars and the page has not scrolled. A metric picked after
+that draws the latest numbers. The checks run in English and Chinese.
+
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs internal/gui/tests/usage-ledger.test.cjs internal/gui/tests/update-check.test.cjs internal/gui/tests/omarchy.test.cjs internal/gui/tests/brand.test.cjs node --test internal/gui/tests/signin-callback.test.cjs internal/gui/tests/routing-steady.test.cjs internal/gui/tests/old-webkit.test.cjs internal/gui/tests/session-terminal.test.cjs internal/gui/tests/text-size.test.cjs internal/gui/tests/zcode-site.test.cjs internal/gui/tests/rail-tip.test.cjs internal/gui/tests/sync-update.test.cjs internal/gui/tests/plugin-signin.test.cjs internal/gui/tests/plugin-market.test.cjs internal/gui/tests/s3-sync.test.cjs internal/gui/tests/routing-wb-refused.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs internal/gui/tests/usage-ledger.test.cjs internal/gui/tests/update-check.test.cjs internal/gui/tests/omarchy.test.cjs internal/gui/tests/brand.test.cjs node --test internal/gui/tests/signin-callback.test.cjs internal/gui/tests/routing-steady.test.cjs internal/gui/tests/old-webkit.test.cjs internal/gui/tests/session-terminal.test.cjs internal/gui/tests/text-size.test.cjs internal/gui/tests/zcode-site.test.cjs internal/gui/tests/rail-tip.test.cjs internal/gui/tests/sync-update.test.cjs internal/gui/tests/plugin-signin.test.cjs internal/gui/tests/plugin-market.test.cjs internal/gui/tests/s3-sync.test.cjs internal/gui/tests/routing-wb-refused.test.cjs internal/gui/tests/market-have.test.cjs internal/gui/tests/sessions-today.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

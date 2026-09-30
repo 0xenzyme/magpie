@@ -299,12 +299,24 @@
     };
   }
   // take is the page as magpie answered it, with the rows still being
-  // written kept as they were last clicked
+  // written kept as they were last clicked. A server or skill added,
+  // removed or renamed changes what the market calls added (#300): one gone
+  // from the library loses its mark at once, and the market is asked again.
   function take(v) {
+    const was = lib && shelf();
     lib = v;
     for (const w of writing.values()) {
       const x = lib[w.list].find((y) => y.name === w.name);
       if (x) x.agents = w.want;
+    }
+    if (!was || shelf() === was) return;
+    for (const [kind, list] of [["mcp", lib.servers], ["skills", lib.skills]]) {
+      const m = market[kind];
+      if (!m.items) continue;
+      const names = new Set((list || []).map((x) => x.name));
+      for (const x of m.items) if (x.have && !names.has(x.have)) x.have = "";
+      drawMarket(kind);
+      fetchMarket(kind);
     }
   }
   function morphChips(box, fresh) {
@@ -1173,7 +1185,7 @@
       if (d.transport === "stdio") Object.assign(body.server, { command: d.command, args: d.args, env: d.env });
       else Object.assign(body.server, { url: d.url, headers: d.headers });
       try {
-        lib = await api("library/servers/save", body);
+        take(await api("library/servers/save", body));
         report(lib.result, s ? t("{name} saved", { name: d.name }) : "");
         closeLibModal();
         render();
@@ -1244,9 +1256,9 @@
       for (const f of found.filter((x) => pick.has(x.name))) {
         try {
           last = await api("library/servers/save", { old: "", server: { ...f, agents: who.filter((id) => reaches(f)(agentOf(id))) } });
-        } catch (e) { err.textContent = f.name + ": " + e.message; go.disabled = false; if (last) { lib = last; render(); } return; }
+        } catch (e) { err.textContent = f.name + ": " + e.message; go.disabled = false; if (last) { take(last); render(); } return; }
       }
-      lib = last;
+      take(last);
       report(lib.result, t("Added {n} servers", { n: pick.size }));
       closeLibModal();
       render();
@@ -2338,7 +2350,7 @@
     const body = { id: x.id, values };
     if (agents) body.agents = agents;
     const ok = await change("market/server", body, t("{name} is in the library now", { name: x.title || x.name }));
-    if (ok) { x.have = x.name; drawMarket("mcp"); fetchMarket("mcp"); }
+    if (ok) { x.have = x.name; drawMarket("mcp"); } // take asked the market again
     return ok;
   }
 
@@ -2439,7 +2451,7 @@
     const body = { source: x.source, id: x.skillId };
     if (agents) body.agents = agents;
     const ok = await change("market/skill", body, t("{name} is in the library now", { name: x.name }));
-    if (ok) { x.have = x.name; drawMarket("skills"); fetchMarket("skills"); }
+    if (ok) { x.have = x.name; drawMarket("skills"); } // take asked the market again
     return ok;
   }
 
@@ -2502,12 +2514,10 @@
   // in another window or through the CLI meanwhile. Not over an open dialog,
   // unsaved text, or a lookup under way.
   page.addEventListener("scroll", () => page.querySelector(".lib-head")?.classList.toggle("stuck", page.scrollTop > 0), { passive: true });
-  // What changed there changes what the market calls added, too.
+  // What changed there changes what the market calls added, too: take asks it again.
   async function quietLoad() {
     if (page.hidden || modal || dirty() || probing) return;
-    const was = shelf();
     await load(true);
-    if (shelf() !== was) for (const kind of ["mcp", "skills"]) if (market[kind].items) fetchMarket(kind);
   }
   const shelf = () => JSON.stringify([lib?.servers?.map((x) => x.name), lib?.skills?.map((x) => x.name)]);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) quietLoad(); });
