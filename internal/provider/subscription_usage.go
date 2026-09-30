@@ -26,6 +26,11 @@ type QuotaWindow struct {
 	ResetsAt  *time.Time `json:"resetsAt,omitempty"`
 	ResetSecs int64      `json:"resetSecs,omitempty"`
 	Display   string     `json:"display,omitempty"`
+	// Family is the model family a per-model window belongs to (Antigravity's
+	// "Gemini 3.1 Pro (High)" is Gemini's), for the GUI to show one figure a
+	// family, the tightest; each window is still here, and routing reads
+	// them one by one.
+	Family string `json:"family,omitempty"`
 
 	// For routing (see Allowances): how long the window runs, zero when
 	// not known; the only models it counts, by a word in their ids

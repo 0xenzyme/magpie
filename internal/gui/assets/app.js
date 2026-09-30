@@ -5653,10 +5653,12 @@ function accountQuota(data, user) {
     if (q?.error) line.title = q.error;
     return line;
   }
-  // the two rolling windows fit a line; the per-model ones go in its tooltip
-  line.title = q.windows.slice(2).map((w) => t(w.name) + " " + quotaText(w)).join(" · ");
+  // the two rolling windows fit a line; the per-model ones go in its
+  // tooltip; per-model windows of a family are the family's one
+  const ws = familyWindows(q.windows);
+  line.title = ws.slice(2).map((w) => w.tiers ? tiersText(w) : t(w.name) + " " + quotaText(w)).join(ws !== q.windows ? "\n" : " · ");
   if (q.asOf) line.title = [line.title, asOfText(q)].filter(Boolean).join("\n");
-  for (const w of q.windows.slice(0, 2)) {
+  for (const w of ws.slice(0, 2)) {
     const used = Math.max(0, Math.min(100, w.used));
     const m = el("span", "aq-w" + (used >= 90 ? " full" : ""));
     const track = el("span", "aq-track");
@@ -5669,6 +5671,7 @@ function accountQuota(data, user) {
       m.title = t("Resets {when}", { when: at.toLocaleString() });
       if (used >= 80) m.append(el("span", "aq-r", t("resets {in}", { in: untilText(at) })));
     }
+    if (w.tiers) m.title = tiersText(w);
     line.append(m);
   }
   return line;
@@ -5689,6 +5692,40 @@ function quotaText(w) {
   const pct = t(quotaLeft ? "{n} left" : "{n} used", { n: (Number.isInteger(n) ? n : n.toFixed(1)) + "%" });
   return w.display ? w.display + " · " + pct : pct;
 }
+// familyWindows: an account's per-model windows as one a model family.
+// Antigravity reports each level of each model (Gemini 3.1 Pro (High), (Low),
+// Gemini 3.7 Flash (Low), (Medium), (High)…), which over several accounts
+// reads as a wall of meters (01huadalang on Discord); Gemini and Claude
+// first, then any other. A family's figure is its tightest window, the most
+// used, the soonest to start again of those; its windows go along as tiers
+// for its tooltip and for "Every model". Windows that name no family, or an
+// account with a window a family already, are as they were.
+const FAMILY_FIRST = ["Gemini", "Claude"];
+function familyWindows(ws) {
+  if (!ws?.some((w) => w.family)) return ws;
+  const fams = new Map();
+  for (const w of ws) {
+    const k = w.family ? "f:" + w.family : "w:" + fams.size;
+    if (!fams.has(k)) fams.set(k, []);
+    fams.get(k).push(w);
+  }
+  if (fams.size === ws.length) return ws;
+  const soon = (w) => (w.resetsAt ? new Date(w.resetsAt).getTime() : Infinity);
+  const out = [];
+  for (const tiers of fams.values()) {
+    if (!tiers[0].family) { out.push(tiers[0]); continue; }
+    const top = tiers.reduce((a, b) => (b.used > a.used || (b.used === a.used && soon(b) < soon(a)) ? b : a));
+    out.push({ ...top, name: top.family, tiers });
+  }
+  const rank = (w) => (w.tiers && FAMILY_FIRST.includes(w.name) ? FAMILY_FIRST.indexOf(w.name) : FAMILY_FIRST.length);
+  return out.map((w, i) => [w, i]).sort(([a, i], [b, j]) => rank(a) - rank(b) || i - j).map(([w]) => w);
+}
+// tiersText: a family's windows, one a line, for its tooltip.
+function tiersText(w) {
+  return (w.tiers || []).map((x) => t(x.name) + " " + quotaText(x)
+    + (x.resetsAt && x.used > 0 ? " · " + t("resets {in}", { in: untilText(new Date(x.resetsAt)) }) : "")).join("\n");
+}
+
 async function setQuotaLeft(on) {
   quotaLeft = on;
   renderQuotas();
@@ -6327,15 +6364,19 @@ function renderQuotas() {
     if (!first.user && (first.plan || first.until)) head.append(planSpan(first));
     card.append(head);
     for (const sub of subs) {
+      // "Every model" by the account, or the card's name: where the click
+      // was, whichever way the meters under it grow or shrink
+      const [meters, every] = familyQuota(sub);
       if (sub.user) {
         const who = el("div", "subscription-account");
         const u = el("span", "user", sub.user);
         u.title = sub.user;
         who.append(u);
         if (sub.plan || sub.until) who.append(planSpan(sub));
+        if (every) who.append(every);
         card.append(who);
-      }
-      card.append(quotaWindows(sub));
+      } else if (every) head.append(every);
+      card.append(meters);
       // what is left besides the windows, under them
       if (sub.balance && sub.windows?.length && !sub.error) card.append(balanceRow(sub, "What is left on the account besides its windows"));
       if (sub.resets?.count) {
@@ -6556,7 +6597,7 @@ function panelQuotaCard(q) {
     return card;
   }
   if (q.asOf) card.title += "\n" + asOfText(q);
-  const ws = q.windows.slice(0, 3);
+  const ws = familyWindows(q.windows).slice(0, 3);
   // when the windows begun start again: the first bare, the others by name
   const begun = ws.filter((w) => w.resetsAt && w.used > 0);
   card.append(el("span", "pq-sub", begun.length
@@ -6571,6 +6612,7 @@ function panelQuotaCard(q) {
     dial.append(el("b", "", quotaFill(w) + "%"));
     r.append(dial, el("span", "pq-rn", shortWindow(w.name)));
     r.title = t(w.name) + " · " + quotaText(w) + (w.resetsAt ? "\n" + t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() }) + " · " + untilText(new Date(w.resetsAt)) : "")
+      + (w.tiers ? "\n\n" + tiersText(w) + "\n" : "")
       + "\n" + t(quotaLeft ? "Show how much of each window is used" : "Show how much of each window is left");
     // used or left turns here too, as on the Usage page (#124)
     r.onclick = () => setQuotaLeft(!quotaLeft);
@@ -6769,6 +6811,34 @@ function balanceRow(sub, why) {
   return b;
 }
 
+// familyQuota: an account's windows one a model family where they name
+// one, and "Every model", for above them, turning to each window and back
+// in place: the card grows or shrinks below it, the page doesn't move.
+const everyModel = new Set(); // provider|user shown window by window
+function familyQuota(sub) {
+  const fam = sub.error ? sub.windows : familyWindows(sub.windows);
+  if (fam === sub.windows) return [quotaWindows(sub), null];
+  const key = sub.provider + "|" + (sub.user || "");
+  const shown = () => quotaWindows(everyModel.has(key) ? sub : { ...sub, windows: fam });
+  let box = shown();
+  const b = el("button", "text quota-every");
+  const label = () => {
+    const all = everyModel.has(key);
+    b.textContent = all ? t("By family") : t("Every model ({n})", { n: sub.windows.length });
+    b.title = all ? t("One figure a model family, its most used model's") : t("Each model's allowance, level by level");
+    b.setAttribute("aria-expanded", String(all));
+  };
+  label();
+  b.onclick = () => {
+    if (everyModel.has(key)) everyModel.delete(key); else everyModel.add(key);
+    const next = shown();
+    box.replaceWith(next);
+    box = next;
+    label();
+  };
+  return [box, b];
+}
+
 // quotaWindows: one account's allowance as meters, or why there are none.
 function quotaWindows(sub) {
   if (sub.balance && !sub.windows?.length) return balanceRow(sub, "What is left on the account: the vendor tells only this, so Used / Left leaves it as it is");
@@ -6803,6 +6873,8 @@ function quotaWindows(sub) {
       quota.append(r);
       quota.title = t("Resets {when}", { when: at.toLocaleString() });
     }
+    // a model family's figure: its models, level by level, in its tooltip
+    if (w.tiers) quota.title = t("{family}: the most used of its models", { family: w.name }) + "\n" + tiersText(w);
     windows.append(quota);
   }
   quotaFit.observe(windows);

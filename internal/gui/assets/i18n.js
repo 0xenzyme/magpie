@@ -1069,6 +1069,12 @@ const I18N = {
     "A key tells only what is left on itself. For the whole account's balance on the Usage page, generate a System Access Token in {p}'s settings and paste it here; it is used for nothing else.": "API key 只能查到它自己的剩余额度。要在用量页显示整个账户的余额，请在 {p} 的设置中生成系统访问令牌并粘贴到这里；它不作他用。",
     "Antigravity hasn't set this account up — hover for why": "Antigravity 还没为这个账号开通，悬停查看原因",
     "Resets {when}": "重置于 {when}",
+    // a model family's figure (Antigravity's Gemini, Claude)
+    "Every model ({n})": "全部模型（{n}）",
+    "By family": "按系列",
+    "One figure a model family, its most used model's": "每个模型系列一个数字，取其中用得最多的模型",
+    "Each model's allowance, level by level": "每个模型各档位的额度",
+    "{family}: the most used of its models": "{family}：取其中用得最多的模型",
     "tomorrow {time}": "明天 {time}",
     "Renews {date}": "{date}续费",
     "Expires {date}": "{date}到期",
