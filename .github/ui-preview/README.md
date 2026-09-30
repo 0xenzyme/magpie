@@ -14,7 +14,7 @@ When a PR touches `internal/gui/assets/` or the GUI's Go code, or carries the `u
    - the video's poster links to the player page, since GitHub won't embed a video it didn't host;
    - the screenshots are shown inline.
 
-Security: PRs come from forks, so the recording job waits for a maintainer's approval (environment `ui-preview`, which holds `DEEPSEEK_API_KEY`). Read the diff before approving. That job has no write access, and the job that writes never runs the PR's code.
+Security: the recording job runs the PR's code without asking anyone. Any PR's code can therefore read `DEEPSEEK_API_KEY` (environment `ui-preview`), so the key there should have a low spending limit. That job has no write access, and the job that writes never runs the PR's code.
 
 To run it locally (run.sh builds and starts magpie itself):
 

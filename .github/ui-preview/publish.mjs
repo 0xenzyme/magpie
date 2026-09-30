@@ -72,7 +72,7 @@ async function detect() {
   const lines = [`ui=${ui}`, `sha=${p.head.sha}`, `number=${pr}`];
   if (out) await fs.appendFile(out, lines.join("\n") + "\n");
   console.log(lines.join(" "), "·", changed.filter(UI).join(", ") || "no UI files");
-  if (ui && p.state === "open") await setBlock(`${head(p.head.sha)}\n⏳ 正在录制这次提交的界面改动（需要维护者批准时，批准后开始）…`);
+  if (ui && p.state === "open") await setBlock(`${head(p.head.sha)}\n⏳ 正在录制这次提交的界面改动…`);
 }
 
 function git(args, cwd) {
