@@ -168,6 +168,17 @@ var wslKinds = []wslKind{
 			}
 			return nil
 		}},
+	// OmO, a fork of Pi, at its default folder: the distro's variables
+	// that move it aren't read
+	{id: "omo", name: "OmO", dir: ".omo", bin: "omo", in: omoIn,
+		asleep: func(key string) func(map[string]string) []Option {
+			if key == "model" {
+				return func(cur map[string]string) []Option {
+					return append(ownOptions("", cur["model"]), viaMagpie("omo", magpieID+"/")...)
+				}
+			}
+			return nil
+		}},
 	// only its settings.json: its sign-in, sessions and prompt history,
 	// read on this machine for Claude Code here, aren't read in a distro
 	{id: "claude", name: "Claude Code", dir: ".claude", bin: "claude", in: claudeIn,

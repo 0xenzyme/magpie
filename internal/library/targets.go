@@ -115,6 +115,15 @@ func targetOf(a *agent.Agent) *Target {
 		d := filepath.Join(h, ".omp", "agent")
 		t.Instructions = filepath.Join(d, "AGENTS.md")
 		t.Skills = filepath.Join(d, "skills")
+	case "omo":
+		// OmO's engine (senpi, a fork of Pi) reads its agent folder's
+		// AGENTS.md, skills and mcp.json — mcpServers in the shape Pi 0.99's
+		// own has (command/args/env, url/headers), any other key refusing
+		// the whole file (docs/mcp.md, config-schema.js)
+		d := a.Dir
+		t.Instructions = filepath.Join(d, "AGENTS.md")
+		t.MCP = &mcpFile{Path: filepath.Join(d, "mcp.json"), Format: fmtPiNative}
+		t.Skills = filepath.Join(d, "skills")
 	case "goose":
 		t.Instructions = filepath.Join(filepath.Dir(a.Path), ".goosehints")
 		t.MCP = &mcpFile{Path: a.Path, Format: fmtGoose}

@@ -66,6 +66,7 @@ func All() []*Agent {
 		opencode(home, cfg),
 		mimocode(home, cfg),
 		pi(home),
+		omo(home),
 		goose(home, cfg),
 		cursor(home),
 		copilot(home),
@@ -493,7 +494,15 @@ func pi(home string) *Agent { return piIn(here(home)) }
 // distro's (see wsl.go), its models.json naming the gateway as it reaches
 // it from there.
 func piIn(at place) *Agent {
-	dir := filepath.Join(at.home, ".pi", "agent")
+	a := piLike(at, "pi", "Pi", filepath.Join(at.home, ".pi", "agent"))
+	a.UA = []string{"pi-"}
+	return a
+}
+
+// piLike is Pi, or a fork of it that keeps Pi's settings.json and
+// models.json in an agent folder of its own (OmO, omo.go): id is its id,
+// icon and command, dir its agent folder.
+func piLike(at place, id, name, dir string) *Agent {
 	path := filepath.Join(dir, "settings.json")
 	modelsPath := filepath.Join(dir, "models.json")
 	auth := filepath.Join(dir, "auth.json")
@@ -501,20 +510,19 @@ func piIn(at place) *Agent {
 	set := func(kvs ...edit.KV) error { return edit.SetJSON(path, kvs...) }
 	pair := pairSet(set, "defaultProvider", "defaultModel")
 	writeMagpie := func() error {
-		return edit.SetJSON(modelsPath, edit.KV{Path: "providers." + magpieID, Value: magpieProviderJSONAt("pi", "pi", at.gw())})
+		return edit.SetJSON(modelsPath, edit.KV{Path: "providers." + magpieID, Value: magpieProviderJSONAt("pi", id, at.gw())})
 	}
 	return &Agent{
-		ID: "pi", Name: "Pi", Icon: "pi", Bin: "pi", Dir: dir, Path: path,
-		UA: []string{"pi-"},
+		ID: id, Name: name, Icon: id, Bin: id, Dir: dir, Path: path,
 		Check: func() string {
 			if p, _ := get("defaultProvider"); p != magpieID {
 				return ""
 			}
-			return wiringOff("Pi", modelsPath, func(k string) (string, bool) { return edit.GetJSON(modelsPath, "providers."+magpieID+"."+k) },
+			return wiringOff(name, modelsPath, func(k string) (string, bool) { return edit.GetJSON(modelsPath, "providers."+magpieID+"."+k) },
 				"baseUrl", at.v1(), "apiKey", gateway.Token)
 		},
 		Sync: func() error {
-			return syncJSON(modelsPath, "providers."+magpieID, func() any { return magpieProviderJSONAt("pi", "pi", at.gw()) })
+			return syncJSON(modelsPath, "providers."+magpieID, func() any { return magpieProviderJSONAt("pi", id, at.gw()) })
 		},
 		Fields: []Field{
 			{
@@ -543,7 +551,7 @@ func piIn(at place) *Agent {
 					return piScopeWith(path, v)
 				},
 				Options: func(cur map[string]string) []Option {
-					return append(ownOptions(auth, cur["model"]), viaMagpie("pi", magpieID+"/")...)
+					return append(ownOptions(auth, cur["model"]), viaMagpie(id, magpieID+"/")...)
 				},
 			},
 			{

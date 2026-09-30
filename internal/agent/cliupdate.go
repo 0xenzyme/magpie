@@ -86,6 +86,10 @@ var cliSpecs = map[string]cliSpec{
 	"crush":   {npm: []string{"@charmland/crush"}, brew: []string{"crush"}},
 	"cline":   {npm: []string{"cline"}},
 	"goose":   {brew: []string{"block-goose-cli"}},
+	// omo update, however it was installed: OmO's own updater, which moves
+	// the engine it pins (senpi) with it
+	"omo": {npm: []string{"omo-ai"},
+		self: func(bin, real string) []string { return []string{bin, "update"} }},
 }
 
 // updater is how an installed CLI is brought up to date.

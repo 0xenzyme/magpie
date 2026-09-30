@@ -636,7 +636,7 @@
   // picked by its id, so it stays the same from one request to the next.
   const HUES = {
     claude: "#d97757", codex: "#6366f1", gemini: "#0ea5e9", copilot: "#a855f7", cursor: "#14b8a6", opencode: "#eab308",
-    crush: "#ec4899", goose: "#84cc16", pi: "#10b981", omp: "#f43f5e", dsh: "#06b6d4", commandcode: "#f97316",
+    crush: "#ec4899", goose: "#84cc16", pi: "#10b981", omp: "#f43f5e", omo: "#7c3aed", dsh: "#06b6d4", commandcode: "#f97316",
     mimocode: "#3b82f6",
   };
   const SPARE = ["#8b5cf6", "#22c55e", "#e11d48", "#0891b2", "#ca8a04", "#db2777", "#2563eb", "#65a30d"];
