@@ -1163,6 +1163,15 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 			return s.serveCommandCode(w, r, from, p, api, key, model, body, &call.Usage)
 		}
 	}
+	// Copilot's Auto (all a Student plan may pick) is asked which model it
+	// picks, as Copilot's clients do, and the request goes to that model on
+	// the APIs it is served on, with the session's token
+	if ctx, m, err := p.ResolveAuto(r.Context(), model); err != nil {
+		msg := p.Name + ": " + err.Error()
+		return writeError(w, from, 502, msg), msg
+	} else if m != model {
+		r, model = r.WithContext(ctx), m
+	}
 	// a backend that only streams gets a non-streaming request translated
 	// (the provider is always streamed on that path) rather than relayed
 	relay := slices.Contains(s.usable(p, model), from) && (p.Account == nil || !p.Account.Stream || streamOf(body))

@@ -67,6 +67,10 @@ type Account struct {
 	models func() []catalog.Model
 	fetch  func(ctx context.Context) ([]catalog.Model, error)
 
+	// auto is set on a Copilot account: the session of Copilot's Auto,
+	// the model it picks for the account (copilot_auto.go).
+	auto func(ctx context.Context) (copilotAutoSession, error)
+
 	// retry is asked about a refusal the backend answered: true when the
 	// account has put right what it names and the request is worth
 	// sending once more (a Factory org the server can't reach, factory.go).
@@ -86,6 +90,12 @@ func (p Provider) APIs(model string) []Protocol {
 				out[i] = Protocol(a)
 			}
 			return out
+		}
+	}
+	// the model Copilot's Auto picked may be one it lists for no picker
+	if p.ID == "copilot" {
+		if apis := copilotSeenAPIs(model); len(apis) > 0 {
+			return apis
 		}
 	}
 	// Factory serves each model on the one API droid sends it on
@@ -1061,7 +1071,11 @@ func copilotProvider(app copilotApp, plan string) Provider {
 				req.URL, req.Host = u, u.Host
 			}
 		}
-		copilotAccept(ctx, app, s, bodyModel(body))
+		model, err := copilotAutoSign(ctx, app, req, body)
+		if err != nil {
+			return err
+		}
+		copilotAccept(ctx, app, s, model)
 		req.Header.Set("Authorization", "Bearer "+s.Token)
 		for k, v := range s.headers() {
 			req.Header.Set(k, v)
@@ -1076,6 +1090,16 @@ func copilotProvider(app copilotApp, plan string) Provider {
 			req.Header.Set("Copilot-Vision-Request", "true")
 		}
 		return nil
+	}
+	acct.auto = func(ctx context.Context) (copilotAutoSession, error) {
+		// the list says which APIs the picked model is served on
+		copilotTermsMu.Lock()
+		_, known := copilotTerms[app.Token]
+		copilotTermsMu.Unlock()
+		if !known {
+			copilotModels(ctx, app)
+		}
+		return copilotAutoResolve(ctx, app, false)
 	}
 	acct.fetch = func(ctx context.Context) ([]catalog.Model, error) {
 		ms, err := copilotModels(ctx, app)
@@ -1191,7 +1215,7 @@ var (
 // copilotAccept enables model for the account when its terms still wait.
 // A failure is left to the request, whose answer then says why.
 func copilotAccept(ctx context.Context, app copilotApp, s copilotSession, model string) {
-	if model == "" {
+	if model == "" || model == CopilotAuto {
 		return
 	}
 	copilotTermsMu.Lock()
@@ -1283,6 +1307,13 @@ func copilotModels(ctx context.Context, app copilotApp) ([]catalog.Model, error)
 	}
 	var out []catalog.Model
 	waiting := map[string]bool{}
+	copilotSeenMu.Lock()
+	for _, m := range v.Data {
+		if m.Capabilities.Type == "chat" && len(m.Endpoints) > 0 {
+			copilotSeen[m.ID] = copilotAPIs(m.Endpoints)
+		}
+	}
+	copilotSeenMu.Unlock()
 	for _, m := range v.Data {
 		if m.Capabilities.Type != "chat" || copilotInternal.MatchString(m.ID) || m.Vendor == "Experimental" {
 			continue
@@ -1300,9 +1331,10 @@ func copilotModels(ctx context.Context, app copilotApp) ([]catalog.Model, error)
 		}
 		out = append(out, catalog.Model{ID: m.ID, Name: m.Name, Efforts: m.Capabilities.Supports.Efforts, APIs: copilotAPIs(m.Endpoints)})
 	}
-	if len(out) == 0 {
-		return nil, errors.New("Copilot lists no chat model for this account")
-	}
+	// Auto, which Copilot's clients offer every account beside the models
+	// it lists, and the only choice a Student plan has: an account whose
+	// list leaves it nothing to pick by hand still has it
+	out = append(out, copilotAutoModel)
 	copilotTermsMu.Lock()
 	copilotTerms[app.Token] = waiting
 	copilotTermsMu.Unlock()

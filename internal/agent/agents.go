@@ -666,6 +666,8 @@ func copilot(home string) *Agent {
 				// come from the list magpie last fetched from Copilot.
 				out := []Option{{Value: "auto", Note: "let Copilot pick", Icon: "githubcopilot"}}
 				if live, _, ok := catalog.Live("copilot"); ok {
+					// magpie's list has Auto too, offered above
+					live = slices.DeleteFunc(slices.Clone(live), func(m catalog.Model) bool { return m.ID == "auto" })
 					out = append(out, options(live, "")...)
 				}
 				return out
