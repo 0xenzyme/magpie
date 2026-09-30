@@ -684,7 +684,7 @@ func quotaLines(qs []provider.SubscriptionQuota, asked, left bool, width int, no
 			if r.Until != nil {
 				c += sFaint.Render(" until " + provider.ResetClock(*r.Until, now))
 			}
-			if q.Provider == "codex" && provider.CodexAutoReset(q.User) {
+			if provider.AutoResets(q.Provider, q.User) {
 				c += sFaint.Render(" · auto") // spent by itself once the week is used up
 			}
 			cells = append(cells, c)

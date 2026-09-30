@@ -452,10 +452,11 @@
     let name = w ? `${who(w)} (${w.model})` : tr.id;
     if (tr.effort) name += " " + t("at {level} reasoning", { level: tr.effort });
     if (!tr.done) return t("{who} is answering…", { who: name });
-    // a Codex reset spent by itself: with Codex's own sign-in the one try
-    // it was spent for is the one that then answered
+    // a Codex or Claude reset spent by itself: with Codex's own sign-in
+    // the one try it was spent for is the one that then answered
+    const claude = tr.reset?.agent === "claude";
     const spent = tr.reset && tr.status < 400
-      ? t("Its week was used up, so one of {account}'s Codex resets was used by itself first.", { account: tr.reset.who }) + " "
+      ? t(claude ? "Its week was used up, so one of {account}'s Claude resets was used by itself first." : "Its week was used up, so one of {account}'s Codex resets was used by itself first.", { account: tr.reset.who }) + " "
       : "";
     if (tr.status < 400) {
       const tk = (r.tokens ? " · " + t("{n} tokens", { n: tokens(r.tokens) }) : "") + firstNote(r, tr);
@@ -464,7 +465,9 @@
         : t("{who} answered in {ms}{tk}.", { who: name, ms: took(tr.ms), tk }));
     }
     if (tr.reset)
-      return t("{who} answered {status}: its week is used up and nobody else could take the request, so one of {account}'s Codex resets was used by itself and the request is asked again, before any of the reply reaches {agent}.",
+      return t(claude
+        ? "{who} answered {status}: its week is used up and nobody else could take the request, so one of {account}'s Claude resets was used by itself and the request is asked again, before any of the reply reaches {agent}."
+        : "{who} answered {status}: its week is used up and nobody else could take the request, so one of {account}'s Codex resets was used by itself and the request is asked again, before any of the reply reaches {agent}.",
         { who: name, status: tr.status, account: tr.reset.who, agent });
     if (tr.fail === "canceled")
       return t("{agent} canceled the request while {who} was answering: nobody failed, so nobody rests and nobody else is asked.", { who: name, agent });

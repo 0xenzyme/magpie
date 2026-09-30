@@ -907,13 +907,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	}
 	tr := s.trace.begin(Route{Pinned: pin, Time: start, Agent: call.Agent, Kind: call.Kind, For: call.For, Model: call.Model, Effort: requestEffort(from, body), Provider: p.ID, Group: group, Rule: hit, Nested: nested, Affinity: shown, Order: pl.order, Left: pl.left})
 	var skipped []string
-	sent := ""       // the reasoning the last try's model was asked for
-	where := ""      // the last try's provider.Where, for the usage
-	again := 0       // times the last one left has been tried again
-	resealed := 0    // what of the conversation another account sealed was taken out: its reasoning, then its compaction
-	floored := false // the reply's length raised to what the provider takes
-	var other *Try   // the first failure that wasn't an allowance run out
-	autoReset := false // a Codex reset looked at, once a request
+	sent := ""         // the reasoning the last try's model was asked for
+	where := ""        // the last try's provider.Where, for the usage
+	again := 0         // times the last one left has been tried again
+	resealed := 0      // what of the conversation another account sealed was taken out: its reasoning, then its compaction
+	floored := false   // the reply's length raised to what the provider takes
+	var other *Try     // the first failure that wasn't an allowance run out
+	autoReset := false // a Codex or Claude reset looked at, once a request
 	for i := 0; i < len(cands); i++ {
 		c := cands[i]
 		last := i == len(cands)-1
@@ -1104,13 +1104,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		}
 		// (not for one account pinned: the others weren't asked)
 		if !autoReset && pin == "" && last && other == nil && hw.failed() && !hw.passing && failure(hw.code(), hw.errBody()) == failQuota {
-			// everyone is out of their allowance: a Codex account the user
-			// lets spend its resets by itself, its week used up, spends one
-			// and is asked again
+			// everyone is out of their allowance: a Codex or Claude account
+			// the user lets spend its resets by itself, its week used up,
+			// spends one and is asked again
 			autoReset = true
 			if pick, out, ok := s.autoReset(r.Context(), cands, c); ok {
 				try.Fail = failQuota
-				try.Reset = &AutoReset{Who: pick.p.Account.User, Text: out.Text()}
+				try.Reset = &AutoReset{Who: pick.p.Account.User, Text: out.Text(), Agent: pick.p.Account.Agent}
 				s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
 				skipped = append(skipped, c.label()+": "+call.Error, pick.label()+": used one of its resets by itself ("+out.Text()+")")
 				cands = append(cands[:len(cands):len(cands)], pick)

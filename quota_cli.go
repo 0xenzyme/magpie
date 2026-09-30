@@ -85,7 +85,7 @@ func quotaCmd(args []string) error {
 			line += "  " + bold.Render(q.Balance) + muted.Render(" left")
 		}
 		if q.Resets != nil {
-			line += "  " + resetsCell(q.Resets, q.Provider == "codex" && provider.CodexAutoReset(q.User))
+			line += "  " + resetsCell(q.Resets, provider.AutoResets(q.Provider, q.User))
 		}
 		if q.Error != "" {
 			line += "  " + muted.Render(q.Error)

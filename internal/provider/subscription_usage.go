@@ -58,8 +58,9 @@ type SubscriptionQuota struct {
 	// AsOf is when an allowance shown in place of one that couldn't be
 	// read was read (see keepLast); nil for a reading just made.
 	AsOf *time.Time `json:"asOf,omitempty"`
-	// Resets are the rate-limit resets a Codex account holds, nil when
-	// it holds none (codex_resets.go).
+	// Resets are the rate-limit resets a Codex account holds, or the
+	// usage-limit resets a Claude account does, nil when it holds none
+	// (codex_resets.go, claude_resets.go).
 	Resets *ResetCredits `json:"resets,omitempty"`
 }
 
@@ -355,6 +356,7 @@ func claudeSubscriptionUsage(ctx context.Context) SubscriptionQuota {
 	user, plan, _ := claudeIdentity()
 	q.Plan = plan
 	q.Windows, err = claudeWindows(ctx, user, token)
+	q.Resets = claudeResetsOf(user)
 	if err != nil {
 		q.Error = err.Error()
 	}
@@ -376,6 +378,9 @@ type claudeUsageEntry struct {
 	at, retry time.Time
 	ws        []QuotaWindow
 	heard     time.Time // when Claude Code last told it, answering
+	// grants: the usage-limit resets the reading told of, nil when it
+	// told of none (claude_resets.go)
+	grants *claudeGrants
 }
 
 const claudeUsageTTL = 3 * time.Minute
@@ -395,7 +400,7 @@ func claudeWindows(ctx context.Context, user, token string) ([]QuotaWindow, erro
 	if ok && now.Before(e.retry) {
 		return []QuotaWindow{}, claudeLimited(e.retry.Sub(now))
 	}
-	ws, err := readClaudeWindows(ctx, token)
+	ws, grants, err := readClaudeUsage(ctx, token)
 	var st *accountStatusError
 	if errors.As(err, &st) && st.status == http.StatusTooManyRequests {
 		wait := st.retryAfter
@@ -424,7 +429,7 @@ func claudeWindows(ctx context.Context, user, token string) ([]QuotaWindow, erro
 	if c.m == nil {
 		c.m = map[string]claudeUsageEntry{}
 	}
-	c.m[key] = claudeUsageEntry{at: now, ws: ws, heard: e.heard}
+	c.m[key] = claudeUsageEntry{at: now, ws: ws, heard: e.heard, grants: grants}
 	c.Unlock()
 	return ws, nil
 }
@@ -450,6 +455,14 @@ func elapsed(ws []QuotaWindow, now time.Time) []QuotaWindow {
 // readClaudeWindows asks Anthropic for the allowance of the account token
 // signs in to.
 func readClaudeWindows(ctx context.Context, token string) ([]QuotaWindow, error) {
+	ws, _, err := readClaudeUsage(ctx, token)
+	return ws, err
+}
+
+// readClaudeUsage is readClaudeWindows with the usage-limit resets the
+// account holds, which Anthropic tells only when asked for them
+// (cedar_ember=1, as Claude Code asks), nil when it holds none.
+func readClaudeUsage(ctx context.Context, token string) ([]QuotaWindow, *claudeGrants, error) {
 	var data struct {
 		FiveHour       *quotaWire `json:"five_hour"`
 		SevenDay       *quotaWire `json:"seven_day"`
@@ -467,12 +480,13 @@ func readClaudeWindows(ctx context.Context, token string) ([]QuotaWindow, error)
 				} `json:"model"`
 			} `json:"scope"`
 		} `json:"limits"`
+		Grants *claudeGrants `json:"cedar_ember"`
 	}
-	err := accountJSON(ctx, claudeBase+"/api/oauth/usage", token, map[string]string{
+	err := accountJSON(ctx, claudeBase+claudeUsagePath, token, map[string]string{
 		"anthropic-beta": "oauth-2025-04-20", "user-agent": "magpie",
 	}, &data)
 	if err != nil {
-		return []QuotaWindow{}, err
+		return []QuotaWindow{}, nil, err
 	}
 	out := []QuotaWindow{}
 	const week = 7 * 24 * time.Hour
@@ -501,7 +515,7 @@ func readClaudeWindows(ctx context.Context, token string) ([]QuotaWindow, error)
 		w.Span, w.Model = week, model
 		out = append(out, w)
 	}
-	return out, nil
+	return out, data.Grants, nil
 }
 
 // claudeScopeModel is the word a model-scoped window counts models by, from

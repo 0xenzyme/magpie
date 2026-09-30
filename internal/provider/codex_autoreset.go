@@ -44,10 +44,11 @@ func SetCodexAutoReset(user string, on bool) error {
 	return settings.Save(s)
 }
 
-var autoReset autoResets
+var autoReset = autoResets{file: "codex-autoreset.json"}
 
 type autoResets struct {
 	sync.Mutex
+	file string // its name in magpie's folder
 	path string // the file read, read again when that changes (a new HOME)
 	// spent: by account, the end of the week a reset was spent in, when,
 	// and what spending it did — for the requests that found the same week
@@ -67,7 +68,7 @@ type autoResetSpent struct {
 // again: its week not used up, or a reset that couldn't be spent.
 var autoResetWait = map[bool]time.Duration{false: time.Minute, true: 10 * time.Minute}
 
-func autoResetPath() string { return filepath.Join(settings.Dir(), "codex-autoreset.json") }
+func (a *autoResets) where() string { return filepath.Join(settings.Dir(), a.file) }
 
 // AutoUseCodexReset spends one of the Codex account user's resets (the one
 // Codex is signed in to when "") if the user turned that on for it, its
@@ -85,9 +86,28 @@ func AutoUseCodexReset(ctx context.Context, user string) (ResetOutcome, error) {
 	if !CodexAutoReset(user) {
 		return ResetOutcome{}, nil
 	}
+	var who string
+	return autoReset.use(user, func(now time.Time) (*time.Time, bool, error) {
+		var tok, accountID string
+		var err error
+		who, tok, accountID, err = codexUserToken(ViaLogin(ctx, "codex", user), user)
+		if err != nil {
+			return nil, false, err
+		}
+		_, windows, resets, err := codexWindows(ViaLogin(ctx, "codex", who), tok, accountID)
+		if err != nil {
+			return nil, false, err
+		}
+		return weekUsedUp(windows, now), resets != nil && resets.Count > 0, nil
+	}, func() (ResetOutcome, error) { return UseCodexReset(ctx, who) })
+}
+
+// use spends one of user's resets by itself if look finds its week used
+// up (and when that week ends) and a reset held, and none was spent by
+// itself in that week yet; spend spends it.
+func (a *autoResets) use(user string, look func(now time.Time) (week *time.Time, held bool, err error), spend func() (ResetOutcome, error)) (ResetOutcome, error) {
 	key := strings.ToLower(user)
 	asked := time.Now()
-	a := &autoReset
 	a.Lock() // one look at a time: those waiting take what it did
 	defer a.Unlock()
 	a.load()
@@ -104,23 +124,16 @@ func AutoUseCodexReset(ctx context.Context, user string) (ResetOutcome, error) {
 	if now.Before(a.next[key]) {
 		return ResetOutcome{}, nil
 	}
-	lookCtx := ViaLogin(ctx, "codex", user)
-	who, tok, accountID, err := codexUserToken(lookCtx, user)
+	week, held, err := look(now)
 	if err != nil {
 		a.next[key] = now.Add(autoResetWait[true])
 		return ResetOutcome{}, err
 	}
-	_, windows, resets, err := codexWindows(ViaLogin(ctx, "codex", who), tok, accountID)
-	if err != nil {
-		a.next[key] = now.Add(autoResetWait[true])
-		return ResetOutcome{}, err
-	}
-	week := weekUsedUp(windows, now)
-	if week == nil || resets == nil || resets.Count <= 0 {
+	if week == nil || !held {
 		a.next[key] = now.Add(autoResetWait[week != nil])
 		return ResetOutcome{}, nil
 	}
-	out, err := UseCodexReset(ctx, who)
+	out, err := spend()
 	if err != nil || out.Code != "reset" {
 		a.next[key] = now.Add(autoResetWait[true])
 		return out, err
@@ -143,12 +156,12 @@ func weekUsedUp(windows []QuotaWindow, now time.Time) *time.Time {
 
 // load reads what was spent, once; a.Lock is held.
 func (a *autoResets) load() {
-	if a.path == autoResetPath() {
+	if a.path == a.where() {
 		return
 	}
-	a.path = autoResetPath()
+	a.path = a.where()
 	a.spent, a.next = map[string]autoResetSpent{}, map[string]time.Time{}
-	if b, err := os.ReadFile(autoResetPath()); err == nil {
+	if b, err := os.ReadFile(a.path); err == nil {
 		_ = json.Unmarshal(b, &a.spent)
 		if a.spent == nil {
 			a.spent = map[string]autoResetSpent{}

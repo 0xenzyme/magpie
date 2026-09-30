@@ -6252,8 +6252,8 @@ function renderQuotas() {
         const r = el("div", "quota-resets");
         r.append(resetsWords(sub.resets));
         const use = el("button", "text", t("Use a reset"));
-        use.title = resetUseTitle(sub.resets);
-        use.onclick = () => askCodexReset(sub);
+        use.title = resetUseTitle(sub);
+        use.onclick = () => askReset(sub);
         if (!sub.resets.byWindow) { // a GLM team's are spent on bigmodel.cn
           const auto = autoResetButton(sub, "text auto-reset");
           if (auto) r.append(auto);
@@ -6491,8 +6491,8 @@ function panelQuotaCard(q) {
     const r = el("div", "pq-resets");
     r.append(resetsWords(q.resets));
     const use = el("button", "pq-use", t("Use one…"));
-    use.title = resetUseTitle(q.resets);
-    use.onclick = () => askCodexReset(q);
+    use.title = resetUseTitle(q);
+    use.onclick = () => askReset(q);
     if (!q.resets.byWindow) {
       const auto = autoResetButton(q, "pq-use pq-auto");
       if (auto) r.append(auto);
@@ -6503,8 +6503,9 @@ function panelQuotaCard(q) {
   return card;
 }
 
-// resetsWords: a Codex account's rate-limit resets, "↺ 2 resets · until
-// Sat 22:30", the date only when one of them runs out. A GLM Coding team
+// resetsWords: a Codex account's rate-limit resets, or a Claude account's
+// usage-limit resets, "↺ 2 resets · until Sat 22:30", the date only when
+// one of them runs out. A GLM Coding team
 // plan's are counted by window, "↺ 2 five-hour resets · 1 weekly reset",
 // and spent on the vendor's page, not here.
 function resetsWords(r) {
@@ -6532,22 +6533,27 @@ function resetsWords(r) {
 }
 
 // resetUseTitle says which reset a use spends: the one that runs out
-// first, so no one hesitates for fear of losing one that lasts longer.
-function resetUseTitle(r) {
-  return (r.until
+// first, so no one hesitates for fear of losing one that lasts longer; a
+// Claude account's, the one Anthropic names next.
+function resetUseTitle(q) {
+  const r = q.resets;
+  return (r.until && q.provider === "claude"
+    ? t("Uses the reset Anthropic names next, good until {when}.", { when: new Date(r.until).toLocaleString() })
+    : r.until
     ? t("Uses the reset that runs out first ({when}), never one that lasts longer.", { when: new Date(r.until).toLocaleString() })
     : t("Uses one of its resets; none of them runs out."))
     + "\n" + t("This account's windows start again at once, as if none had been used. You're asked before anything is spent.");
 }
 
-// autoResetButton turns on or off a Codex account spending a reset by
-// itself: once its week is used up and no other account can answer, one
-// a week at most. Off unless the user turns it on; nothing for an account
-// with no name to keep it by.
+// autoResetButton turns on or off a Codex or Claude account spending a
+// reset by itself: once its week is used up and no other account can
+// answer, one a week at most. Off unless the user turns it on; nothing for
+// an account with no name to keep it by.
 function autoResetButton(q, cls) {
-  if (!q.user || q.provider !== "codex") return null;
+  const kept = { codex: "codexAutoReset", claude: "claudeAutoReset" }[q.provider];
+  if (!q.user || !kept) return null;
   const who = q.user.toLowerCase();
-  const on = !!(state.settings?.codexAutoReset || []).includes(who);
+  const on = !!(state.settings?.[kept] || []).includes(who);
   const b = el("button", cls + (on ? " on" : ""), t("Auto-use"));
   b.setAttribute("aria-pressed", String(on));
   b.title = t(on ? "On: a reset is used by itself when this account's week is used up and no other account can answer, one a week at most. Click to turn it off."
@@ -6556,7 +6562,7 @@ function autoResetButton(q, cls) {
     e.stopPropagation();
     b.disabled = true;
     try {
-      prefs = await writingPrefs(api("settings/codex-auto-reset", { user: q.user, on: !on }));
+      prefs = await writingPrefs(api("settings/" + q.provider + "-auto-reset", { user: q.user, on: !on }));
       state.settings = prefs;
       status(t(on ? "{who} no longer uses a reset by itself" : "{who} uses a reset by itself once its week is used up", { who: q.user }), "ok");
       renderQuotas();
@@ -6568,19 +6574,21 @@ function autoResetButton(q, cls) {
   return b;
 }
 
-// askCodexReset: spending a reset can't be taken back, so it asks first;
-// then it says what came of it and reads the usage again.
+// askReset: spending a Codex or Claude account's reset can't be taken
+// back, so it asks first; then it says what came of it and reads the
+// usage again.
 let resetAsk = null;
-function askCodexReset(q) {
+function askReset(q) {
+  const claude = q.provider === "claude";
   const ed = el("div", "editor reset-ask");
   const head = el("div", "ehead");
-  head.append(icon(q.icon || "codex"), el("b", "", t("Use a Codex reset?")));
+  head.append(icon(q.icon || (claude ? "claude-color" : "codex")), el("b", "", t(claude ? "Use a Claude reset?" : "Use a Codex reset?")));
   ed.append(head);
   const who = q.user || q.name;
   ed.append(el("p", "lib-confirm", t(q.resets.count === 1
     ? "{who} has 1 reset. Using it starts its windows again at once, as if none of them had been used. It can't be undone."
     : "{who} has {n} resets. Using one starts its windows again at once, as if none of them had been used. It can't be undone.", { who, n: q.resets.count })));
-  if (q.resets.until) ed.append(el("p", "lib-confirm", t("The one used is the one that runs out first, {when}.", { when: new Date(q.resets.until).toLocaleString() })));
+  if (q.resets.until) ed.append(el("p", "lib-confirm", t(claude ? "The one used is the one Anthropic names next, good until {when}." : "The one used is the one that runs out first, {when}.", { when: new Date(q.resets.until).toLocaleString() })));
   // nothing used yet: a reset would start nothing again
   if (!q.windows?.some((w) => w.used > 0)) ed.append(el("p", "lib-confirm reset-idle", t("None of its windows has been used yet, so there is nothing to start again.")));
   const bar = el("div", "bar");
@@ -6590,7 +6598,7 @@ function askCodexReset(q) {
     go.disabled = true;
     go.classList.add("busy");
     try {
-      const out = await api("usage/codex-reset", { user: q.user || "" });
+      const out = await api(claude ? "usage/claude-reset" : "usage/codex-reset", { user: q.user || "" });
       closeResetAsk();
       status(who + ": " + resetOutcome(out), out.code === "reset" ? "ok" : "err");
       loadQuotas();
@@ -6627,7 +6635,13 @@ function resetOutcome(out) {
     case "reset": return t(out.windows === 1 ? "1 window started again" : "{n} windows started again", { n: out.windows });
     case "nothing_to_reset": return t("nothing to start again — no window has been used, and the reset is kept");
     case "no_credit": return t("no reset left on the account");
-    case "already_redeemed": return t("that reset was already used");
+    case "already_redeemed":
+    case "already_used": return t("that reset was already used");
+    // Anthropic's
+    case "not_limited": return t("nothing to reset — no window is used up yet, and the reset is kept");
+    case "cooldown": return t("a reset was used a short while ago — try again later");
+    case "ineligible": return t("the account can't use a reset");
+    case "unavailable": return t("resets can't be used right now — try again later");
   }
   return out.code;
 }

@@ -152,6 +152,7 @@ func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
 	if err == nil {
 		if l.Agent == "claude" {
 			q.Windows, err = claudeWindows(ctx, l.User, tok)
+			q.Resets = claudeResetsOf(l.User)
 		} else {
 			var plan string
 			if plan, q.Windows, q.Resets, err = codexWindows(ctx, tok, accountID); plan != "" {

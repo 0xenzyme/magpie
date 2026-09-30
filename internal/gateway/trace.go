@@ -177,10 +177,11 @@ type Try struct {
 	Reset *AutoReset `json:"reset,omitempty"`
 }
 
-// AutoReset is a Codex reset spent by itself, on Who's account.
+// AutoReset is a Codex or Claude reset spent by itself, on Who's account.
 type AutoReset struct {
-	Who  string `json:"who"`
-	Text string `json:"text"`
+	Who   string `json:"who"`
+	Text  string `json:"text"`
+	Agent string `json:"agent,omitempty"` // "claude" for a Claude account's; Codex's otherwise
 }
 
 type planned struct {
