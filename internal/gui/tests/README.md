@@ -29,6 +29,16 @@ scrolled to its end, in the tray panel (one agent open) and in the window:
 them and never back up; "Show less", and a row opened and closed, leave what
 was clicked where it is on every frame.
 
+`agent-models.test.cjs` opens Codex's model list from the line under its
+name, in Chromium and WebKit, English and Chinese: the line reads "Showing 8 /
+31 models" under the name, opening it moves nothing and puts it on the screen
+whole, routing groups come first and OpenRouter's 24 start folded, the model
+Codex is set to can't be taken out, a click takes one out at once with the
+whole list sent and the count under the name following, a search opens a
+folded group, "Shown" keeps one just turned off till the view changes, a
+group's "Show all" comes on hover, "Show all again" sends none, and Esc or a
+click elsewhere closes it.
+
 `gateway-fold.test.cjs` folds Connect on the Gateway page with the view
 scrolled: its fields hide, the head keeps the base URL and a copy button, the
 head stays where it was, and the fold is remembered across a reload.
