@@ -27,7 +27,7 @@ import (
 // $HOME and which of wslKinds' agents are there (never starting one that is
 // stopped), and edits the files through \\wsl.localhost\<distro>. Each is
 // an agent of its own, <id>@wsl:<distro> (codex@wsl:Ubuntu,
-// pi@wsl:Ubuntu). The gateway it is pointed at is
+// pi@wsl:Ubuntu, claude@wsl:Ubuntu). The gateway it is pointed at is
 // 127.0.0.1 when WSL shares Windows' network (networkingMode=mirrored in
 // .wslconfig); under NAT it is Windows as WSL sees it, which reaches the
 // gateway only while that listens beyond loopback.
@@ -39,6 +39,7 @@ type place struct {
 	home  string
 	id    string              // the agent's id when not its own: its stash keys go under it
 	spell func(string) string // a path under home as the agent names it; nil: as is
+	sys   func(string) string // a path of the agent's system (/etc/…) as magpie opens it; nil: as is
 	base  func() string       // the gateway's URL from the agent; nil: gateway.URL
 }
 
@@ -123,7 +124,7 @@ func (d distro) base() string {
 }
 
 func (d distro) place(id string) place {
-	return place{home: d.local(d.Home), id: id, spell: d.native, base: d.base}
+	return place{home: d.local(d.Home), id: id, spell: d.native, sys: d.local, base: d.base}
 }
 
 // wslKind is an agent magpie looks for in a distro: what the probe finds
@@ -166,6 +167,27 @@ var wslKinds = []wslKind{
 				}
 			}
 			return nil
+		}},
+	// only its settings.json: its sign-in, sessions and prompt history,
+	// read on this machine for Claude Code here, aren't read in a distro
+	{id: "claude", name: "Claude Code", dir: ".claude", bin: "claude", in: claudeIn,
+		asleep: func(key string) func(map[string]string) []Option {
+			switch key {
+			case "model":
+				// whether it has a base URL of its own is the distro's file
+				return func(map[string]string) []Option {
+					return append(group("Claude Code", claudeOwn()), claudeViaMagpie()...)
+				}
+			case "effort":
+				return nil
+			}
+			// a tier: magpie's models while the model last seen is one
+			return func(cur map[string]string) []Option {
+				if !isMagpie(cur["model"]) {
+					return nil
+				}
+				return claudeViaMagpie()
+			}
 		}},
 }
 
@@ -464,6 +486,30 @@ func wslLastSeen(name, key string) string {
 	defer wsl.Unlock()
 	if d := wsl.seen[name]; d != nil {
 		return d.Values[key]
+	}
+	return ""
+}
+
+// wslClaudeStandIn is StandIn for a Claude Code in a WSL distro routed
+// through magpie: the first, of the distros running at the last look, whose
+// settings.json has a stand-in. Only magpie's memory of them is asked —
+// nothing is listed nor probed, and a stopped distro is never opened.
+func wslClaudeStandIn(model string) string {
+	wsl.Lock()
+	var ds []distro
+	for _, n := range wsl.names {
+		if d := wsl.seen[n]; d != nil && wsl.running[n] && wslKindOf("claude").found(*d) {
+			ds = append(ds, *d)
+		}
+	}
+	wsl.Unlock()
+	mirrored := wslMirrored(wslConfig())
+	for _, d := range ds {
+		d.Mirrored = mirrored
+		path := filepath.Join(d.local(d.Home), ".claude", "settings.json")
+		if m := claudeStandInAt(path, model, d.base()); m != "" {
+			return m
+		}
 	}
 	return ""
 }
