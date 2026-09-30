@@ -474,6 +474,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		in.RedactRules = cur.RedactRules // the masking rules, set on their own
 		// used or left is the Usage page's toggle as much as Settings', set on its own
 		in.QuotaLeft = cur.QuotaLeft
+		// how agents' lists name models, set on its own for the agents to be told
+		in.PlainNames = cur.PlainNames
 		// which Codex and Claude accounts spend a reset by themselves, set on the Usage card
 		in.CodexAutoReset, in.ClaudeAutoReset = cur.CodexAutoReset, cur.ClaudeAutoReset
 		// and the text size, which the keyboard changes too (text-size below)
@@ -529,6 +531,20 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		}
 		if changed && onTrayUsage != nil {
 			onTrayUsage()
+		}
+		writeJSON(rw, settingsState())
+	})
+	// whether the agents' lists name a model with its provider's after it or
+	// alone (#335): their files are written again, and Codex asks again
+	mux.HandleFunc("POST /api/settings/plain-names", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ On bool }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		if err := provider.SetPlainNames(in.On); err != nil {
+			fail(rw, err)
+			return
 		}
 		writeJSON(rw, settingsState())
 	})

@@ -119,6 +119,11 @@ type Settings struct {
 	// QuotaLeft shows a subscription's windows by how much of each is left,
 	// not used: the Usage page, the tray panel and the menu bar alike.
 	QuotaLeft bool `json:"quotaLeft,omitempty"`
+	// PlainNames has the model lists magpie gives agents name each model
+	// by its name alone, without its provider's or "routing group" after it
+	// (#335) — but for two in one list that would read the same, which keep
+	// it (see provider.Labels).
+	PlainNames bool `json:"plainNames,omitempty"`
 	// TextSize is how large the window's and the tray panel's pages are
 	// drawn, in percent (one of TextSizes): the webviews' own zoom, as a
 	// browser's, so the text and everything around it grow together.

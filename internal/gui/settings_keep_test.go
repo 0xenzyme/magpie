@@ -77,6 +77,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		LAN:             true,
 		LANKey:          "sk-lan",
 		QuotaLeft:       true,
+		PlainNames:      true,
 		CodexAutoReset:  []string{"me@example.com"},
 		ClaudeAutoReset: []string{"me@example.com"},
 		TextSize:        125,

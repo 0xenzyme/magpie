@@ -162,6 +162,9 @@
   const agentName = (id) => agentOf(id)?.name || (id && id !== "other" ? id : t("your agent"));
   // who names an account or key in a sentence
   const who = (w) => w.kind === "provider" ? w.name : w.who;
+  // where names one as a place a request went: the provider, and the
+  // account or key when it has one
+  const where = (w) => w.kind === "provider" || !w.who ? w.name || w.provider : `${w.name || w.provider} · ${w.who}`;
   // why one is left out: an account's plan lacks the model; a key's list
   // from its vendor does — relays list each key its own group's models
   const unlistedWord = (w) => w.kind === "key" ? t("{name}'s list for this key has no {model}", { name: w.name, model: w.model }) : t("its plan doesn't list {model}", { model: w.model });
@@ -1038,6 +1041,18 @@
     return [last ? `${r.status} · ${failWord(last.fail)}` : `${r.status || ""} ${r.error || ""}`.trim(), "bad"];
   }
 
+  // a request's row's title: the way it went, to the one that took it
+  // once it was rerouted — not the provider it resolved to first, which
+  // the row no longer says (#337)
+  function reqTitle(r, how, tr) {
+    const head = `${agentName(r.agent)} · ${r.model} → `;
+    const w = how !== "bad" && r.tries.length > 1 && tr && tried(r, tr);
+    if (!w) return head + r.provider;
+    const first = r.tries[0], f = tried(r, first);
+    const from = f && seat(f) !== seat(w) ? "\n" + t("rerouted from {from}", { from: `${where(f)} · ${first.model || f.model}` }) : "";
+    return head + `${where(w)} · ${tr.model || w.model}` + from;
+  }
+
   // the requests the gateway keeps, newest first: pick one to see how it was routed
   // listed: the requests the list shows, newest first — the gateway's last
   // few, or a day the history keeps
@@ -1127,12 +1142,13 @@
       if (r.done && r.ttft) meta.push(t("TTFT {ms}", { ms: took(r.ttft) }));
       if (r.tokens) meta.push(t("{n} tokens", { n: tokens(r.tokens) }));
       // all the row says, and its titles
-      const sig = JSON.stringify([lang, said, how, r.time, r.agent, agentName(r.agent), ag?.icon, r.model, r.provider, r.kind, r.effort,
+      const title = reqTitle(r, how, tr);
+      const sig = JSON.stringify([lang, said, how, title, r.time, r.agent, agentName(r.agent), ag?.icon, r.model, r.provider, r.kind, r.effort,
         tr?.effort, tr?.picked, tr?.fixed, tr?.swapped && tr.done && tr.status < 400 ? [tr.model, tr.served] : 0, meta]);
       ids.add(r.id);
       let x = reqRows.get(r.id);
       if (!x || x.sig !== sig) {
-        const row = x = { sig, b: reqRow(r, said, how, tr, ag, meta) };
+        const row = x = { sig, b: reqRow(r, said, how, tr, ag, meta, title) };
         row.b.onclick = () => pick(row.r); // the request as it is when clicked
         reqRows.set(r.id, x);
       }
@@ -1153,7 +1169,7 @@
     }
     renderActs(rs);
   }
-  function reqRow(r, said, how, tr, ag, meta) {
+  function reqRow(r, said, how, tr, ag, meta, title) {
     const b = el("button", "rt-req " + how);
     const when = el("span", "at", new Date(r.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     const asked = el("span", "asked");
@@ -1178,7 +1194,7 @@
     }
     if (tr?.swapped && tr.done && tr.status < 400) to.append(swapTag(tr, true)); // beside the model asked for
     b.append(when, asked, to, el("span", "meta", meta.join(" · ")));
-    b.title = `${agentName(r.agent)} · ${r.model} → ${r.provider}`;
+    b.title = title;
     return b;
   }
 
@@ -2600,13 +2616,13 @@
     // answered — marked when the reply names another than the one sent
     const to = el("span", "pr-to");
     to.append(el("i", "", "→"));
-    const where = w ? (w.kind === "provider" || !w.who ? w.name || w.provider : `${w.name || w.provider} · ${w.who}`) : r.provider;
-    if (!r.done) to.append(el("span", "pr-where", w ? t("{who} is answering…", { who: where }) : t("routing…")));
+    const place = w ? where(w) : r.provider;
+    if (!r.done) to.append(el("span", "pr-where", w ? t("{who} is answering…", { who: place }) : t("routing…")));
     else if (r.status >= 400) {
       const last = r.tries[r.tries.length - 1];
       to.append(el("span", "pr-where", last ? `${r.status} · ${failWord(last.fail)}` : `${r.status || ""} ${r.error || ""}`.trim()));
     } else {
-      to.append(el("span", "pr-where", where));
+      to.append(el("span", "pr-where", place));
       const model = tr?.model || w?.model;
       if (model) to.append(el("span", "pr-m", model));
       if (tr?.swapped && tr.done) to.append(swapTag(tr, true));
@@ -2616,7 +2632,7 @@
     if (r.tokens) meta.push(t("{n} tokens", { n: tokens(r.tokens) }));
     if (r.done && r.ms) meta.push(took(r.ms));
     b.append(asked, when, to, el("span", "meta", meta.join(" · ")));
-    b.title = `${agentName(r.agent)} · ${r.model} → ${r.provider}`;
+    b.title = reqTitle(r, how, tr);
     b.onclick = (e) => { api("window/main?view=routing&req=" + r.id, {}); e.currentTarget.blur(); };
     return b;
   }

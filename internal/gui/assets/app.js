@@ -8871,6 +8871,10 @@ function renderTrayUsage(s, keep) {
   $("#quotaLeftSegs").replaceChildren(segs([[false, t("Used")], [true, t("Left")]], !!s.quotaLeft,
     (on) => { if (on !== quotaLeft) setQuotaLeft(on); }));
   $("#currencySegs").replaceChildren(segs(CURRENCIES.map(([id, name]) => [id, t(name)]), s.currency || "usd", (v) => savePrefs({ ...keep, currency: v })));
+  // the agents' lists name a model with its provider's after it, or alone
+  // (#335): set on its own, so the agents are told
+  $("#plainNamesSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.plainNames ? "off" : "on", (v) =>
+    writingPrefs(api("settings/plain-names", { on: v === "off" })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
   const rate = s.fx?.rate;
   const currencySub = $("#currencySub");
   currencySub.textContent = t("What a cost — the Usage page's, the tray panel's, the TUI's and the CLI's — is shown as; a vendor's own balance, already in its own currency, is never converted");
