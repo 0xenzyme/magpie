@@ -12,8 +12,8 @@ export const FakePlugin = async ({ client }) => ({
       api: "https://fake.invalid/v1",
       models: {
         "fake-1": { name: "Fake One", limit: { context: 1000, output: 100 } },
-        "fake-claude": { name: "Fake Claude", provider: { npm: "@ai-sdk/anthropic" }, limit: { context: 2000, output: 200 } },
-        "fake-gemini": { name: "Fake Gemini", provider: { npm: "@ai-sdk/google" }, reasoning: true, limit: { context: 3000, output: 300 } },
+        "fake-claude": { name: "Fake Claude", provider: { npm: "@ai-sdk/anthropic" }, modalities: { input: ["text", "image"], output: ["text"] }, limit: { context: 2000, output: 200 } },
+        "fake-gemini": { name: "Fake Gemini", provider: { npm: "@ai-sdk/google" }, reasoning: true, modalities: { input: ["text"], output: ["text"] }, limit: { context: 3000, output: 300 } },
       },
     }
   },

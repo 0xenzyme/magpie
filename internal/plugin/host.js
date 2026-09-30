@@ -497,6 +497,7 @@ async function providers() {
           output: m.limit?.output ?? 0,
           reasoning: !!m.capabilities?.reasoning,
           image: !!m.capabilities?.input?.image,
+          imageSaid: typeof m.capabilities?.input?.image === "boolean",
           released: m.release_date ?? "",
           cost: m.cost,
           variants: Object.keys(m.variants ?? {}),

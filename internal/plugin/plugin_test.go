@@ -73,6 +73,12 @@ func TestFakePlugin(t *testing.T) {
 	if npm["fake-1"] != "@ai-sdk/openai-compatible" || npm["fake-claude"] != "@ai-sdk/anthropic" || npm["fake-gemini"] != "@ai-sdk/google" {
 		t.Fatalf("models = %+v", ps[0].Models)
 	}
+	// whether a model takes images is said only where the plugin said it
+	for _, m := range ps[0].Models {
+		if want := map[string][2]bool{"fake-1": {false, false}, "fake-claude": {true, true}, "fake-gemini": {false, true}}[m.ID]; m.Image != want[0] || m.ImageSaid != want[1] {
+			t.Errorf("%s: image %v, said %v; want %v", m.ID, m.Image, m.ImageSaid, want)
+		}
+	}
 
 	// the browser method asks where, then a team only for work
 	p, err := NextPrompt(ctx, "fakeco", 1, map[string]string{})

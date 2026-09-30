@@ -151,8 +151,13 @@ func pluginCatalog(pp plugin.Provider) []catalog.Model {
 		if m.Reasoning {
 			c.Efforts = m.Variants
 		}
-		if m.Cost != nil {
+		// OpenCode's price of a model it has none for is 0, as the
+		// plugins give a plan's models: a price is only one above it
+		if m.Cost != nil && (m.Cost.Input > 0 || m.Cost.Output > 0) {
 			c.Price = &catalog.Price{Input: m.Cost.Input, Output: m.Cost.Output}
+		}
+		if m.ImageSaid {
+			c.ImageInput = &m.Image
 		}
 		out = append(out, c)
 	}

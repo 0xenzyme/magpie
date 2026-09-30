@@ -42,6 +42,9 @@ type Model struct {
 		Input  float64 `json:"input"`
 		Output float64 `json:"output"`
 	} `json:"cost"`
+	// ImageSaid is whether the plugin (or models.dev) said if it takes
+	// images: Image false without it is not known
+	ImageSaid bool `json:"imageSaid"`
 }
 
 // Provider is a provider a plugin signs in to.

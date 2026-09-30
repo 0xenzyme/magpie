@@ -39,3 +39,38 @@ func TestMovedProviderModelsArePlugins(t *testing.T) {
 		t.Error("moved grok shows the built-in's list as fetched")
 	}
 }
+
+// A plugin's model has a price only when the plugin gives one: a plan's
+// models come priced 0, as OpenCode prices a model it has none for, and a
+// 0 would make them the cheapest to pick. Whether it takes images is said
+// when the plugin said it.
+func TestPluginCatalogPriceAndImages(t *testing.T) {
+	type cost = struct {
+		Input  float64 `json:"input"`
+		Output float64 `json:"output"`
+	}
+	pp := plugin.Provider{ID: "fakeco", Models: []plugin.Model{
+		{ID: "plan", Cost: &cost{}, Image: true, ImageSaid: true},
+		{ID: "priced", Cost: &cost{Input: 1, Output: 2}, ImageSaid: true},
+		{ID: "unsaid", Cost: &cost{}},
+	}}
+	got := map[string]catalog.Model{}
+	for _, m := range pluginCatalog(pp) {
+		got[m.ID] = m
+	}
+	if p := got["plan"].Price; p != nil {
+		t.Errorf("a plan's model priced %+v", *p)
+	}
+	if p := got["priced"].Price; p == nil || p.Input != 1 || p.Output != 2 {
+		t.Errorf("a priced model's price: %+v", p)
+	}
+	if in := got["plan"].ImageInput; in == nil || !*in {
+		t.Errorf("a model said to take images: %v", in)
+	}
+	if in := got["priced"].ImageInput; in == nil || *in {
+		t.Errorf("a model said to take none: %v", in)
+	}
+	if in := got["unsaid"].ImageInput; in != nil {
+		t.Errorf("a model not said of: %v", *in)
+	}
+}
