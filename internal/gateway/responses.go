@@ -568,7 +568,7 @@ func (d *responsesDecoder) decode(data string, emit func(Event)) error {
 		}
 	case "response.completed", "response.incomplete", "response.failed":
 		if ev.Response.Error != nil {
-			emit(Event{Kind: KError, Text: ev.Response.Error.Message})
+			emit(Event{Kind: KError, Text: ev.Response.Error.Message, Code: refusedCode(data)})
 			return nil
 		}
 		stop := "stop"
@@ -594,7 +594,7 @@ func (d *responsesDecoder) decode(data string, emit func(Event)) error {
 		if ev.Error != nil {
 			msg = ev.Error.Message
 		}
-		emit(Event{Kind: KError, Text: msg})
+		emit(Event{Kind: KError, Text: msg, Code: refusedCode(data)})
 	}
 	return nil
 }
@@ -764,7 +764,11 @@ func (e *responsesEncoder) event(ev Event) {
 		}
 	case KError:
 		e.closeItem()
-		e.send("response.failed", map[string]any{"response": e.response("failed", map[string]any{"error": map[string]any{"code": "server_error", "message": ev.Text}})})
+		code := "server_error"
+		if ev.Code != "" {
+			code = ev.Code
+		}
+		e.send("response.failed", map[string]any{"response": e.response("failed", map[string]any{"error": map[string]any{"code": code, "message": ev.Text}})})
 	}
 	e.col.add(ev)
 }

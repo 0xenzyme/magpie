@@ -610,7 +610,7 @@ func (d *chatDecoder) decode(data string, emit func(Event)) error {
 		return nil
 	}
 	if ch.Error != nil {
-		emit(Event{Kind: KError, Text: ch.Error.Message})
+		emit(Event{Kind: KError, Text: ch.Error.Message, Code: refusedCode(data)})
 		return nil
 	}
 	if !d.started {
@@ -792,7 +792,11 @@ func (e *chatEncoder) event(ev Event) {
 				"function": map[string]any{"arguments": ev.Text}}}}, nil, nil)
 		}
 	case KError:
-		e.w.event("", map[string]any{"error": map[string]any{"message": ev.Text, "type": "api_error"}})
+		failed := map[string]any{"message": ev.Text, "type": "api_error"}
+		if ev.Code != "" {
+			failed["code"] = ev.Code // a refusal, for the next account to be asked
+		}
+		e.w.event("", map[string]any{"error": failed})
 	}
 	e.col.add(ev)
 }

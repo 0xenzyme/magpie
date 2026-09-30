@@ -162,6 +162,9 @@ type Event struct {
 	Stop   string // stop | length | tool | filter
 	Usage  Usage
 	Hits   []Hit
+	// Code: for KError, the vendor's code when it is its safety filter
+	// refusing (bio_policy, content_filter…), kept in translation (#248)
+	Code string
 }
 
 // Usage counts tokens.
