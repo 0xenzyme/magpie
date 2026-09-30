@@ -174,7 +174,8 @@ async function publish() {
   for (const s of m.scenes) {
     if (!s.shots.length) continue;
     md += `#### ${s.title}\n\n`;
-    for (const x of s.shots) md += `<img src="${raw}${x.file}" width="760" alt="${esc(x.caption)}">\n\n${x.caption}\n\n`;
+    // shown at its own size (they're taken at 2x), a full page no wider than 760
+    for (const x of s.shots) md += `<img src="${raw}${x.file}" width="${Math.min(760, Math.round((x.width || 1520) / 2))}" alt="${esc(x.caption)}">\n\n${x.caption}\n\n`;
   }
   if (m.errors?.length) md += `<details><summary>⚠️ 有 ${m.errors.length} 步没能照计划执行</summary>\n\n${m.errors.map((e) => "- " + e).join("\n")}\n</details>\n`;
   await setBlock(md);

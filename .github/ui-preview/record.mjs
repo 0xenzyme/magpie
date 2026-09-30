@@ -230,16 +230,19 @@ async function runStep(page, step, scene) {
         if (step.target) {
           const b = await (await locate(page, step)).boundingBox();
           if (b) {
-            const m = 24;
-            const x = Math.max(0, b.x - m), y = Math.max(0, b.y - m);
-            clip = { x, y, width: Math.min(VIEW.width - x, b.width + 2 * m), height: Math.min(VIEW.height - y, b.height + 2 * m) };
+            // the target with room around it, never so small that a button
+            // is shown without where it is
+            const w = Math.min(VIEW.width, Math.max(560, b.width + 48)), h = Math.min(VIEW.height, Math.max(340, b.height + 48));
+            const x = Math.min(VIEW.width - w, Math.max(0, b.x + b.width / 2 - w / 2));
+            const y = Math.min(VIEW.height - h, Math.max(0, b.y + b.height / 2 - h / 2));
+            clip = { x, y, width: w, height: h };
           }
         }
         await page.screenshot({ path: path.join(OUT, file), clip });
       } finally {
         await page.evaluate(() => document.querySelector("[data-ui-preview]")?.style.removeProperty("visibility"));
       }
-      scene.shots.push({ file, caption: step.caption || step.name || "" });
+      scene.shots.push({ file, caption: step.caption || step.name || "", width: 2 * (clip?.width ?? VIEW.width) });
       break;
     }
     default:
