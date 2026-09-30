@@ -2218,8 +2218,52 @@ function renderExcluded() {
       quiet.onclick = () => providerAction("quiet", { id: x.provider });
       r.lastChild.append(" ", back, " · ", quiet);
     }
+    // an agent signed out here (a banned account logged out, say) lists
+    // its saved accounts nowhere else, so this is where they are removed
+    if (x.signedOut && x.users?.length) {
+      const rm = el("button", "link", t("Remove"));
+      rm.title = t("magpie forgets the accounts it saved; {agent}'s own files are left as they are", { agent: x.agentName });
+      rm.onclick = () => askForgetSaved(x);
+      r.lastChild.append(" ", rm);
+    }
     box.append(r);
   }
+}
+
+// askForgetSaved asks before magpie drops the accounts it saved of an agent
+// signed out here, as a reset asks; it forgets only magpie's copies, never
+// the agent's own files or keychain. It is the reset's dialog, so the
+// backdrop and Escape close it the same way.
+function askForgetSaved(x) {
+  const ed = el("div", "editor forget-ask");
+  const head = el("div", "ehead");
+  head.append(icon(x.agentIcon), el("b", "", t(x.users.length === 1 ? "Remove {agent}'s saved account?" : "Remove {agent}'s {n} saved accounts?", { agent: x.agentName, n: x.users.length })));
+  ed.append(head);
+  ed.append(el("p", "lib-confirm", t("magpie forgets its copy of {users}. {agent}'s own files and sign-in, and the account itself, are left as they are.", { users: x.users.join(", "), agent: x.agentName })));
+  const bar = el("div", "bar");
+  const go = el("button", "text primary danger-fill", t("Remove"));
+  go.onclick = async (e) => {
+    e.stopPropagation();
+    go.disabled = true;
+    go.classList.add("busy");
+    for (const [i, user] of x.users.entries()) {
+      const last = i === x.users.length - 1;
+      if (!await accountAction("login/forget", { agent: x.agent, user }, last ? t("{user} removed", { user: x.users.join(", ") }) : "")) {
+        go.disabled = false;
+        go.classList.remove("busy");
+        return;
+      }
+    }
+    closeResetAsk();
+  };
+  const cancel = el("button", "text", t("Cancel"));
+  cancel.onclick = (e) => { e.stopPropagation(); closeResetAsk(); };
+  bar.append(el("span", "grow"), cancel, go);
+  ed.append(bar);
+  resetAsk = ed;
+  openModal(ed);
+  $("#modal").classList.add("lib");
+  cancel.focus();
 }
 
 // accountPlan names a signed-in account's subscription: "ChatGPT Pro", "GitHub".

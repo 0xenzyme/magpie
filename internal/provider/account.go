@@ -201,6 +201,9 @@ type Exclusion struct {
 	// SignedOut: the agent has accounts saved in magpie but isn't signed
 	// in where magpie looks, and so none of them is offered.
 	SignedOut bool `json:"signedOut,omitempty"`
+	// Users names those saved accounts (no secrets), so they can be
+	// removed from magpie while none of them is offered.
+	Users []string `json:"users,omitempty"`
 	// Quiet: the user asked not to be reminded of it; only the Add sheet
 	// offers it back.
 	Quiet bool `json:"quiet,omitempty"`

@@ -190,6 +190,11 @@ Remove is there both times, its title saying magpie only hides it and it
 shows again when Kiro signs in anew, and it posts login/forget; magpie's
 own account in use first has no Remove; in English and Chinese.
 
+`saved-signedout-remove.test.cjs` shows Claude Code signed out with two
+accounts saved in magpie: the Providers line naming them has Remove, whose
+dialog lists them; Cancel and Escape post nothing, Remove posts
+login/forget once per account and the line goes; in English and Chinese.
+
 `nokey-editor.test.cjs` opens two local Ollama providers saved with no key,
 one from the preset and one custom, as /api/providers gives them: a click
 on each row opens its editor (the key box saying one is optional) and
