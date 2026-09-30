@@ -339,6 +339,7 @@ const I18N = {
     "When {name} is out of quota, rate limited or down, a request goes to these instead, top first. It only happens before any of the reply is sent, and {name} then sits out a minute.": "当 {name} 额度用完、被限流或不可用时，请求会按从上到下的顺序改发给这些模型。只在回复开始发送之前切换，之后 {name} 会暂停一分钟再用。",
     "{agent} and the gateway use the one in use. Sessions already running keep theirs until restarted.": "{agent} 和网关使用标记为「使用中」的账号。已在运行的会话保持原账号，重启后切换。",
     "The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota. {agent} itself stays signed in as it is.": "网关优先用第一个账号。多勾选几个，前一个额度用完时会自动换到下一个。{agent} 本身的登录保持不变。",
+    "The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota.": "网关优先用第一个账号。多勾选几个，前一个额度用完时会自动换到下一个。",
     "The gateway uses this account first": "网关优先使用这个账号",
     "Routing": "路由",
     "Tick every key to use; Routing says how requests spread over them.": "勾选的密钥会同时启用；请求怎么分给它们，由下面的「路由」决定。",

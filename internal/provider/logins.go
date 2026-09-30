@@ -475,6 +475,9 @@ func rememberLogins(force bool) {
 // Logins lists the remembered accounts of an agent ("" for every one),
 // the active one flagged.
 func Logins(agent string) []Login {
+	if pp, ok := pluginOfAgent(agent); ok {
+		return pluginLoginList(pp)
+	}
 	var side []Login
 	switch agent {
 	case "grok":
@@ -547,6 +550,9 @@ func Logins(agent string) []Login {
 // they restart; so does Codex's background app-server, which new Codex
 // sessions attach to (CodexDaemonStale says when it is).
 func SwitchLogin(agent, user string) error {
+	if pp, ok := pluginOfAgent(agent); ok {
+		return switchPluginLogin(pp, user)
+	}
 	switch agent {
 	case "grok":
 		return switchGrokLogin(user)
@@ -687,6 +693,9 @@ func putClaudeLogin(l savedLogin) error {
 // ForgetLogin drops a remembered account. The one an agent is signed in to
 // now can't be forgotten; it would only be remembered again.
 func ForgetLogin(agent, user string) error {
+	if pp, ok := pluginOfAgent(agent); ok {
+		return forgetPluginLogin(pp, user)
+	}
 	switch agent {
 	case "grok":
 		return forgetGrokLogin(user)
