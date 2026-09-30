@@ -383,7 +383,39 @@ func modelObject(e provider.Entry) map[string]any {
 	if e.Output > 0 {
 		m["max_output_tokens"] = e.Output
 	}
+	// for another magpie that has this one as its provider (remote-magpie):
+	// the APIs a request for the model goes on as it is, so it sends each
+	// one on an API of these rather than having it translated twice, and
+	// whether it takes images
+	if native := nativeEndpoints(e); len(native) > 0 {
+		m["native_endpoints"] = native
+	}
+	if e.Images {
+		m["modalities"] = map[string]any{"input": []string{"text", "image"}}
+	} else if e.ImageInput != nil {
+		m["modalities"] = map[string]any{"input": []string{"text"}}
+	}
 	return m
+}
+
+// nativeEndpoints are the paths a request for the model is relayed on to
+// its provider as it is: the APIs the provider serves it on. None for a
+// routing group, whose members may speak any, or a model every request
+// to is translated anyway (a subscription served through its agent's own
+// API).
+func nativeEndpoints(e provider.Entry) []string {
+	p := e.Provider
+	if e.Group != "" || p.Native(e.Model) == "" {
+		return nil
+	}
+	apis := p.APIs(e.Model)
+	var out []string
+	for _, pr := range p.Speaks() {
+		if slices.Contains(provider.Protocols, pr) && (apis == nil || slices.Contains(apis, pr)) {
+			out = append(out, map[provider.Protocol]string{provider.Chat: "/v1/chat/completions", provider.Responses: "/v1/responses", provider.Anthropic: "/v1/messages"}[pr])
+		}
+	}
+	return out
 }
 
 // catalogFor is the catalog as the agent asking is shown it.
