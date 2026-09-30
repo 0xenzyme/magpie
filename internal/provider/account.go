@@ -1234,6 +1234,7 @@ var copilotInternal = regexp.MustCompile(`^(copilot-search|exec-agent|trajectory
 var (
 	copilotTermsMu sync.Mutex
 	copilotTerms   = map[string]map[string]bool{} // by GitHub token: models whose terms wait
+	copilotPicks   = map[string][]string{}        // by GitHub token: models it may pick by hand, in the list's order
 )
 
 // copilotAccept enables model for the account when its terms still wait.
@@ -1330,6 +1331,7 @@ func copilotModels(ctx context.Context, app copilotApp) ([]catalog.Model, error)
 		return nil, errors.New("Copilot models: " + APIError(b, res.Status))
 	}
 	var out []catalog.Model
+	var picks []string
 	waiting := map[string]bool{}
 	copilotSeenMu.Lock()
 	for _, m := range v.Data {
@@ -1348,6 +1350,7 @@ func copilotModels(ctx context.Context, app copilotApp) ([]catalog.Model, error)
 		}
 		switch {
 		case m.Policy != nil && m.Policy.State == "enabled", m.Policy == nil && m.Picker:
+			picks = append(picks, m.ID)
 		case m.Policy != nil && m.Policy.Terms != "":
 			waiting[m.ID] = true
 		default:
@@ -1361,6 +1364,7 @@ func copilotModels(ctx context.Context, app copilotApp) ([]catalog.Model, error)
 	out = append(out, copilotAutoModel)
 	copilotTermsMu.Lock()
 	copilotTerms[app.Token] = waiting
+	copilotPicks[app.Token] = picks
 	copilotTermsMu.Unlock()
 	return out, nil
 }
