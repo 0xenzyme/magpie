@@ -3065,6 +3065,25 @@ function slide(box, key) {
 
 const PROTOS = [["chat", "OpenAI", "Chat Completions — most agents"], ["responses", "Responses", "OpenAI Responses — what Codex speaks"], ["anthropic", "Anthropic", "Anthropic Messages — what Claude Code speaks"], ["decide", "Jev", "Jev's decision API (TypeSafe's, or a gateway's) — what a routing group asks as a turn begins"]];
 
+// draftOf is a saved provider as its editor's form holds it.
+function draftOf(p) {
+  return { id: p.id, name: p.name, preset: p.preset, chat: p.chat, responses: p.responses, anthropic: p.anthropic, catalog: p.catalog, key: "", api: p.chat ? "openai" : p.anthropic ? "anthropic" : p.responses ? "responses" : "openai", chosen: p.models.filter((m) => m.on).map((m) => m.id), extra: [], headers: headerRows(p.headers), icon: p.icon || "", fallback: [...(p.fallback || [])], unlisted: !!p.unlisted, balanceURL: p.balanceURL || "", balancePath: p.balancePath || "", modelsURL: p.modelsURL || "", contexts: contextsText(p.contexts), keysUrl: p.keysUrl || "", ...proxyDraft(p) };
+}
+
+// duplicateProvider opens the Add form on a copy of p (#268): its URLs,
+// headers, models, balance and proxy, under a name of its own. The key is
+// p's unless another is pasted: the Add takes it from p, with its other
+// keys (copyOf). A signed-in account has no copy.
+function duplicateProvider(p) {
+  const name = t("{name} copy", { name: p.name });
+  adding = true;
+  editing = p.preset && providers.presets.some((x) => x.id === p.preset) ? { preset: p.preset } : { custom: true };
+  const d = draftOf(p);
+  draft = { ...d, id: slug(name), name, chosen: [], extra: d.chosen, copyOf: p.id };
+  if (p.zhipuTeam) draft.zhipuTeam = { org: p.zhipuTeam.org || "", project: p.zhipuTeam.project || "" };
+  renderProviders();
+}
+
 // renderEditor: an existing provider (p), a new preset (presetID), or custom.
 function renderEditor(p, presetID) {
   // its own icons, not the page's kept ones, which the rows after it take back
@@ -3079,7 +3098,7 @@ function drawEditor(p, presetID) {
   // more provider of it, under a name and id of its own
   const another = isNew && !!pr?.added;
   draft = draft || (p
-    ? { id: p.id, name: p.name, preset: p.preset, chat: p.chat, responses: p.responses, anthropic: p.anthropic, catalog: p.catalog, key: "", api: p.chat ? "openai" : p.anthropic ? "anthropic" : p.responses ? "responses" : "openai", chosen: p.models.filter((m) => m.on).map((m) => m.id), extra: [], headers: headerRows(p.headers), icon: p.icon || "", fallback: [...(p.fallback || [])], unlisted: !!p.unlisted, balanceURL: p.balanceURL || "", balancePath: p.balancePath || "", modelsURL: p.modelsURL || "", contexts: contextsText(p.contexts), keysUrl: p.keysUrl || "", ...proxyDraft(p) }
+    ? draftOf(p)
     : pr
       ? { id: pr.id, name: pr.name, preset: pr.id, key: "", chosen: [], extra: [], headers: [] }
       : { id: "", name: "", preset: "", chat: "", responses: "", anthropic: "", catalog: "", key: "", api: "openai", chosen: [], extra: [], headers: [], icon: "" });
@@ -3088,7 +3107,8 @@ function drawEditor(p, presetID) {
 
   {
     const h = el("div", "ehead");
-    h.append(icon(p?.icon || pr?.icon || "generic"), el("b", "", p ? p.name : pr ? pr.name : t("Custom provider")));
+    const copyOf = draft.copyOf && providers.providers.find((x) => x.id === draft.copyOf);
+    h.append(icon(p?.icon || (copyOf && draft.icon) || pr?.icon || "generic"), el("b", "", p ? p.name : copyOf ? t("Copy of {name}", { name: copyOf.name }) : pr ? pr.name : t("Custom provider")));
     if (pr?.note) h.append(el("span", "note", t(pr.note)));
     h.append(el("span", "grow"));
     const site = pr?.website || p?.website || (p?.host ? "https://" + p.host : "");
@@ -3270,7 +3290,8 @@ function drawEditor(p, presetID) {
     ed.append(...field(t("Endpoint"), endpoint, pr.endpointHint ? t(pr.endpointHint) : ""));
   }
 
-  const key = input(draft.key || "", p?.key.set ? t("{masked} · paste a new key to replace it", { masked: p.key.masked }) : t(pr?.noKey || p?.key.optional ? "optional for local servers" : "paste an API key"), "password");
+  const copied = !p && draft.copyOf && providers.providers.find((x) => x.id === draft.copyOf);
+  const key = input(draft.key || "", p?.key.set ? t("{masked} · paste a new key to replace it", { masked: p.key.masked }) : copied?.key.set ? t("{masked} · {name}'s key, or paste another", { masked: copied.key.masked, name: copied.name }) : t(pr?.noKey || p?.key.optional ? "optional for local servers" : "paste an API key"), "password");
   key.oninput = () => { draft.key = key.value; };
   key.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter" && isNew) save(); else if (e.key === "Escape") cancelEdit(); };
   const side = el("div", "side");
@@ -3458,7 +3479,7 @@ function drawEditor(p, presetID) {
     const bal = input(draft.balanceURL, "https://…/api/usage/token", "url");
     bal.classList.add("bal-url");
     bal.oninput = () => { draft.balanceURL = bal.value; };
-    inner.append(...field(t("Balance URL"), bal, t("Where the vendor tells what is left on the key, asked with it like a chat request; shown on the Usage page")));
+    inner.append(...field(t("Balance URL"), bal, t("Where the vendor tells what is left on the key, asked with it like a chat request; {key} in it or in a header is each key's own, for a vendor that takes the key in the URL (…?key={key}); shown on the Usage page")));
     const balPath = input(draft.balancePath, "data.balance");
     balPath.classList.add("bal-path");
     balPath.oninput = () => { draft.balancePath = balPath.value; };
@@ -3507,6 +3528,12 @@ function drawEditor(p, presetID) {
     more.onclick = () => { adding = true; editing = { preset: pr.id }; draft = null; renderProviders(); };
     bar.append(more);
   }
+  if (p) {
+    const dup = el("button", "text", t("Duplicate"));
+    dup.title = t("A new provider with {name}'s URLs, key, headers, models and balance settings, to change before adding", { name: p.name });
+    dup.onclick = () => duplicateProvider(p);
+    bar.append(dup);
+  }
   bar.append(el("span", "grow"));
   const cancel = el("button", "text", t("Cancel"));
   cancel.onclick = cancelEdit;
@@ -3514,6 +3541,7 @@ function drawEditor(p, presetID) {
   const save = () => {
     // new: an Add never replaces a provider that has the id already
     const body = { id: p ? slug(draft.id) || p.id : draft.id, from: p?.id, name: draft.name, preset: draft.preset, key: draft.key || "", chat: draft.chat, responses: draft.responses, anthropic: draft.anthropic, catalog: draft.catalog, models: p ? chosenIds() : draft.extra, headers: headersOf(draft.headers), new: isNew };
+    if (isNew && draft.copyOf) body.copyOf = draft.copyOf;
     if (decides) body.decide = (draft.decide || "").trim();
     if (custom) { body.icon = draft.icon || "generic"; body.balanceURL = (draft.balanceURL || "").trim(); body.balancePath = (draft.balancePath || "").trim(); body.modelsURL = (draft.modelsURL || "").trim(); }
     if (p) { body.fallback = draft.fallback; body.unlisted = draft.unlisted; }
@@ -4610,14 +4638,21 @@ function renderAccounts(a) {
   const list = el("div", "accts");
   let ls = a.logins?.length ? [...a.logins] : [{ user: a.user, plan: a.plan, active: true, on: true }];
   ls.sort((x, y) => (y.active ? 1 : 0) - (x.active ? 1 : 0));
-  const several = ls.filter((l) => l.active || l.on).length > 1;
+  const several = ls.filter((l) => (l.active && !l.paused) || l.on).length > 1;
+  // the account Claude Code or Codex is signed in to can be paused while
+  // another is on: the gateway passes over it, the agent staying signed in
+  // to it (#263)
+  const pausable = (a.agent === "claude" || a.agent === "codex") && ls.some((l) => !l.active && l.on);
   const quota = loginUsageOf(a.agent);
   for (const l of ls) {
-    const on = l.active || l.on;
+    const on = !l.paused && (l.active || l.on);
     const row = el("div", "acc" + (on ? " in-use" : " off") + (l.user === justAdded ? " new" : ""));
     const dot = el("button", "dot tick");
     if (on) dot.append(svg(CHECK, 10, 2.2));
-    if (l.active) {
+    if (l.active && (pausable || l.paused)) {
+      dot.title = l.paused ? t("Resume: the gateway uses this account first again") : t("Pause: the gateway uses the other accounts, {agent} stays signed in to this one", { agent: a.agentName });
+      dot.onclick = () => accountAction("login/" + (l.paused ? "on" : "off"), { agent: a.agent, user: l.user });
+    } else if (l.active) {
       dot.title = sub?.own ? t("The gateway uses this account first") : t("{agent} is signed in to this account", { agent: a.agentName });
       dot.classList.add("fixed");
     } else {
@@ -4626,7 +4661,7 @@ function renderAccounts(a) {
     }
     row.append(dot, el("span", "n", l.user), el("span", "plan", accountPlan({ agent: a.agent, plan: l.plan })), el("span", "grow"));
     if (l.active) {
-      row.append(el("span", "using", several ? t("First") : t("In use")));
+      row.append(el("span", "using", l.paused ? t("Paused") : several ? t("First") : t("In use")));
       if (a.agent === "qoder" || l.own) {
         const forget = el("button", "text quiet", t("Remove"));
         if (l.own) forget.title = forgetOwnTitle(a);

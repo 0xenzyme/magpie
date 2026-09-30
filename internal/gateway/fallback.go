@@ -114,8 +114,14 @@ func perKey(p provider.Provider, model string, from provider.Protocol) []candida
 // after them, in the order they suit it.
 func perKeyOf(p provider.Provider, model string, from provider.Protocol) (out, aside, left []candidate) {
 	if p.Account != nil {
-		all := []candidate{{p: p, model: model, rest: p.ID}}
-		for _, q := range p.AlsoOn() {
+		also := p.AlsoOn()
+		var all []candidate
+		// the account the agent is signed in to, unless the user paused
+		// it for the others on (#263)
+		if len(also) == 0 || !p.OwnPaused() {
+			all = append(all, candidate{p: p, model: model, rest: p.ID})
+		}
+		for _, q := range also {
 			all = append(all, candidate{p: q, model: model, rest: p.ID + "@" + q.Account.User})
 		}
 		// an account whose plan lacks the model (a Free one behind a Plus)

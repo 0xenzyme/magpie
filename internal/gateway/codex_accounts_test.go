@@ -135,6 +135,55 @@ func TestCodexOwnModelOneAccountRelayed(t *testing.T) {
 	}
 }
 
+// The account Codex is signed in to, paused in magpie while another is on
+// (#263: the user's own Plus kept for Codex's remote control, a shared Pro
+// doing the work): no request goes to it, Codex staying signed in to it,
+// until it is resumed or the other is turned off.
+func TestCodexPausedOwnAccountPassedOver(t *testing.T) {
+	codexSignedIn(t, "spare@example.com")
+	var tried, models []string
+	usedUp(t, &tried, &models)
+	if err := provider.SetLoginOn("codex", "me@example.com", false); err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range provider.Logins("codex") {
+		if l.User == "me@example.com" && (!l.Active || !l.Paused) {
+			t.Fatalf("own account %+v", l)
+		}
+	}
+	code, body := codexPost(t, `{"model":"gpt-5.5","stream":true,"input":"ping"}`)
+	if code != 200 || strings.Join(tried, ",") != "acct-2" {
+		t.Fatalf("%d %s tried %v", code, body, tried)
+	}
+	// the other off: the paused one is all there is, and is used
+	if err := provider.SetLoginOn("codex", "spare@example.com", false); err != nil {
+		t.Fatal(err)
+	}
+	tried = nil
+	codexPost(t, `{"model":"gpt-5.5","stream":true,"input":"ping"}`)
+	if strings.Join(tried, ",") != "acct-1" {
+		t.Fatalf("with the other off, tried %v", tried)
+	}
+	if err := provider.SetLoginOn("codex", "me@example.com", false); err == nil {
+		t.Fatal("the only account in use paused")
+	}
+	// back on beside it, and resumed: it is first again
+	if err := provider.SetLoginOn("codex", "spare@example.com", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.SetLoginOn("codex", "me@example.com", true); err != nil {
+		t.Fatal(err)
+	}
+	restingUntil.Lock()
+	restingUntil.m = map[string]time.Time{}
+	restingUntil.Unlock()
+	tried = nil
+	codexPost(t, `{"model":"gpt-5.5","stream":true,"input":"ping"}`)
+	if len(tried) == 0 || tried[0] != "acct-1" {
+		t.Fatalf("resumed, tried %v", tried)
+	}
+}
+
 func TestResetsIn(t *testing.T) {
 	now := time.Unix(1_000_000, 0)
 	for body, want := range map[string]time.Duration{
