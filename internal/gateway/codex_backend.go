@@ -107,6 +107,11 @@ func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 			s.serve(w, r, provider.Responses, withModel(body, id))
 			return
 		}
+		if r.Header.Get(AccountHeader) != "" {
+			// relayed as it came, it would go to Codex's own sign-in only
+			writeError(w, provider.Responses, 400, AccountHeader+" names one of magpie's Codex accounts, and Codex isn't signed in to ChatGPT here with any on in magpie")
+			return
+		}
 	}
 	s.codexUpstream(w, r, rest, body)
 }
@@ -180,7 +185,9 @@ func codexAccounts(h http.Header, model string) (string, bool) {
 	}
 	id := "codex/" + model
 	p, _, ok := provider.Resolve(id)
-	if !ok || p.Account == nil || p.Account.Agent != "codex" || len(p.AlsoOn()) == 0 {
+	// one account named is found among them however many are on
+	pinned := h.Get(AccountHeader) != ""
+	if !ok || p.Account == nil || p.Account.Agent != "codex" || len(p.AlsoOn()) == 0 && !pinned {
 		return "", false
 	}
 	return id, true
@@ -537,7 +544,7 @@ func threadSource(meta string) string {
 
 func copyHeaders(dst, src http.Header) {
 	for k, vs := range src {
-		if !hopHeader(k) && http.CanonicalHeaderKey(k) != "Host" {
+		if !hopHeader(k) && http.CanonicalHeaderKey(k) != "Host" && http.CanonicalHeaderKey(k) != AccountHeader {
 			dst[k] = vs
 		}
 	}

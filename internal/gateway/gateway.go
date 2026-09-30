@@ -889,11 +889,23 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 		}
 	}
+	pin := strings.TrimSpace(r.Header.Get(AccountHeader))
+	if pin != "" {
+		var status int
+		var msg string
+		if cands, pl, status, msg = pinTo(pin, cands, pl); status != 0 {
+			call.Status, call.Error = status, "account pinned: "+pin
+			writeError(w, from, status, msg)
+			finishCapture()
+			s.record(call)
+			return
+		}
+	}
 	shown := aff
 	if len(cands) == 1 {
 		shown = nil // nobody else to stay away from
 	}
-	tr := s.trace.begin(Route{Time: start, Agent: call.Agent, Kind: call.Kind, For: call.For, Model: call.Model, Effort: requestEffort(from, body), Provider: p.ID, Group: group, Rule: hit, Nested: nested, Affinity: shown, Order: pl.order, Left: pl.left})
+	tr := s.trace.begin(Route{Pinned: pin, Time: start, Agent: call.Agent, Kind: call.Kind, For: call.For, Model: call.Model, Effort: requestEffort(from, body), Provider: p.ID, Group: group, Rule: hit, Nested: nested, Affinity: shown, Order: pl.order, Left: pl.left})
 	var skipped []string
 	sent := ""       // the reasoning the last try's model was asked for
 	where := ""      // the last try's provider.Where, for the usage
@@ -1090,7 +1102,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 			break
 		}
-		if !autoReset && last && other == nil && hw.failed() && !hw.passing && failure(hw.code(), hw.errBody()) == failQuota {
+		// (not for one account pinned: the others weren't asked)
+		if !autoReset && pin == "" && last && other == nil && hw.failed() && !hw.passing && failure(hw.code(), hw.errBody()) == failQuota {
 			// everyone is out of their allowance: a Codex account the user
 			// lets spend its resets by itself, its week used up, spends one
 			// and is asked again
@@ -2154,6 +2167,13 @@ var sessionHeaders = []string{
 // tell several sessions on one model apart; without it, the session an
 // agent names itself in sessionHeaders is taken.
 const SessionHeader = "X-Magpie-Session"
+
+// AccountHeader pins a request to one of a subscription's accounts, by its
+// user (an email, a login) or its id in the routing trace: only it is
+// tried, and when it can't take the request the caller is told why rather
+// than another account answering — a probe of one account needs that one.
+// It goes no further than magpie.
+const AccountHeader = "X-Magpie-Account"
 
 // sessionOf is the session a request names, "" when it names none.
 func sessionOf(in http.Header) string {

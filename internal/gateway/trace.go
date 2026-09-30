@@ -38,6 +38,7 @@ type Route struct {
 	// one that went first, each as it decided
 	Nested   []NestedRule `json:"nested,omitempty"`
 	Affinity *Affinity    `json:"affinity,omitempty"` // its conversation, and whether it stayed put
+	Pinned   string       `json:"pinned,omitempty"`   // the account AccountHeader named: only it was tried
 	Order    []Weighed    `json:"order"`              // who was to try it, first first
 	Left     []Weighed    `json:"left,omitempty"`
 	Tries    []Try        `json:"tries"`
