@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/plugin"
@@ -335,6 +336,13 @@ const SignInHeader = "X-Magpie-Sign-In"
 func notePluginSignIn(pp plugin.Provider, account string, resp *http.Response) {
 	said := strings.ToLower(strings.TrimSpace(resp.Header.Get(SignInHeader)))
 	resp.Header.Del(SignInHeader)
+	notePluginSaid(pp, account, said, resp.StatusCode)
+}
+
+// notePluginSaid marks or clears an account's lapse as the plugin said
+// ("expired", "kept", "renewed"), or, when it said nothing, as status
+// reads: a 401 marks it and a success clears it.
+func notePluginSaid(pp plugin.Provider, account, said string, status int) {
 	switch said {
 	case "expired":
 		notePluginLapse(pp, account, http.StatusUnauthorized)
@@ -342,8 +350,26 @@ func notePluginSignIn(pp plugin.Provider, account string, resp *http.Response) {
 		notePluginLapse(pp, account, http.StatusOK)
 	case "kept":
 	default:
-		notePluginLapse(pp, account, resp.StatusCode)
+		notePluginLapse(pp, account, status)
 	}
+}
+
+func init() {
+	// a models hook saying its account's sign-in expired marks it, as a
+	// built-in whose model list the vendor refused marked the account
+	plugin.OnSignIn(func(id, account, said string) {
+		pp, ok := pluginOfAgent("plugin:" + id)
+		if !ok {
+			// told while the providers were first read: wait for them
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			_, _ = plugin.Providers(ctx)
+			if pp, ok = pluginOfAgent("plugin:" + id); !ok {
+				pp = plugin.Provider{ID: id}
+			}
+		}
+		notePluginSaid(pp, account, said, 0)
+	})
 }
 
 func modelAPIID(m plugin.Model) string {

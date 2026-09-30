@@ -41,6 +41,8 @@ type message struct {
 	Headers  map[string]string `json:"headers"`
 	Data     string            `json:"data"`
 	Provider string            `json:"provider"`
+	Account  string            `json:"account"`
+	Said     string            `json:"said"`
 	Level    string            `json:"level"`
 	Message  string            `json:"message"`
 	Title    string            `json:"title"`
@@ -90,6 +92,20 @@ func OnChange(f func()) {
 	onChangeMu.Lock()
 	onChange = append(onChange, f)
 	onChangeMu.Unlock()
+}
+
+var (
+	onSignInMu sync.Mutex
+	onSignIn   func(provider, account, said string)
+)
+
+// OnSignIn registers f to be told what a plugin said, outside an answer,
+// its account's sign-in is: "expired", "kept" or "renewed" (a models
+// hook's error saying it).
+func OnSignIn(f func(provider, account, said string)) {
+	onSignInMu.Lock()
+	onSignIn = f
+	onSignInMu.Unlock()
 }
 
 func changed() {
@@ -299,6 +315,13 @@ func (h *host) dispatch(m message) {
 		switch m.Event {
 		case "auth":
 			changed()
+		case "signIn":
+			onSignInMu.Lock()
+			f := onSignIn
+			onSignInMu.Unlock()
+			if f != nil {
+				go f(m.Provider, m.Account, m.Said)
+			}
 		case "toast":
 			log.Printf("plugin: %s %s", m.Title, m.Message)
 		case "log":

@@ -489,12 +489,16 @@ async function info(id, key, strict) {
   for (const h of hooks) {
     const ph = h.hooks.provider
     if (ph?.id !== id || typeof ph.models !== "function") continue
+    const all = readAuth()
+    const k = key ?? accountsOf(all, id)[0] ?? id
     try {
-      const all = readAuth()
-      const k = key ?? accountsOf(all, id)[0] ?? id
       const next = await inScope(id, k, () => ph.models(JSON.parse(JSON.stringify(out)), { auth: all[k] }))
       out.models = Object.fromEntries(Object.entries(next ?? {}).map(([k, m]) => [k, { ...m, id: k, providerID: id }]))
     } catch (e) {
+      // an error the models hook throws may say what it means for the
+      // sign-in, as an answer's X-Magpie-Sign-In does: a built-in whose
+      // model list the vendor refused marked the account
+      if (["expired", "kept", "renewed"].includes(e?.signIn) && all[k]) send({ event: "signIn", provider: id, account: k, said: e.signIn })
       if (strict) throw e
       send({ event: "log", level: "error", message: `${h.spec}: provider.models: ${e?.message ?? e}` })
     }

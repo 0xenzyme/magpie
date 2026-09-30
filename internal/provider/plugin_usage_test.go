@@ -255,3 +255,45 @@ func TestMovedProviderName(t *testing.T) {
 		}
 	}
 }
+
+// A models hook that finds the sign-in refused and says so marks the
+// account, as a built-in whose model list the vendor refused marked it.
+func TestPluginModelsSayExpired(t *testing.T) {
+	bun, err := exec.LookPath("bun")
+	if err != nil {
+		t.Skip("no bun on PATH")
+	}
+	claudeHome(t)
+	t.Setenv("MAGPIE_BUN", bun)
+	t.Cleanup(plugin.Settle)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	abs, _ := filepath.Abs("../plugin/testdata/fake/index.js")
+	if _, err := plugin.Add(ctx, abs); err != nil {
+		t.Fatal(err)
+	}
+	var rows []savedLogin
+	for user, refresh := range map[string]string{"ok@fake": "r-ok", "gone@fake": "r-models-gone", "dead@fake": "r-dead"} {
+		k, err := plugin.Import(ctx, "fakeco", map[string]any{"type": "oauth", "refresh": refresh, "access": "a", "expires": 9e15, "accountId": user})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows = append(rows, savedLogin{Agent: "plugin:fakeco", User: user, Home: k, On: true})
+	}
+	saveLogins(t, rows...)
+	if _, err := plugin.Providers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		lapsed := map[string]bool{}
+		for _, l := range pluginLogins(mustPlugin(t)) {
+			lapsed[l.User] = l.Lapsed != ""
+		}
+		if lapsed["gone@fake"] && !lapsed["ok@fake"] && !lapsed["dead@fake"] {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("lapsed after reading the models: %v, want gone@fake alone (dead@fake's hook said nothing)", lapsed)
+		}
+	}
+}

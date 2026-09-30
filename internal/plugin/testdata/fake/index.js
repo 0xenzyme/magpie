@@ -92,6 +92,7 @@ export const FakePlugin = async ({ client }) => ({
     id: ID,
     models: async (p, { auth }) => {
       if (auth?.refresh === "r-dead" || auth?.key === "dead") throw new Error("the vendor refused the sign-in")
+      if (auth?.refresh === "r-models-gone") throw Object.assign(new Error("the vendor refused the sign-in"), { signIn: "expired" })
       if (auth?.type === "oauth" && auth.refresh?.startsWith("rot-")) {
         await client.auth.set({ path: { id: ID }, body: { ...auth, refresh: auth.refresh + "+" } })
       }
