@@ -9,10 +9,12 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -78,15 +80,65 @@ func FetchIcon(ctx context.Context, rawURL string) (string, error) {
 
 // guardClient is the http.Client icon fetches use: the default transport —
 // so the proxy settings still apply — but with dialing wrapped in publicDial.
+//
+// Through a proxy the connection goes to the proxy, often on this computer
+// (Clash's 127.0.0.1:7890), so the proxy's own address is dialed as it is;
+// the site's name is judged before the proxy is asked for, since the proxy
+// resolves it where magpie can't see.
 func guardClient() *http.Client {
 	c := *http.DefaultClient
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	dial := t.DialContext
+	var proxies sync.Map // host:port of the proxies this client was sent to
+	if proxy := t.Proxy; proxy != nil {
+		t.Proxy = func(req *http.Request) (*url.URL, error) {
+			u, err := proxy(req)
+			if err != nil || u == nil {
+				return u, err
+			}
+			if err := publicHost(req.Context(), req.URL.Hostname()); err != nil {
+				return nil, err
+			}
+			proxies.Store(proxyAddr(u), true)
+			return u, nil
+		}
+	}
 	t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if _, ok := proxies.Load(addr); ok {
+			return dial(ctx, network, addr)
+		}
 		return publicDial(ctx, dial, network, addr)
 	}
 	c.Transport = t
 	return &c
+}
+
+// publicHost refuses a site whose name resolves here to an address that is
+// not public, for a fetch the proxy will make. A name that doesn't resolve
+// here is left to the proxy, which may be the only way to reach it.
+func publicHost(ctx context.Context, host string) error {
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil
+	}
+	for _, ip := range ips {
+		if !publicIP(ip.IP) {
+			return errorf("the icon host %s resolves to %s, which is not public", host, ip.IP)
+		}
+	}
+	return nil
+}
+
+// proxyAddr is the host:port the transport dials to reach proxy u.
+func proxyAddr(u *url.URL) string {
+	port := u.Port()
+	if port == "" {
+		port = map[string]string{"https": "443", "socks5": "1080", "socks5h": "1080"}[u.Scheme]
+		if port == "" {
+			port = "80"
+		}
+	}
+	return net.JoinHostPort(u.Hostname(), port)
 }
 
 // publicDial resolves the host and refuses to connect when any address it
@@ -125,6 +177,13 @@ func publicDial(ctx context.Context, dial func(context.Context, string, string) 
 
 // publicIP is true for an address on the open internet: not loopback,
 // private, link-local, unspecified, multicast or otherwise reserved.
+//
+// 198.18.0.0/15, RFC 2544's benchmarking range, is let through: Clash's TUN
+// mode with fake-ip and Surge's enhanced mode answer every name with an
+// address there and carry the connection to the real host through the proxy
+// (#252). No machine on the user's network sits in that range, so a fetch
+// aimed at it reaches the internet host the name stands for, not this
+// computer or the LAN.
 func publicIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() ||
 		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
@@ -132,16 +191,14 @@ func publicIP(ip net.IP) bool {
 		return false
 	}
 	if v4 := ip.To4(); v4 != nil {
-		// 100.64/10 carrier NAT, 192.0.0.0/24, 192.0.2/24, 198.18/15 and
-		// friends: never a public web host.
+		// 100.64/10 carrier NAT, 192.0.0.0/24, 192.0.2/24 and friends:
+		// never a public web host.
 		switch {
 		case v4[0] == 100 && v4[1]&0xc0 == 64:
 			return false
 		case v4[0] == 192 && v4[1] == 0 && v4[2] == 0:
 			return false
 		case v4[0] == 192 && v4[1] == 0 && v4[2] == 2:
-			return false
-		case v4[0] == 198 && (v4[1] == 18 || v4[1] == 19):
 			return false
 		case v4[0] == 198 && v4[1] == 51 && v4[2] == 100:
 			return false
