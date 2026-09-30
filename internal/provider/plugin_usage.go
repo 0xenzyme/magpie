@@ -86,9 +86,15 @@ func pluginLoginQuota(ctx context.Context, l Login) SubscriptionQuota {
 		q.Error = err.Error()
 		return q
 	}
-	// a sign-in the vendor refused marks the account, as a built-in's
-	// usage read did, and a clean read takes the mark off
+	// the plugin says what the read means for the sign-in, as a built-in's
+	// usage read marked the account or left it; one that doesn't say has
+	// an error to sign in again mark it and a clean read clear it
 	switch {
+	case u.SignIn == "expired":
+		notePluginLapse(pp, key, http.StatusUnauthorized)
+	case u.SignIn == "renewed":
+		notePluginLapse(pp, key, http.StatusOK)
+	case u.SignIn == "kept":
 	case signInGone.MatchString(u.Error):
 		notePluginLapse(pp, key, http.StatusUnauthorized)
 	case u.Error == "":

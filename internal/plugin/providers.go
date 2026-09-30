@@ -537,6 +537,7 @@ type Usage struct {
 	Balance string        `json:"balance"`
 	Error   string        `json:"error"`
 	User    string        `json:"user"`
+	SignIn  string        `json:"signIn"` // "expired", "kept", "renewed" or ""
 	Windows []UsageWindow `json:"windows"`
 	Resets  *UsageResets  `json:"resets"`
 }

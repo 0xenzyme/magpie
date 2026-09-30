@@ -324,8 +324,10 @@ func pluginFetch(pp plugin.Provider, account string, req *http.Request) (*http.R
 // status its built-in did: "expired" marks the account lapsed, as a
 // built-in whose vendor refused the sign-in marked it, though the status
 // be a 502; "kept" leaves the account as it is, as a built-in answering a
-// 401 of the vendor's without its sign-in refused did. Without it a 401
-// marks the account and a success clears the mark.
+// 401 of the vendor's without its sign-in refused did; "renewed" clears
+// the mark, as a built-in whose sign-in renewed took it off whatever the
+// request then met. Without it a 401 marks the account and a success
+// clears the mark.
 const SignInHeader = "X-Magpie-Sign-In"
 
 // notePluginSignIn marks or clears an account's lapse as the plugin's
@@ -336,6 +338,8 @@ func notePluginSignIn(pp plugin.Provider, account string, resp *http.Response) {
 	switch said {
 	case "expired":
 		notePluginLapse(pp, account, http.StatusUnauthorized)
+	case "renewed":
+		notePluginLapse(pp, account, http.StatusOK)
 	case "kept":
 	default:
 		notePluginLapse(pp, account, resp.StatusCode)

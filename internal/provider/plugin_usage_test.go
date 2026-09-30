@@ -157,7 +157,7 @@ func TestPluginUsageLapse(t *testing.T) {
 	}
 	keys := map[string]string{}
 	var rows []savedLogin
-	for user, refresh := range map[string]string{"gone@fake": "r-gone", "ok@fake": "r-ok", "off@fake": "r-offline"} {
+	for user, refresh := range map[string]string{"gone@fake": "r-gone", "ok@fake": "r-ok", "off@fake": "r-offline", "kept@fake": "r-kept", "renewed@fake": "r-renewed"} {
 		k, err := plugin.Import(ctx, "fakeco", auth(user, refresh))
 		if err != nil {
 			t.Fatal(err)
@@ -170,7 +170,9 @@ func TestPluginUsageLapse(t *testing.T) {
 		t.Fatal(err)
 	}
 	pp := mustPlugin(t)
-	notePluginLapse(pp, keys["ok@fake"], http.StatusUnauthorized)
+	for _, u := range []string{"ok@fake", "renewed@fake"} {
+		notePluginLapse(pp, keys[u], http.StatusUnauthorized)
+	}
 	lapsed := func() map[string]bool {
 		out := map[string]bool{}
 		for _, l := range pluginLogins(mustPlugin(t)) {
@@ -181,10 +183,12 @@ func TestPluginUsageLapse(t *testing.T) {
 	if l := lapsed(); !l["ok@fake"] || l["gone@fake"] {
 		t.Fatalf("before: %v", l)
 	}
-	for _, u := range []string{"gone@fake", "ok@fake"} {
+	for _, u := range []string{"gone@fake", "ok@fake", "kept@fake", "renewed@fake"} {
 		pluginLoginQuota(ctx, Login{Agent: "plugin:fakeco", User: u})
 	}
-	if l := lapsed(); l["ok@fake"] || !l["gone@fake"] {
+	// a plugin that says what the read means is taken at its word: kept
+	// though its error says to sign in again, renewed though the read failed
+	if l := lapsed(); l["ok@fake"] || !l["gone@fake"] || l["kept@fake"] || l["renewed@fake"] {
 		t.Fatalf("after reading usage: %v", l)
 	}
 	if !passing.MatchString(pluginLoginQuota(ctx, Login{Agent: "plugin:fakeco", User: "off@fake"}).Error) {

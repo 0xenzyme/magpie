@@ -713,7 +713,11 @@ async function load({ provider, account }) {
 //       resetSecs?, display?, span? (seconds the window runs), model? (a
 //       word in the ids of the only models it counts), models? / notModels?
 //       (the ids it counts, or all but these), aside? (using it up doesn't
-//       stop the account) }]
+//       stop the account) }],
+//     signIn?: "expired" | "kept" | "renewed" (what the read means for the
+//       account's sign-in, as a model request's X-Magpie-Sign-In says;
+//       without it an error saying to sign in again marks the account and
+//       a clean read clears it)
 //   }
 // Run in the account's scope, a token it renews is saved to that account.
 async function usage({ provider, account, proxy }) {
@@ -742,6 +746,7 @@ async function usageOf(provider, account) {
     balance: text(u.balance),
     error: text(u.error),
     user: text(u.user),
+    signIn: ["expired", "kept", "renewed"].includes(u.signIn) ? u.signIn : "",
     resets:
       u.resets && typeof u.resets === "object"
         ? { count: num(u.resets.count), until: when(u.resets.until), byWindow: !!u.resets.byWindow, fiveHour: num(u.resets.fiveHour), weekly: num(u.resets.weekly) }

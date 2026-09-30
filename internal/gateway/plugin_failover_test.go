@@ -306,6 +306,8 @@ func TestPluginSaysSignIn(t *testing.T) {
 		{401, "", true},        // a plugin that says nothing: a 401 is a lapse
 		{200, "kept", true},    // kept is kept, the mark too
 		{200, "", false},
+		{502, "expired", true},
+		{429, "renewed", false}, // renewed, though the request then failed
 	} {
 		mu.Lock()
 		status, said = c.status, c.said
