@@ -950,7 +950,12 @@ async function openAgentModels(a, anchor, ev) {
           if (m.inUse) n.append(el("span", "am-tag", t("Current")));
           const ck = el("span", "ck");
           if (!m.hidden) ck.append(svg("m3.5 8.5 3 3 6-7", 12, 1.9));
-          r.append(n, el("span", "x", ctxShort(m.context)), ck);
+          // its maker's logo; a group whose maker isn't known shows it is
+          // a route, anything else keeps the slot empty, so the names line up
+          const lg = m.logo ? icon(m.logo) : el("span", "ic");
+          if (!m.logo && g.name === ROUTING_GROUPS) lg.append(svg(FAN, 14, 1.5));
+          lg.classList.add("lg");
+          r.append(lg, n, el("span", "x", ctxShort(m.context)), ck);
           if (m.inUse) r.setAttribute("aria-disabled", "true");
           else r.onclick = () => {
             m.hidden = !m.hidden;
