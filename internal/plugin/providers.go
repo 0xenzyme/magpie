@@ -137,6 +137,14 @@ func keepUnloaded(ps, last []Provider) []Provider {
 	return ps
 }
 
+// UseCached is for tests: Cached answers with ps, as though the plugins
+// had just been asked, without Bun; nil forgets them.
+func UseCached(ps []Provider) {
+	provMu.Lock()
+	provCache, provGood = ps, ps != nil
+	provMu.Unlock()
+}
+
 // refreshing is Cached's refreshes in the background.
 var refreshing sync.WaitGroup
 
