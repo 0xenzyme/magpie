@@ -1493,6 +1493,13 @@ const I18N = {
     "Removed from {n} agents": "已从 {n} 个 Agent 中移除",
     "{n} agents updated": "已更新 {n} 个 Agent",
     "Saved — the agents already had it": "已保存 — Agent 中已是最新",
+    // a server's or skill's All chip
+    "Give it to all {n} agents that can take it": "给全部 {n} 个可用的 Agent 启用",
+    "Every agent that can take it has it — click to take it from all {n}": "可用的 Agent 均已启用 — 点击从全部 {n} 个中移除",
+    "{name} is on for all {n} agents": "已为全部 {n} 个 Agent 启用 {name}",
+    "{name} is off for every agent": "已从所有 Agent 中移除 {name}",
+    "{name} is on for {ok} of {n} agents": "{name} 已在 {n} 个 Agent 中的 {ok} 个启用",
+    "{name} couldn't be taken from every agent": "{name} 未能从所有 Agent 中移除",
     "Instructions": "指令",
     "MCP servers": "MCP 服务器",
     "Skills": "技能",
