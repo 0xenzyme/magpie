@@ -431,3 +431,63 @@ func TestKeepMovedCurrent(t *testing.T) {
 		t.Fatalf("asked %v, want fake@0.2.0", asked)
 	}
 }
+
+// Removing the plugin a built-in is moved onto, or turning it off, moves
+// the built-in back first: its accounts go back to it rather than out of
+// sight with the plugin.
+func TestReleasePlugin(t *testing.T) {
+	bun, err := exec.LookPath("bun")
+	if err != nil {
+		t.Skip("no bun on PATH")
+	}
+	for _, op := range []string{"off", "remove"} {
+		t.Run(op, func(t *testing.T) {
+			claudeHome(t)
+			t.Setenv("MAGPIE_BUN", bun)
+			t.Cleanup(plugin.Settle)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			abs, _ := filepath.Abs("../plugin/testdata/fake/index.js")
+			if _, err := plugin.Add(ctx, abs); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := plugin.Providers(ctx); err != nil {
+				t.Fatal(err)
+			}
+			inUse := []string{"fake-1"}
+			fakeMover(t, &inUse)
+			movers["fakeco"].pkg = abs
+			loginsMu.Lock()
+			if err := writeLogins([]savedLogin{fakeLogin("a@fake", "r-a", true, true), fakeLogin("b@fake", "r-b", false, true)}); err != nil {
+				t.Fatal(err)
+			}
+			loginsMu.Unlock()
+			if err := Move(ctx, "fakeco"); err != nil {
+				t.Fatal(err)
+			}
+			if got := MovedOnto(abs); len(got) != 1 || got[0] != "fakeco" {
+				t.Fatalf("moved onto the plugin: %v", got)
+			}
+			if op == "off" {
+				err = SetPluginOff(ctx, abs, true)
+			} else {
+				err = RemovePlugin(ctx, abs)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if Moved("fakeco") {
+				t.Fatal("still moved onto a plugin that is gone")
+			}
+			if s := fakeSaved(t); len(s) != 2 || !s["a@fake"].First {
+				t.Fatalf("the built-in's accounts: %+v", s)
+			}
+			if op == "off" && (len(plugin.Load().Plugins) != 1 || !plugin.Load().Plugins[0].Off) {
+				t.Fatalf("not turned off: %+v", plugin.Load().Plugins)
+			}
+			if op == "remove" && len(plugin.Load().Plugins) != 0 {
+				t.Fatalf("not removed: %+v", plugin.Load().Plugins)
+			}
+		})
+	}
+}
