@@ -97,10 +97,10 @@ func targetOf(a *agent.Agent) *Target {
 			d = filepath.Join(h, ".pi", "agent")
 		}
 		t.Instructions = filepath.Join(d, "AGENTS.md")
-		// Pi has no MCP of its own: its extensions for it (pi-mcp-adapter,
-		// pi-mcp-extension) each read their own file (pimcp.go)
-		t.MCP = piMCP(h, d)
-		t.MCPVia = "pi-mcp-adapter"
+		// Pi 0.99 reads MCP servers itself, from its mcp.json; before it,
+		// and while an MCP extension replaces its own (pi-mcp-adapter,
+		// pi-mcp-extension), each extension reads its own file (pimcp.go)
+		t.MCP, t.MCPVia = piMCP(h, d, piVersion(a))
 		t.Skills = filepath.Join(d, "skills")
 	case "dsh":
 		// DeepSeek Harness reads $DSH_HOME/AGENTS.md and $DSH_HOME/skills;

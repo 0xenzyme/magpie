@@ -513,6 +513,17 @@ func (a *Agent) CLI() (c CLI, ok bool) {
 	return c, true
 }
 
+// InstalledVersion is what the agent's CLI on PATH says its version is: ""
+// for an agent without a CLI magpie knows, one not on PATH, or one that
+// didn't say. Asked once per binary, like CLI's; nothing is fetched.
+func (a *Agent) InstalledVersion() string {
+	bin, _ := a.cliBin()
+	if bin == "" {
+		return ""
+	}
+	return installedVersion(bin)
+}
+
 // CLIs is every detected agent's CLI, as far as it is known within wait;
 // pending says some are still being asked, and will be ready next time.
 func CLIs(wait time.Duration) (out map[string]CLI, pending bool) {
