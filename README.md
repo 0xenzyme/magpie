@@ -83,7 +83,7 @@ and there is a terminal version (`magpie tui`) and a plain CLI.
 | Cursor CLI   | `~/.cursor/cli-config.json`       | model           |
 | Copilot CLI  | `~/.copilot/settings.json`        | model           |
 | Crush        | `~/.config/crush/crush.json`      | large, small    |
-| DeepSeek Harness (dsh) | `~/.dsh/config.yaml` (`$DSH_HOME`) | model |
+| DeepSeek Harness (dsh) | `~/.dsh/profiles/*/cordis.patch.yml` (`$DSH_HOME`; a custom provider, Magpie), or `~/.dsh/config.yaml` before dsh 0.1.5 | model, effort |
 | Command Code | `~/.commandcode/settings.json` (+ `providers.json`) | model |
 | fx           | `~/.fx/settings.json`             | model (a keyless `magpie` provider) |
 | omp (oh-my-pi) | `~/.omp/agent/config.yml` (+ `models.yml`) | model |
