@@ -87,6 +87,11 @@ type Agent struct {
 	// WSL is the distro an agent inside WSL lives in, "" for this
 	// machine's own (see wsl.go).
 	WSL string
+	// Home is a WSL agent's $HOME in its distro as magpie opens it
+	// (\\wsl.localhost\<distro>\home\me), where its other files are; ""
+	// for this machine's, and while the distro is stopped: opening it
+	// would start it.
+	Home string
 	// Import, for an app that takes magpie only through an import link of
 	// its own, which the user confirms there (Cindy), is that link; the app
 	// has no fields magpie sets. Added says whether it has magpie already.
