@@ -137,3 +137,13 @@ func TestCommandCodePluginReasoning(t *testing.T) {
 		}
 	}
 }
+
+// A moved provider's account is told in the trace as its provider's, so
+// its plan reads as the built-in's did, not as a plugin's.
+func TestTraceNamesMovedAccount(t *testing.T) {
+	p := provider.Provider{ID: "grok", Name: "Grok", Account: &provider.Account{Agent: "plugin", User: "me@example.com", Plan: "SuperGrok Heavy"}}
+	w := weighed(candidate{p: p, rest: "grok", model: "grok-4"}, p, weighing{}, false, "")
+	if w.Kind != "account" || w.Agent != "grok" || w.Plan != "SuperGrok Heavy" {
+		t.Fatalf("weighed = %+v, want grok's account", w)
+	}
+}
