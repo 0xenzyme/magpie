@@ -42,7 +42,7 @@ func (p Provider) Available() []catalog.Model {
 			}
 		}
 	}
-	if live, _, ok := catalog.Live(p.ID); ok {
+	if live, _, ok := p.live(); ok {
 		switch p.ID {
 		case "cursor":
 			live = withoutCursorCapacity(collapseCursorModels(withCursorContexts(live)))
@@ -90,8 +90,18 @@ func (p Provider) firstCatalog() string {
 
 // Fetched reports when the vendor's own list was last fetched.
 func (p Provider) Fetched() (time.Time, bool) {
-	_, t, ok := catalog.Live(p.ID)
+	_, t, ok := p.live()
 	return t, ok
+}
+
+// live is the list last fetched from the vendor. A plugin's provider has
+// none: its models are what the plugin lists now, and a built-in moved
+// onto it left its own last list under the same id.
+func (p Provider) live() ([]catalog.Model, time.Time, bool) {
+	if p.IsPlugin() {
+		return nil, time.Time{}, false
+	}
+	return catalog.Live(p.ID)
 }
 
 // Fetch asks the vendor which models it serves and remembers the answer.
