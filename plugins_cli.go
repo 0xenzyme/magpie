@@ -22,8 +22,8 @@ const pluginUsage = `usage: magpie plugin [list] [--json]
        magpie plugin on|off <name>                 turn one on or off
        magpie plugin login <provider> [<method>]   sign in to a provider a plugin adds
        magpie plugin logout <provider>             forget the sign-in
-       magpie plugin move <subscription>           run a built-in subscription's accounts on its community plugin
-       magpie plugin move-back <subscription>      go back to the built-in`
+       magpie plugin move|migrate <subscription>   run a built-in subscription's accounts on its community plugin
+       magpie plugin move-back|unmigrate <subscription>   go back to the built-in, with its accounts`
 
 // pluginCmd: `magpie plugin …` — OpenCode's provider plugins, which sign in
 // to a subscription and carry its requests (internal/plugin).
