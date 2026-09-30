@@ -2768,6 +2768,14 @@ function renderAdd() {
       const w = subs.find((x) => signing?.agent === x.agent);
       if (w) tiles.append(renderSigning(w));
     }
+    const plugged = pluginSubs().filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "plugin".includes(f));
+    if (plugged.length) {
+      any = true;
+      const grid = section("From plugins", "signed in by an OpenCode plugin");
+      for (const x of plugged) grid.append(subTile(x));
+      const w = plugged.find((x) => signing?.agent === x.agent);
+      if (w) tiles.append(renderSigning(w));
+    }
     const gone = (providers.excluded || []).filter((x) => x.quiet && x.provider && (!f || x.agentName.toLowerCase().includes(f) || x.agent.includes(f)));
     if (gone.length) {
       any = true;
@@ -4626,7 +4634,17 @@ const SUBS = [
   // accounts can also come from another tool's export (Antigravity Cockpit, Antigravity Manager, CLIProxyAPI)
   { agent: "antigravity", name: "Antigravity", icon: "antigravity-color", plans: "Google AI Pro · Ultra · free", risk: true, importable: true },
 ];
-const subOf = (agent) => SUBS.find((x) => x.agent === agent);
+const subOf = (agent) => SUBS.find((x) => x.agent === agent) || pluginSubs().find((x) => x.agent === agent);
+
+// pluginSubs: the providers OpenCode plugins sign in to (Settings →
+// Plugins), as subscriptions like the built-in ones. The plugin, not
+// magpie, signs in and carries the requests.
+function pluginSubs() {
+  return (providers.plugins || []).map((x) => ({
+    agent: x.id, pid: x.pid, name: x.name, icon: x.icon, plugin: x, own: true, single: true,
+    get plans() { return t("from the plugin {spec}", { spec: x.spec }); },
+  }));
+}
 
 // importSay: what the import of an app's accounts says — where its files
 // come from, and who they are checked with. A ChatGPT or Claude sign-in is
@@ -4656,6 +4674,7 @@ let justAdded = ""; // the account that just came in, to greet it
 
 async function startSignIn(agent, risky, site) {
   if (signingOpen()) api("signin/" + signing.id + "/cancel", {}).catch(() => {});
+  if (subOf(agent)?.plugin) return startPluginSignIn(subOf(agent));
   // an account Google may suspend is added only once that is said
   if (subOf(agent)?.risk && !risky) {
     signing = { agent, state: "risk" };
@@ -4694,25 +4713,160 @@ async function followSignIn(id) {
       if (signing.state !== st.state || signing.url !== st.url) { signing = { ...st, site: signing.site }; renderProviders(); }
       continue;
     }
-    if (st.state === "done") {
-      signing = null;
-      justAdded = st.user;
-      delete loginUsage[st.agent]; // what was fetched before has nothing on the new account
-      providers = await api("providers");
-      const p = providers.providers.find((x) => x.account?.agent === st.agent);
-      if (p) { editing = p.id; draft = null; adding = false; presetQuery = ""; }
-      renderProviders();
-      // signed in but listed nowhere (#155): say so rather than "added"
-      if (!p) status(t("{user} signed in, but magpie can't list it — please report this", { user: st.user }), "err");
-      else status(st.using ? t("Signed in as {user}", { user: st.user }) : t("{user} added — switch to it any time", { user: st.user }), "ok");
-      state = await api("state");
-      renderAgents();
-      setTimeout(() => { justAdded = ""; }, 2000);
-      return;
-    }
+    if (st.state === "done") return signedIn(st);
     signing = st.state === "canceled" ? null : { ...st, site: signing.site };
     renderProviders();
   }
+}
+
+// signedIn: a sign-in done — the account opened in the editor.
+async function signedIn(st) {
+  signing = null;
+  justAdded = st.user;
+  delete loginUsage[st.agent]; // what was fetched before has nothing on the new account
+  providers = await api("providers");
+  const p = providers.providers.find((x) => x.account?.agent === st.agent);
+  if (p) { editing = p.id; draft = null; adding = false; presetQuery = ""; }
+  renderProviders();
+  const who = st.user || subOf(st.agent)?.name || st.agent;
+  // signed in but listed nowhere (#155): say so rather than "added"
+  if (!p) status(t("{user} signed in, but magpie can't list it — please report this", { user: who }), "err");
+  else status(st.using ? t("Signed in as {user}", { user: who }) : t("{user} added — switch to it any time", { user: who }), "ok");
+  state = await api("state");
+  renderAgents();
+  setTimeout(() => { justAdded = ""; }, 2000);
+}
+
+// startPluginSignIn: a plugin's provider signed in to as OpenCode's
+// `auth login` does — the way to sign in, the questions that way asks,
+// then the browser (and the code its page shows, pasted back) or a key.
+async function startPluginSignIn(sub, method, inputs = {}) {
+  const ms = sub.plugin.methods || [];
+  if (!ms.length) {
+    signing = { agent: sub.agent, state: "failed", error: t("The plugin has no way to sign in to {name}", { name: sub.name }) };
+    return renderProviders();
+  }
+  if (method == null) {
+    if (ms.length > 1) {
+      signing = { agent: sub.agent, state: "method" };
+      return renderProviders();
+    }
+    method = 0;
+  }
+  signing = { agent: sub.agent, method, inputs, state: "starting" };
+  renderProviders();
+  try {
+    const r = await api("plugin-signin/prompt", { provider: sub.pid, method, inputs });
+    if (signing?.agent !== sub.agent) return;
+    if (r.prompt) {
+      signing = { agent: sub.agent, method, inputs, prompt: r.prompt, state: "prompt" };
+      return renderProviders();
+    }
+    if (ms[method].type === "api") {
+      signing = { agent: sub.agent, method, inputs, state: "key" };
+      return renderProviders();
+    }
+    signing = await api("plugin-signin", { provider: sub.pid, method, inputs });
+    signing.method = method;
+    if (web && signing.url) api("open", { url: signing.url });
+    renderProviders();
+    followSignIn(signing.id);
+  } catch (e) {
+    if (signing?.agent !== sub.agent) return;
+    signing = { agent: sub.agent, method, state: "failed", error: e.message };
+    renderProviders();
+  }
+}
+
+// pluginAnswer: one of a sign-in method's questions answered, checked by
+// the plugin before the next is asked.
+async function pluginAnswer(sub, value) {
+  const flow = signing;
+  try {
+    const r = await api("plugin-signin/prompt", { provider: sub.pid, method: flow.method, inputs: flow.inputs, key: flow.prompt.key, value });
+    if (signing !== flow) return;
+    if (r.error) {
+      signing = { ...flow, error: r.error, value };
+      return renderProviders();
+    }
+    startPluginSignIn(sub, flow.method, r.inputs);
+  } catch (e) {
+    if (signing === flow) { signing = { ...flow, error: e.message, value }; renderProviders(); }
+  }
+}
+
+// pluginKey: an "api" method's key, which the plugin keeps.
+async function pluginKey(sub, key) {
+  const flow = signing;
+  signing = { ...flow, busy: true };
+  renderProviders();
+  try {
+    const st = await api("plugin-signin", { provider: sub.pid, method: flow.method, inputs: flow.inputs, key });
+    if (signing?.agent === sub.agent) signedIn(st);
+  } catch (e) {
+    if (signing?.agent === sub.agent) { signing = { ...flow, error: e.message }; renderProviders(); }
+  }
+}
+
+// renderPluginAsk: a plugin sign-in's step before the browser — the way
+// to sign in, a question, or the key.
+function renderPluginAsk(sub) {
+  const box = el("div", "signing plugin-ask");
+  const tt = el("span", "tt");
+  box.append(tt);
+  const close = el("button", "text", t("Cancel"));
+  close.onclick = cancelSignIn;
+  if (signing.state === "method") {
+    tt.append(el("span", "n", t("How do you sign in to {name}?", { name: sub.name })),
+      el("span", "s", t("The plugin {spec} signs in and sends {name}'s requests; magpie only passes them on.", { spec: sub.plugin.spec, name: sub.name })));
+    box.append(close);
+    sub.plugin.methods.forEach((m, i) => {
+      const b = el("button", "text primary", m.label || t(m.type === "api" ? "API key" : "Browser"));
+      b.dataset.method = String(i);
+      b.onclick = () => startPluginSignIn(sub, i);
+      box.append(b);
+    });
+    return box;
+  }
+  const q = signing.prompt;
+  const flow = signing;
+  const form = el("form", "callback-form");
+  const why = el("span", "s why", flow.error || "");
+  if (flow.state === "prompt" && q.type === "select") {
+    tt.append(el("span", "n", q.message), why);
+    box.append(close);
+    for (const o of q.options || []) {
+      const b = el("button", "text primary", o.label);
+      if (o.hint) b.title = o.hint;
+      b.onclick = () => pluginAnswer(sub, o.value);
+      box.append(b);
+    }
+    return box;
+  }
+  const key = flow.state === "key";
+  const label = key ? t("{name} API key", { name: sub.name }) : q.message;
+  tt.append(el("span", "n", label));
+  const inp = input(flow.value || "", key ? "" : (q.placeholder || ""), key ? "password" : "text");
+  inp.setAttribute("aria-label", label);
+  inp.autocomplete = "off";
+  inp.disabled = !!flow.busy;
+  const go = el("button", "text primary", t(key ? "Sign in" : "Next"));
+  go.type = "submit";
+  go.disabled = !!flow.busy;
+  inp.onkeydown = (e) => e.stopPropagation();
+  const submit = (e) => {
+    e.preventDefault();
+    if (signing !== flow || flow.busy) return;
+    if (key) pluginKey(sub, inp.value);
+    else pluginAnswer(sub, inp.value);
+  };
+  form.onsubmit = submit;
+  go.onclick = submit;
+  form.append(inp, go);
+  tt.append(form, why);
+  box.append(close);
+  setTimeout(() => { if (inp.isConnected && !inp.disabled) inp.focus({ preventScroll: true }); });
+  return box;
 }
 
 // renderStepPlan: a StepFun provider's platform sign-in, which the user
@@ -4818,12 +4972,13 @@ function renderSigning(sub) {
     return box;
   }
   if (signing.state === "import" || signing.state === "importing" || signing.state === "imported") return renderLoginImport(sub);
+  if (signing.state === "method" || signing.state === "prompt" || signing.state === "key") return renderPluginAsk(sub);
   if (signing.state === "failed") {
     box.append(el("span", "mark", "!"));
     tt.append(el("span", "n", t("Sign-in didn't finish")), el("span", "s", signing.error || ""));
     box.append(tt);
     const again = el("button", "text primary", t("Try again"));
-    again.onclick = () => startSignIn(sub.agent, true, signing.site);
+    again.onclick = () => sub.plugin ? startPluginSignIn(sub, signing.method) : startSignIn(sub.agent, true, signing.site);
     const close = el("button", "text", t("Cancel"));
     close.onclick = cancelSignIn;
     box.append(close, again);
@@ -4840,7 +4995,9 @@ function renderSigning(sub) {
     return box;
   }
   tt.append(el("span", "n", t("Finish signing in to {name} in your browser", { name: sub.name })),
-    el("span", "s", signing.code && sub.agent === "factory" ? t("magpie opened Factory's sign-in page. Check it shows this code and confirm it; the account shows up here as soon as you're done.")
+    el("span", "s", signing.state === "starting" ? t("Starting the sign-in…")
+      : sub.plugin ? (signing.instructions || (signing.pasteCode ? t("magpie opened the sign-in page. Paste the code it shows below.") : t("magpie opened the sign-in page. The account shows up here as soon as you're done.")))
+      : signing.code && sub.agent === "factory" ? t("magpie opened Factory's sign-in page. Check it shows this code and confirm it; the account shows up here as soon as you're done.")
       : signing.code ? t("magpie opened GitHub's device page. Enter this code there; the account shows up here as soon as you're done.") : t("magpie opened the sign-in page. The account shows up here as soon as you're done.")));
   if (signing.code) {
     const code = el("span", "devcode");
@@ -4857,12 +5014,13 @@ function renderSigning(sub) {
     acts.append(open, cp);
     tt.append(acts);
   }
-  if (signing.pasteCallback) {
+  if (signing.pasteCallback || signing.pasteCode) {
     const flow = signing;
-    tt.append(el("span", "s", t("If the browser cannot return to magpie, paste its final callback URL here.")));
+    const what = flow.pasteCode ? t("Code") : t("Callback URL");
+    if (!flow.pasteCode) tt.append(el("span", "s", t("If the browser cannot return to magpie, paste its final callback URL here.")));
     const form = el("form", "callback-form");
-    const url = input(flow.callbackURL || "", t("Callback URL"));
-    url.setAttribute("aria-label", t("Callback URL"));
+    const url = input(flow.callbackURL || "", what);
+    url.setAttribute("aria-label", what);
     url.autocomplete = "off";
     url.disabled = !!flow.callbackSubmitted || !!flow.callbackSubmitting;
     const submit = el("button", "text primary", t("Finish sign-in"));
@@ -8072,6 +8230,7 @@ function renderSettings() {
   renderImages(s, keep);
   renderRedact(s, keep);
   renderLAN(s);
+  renderPlugins();
   renderSync();
 
   const about = $("#about");
@@ -8132,6 +8291,93 @@ function renderSessionTerminal(s, keep) {
   }));
   select.value = chosen;
   select.onchange = () => savePrefs({ ...keep, sessionTerminal: select.value === "system" ? "" : select.value });
+}
+
+// renderPlugins: OpenCode's provider plugins, each signing in to a
+// subscription magpie doesn't (or no longer does) itself. They are other
+// people's code: magpie runs them on Bun and passes their requests on.
+let pluginsView = null;
+let pluginsBusy = "";
+async function renderPlugins(v) {
+  const box = $("#pluginsList");
+  if (!box) return;
+  if (v) pluginsView = v;
+  else if (!pluginsView) {
+    pluginsView = { plugins: [], loading: true };
+    api("plugins").then((x) => renderPlugins(x), (e) => renderPlugins({ plugins: [], error: e.message }));
+  }
+  v = pluginsView;
+  box.replaceChildren();
+  const run = async (op, body, busy) => {
+    pluginsBusy = busy;
+    renderPlugins();
+    try {
+      const r = await api("plugins/" + op, body);
+      pluginsBusy = "";
+      renderPlugins(r);
+      providers = await api("providers");
+      renderProviders();
+    } catch (e) {
+      pluginsBusy = "";
+      renderPlugins();
+      status(e.message, "err");
+    }
+  };
+  for (const p of v.plugins) {
+    const r = el("div", "row pref plugin-row" + (p.off ? " off" : ""));
+    const who = el("div", "who");
+    who.append(el("div", "name", p.spec));
+    const sub = el("div", "sub", p.off ? t("Off")
+      : p.error ? t("Didn't load: {error}", { error: p.error })
+      : p.providers.length ? t("Signs in to {names}", { names: p.providers.join(t(", ")) })
+      : v.loading ? t("Loading…") : t("Signs in to nothing magpie can use"));
+    if (p.error && !p.off) sub.classList.add("bad");
+    who.append(sub);
+    const val = el("div", "val");
+    const onoff = el("button", "text", t(p.off ? "Switch on" : "Switch off"));
+    onoff.onclick = () => run("off", { spec: p.spec, off: !p.off }, p.spec);
+    const rm = el("button", "text quiet", t("Remove"));
+    rm.title = t("Removes the plugin and what it installed; its sign-ins are kept until you sign out");
+    rm.onclick = () => run("remove", { spec: p.spec }, p.spec);
+    onoff.disabled = rm.disabled = !!pluginsBusy;
+    val.append(onoff, rm);
+    r.append(who, val);
+    box.append(r);
+  }
+  // a new one: an npm package or a file on this computer
+  const r = el("div", "row pref plugin-add");
+  const who = el("div", "who");
+  who.append(el("div", "name", t("Add a plugin")));
+  who.append(el("div", "sub", pluginsBusy === "+" ? (v.bun ? t("Installing…") : t("Downloading Bun {v}, which plugins run on, then installing…", { v: v.bunVersion || "" }))
+    : v.error ? t("Couldn't ask the plugins: {error}", { error: v.error })
+    : t("An OpenCode provider plugin — its npm package or a path. Plugins are other people's code: they sign in and make the requests.")));
+  const val = el("div", "val");
+  const form = el("form", "proxy-segs");
+  const spec = input("", "opencode-gemini-auth");
+  spec.className = "proxy";
+  spec.setAttribute("aria-label", t("Plugin"));
+  spec.autocomplete = "off";
+  spec.spellcheck = false;
+  spec.onkeydown = (e) => e.stopPropagation();
+  const add = el("button", "text primary", t("Add"));
+  add.type = "submit";
+  add.disabled = spec.disabled = !!pluginsBusy;
+  form.onsubmit = add.onclick = (e) => {
+    e.preventDefault();
+    if (!spec.value.trim() || pluginsBusy) return;
+    run("add", { spec: spec.value.trim() }, "+");
+  };
+  form.append(spec, add);
+  val.append(form);
+  if (v.plugins.length) {
+    const up = el("button", "text", t(pluginsBusy === "update" ? "Updating…" : "Update all"));
+    up.title = t("Installs the newest version of each plugin");
+    up.disabled = !!pluginsBusy;
+    up.onclick = () => run("update", {}, "update");
+    val.append(up);
+  }
+  r.append(who, val);
+  box.append(r);
 }
 
 // renderSync: the Settings page's sync and backup — WebDAV keeping the

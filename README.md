@@ -138,6 +138,27 @@ first day, `qianfan-token-plan`, is taken too. The plans serve no model list,
 so the preset carries their documented models; pay as you go serves its own
 at `/v2/models`.
 
+### Plugins
+
+A subscription magpie doesn't sign in to itself can come from an
+[OpenCode](https://opencode.ai) provider plugin: the npm packages OpenCode
+users install to sign in to a plan (their `auth` hook) work in magpie as they
+do there. magpie runs them on [Bun](https://bun.sh), downloaded the first
+time a plugin needs it, and the plugin signs in, lists the models and makes
+each request; magpie serves them to agents like any provider's.
+
+```sh
+magpie plugin add opencode-gemini-auth   # an npm package, or a path to a plugin of your own
+magpie plugin                           # the plugins, what each signs in to, and whether you are
+magpie plugin login google-plugin       # its sign-in: the method, its questions, the browser or a key
+magpie plugin logout google-plugin
+magpie plugin off opencode-gemini-auth  # on brings it back; rm removes it; update updates them all
+```
+
+A provider id magpie already has (google, openai, anthropic) is
+`<id>-plugin`. In the app, Settings → Plugins adds and removes them, and
+the providers they sign in to are in Add provider → From plugins.
+
 ### Routing groups
 
 A routing group is several models, from one provider or many, that an agent
@@ -485,6 +506,9 @@ stdin.
 - `~/.config/magpie/profiles.json` — saved profiles
 - `~/.config/magpie/providers.json` — your providers, keys included (0600)
 - `~/.config/magpie/stash.json` — values magpie replaced, restored on switch-back
+- `~/.config/magpie/plugins.json`, `plugins/` — the plugins added, and their packages
+- `~/.config/magpie/plugin-auth.json` — the plugins' sign-ins (0600)
+- `~/.cache/magpie/bun/` — the Bun plugins run on
 - `~/.cache/magpie/models.json` — models.dev catalog (OpenCode's cache at
   `~/.cache/opencode/models.json` is used when present)
 - `~/.cache/magpie/models/<provider>.json` — model lists fetched from vendors

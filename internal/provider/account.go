@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/proc"
 )
 
@@ -78,6 +79,11 @@ type Account struct {
 	// explain adds what the user can do about a refusal the account's
 	// backend answered, "" when there is nothing to add (factory.go).
 	explain func(status int, body []byte) string
+
+	// plugin is set on a plugin's provider (plugins.go), and transport
+	// carries its requests: the plugin's fetch.
+	plugin    *plugin.Provider
+	transport func(req *http.Request) (*http.Response, error)
 }
 
 // APIs lists the APIs model is served on, as the provider's last model
@@ -85,6 +91,9 @@ type Account struct {
 // Claude models on Chat and Anthropic's. nil is not known, and every API
 // the provider speaks may be tried.
 func (p Provider) APIs(model string) []Protocol {
+	if p.IsPlugin() {
+		return p.pluginAPIs(model)
+	}
 	ms, _, _ := catalog.Live(p.ID)
 	for _, m := range ms {
 		if m.ID == model && len(m.APIs) > 0 {
@@ -829,7 +838,7 @@ func Accounts() []Provider {
 			out = append(out, p)
 		}
 	}
-	return out
+	return append(out, pluginAccounts()...)
 }
 
 func readJSON(path string, v any) bool {

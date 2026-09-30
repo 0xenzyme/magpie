@@ -1338,10 +1338,13 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 			}
 		}
 	}
+	if p.IsPlugin() {
+		req.Header.Set(provider.ConversationHeader, conversationID(in, body))
+	}
 	if err := p.Sign(ctx, req, to, body); err != nil {
 		return nil, err
 	}
-	return s.client.Do(req)
+	return p.Do(s.client, req)
 }
 
 // fromClaudeCode is a request Claude Code sent, by the User-Agent it gives

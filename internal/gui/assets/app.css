@@ -1592,6 +1592,10 @@ input.words.rule-match { flex: 1 1 auto; width: auto; min-width: 0; }
 :root[data-theme="dark"] .warm-at input.at { color-scheme: dark; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .warm-at input.at { color-scheme: dark; } }
 @media (max-width: 520px) { .proxy-segs { flex-wrap: wrap; justify-content: flex-end; } }
+/* Settings → Plugins: what a plugin signs in to, or why it didn't load, said whole */
+.row.pref.plugin-row .sub, .row.pref.plugin-add .sub { white-space: normal; }
+.row.pref.plugin-row.off .name { color: var(--muted); }
+.row.pref.plugin-add .val { flex-wrap: wrap; justify-content: flex-end; }
 .prefs .val { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; min-width: 0; max-width: 60%; flex: none; }
 .prefs .val code { font-size: 12px; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; padding: 0 6px; }
 .prefs .val .text { padding: 3px 6px; }
