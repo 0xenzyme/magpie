@@ -2889,7 +2889,8 @@ function renderAdd() {
       return grid;
     };
     let any = false;
-    const subs = SUBS.filter((x) => !(providers.onPlugins || []).includes(x.agent)).filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "subscription".includes(f));
+    // one moved onto its plugin stays where it was, signing in through it
+    const subs = SUBS.map((x) => subOf(x.agent)).filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "subscription".includes(f));
     if (subs.length) {
       any = true;
       const grid = section("Subscriptions", "sign in, no key");
@@ -2898,7 +2899,7 @@ function renderAdd() {
       const w = subs.find((x) => signing?.agent === x.agent);
       if (w) tiles.append(renderSigning(w));
     }
-    const plugged = pluginSubs().map((x) => subOf(x.agent)).filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "plugin".includes(f));
+    const plugged = pluginSubs().filter((x) => !(movedSub(x.agent) && SUBS.some((y) => y.agent === x.agent))).filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "plugin".includes(f));
     if (plugged.length) {
       any = true;
       const grid = section("From plugins", "signed in by an OpenCode plugin");
@@ -4855,15 +4856,30 @@ const SUBS = [
   { agent: "antigravity", name: "Antigravity", icon: "antigravity-color", plans: "Google AI Pro · Ultra · free", risk: true, importable: true },
 ];
 // subOf: the subscription an agent id is. One moved onto its plugin signs
-// in through the plugin, still named, drawn and warned about as it was.
+// in through the plugin, still named, drawn, warned about and asked where
+// as it was; it keeps as many accounts as the plugin does (Cursor's took
+// one, its plugin takes more).
 const subOf = (agent) => {
   const own = SUBS.find((x) => x.agent === agent);
   const pl = pluginSubs().find((x) => x.agent === agent);
-  if (own && pl && (providers?.onPlugins || []).includes(agent)) {
-    return { ...pl, name: own.name, icon: own.icon, plans: own.plans, risk: own.risk, riskNote: own.riskNote, single: own.single };
+  if (own && pl && movedSub(agent)) {
+    const { name, icon, plans, risk, riskNote, hint, sites, importable } = own;
+    return { ...pl, name, icon, plans, risk, riskNote, hint, sites, importable, moved: true };
   }
   return own || pl;
 };
+const movedSub = (agent) => (providers?.onPlugins || []).includes(agent);
+
+// pluginMethod: the plugin's way to sign in a moved built-in takes when
+// the built-in had one click — its first, the browser's, or on a site the
+// one for that site (ZCode's "ZCode: Z.ai GLM Coding Plan"). None for a
+// plugin's own provider, which asks.
+function pluginMethod(sub, site) {
+  if (!sub.moved) return undefined;
+  const label = (sub.sites || []).find(([id]) => id === site)?.[1];
+  const at = label ? sub.plugin.methods.findIndex((m) => (m.label || "").includes(label)) : -1;
+  return at < 0 ? 0 : at;
+}
 
 // pluginSubs: the providers OpenCode plugins sign in to (Settings →
 // Plugins), as subscriptions like the built-in ones. The plugin, not
@@ -4909,13 +4925,13 @@ async function startSignIn(agent, risky, site) {
     renderProviders();
     return;
   }
-  if (subOf(agent)?.plugin) return startPluginSignIn(subOf(agent));
   // one on more than one site says which first
   if (subOf(agent)?.sites && !site) {
     signing = { agent, state: "site" };
     renderProviders();
     return;
   }
+  if (subOf(agent)?.plugin) return startPluginSignIn(subOf(agent), pluginMethod(subOf(agent), site));
   signing = { agent, site, state: "starting" };
   renderProviders();
   try {
@@ -4939,11 +4955,12 @@ async function followSignIn(id) {
     if (st.state === "waiting" || st.state === "installing") {
       // the CLI it needed is in: now the vendor's page can open
       if (signing.state === "installing" && st.state === "waiting" && st.url) api("open", { url: st.url }).catch(() => {});
-      if (signing.state !== st.state || signing.url !== st.url) { signing = { ...st, site: signing.site }; renderProviders(); }
+      if (signing.state !== st.state || signing.url !== st.url || signing.code !== st.code) { signing = { ...st, site: signing.site, method: signing.method }; renderProviders(); }
       continue;
     }
     if (st.state === "done") return signedIn(st);
-    signing = st.state === "canceled" ? null : { ...st, site: signing.site };
+    // a failed one keeps its site and way, for Try again
+    signing = st.state === "canceled" ? null : { ...st, site: signing.site, method: signing.method };
     renderProviders();
   }
 }
