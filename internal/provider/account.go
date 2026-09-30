@@ -66,6 +66,11 @@ type Account struct {
 	body   func(body []byte) []byte // request tweaks the backend insists on
 	models func() []catalog.Model
 	fetch  func(ctx context.Context) ([]catalog.Model, error)
+
+	// retry is asked about a refusal the backend answered: true when the
+	// account has put right what it names and the request is worth
+	// sending once more (a Factory org the server can't reach, factory.go).
+	retry func(ctx context.Context, status int, body []byte) bool
 }
 
 // APIs lists the APIs model is served on, as the provider's last model
@@ -131,6 +136,19 @@ func (p Provider) Sign(ctx context.Context, req *http.Request, proto Protocol, b
 		req.Header[k] = []string{v}
 	}
 	return nil
+}
+
+// Retries is whether the account can mend a refusal (Retry), so the
+// refusal's body is worth reading before it is passed on.
+func (p Provider) Retries() bool { return p.Account != nil && p.Account.retry != nil }
+
+// Retry is whether a request the backend refused with status and body is
+// worth sending once more, the account having mended what it named.
+func (p Provider) Retry(ctx context.Context, status int, body []byte) bool {
+	if p.Account == nil || p.Account.retry == nil {
+		return false
+	}
+	return p.Account.retry(p.Via(ctx), status, body)
 }
 
 // Prepare adjusts a request body the way the backend wants it.

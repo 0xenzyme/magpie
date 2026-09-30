@@ -61,10 +61,17 @@ type factoryCreds struct {
 	Access    string `json:"accessToken"`
 	Refresh   string `json:"refreshToken"`
 	ExpiresAt int64  `json:"expiresAt"` // unix ms, from the token's exp
-	Org       string `json:"orgId,omitempty"`
-	Email     string `json:"email,omitempty"`
-	UserID    string `json:"userId,omitempty"`
-	Region    string `json:"region,omitempty"` // "eu" for an org served from Factory's EU region
+	// Org is the WorkOS organization (org_…) the token was put in, kept
+	// for the record: it is never sent to Factory's API.
+	Org string `json:"orgId,omitempty"`
+	// Active is droid's active_organization_id: Factory's own id for the
+	// org, as /api/cli/whoami answers it, sent as X-Factory-Org-Id. Empty
+	// sends none and Factory takes the token's org, as droid does before
+	// it has asked whoami.
+	Active string `json:"activeOrganizationId,omitempty"`
+	Email  string `json:"email,omitempty"`
+	UserID string `json:"userId,omitempty"`
+	Region string `json:"region,omitempty"` // "eu" for an org served from Factory's EU region
 }
 
 // base is the Factory API the account's org is served from.
@@ -189,8 +196,9 @@ func factoryAuthenticate(ctx context.Context, form url.Values) (factoryTokens, e
 	return t, nil
 }
 
-// factoryRenew trades a refresh token for a new pair, in org when one is
-// named (droid's way of picking the org a token is for).
+// factoryRenew trades a refresh token for a new pair, in the WorkOS org
+// when one is named (droid's way of putting a token that names no org in
+// one); droid's routine refresh names none, and WorkOS keeps the org.
 func factoryRenew(ctx context.Context, refresh, org string) (factoryTokens, error) {
 	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refresh}, "client_id": {factoryClientID}}
 	if org != "" {
@@ -275,7 +283,7 @@ func factoryFresh(ctx context.Context, user string) (factoryCreds, error) {
 		return c, nil // nothing to renew it with; let the request try what there is
 	}
 	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
-	t, err := factoryRenew(rctx, c.Refresh, c.Org)
+	t, err := factoryRenew(rctx, c.Refresh, "")
 	cancel()
 	if err != nil {
 		// a hiccup while the token still runs: go on with it
@@ -299,9 +307,75 @@ func factoryHeaders(h http.Header, c factoryCreds) {
 	h.Set("X-Factory-Client", "cli")
 	h.Set("X-Client-Version", factoryVersion)
 	h.Set("User-Agent", "factory-cli/"+factoryVersion)
-	if c.Org != "" {
-		h.Set("X-Factory-Org-Id", c.Org)
+	if c.Active != "" {
+		h.Set("X-Factory-Org-Id", c.Active)
 	}
+}
+
+// factoryOrgRefused is Factory's 403 for an X-Factory-Org-Id the user can't
+// reach: "Requested active organization is not accessible by this user".
+func factoryOrgRefused(status int, body []byte) bool {
+	return status == http.StatusForbidden && strings.Contains(strings.ToLower(string(body)), "active organization is not accessible")
+}
+
+// factoryMendOrg answers Factory refusing an account's org: the active org
+// it named is dropped, so the request goes again without the header and
+// Factory takes the token's own (droid's org picker retries "without the
+// active-org header" so); with no header sent, the token is put in the
+// first org /api/cli/org lists, as droid does for a token with none. True
+// when there was something to change and the request is worth resending.
+func factoryMendOrg(ctx context.Context, user string, status int, body []byte) bool {
+	if !factoryOrgRefused(status, body) {
+		return false
+	}
+	factoryMu.Lock()
+	defer factoryMu.Unlock()
+	l, ok := factoryLookup(user)
+	if !ok {
+		return false
+	}
+	c, valid := factorySaved(l)
+	if !valid {
+		return false
+	}
+	if c.Active != "" {
+		c.Active = ""
+		return factoryEdit(l.User, c, false) == nil
+	}
+	if c.Refresh == "" {
+		return false
+	}
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+	defer cancel()
+	org, err := factoryFirstOrg(rctx, c)
+	if err != nil || org == "" {
+		return false
+	}
+	t, err := factoryRenew(rctx, c.Refresh, org)
+	if err != nil {
+		return false
+	}
+	c.Access, c.ExpiresAt, c.Org = t.Access, factoryExpiry(t.Access), org
+	if t.Refresh != "" {
+		c.Refresh = t.Refresh
+	}
+	return factoryEdit(l.User, c, true) == nil
+}
+
+// factoryFirstOrg is the first WorkOS org /api/cli/org says the account is
+// in, "" for none. droid asks it with the bearer token alone.
+func factoryFirstOrg(ctx context.Context, c factoryCreds) (string, error) {
+	var orgs struct {
+		IDs []string `json:"workosOrgIds"`
+	}
+	c.Active = ""
+	if err := factoryGet(ctx, c, "/api/cli/org", nil, &orgs); err != nil {
+		return "", err
+	}
+	if len(orgs.IDs) == 0 {
+		return "", nil
+	}
+	return orgs.IDs[0], nil
 }
 
 // factoryGet reads a JSON answer from Factory's API.
@@ -445,6 +519,9 @@ func factoryProvider(a factoryLogin) Provider {
 			req.Header.Set("OpenAI-Platform", "org-bHuLtG1fGmYk5YaOihAAXFBw")
 		}
 		return nil
+	}
+	acct.retry = func(ctx context.Context, status int, body []byte) bool {
+		return factoryMendOrg(ctx, user, status, body)
 	}
 	acct.models = factoryCatalog
 	acct.fetch = func(ctx context.Context) ([]catalog.Model, error) {

@@ -1201,9 +1201,21 @@ func markOpenRouterSharedPool(w http.ResponseWriter) {
 // forward sends a request to the provider. On Anthropic's messages, a
 // provider that turns away betas it doesn't know by name (Bedrock's: 400
 // Unexpected value(s) `x` for the `anthropic-beta` header) is asked again
-// once without them, and they're left out for it from then on.
+// once without them, and they're left out for it from then on. An account's
+// 403 it can mend (Provider.Retry) is asked once more.
 func (s *Server) forward(ctx context.Context, p provider.Provider, to provider.Protocol, path string, body []byte, in http.Header) (*http.Response, error) {
 	res, err := s.forwardOnce(ctx, p, to, path, body, in)
+	if err == nil && res.StatusCode == http.StatusForbidden && p.Retries() {
+		// an account that can mend what the refusal names (a Factory org
+		// the server won't take) is asked once more
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		res.Body.Close()
+		res.Body = io.NopCloser(bytes.NewReader(b))
+		if p.Retry(ctx, res.StatusCode, b) {
+			return s.forwardOnce(ctx, p, to, path, body, in)
+		}
+		return res, nil
+	}
 	if err != nil || to != provider.Anthropic || res.StatusCode != http.StatusBadRequest {
 		return res, err
 	}
