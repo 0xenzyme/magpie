@@ -52,11 +52,8 @@ func init() {
 		back: func(ls []savedLogin, user string, auth map[string]any) ([]savedLogin, string, error) {
 			switch {
 			case str(auth["type"]) == "api":
-				// the key goes back onto the provider (give, or here for
+				// the key goes back onto the provider (give, or settle for
 				// one saved in the plugin since)
-				if k := str(auth["key"]); k != "" && kiroKey() == "" {
-					return ls, "", setKiroKey(k)
-				}
 				return ls, "", nil
 			case str(auth["source"]) != "":
 				// kiro-cli's or the IDE's: nothing of it was the plugin's
@@ -105,6 +102,14 @@ func init() {
 				return nil, nil
 			}
 			return json.RawMessage(jsonText(k)), setKiroKey("")
+		},
+		settle: func(auths map[string]map[string]any) error {
+			for _, a := range auths {
+				if k := str(a["key"]); str(a["type"]) == "api" && k != "" && kiroKey() == "" {
+					return setKiroKey(k)
+				}
+			}
+			return nil
 		},
 		give: func(kept json.RawMessage) error {
 			var k string

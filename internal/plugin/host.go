@@ -179,8 +179,13 @@ func hostFile() (string, error) {
 // get is the running host, started (Bun downloaded, the plugins loaded)
 // when there is none.
 func get(ctx context.Context) (*host, error) {
+	checkList()
 	hostMu.Lock()
 	defer hostMu.Unlock()
+	if hostStale.Swap(false) && current != nil {
+		go current.stop()
+		current = nil
+	}
 	if current != nil && current.alive() {
 		return current, nil
 	}

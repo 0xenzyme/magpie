@@ -143,6 +143,10 @@ func UseCached(ps []Provider) {
 	provMu.Lock()
 	provCache, provGood = ps, ps != nil
 	provMu.Unlock()
+	// as asked with the plugins as they are now
+	listSeen.Lock()
+	listSeen.stamp, listSeen.set = listStamp(), ps != nil
+	listSeen.Unlock()
 }
 
 // refreshing is Cached's refreshes in the background.
@@ -159,6 +163,7 @@ func Settle() {
 // host: what is known of them when magpie has only just started. A
 // provider's sign-in is read afresh from plugin-auth.json.
 func Cached() []Provider {
+	checkList()
 	provMu.Lock()
 	ps := provCache
 	good := provGood

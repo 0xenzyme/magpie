@@ -3,8 +3,10 @@ package provider
 import (
 	"context"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -113,4 +115,31 @@ func TestMoveRefusedWhileListing(t *testing.T) {
 			t.Fatalf("lapsed after the move: %v, want g@fake alone", lapsed)
 		}
 	}
+}
+
+// A move's lock left by a magpie killed mid-move (a hung move stopped by
+// hand) holds nothing: the next move takes it, where it used to be
+// refused as "another magpie is moving" for a quarter of an hour.
+func TestMoveLockOfDeadMagpie(t *testing.T) {
+	claudeHome(t)
+	gone := exec.Command("true")
+	if err := gone.Run(); err != nil {
+		t.Skip(err)
+	}
+	p := migrationsPath() + ".lock"
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(strconv.Itoa(gone.Process.Pid)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lockMoves()
+	if err != nil {
+		t.Fatalf("a dead magpie's lock: %v", err)
+	}
+	// one held by a magpie still running stays held
+	if _, err := lockMoves(); err == nil {
+		t.Fatal("a live lock was taken")
+	}
+	unlock()
 }

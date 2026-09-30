@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/update"
 	"os"
 	"path/filepath"
@@ -113,9 +114,29 @@ func TestKiroMover(t *testing.T) {
 	if ls2, user, err := movers["kiro"].back(ls, "Kiro account", own.Auth); err != nil || user != "Kiro account" || len(ls2) != n+1 {
 		t.Fatalf("Kiro's own back: %v %q", err, user)
 	}
-	// the key: back onto the provider (give then leaves it)
-	if _, _, err := movers["kiro"].back(ls, "", map[string]any{"type": "api", "key": "ksk_1"}); err != nil || kiroKey() != "ksk_1" {
-		t.Fatalf("the key back: %v %q", err, kiroKey())
+	// the key: back onto the provider once logins.json is let go, saving
+	// the provider syncing the agents, which read the accounts (back runs
+	// holding loginsMu: saving it there hung the move back)
+	catalog.Changed = func() { loginsMu.Lock(); loginsMu.Unlock() }
+	t.Cleanup(func() { catalog.Changed = nil })
+	key := map[string]any{"type": "api", "key": "ksk_1"}
+	done := make(chan error, 1)
+	go func() {
+		loginsMu.Lock()
+		_, _, err := movers["kiro"].back(ls, "", key)
+		loginsMu.Unlock()
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil || kiroKey() != "" {
+			t.Fatalf("the key back: %v, %q on the provider before settling", err, kiroKey())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the key's back hung saving the provider under loginsMu")
+	}
+	if err := movers["kiro"].settle(map[string]map[string]any{"k": key}); err != nil || kiroKey() != "ksk_1" {
+		t.Fatalf("the key settled: %v %q", err, kiroKey())
 	}
 	_ = setKiroKey("")
 	if err := movers["kiro"].give(kept); err != nil || kiroKey() != "ksk_1" {

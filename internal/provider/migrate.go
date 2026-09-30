@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -145,6 +146,10 @@ type mover struct {
 	// has, and put it back.
 	take func() (json.RawMessage, error)
 	give func(json.RawMessage) error
+	// settle finishes the sign-ins handed back once logins.json is let go:
+	// what else of the built-in's they carry (a key onto its provider),
+	// whose saving syncs the agents, which read the accounts.
+	settle func(auths map[string]map[string]any) error
 }
 
 var movers = map[string]*mover{}
@@ -234,11 +239,20 @@ func lockMoves() (func(), error) {
 	for range 2 {
 		f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err == nil {
+			fmt.Fprint(f, os.Getpid())
 			f.Close()
 			return func() { os.Remove(p) }, nil
 		}
+		// one left by a magpie that died moving (killed, or stopped
+		// mid-move) holds nothing
+		if b, rerr := os.ReadFile(p); rerr == nil {
+			if pid, perr := strconv.Atoi(strings.TrimSpace(string(b))); perr == nil && pid != os.Getpid() && !update.Alive(pid) {
+				os.Remove(p)
+				continue
+			}
+		}
 		if fi, serr := os.Stat(p); serr == nil && time.Since(fi.ModTime()) > 15*time.Minute {
-			os.Remove(p) // left by a magpie that died moving
+			os.Remove(p)
 			continue
 		}
 		return nil, errors.New("another magpie is moving subscriptions to plugins")
@@ -577,8 +591,23 @@ func handBack(ctx context.Context, id string, mv *mover, accts []movedAccount, k
 		}
 		return users, nil, writeLogins(arrange(ls, users))
 	}
+	settle := func(auths map[string]map[string]any) error {
+		if mv.settle == nil {
+			return nil
+		}
+		mine := map[string]map[string]any{}
+		for _, k := range keys {
+			if a := auths[k]; a != nil && !byKey[k].Own {
+				mine[k] = a
+			}
+		}
+		return mv.settle(mine)
+	}
 	seen := plugin.Auths(id)
 	users, errs, err := write(seen)
+	if err == nil && len(errs) == 0 {
+		err = settle(seen)
+	}
 	if err != nil || len(errs) > 0 {
 		return users, errs, err
 	}
@@ -592,7 +621,11 @@ func handBack(ctx context.Context, id string, mv *mover, accts []movedAccount, k
 	}
 	for _, k := range keys {
 		if t := taken[k]; t != nil && jsonText(t) != jsonText(seen[k]) {
-			return write(taken)
+			users, errs, err := write(taken)
+			if err == nil && len(errs) == 0 {
+				err = settle(taken)
+			}
+			return users, errs, err
 		}
 	}
 	return users, nil, nil

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -395,5 +396,48 @@ func TestPluginProxy(t *testing.T) {
 	// and the next with none of its own takes magpie's again
 	if b, err := fetch(ctx); err != nil || b != "global" {
 		t.Fatalf("after a direct one: %q, %v", b, err)
+	}
+}
+
+// Plugins changed by another magpie (magpie plugin add or move in a
+// terminal while the app runs) reach the one running: its host starts
+// again with them, and meanwhile it knows the providers the other magpie
+// was told, where it went on without them until restarted.
+func TestPluginsChangedElsewhere(t *testing.T) {
+	sandbox(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	abs, _ := filepath.Abs("testdata/fake/index.js")
+	if _, err := Add(ctx, abs); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Providers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	gen := generation.Load()
+
+	// the other magpie: its providers told, then plugins.json written
+	var ps []Provider
+	b, _ := os.ReadFile(providersPath())
+	_ = json.Unmarshal(b, &ps)
+	ps = append(ps, Provider{ID: "elsewhere", Spec: abs, Name: "Elsewhere"})
+	b, _ = json.Marshal(ps)
+	if err := os.WriteFile(providersPath(), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l, _ := os.ReadFile(listPath())
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(listPath(), append(l, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.ContainsFunc(Cached(), func(p Provider) bool { return p.ID == "elsewhere" }) {
+		t.Fatalf("the other magpie's providers unknown: %+v", Cached())
+	}
+	if _, err := Providers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if generation.Load() == gen {
+		t.Fatal("the host running kept the plugins it had loaded")
 	}
 }
