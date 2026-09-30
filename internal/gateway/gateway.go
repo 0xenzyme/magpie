@@ -1427,6 +1427,7 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		if p.Account == nil || p.Account.Agent != "codex" {
 			body, searchFn = searchAsFunction(body)
 		}
+		body = forVendor(p, body)
 	case provider.Chat:
 		body = developerAsSystem(body)
 		if strings.HasSuffix(p.Host(), "openai.com") || p.IsAzure() {
