@@ -169,18 +169,22 @@ async function codeContext(diff, src) {
   return out;
 }
 
-const GUIDE = `You plan a short screen recording of magpie, a desktop app (shown here in a browser at ${VIEW.width}x${VIEW.height}) that picks the model for every local coding agent. It runs for real: a sandbox machine with a DeepSeek API key added as a provider and a few real requests already sent through its gateway, so Routing and Usage have data. The UI language is ${LOCALE}.
+const GUIDE = `You plan a short screen recording of magpie, a desktop app (shown here in a browser at ${VIEW.width}x${VIEW.height}) that picks the model for every local coding agent. It runs for real: a sandbox machine with a DeepSeek API key added as a provider and a few real requests already sent through its gateway, so Routing and Usage have data. The UI language is ${LOCALE}. What it doesn't have: any subscription account (Claude, Codex, Copilot, Kiro… — so no percentage quota windows; DeepSeek shows only a balance), any provider but DeepSeek, agents other than freshly installed ones.
+
+The diff is what the PR does. The title and description are the author's words and may be out of date or wrong: plan and summarise from the diff alone, and when the description claims something in the UI the diff doesn't do (a setting, a page, a button), don't look for it — say so in "mismatch".
 
 Places ("start" of a scene): agents, providers, gateway, routing, usage, library, settings (tabs of the main window; the tab bar is nav#nav with button[data-view=…]; settings opens from #prefs) and panel (the menu-bar icon's quick panel, a separate page).
 
 You get the PR's title, description and diff, and an outline of each place as it is rendered now: one element per line, indented by nesting, as tag#id.class[data-x="…"] attributes "own text". Use only selectors you can build from what the outline shows, or, for what only appears after an interaction (a popover, menu, dialog, hover state), from the diff itself: the outlines show each place closed, so an element the diff styles or builds being missing from them means you must open it first, not that it isn't there.
 
-Write a plan that shows a reviewer exactly what this PR changes in the UI and whether it works as intended: go where the change is, do what a user would do to see it (open the menu, hover the row, type in the field, switch the tab…), and take a screenshot at each state that matters, before and after an interaction when that is the point. Captions say what is being done or what to look at ("点击「全部隐藏」后的列表"), never what the result is or should be — the reviewer judges that from the picture, and the sandbox may differ from what you expect. Keep it short: usually 1–3 scenes, under 15 steps each. Don't show unrelated pages. Never press anything that quits, deletes, removes, updates, restarts or signs out. Say ui_change false (and no scenes) only when the diff plainly changes nothing a user can see — only tests, comments, docs, or code that never reaches the screen; any change to the page's CSS, markup, text or behaviour is a UI change.
+Write a plan that shows a reviewer exactly what this PR changes in the UI and whether it works as intended: go where the change is, do what a user would do to see it (open the menu, hover the row, type in the field, switch the tab…), and take a screenshot at each state that matters, before and after an interaction when that is the point. Captions say what is being done or what to look at ("点击「全部隐藏」后的列表"), never what the result is or should be — the reviewer judges that from the picture, and the sandbox may differ from what you expect; and they never name a thing the diff doesn't add. When the change only shows with data this sandbox doesn't have, say so in "unseen" and still show the place it would be. Keep it short: usually 1–3 scenes, under 15 steps each. Don't show unrelated pages. Never press anything that quits, deletes, removes, updates, restarts or signs out. Say ui_change false (and no scenes) only when the diff plainly changes nothing a user can see — only tests, comments, docs, or code that never reaches the screen; any change to the page's CSS, markup, text or behaviour is a UI change.
 
 Reply with JSON only:
 {
   "ui_change": true,
-  "summary": "one or two sentences, in Chinese, on what the PR changes in the UI",
+  "summary": "one or two sentences, in Chinese, on what the diff changes in the UI",
+  "mismatch": "Chinese, or empty: what the description says the UI gets that the diff doesn't do",
+  "unseen": "Chinese, or empty: what of the change this sandbox can't show, and why",
   "scenes": [
     { "title": "short Chinese title", "start": "agents",
       "steps": [
@@ -375,6 +379,8 @@ async function main() {
     plan = { summary: manifest.summary, scenes: plan ? [] : [{ title: "Agent 页", start: "agents", steps: [{ do: "shot", name: "agents", caption: "Agent 页" }] }] };
   }
   manifest.summary = plan.summary || "";
+  manifest.mismatch = plan.mismatch || "";
+  manifest.unseen = plan.unseen || "";
   log("plan:", JSON.stringify(plan, null, 1));
 
   if (plan.scenes.length) {

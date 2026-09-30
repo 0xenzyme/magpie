@@ -159,14 +159,16 @@ async function publish() {
       : m?.skipped === "no visible UI change found in the diff" ? "看了改动，没有找到用户能看到的界面变化，所以没有录制"
       : `这次没录成（${result}）`;
     const errs = m?.errors?.length ? `\n\n<details><summary>细节</summary>\n\n${m.errors.map((e) => "- " + e).join("\n")}\n</details>` : "";
-    await setBlock(`${head(sha)}\n${m?.summary ? `**改动**：${m.summary}\n\n` : ""}${why}。${runURL ? `详见[运行记录](${runURL})。` : ""}${errs}`);
+    await setBlock(`${head(sha)}\n${m?.summary ? `**改动**（按代码）：${m.summary}\n\n` : ""}${m?.mismatch ? `> [!WARNING]\n> **描述与代码不符**：${m.mismatch}\n\n` : ""}${why}。${runURL ? `详见[运行记录](${runURL})。` : ""}${errs}`);
     return;
   }
   await pushMedia(sha, dir);
   const raw = `https://raw.githubusercontent.com/${repo}/${BRANCH}/pr-${pr}/${short(sha)}/`;
   const site = `${await pagesURL()}pr-${pr}/${short(sha)}/`;
   let md = `${head(sha)}\n`;
-  if (m.summary) md += `**改动**：${m.summary}\n\n`;
+  if (m.summary) md += `**改动**（按代码）：${m.summary}\n\n`;
+  if (m.mismatch) md += `> [!WARNING]\n> **描述与代码不符**：${m.mismatch}\n\n`;
+  if (m.unseen) md += `> [!NOTE]\n> **沙盒里看不到**：${m.unseen}\n\n`;
   if (m.video) {
     md += `[![播放录屏](${raw}${m.poster})](${site})\n\n`;
     md += `<sub>▶️ 点图打开录屏（可暂停、拖动）· [直接下载 mp4](${raw}${m.video}) · 红线是鼠标轨迹，红色圆环是点击</sub>\n\n`;
