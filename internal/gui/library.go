@@ -256,7 +256,7 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 			Agents []string `json:"agents"`
 			Source string
 			Paths  []string
-			Names  []string // the skills to update, of those a check found changed
+			Names  []string // the skills to update, of those a check found changed; to bring in, of those found in the agents
 			Server library.Server
 			ID     string            // a market server's, or a market skill's in its repository
 			Values map[string]string // what a market server needs
@@ -299,6 +299,8 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 			res, err = library.RemoveSkill(in.Name)
 		case "skills/import":
 			res, err = library.ImportSkill(in.Name)
+		case "skills/import-all":
+			res, err = library.ImportSkills(in.Names)
 		case "market/server":
 			res, err = library.InstallServer(in.ID, in.Values, in.Agents)
 		case "market/skill":

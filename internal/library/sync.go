@@ -17,6 +17,9 @@ type Result struct {
 	// fetched again and the ones that couldn't be (What is skill:<name>)
 	Updated   []string  `json:"updated,omitempty"`
 	Unupdated []Problem `json:"unupdated,omitempty"`
+	// Unimported are, for skills brought in together, the ones that
+	// couldn't be (What is skill:<name>)
+	Unimported []Problem `json:"unimported,omitempty"`
 }
 
 // Problem is one thing that couldn't be given to an agent.

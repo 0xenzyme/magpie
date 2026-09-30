@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -118,6 +119,74 @@ func codexIn(at place) *Agent {
 		os.Remove(catalogPath)
 		return nil
 	}
+	// CC Switch's provider tables in Codex's config, each one's base URL
+	// by its id. A thread keeps the provider it was
+	// started on, and CC Switch moves every third-party thread onto its
+	// "custom" one, so one reopened there still went to the relay, a
+	// magpie model picked in it too, which the relay didn't know. While a
+	// magpie model is on, those tables go through magpie as well; a table
+	// a profile names is the user's to pick, and stays as it is.
+	ccSwitchTables := func() map[string]string {
+		names, _ := edit.TOMLTables(path)
+		named := map[string]bool{}
+		for _, n := range names {
+			if strings.HasPrefix(n, "profiles.") {
+				if t, _ := edit.GetTOMLTable(path, n); t["model_provider"] != "" {
+					named[t["model_provider"]] = true
+				}
+			}
+		}
+		out := map[string]string{}
+		for _, n := range names {
+			id, ok := strings.CutPrefix(n, "model_providers.")
+			if !ok || !ccSwitchProvider.MatchString(id) || named[id] {
+				continue
+			}
+			if t, _ := edit.GetTOMLTable(path, n); t["base_url"] != "" {
+				out[id] = t["base_url"]
+			}
+		}
+		return out
+	}
+	// takeTables points CC Switch's tables at magpie, each one's own base
+	// URL kept in the stash for giveTables (a table already on magpie's
+	// keeps the one kept for it)
+	takeTables := func() error {
+		was := map[string]string{}
+		json.Unmarshal([]byte(stashLoad()[at.key("codex.tables")]), &was)
+		for id, u := range ccSwitchTables() {
+			if u == at.v1() {
+				continue
+			}
+			if err := edit.SetTOMLKey(path, "model_providers."+id, "base_url", at.v1()); err != nil {
+				return err
+			}
+			was[id] = u
+		}
+		if len(was) == 0 {
+			return nil
+		}
+		b, _ := json.Marshal(was)
+		stash(map[string]string{at.key("codex.tables"): string(b)})
+		return nil
+	}
+	// giveTables puts the base URLs back, on the tables still pointed at
+	// magpie; one changed since is left as it is now
+	giveTables := func() error {
+		var was map[string]string
+		json.Unmarshal([]byte(stashLoad()[at.key("codex.tables")]), &was)
+		now := ccSwitchTables()
+		for id, u := range was {
+			if now[id] != at.v1() {
+				continue
+			}
+			if err := edit.SetTOMLKey(path, "model_providers."+id, "base_url", u); err != nil {
+				return err
+			}
+		}
+		forget(at.key("codex.tables"))
+		return nil
+	}
 	// api: the user wants magpie as Codex's provider even while Codex is
 	// signed in to ChatGPT
 	api := func() bool { return stashLoad()[at.key("codex.login")] == "api" }
@@ -179,6 +248,9 @@ func codexIn(at place) *Agent {
 			if err := dropSubagent(); err != nil {
 				return err
 			}
+			if err := giveTables(); err != nil {
+				return err
+			}
 			// Codex as installed: OpenAI, its own catalog, its default model
 			if err := dropBase(); err != nil {
 				return err
@@ -217,6 +289,9 @@ func codexIn(at place) *Agent {
 				); err != nil {
 					return err
 				}
+				if err := takeTables(); err != nil {
+					return err
+				}
 				return settle()
 			}
 			if err := putProvider(); err != nil {
@@ -241,7 +316,13 @@ func codexIn(at place) *Agent {
 			if err := edit.SetTOMLTop(path, kv...); err != nil {
 				return err
 			}
+			if err := takeTables(); err != nil {
+				return err
+			}
 			return settle()
+		}
+		if err := giveTables(); err != nil {
+			return err
 		}
 		if routed() {
 			if err := dropSubagent(); err != nil {
@@ -290,6 +371,12 @@ func codexIn(at place) *Agent {
 			// while magpie is wired, for the threads that name it
 			if isMagpie(get("model")) && viaBase() && !hasProvider() {
 				if err := putProvider(); err != nil {
+					return err
+				}
+			}
+			// CC Switch's tables, left from before magpie took them over
+			if isMagpie(get("model")) && routed() {
+				if err := takeTables(); err != nil {
 					return err
 				}
 			}
@@ -359,6 +446,11 @@ func codexIn(at place) *Agent {
 				}
 			default:
 				return "Codex's config no longer sends its model through magpie (no openai_base_url or model_provider of magpie's), so Codex asks OpenAI for a model OpenAI doesn't have"
+			}
+			for id, u := range ccSwitchTables() {
+				if u != at.v1() {
+					return "Codex's [model_providers." + id + "] (CC Switch's) sends to " + u + ", not magpie's gateway: a Codex thread started on it goes there when reopened, a magpie model picked in it too"
+				}
 			}
 			return ""
 		},
@@ -455,6 +547,11 @@ func codexIn(at place) *Agent {
 		},
 	}, path, catalogPath)
 }
+
+// ccSwitchProvider matches the ids of the provider tables CC Switch writes
+// into Codex's config: "custom", and "cc-switch", "cc-switch-2"… from its
+// older versions. Its "cc-switch-official" is its own proxy to OpenAI.
+var ccSwitchProvider = regexp.MustCompile(`^(custom|cc-switch(-[0-9]+)?)$`)
 
 func contains(xs []string, x string) bool {
 	for _, v := range xs {

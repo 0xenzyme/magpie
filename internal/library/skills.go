@@ -993,39 +993,70 @@ func foundSkills(l *Library) []FoundSkill {
 // a folder is moved in, a link to a folder elsewhere is linked to from the
 // library, and the agents that had it get the library's from then on.
 func ImportSkill(name string) (*Result, error) {
-	return change(func(l *Library) error {
-		i := slices.IndexFunc(foundSkills(l), func(f FoundSkill) bool { return f.Name == name })
-		if i < 0 {
-			return fmt.Errorf("no agent has a skill called %s that the library hasn't", name)
-		}
-		f := foundSkills(l)[i]
-		if err := os.MkdirAll(skillsDir(), 0o755); err != nil {
-			return err
-		}
-		src := &Source{Kind: "folder", Dir: f.real}
-		// one in the shared ~/.agents/skills (or a link into it) stays
-		// there, linked to: the shared folder is the user's, never emptied
-		shared := f.Shared != "" || within(f.real, realDir(sharedSkillsDir()))
-		if f.Link != "" || shared {
-			if err := os.Symlink(f.real, skillDir(name)); err != nil {
-				return err
-			}
-		} else {
-			if err := move(f.real, skillDir(name)); err != nil {
-				return err
-			}
-			src = nil
-		}
-		for _, id := range f.Agents { // links to what was moved, or to the folder elsewhere
-			if t := targetByID(id); t != nil {
-				if p := filepath.Join(t.Skills, name); linked(p) {
-					os.Remove(p)
-				}
+	return change(func(l *Library) error { return importSkill(l, foundSkills(l), name) })
+}
+
+// ImportSkills is ImportSkill for several skills at once, written to the
+// agents once. One that can't be brought in is said in Unimported, and
+// the others are brought in all the same.
+func ImportSkills(names []string) (*Result, error) {
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no skills to bring in")
+	}
+	var failed []Problem
+	res, err := change(func(l *Library) error {
+		found := foundSkills(l)
+		for _, name := range names {
+			if err := importSkill(l, found, name); err != nil {
+				failed = append(failed, Problem{What: "skill:" + name, Error: err.Error()})
 			}
 		}
-		l.Skills = append(l.Skills, &Skill{Name: name, Source: src, Agents: slices.Clone(f.Agents)})
+		if len(failed) == len(names) {
+			return errors.New(failed[0].Error)
+		}
 		return nil
 	})
+	if res != nil {
+		res.Unimported = failed
+	}
+	return res, err
+}
+
+func importSkill(l *Library, found []FoundSkill, name string) error {
+	i := slices.IndexFunc(found, func(f FoundSkill) bool { return f.Name == name })
+	if i < 0 {
+		return fmt.Errorf("no agent has a skill called %s that the library hasn't", name)
+	}
+	if slices.ContainsFunc(l.Skills, func(s *Skill) bool { return s.Name == name }) {
+		return fmt.Errorf("the library has a skill called %s already", name)
+	}
+	f := found[i]
+	if err := os.MkdirAll(skillsDir(), 0o755); err != nil {
+		return err
+	}
+	src := &Source{Kind: "folder", Dir: f.real}
+	// one in the shared ~/.agents/skills (or a link into it) stays
+	// there, linked to: the shared folder is the user's, never emptied
+	shared := f.Shared != "" || within(f.real, realDir(sharedSkillsDir()))
+	if f.Link != "" || shared {
+		if err := os.Symlink(f.real, skillDir(name)); err != nil {
+			return err
+		}
+	} else {
+		if err := move(f.real, skillDir(name)); err != nil {
+			return err
+		}
+		src = nil
+	}
+	for _, id := range f.Agents { // links to what was moved, or to the folder elsewhere
+		if t := targetByID(id); t != nil {
+			if p := filepath.Join(t.Skills, name); linked(p) {
+				os.Remove(p)
+			}
+		}
+	}
+	l.Skills = append(l.Skills, &Skill{Name: name, Source: src, Agents: slices.Clone(f.Agents)})
+	return nil
 }
 
 // ---- files ----------------------------------------------------------------

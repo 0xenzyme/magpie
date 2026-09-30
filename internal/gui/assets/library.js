@@ -1319,6 +1319,19 @@
     if (lib.foundSkills.length) {
       const rh = el("div", "row-head");
       rh.append(el("span", "label", t("In your agents")), el("span", "grow"), el("span", "note", t("not in the library — bring one in to give it to the others")));
+      // every one at once, rather than a click for each
+      if (lib.foundSkills.length > 1) {
+        const names = lib.foundSkills.map((f) => f.name);
+        const all = button(t("Bring in all"), "action lib-updall lib-importall", async (e, b) => {
+          b.classList.add("busy");
+          b.textContent = t("Bringing in…");
+          await importAllSkills(names);
+          b.classList.remove("busy");
+          b.textContent = t("Bring in all");
+        });
+        all.title = t("Brings the {n} skills into the library: the agents that have them go on having them, and you can give them to the others", { n: names.length });
+        rh.append(all);
+      }
       body.append(rh);
       const list = el("div", "list lib-list");
       for (const f of lib.foundSkills) list.append(foundSkillRow(f));
@@ -1894,6 +1907,23 @@
         const p = no[0];
         status(t("{name} wasn't updated: {error}", { name: p.what.replace(/^skill:/, ""), error: p.error }) + (no.length > 1 ? " " + t("(and {n} more)", { n: no.length - 1 }) : "") + (up ? " · " + t("{n} up to date", { n: up }) : ""), "warn", 8000);
       } else report(res, t("{n} skills up to date", { n: up }));
+      render();
+    } catch (e) {
+      status(e.message, "err", 6000);
+    }
+  }
+
+  // Every skill found in the agents brought in at once: one that couldn't be
+  // is said, and the others are brought in all the same.
+  async function importAllSkills(names) {
+    try {
+      const v = await api("library/skills/import-all", { names });
+      take(v);
+      const res = v.result || {}, no = res.unimported || [];
+      if (no.length) {
+        const p = no[0];
+        status(t("{name} wasn't brought in: {error}", { name: p.what.replace(/^skill:/, ""), error: p.error }) + (no.length > 1 ? " " + t("(and {n} more)", { n: no.length - 1 }) : ""), "warn", 8000);
+      } else report(res, t("{n} skills are in the library now", { n: names.length }));
       render();
     } catch (e) {
       status(e.message, "err", 6000);
