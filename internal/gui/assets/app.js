@@ -2328,6 +2328,7 @@ function accountPlan(a) {
   if (a.agent === "workbuddy-ai") return a.plan || "WorkBuddy AI";
   if (a.agent === "commandcode-plan") return "Command Code" + (a.plan ? " " + t(a.plan) : "");
   if (a.agent === "qoder") return "Qoder" + (a.plan ? " " + t(a.plan) : "");
+  if (a.agent === "qoder-cn") return "Qoder CN" + (a.plan ? " " + t(a.plan) : "");
   if (a.agent === "zed") return "Zed" + (a.plan ? " " + t(a.plan) : "");
   if (a.agent === "mimo-app") return "Xiaomi MiMo" + (a.plan ? " " + t(a.plan) : "");
   return t("signed in");
@@ -3045,6 +3046,7 @@ function subTile(x) {
   const n = have ? (have.account.logins?.length || 1) : 0;
   const b = pickRow(x.icon, shortName(x.name), signing?.agent === x.agent ? " on" : "");
   b.title = t("{name} subscription", { name: x.name }) + " · " + x.plans;
+  if (x.hint) b.title += "\n" + t(x.hint);
   if (n) {
     markAdded(b, x.single ? 1 : n);
     b.title += "\n" + (x.single ? t("Signed in") : t(n === 1 ? "1 account" : "{n} accounts", { n })) + " · " + t(x.single ? "signed in · click to switch account" : "click to add another account");
@@ -4816,7 +4818,14 @@ const SUBS = [
   // said on X may get an account banned when used from other tools
   { agent: "commandcode-plan", name: "Command Code", icon: "commandcode", plans: "Go · Pro · GOAT · Max · Ultra", own: true, risk: true,
     riskNote: "A Go plan account is used through Command Code's private interface, which Command Code may treat as a breach of its terms and ban the account for. Pro, Max and the other plans use its Provider API. Use a Go account you can afford to lose." },
-  { agent: "qoder", name: "Qoder", icon: "qoder", plans: "Pro", own: true, risk: true,
+  // Qoder's two sites: qoder.com, and Qoder CN (qoder.cn), where accounts made
+  // with Alibaba Cloud or a phone number live and can't sign in on qoder.com;
+  // hint says which accounts each is for
+  { agent: "qoder", get name() { return t("Qoder (international)"); }, icon: "qoder", plans: "Pro", own: true, risk: true,
+    hint: "For accounts on qoder.com, the international site.",
+    riskNote: "Qoder has no public API for this; magpie signs requests as its desktop client would, which Qoder may treat as third-party use and act on. Use an account you can afford to lose." },
+  { agent: "qoder-cn", name: "Qoder CN", icon: "qoder", plans: "Pro", own: true, risk: true,
+    hint: "For accounts on qoder.cn: signed in with an Alibaba Cloud account or a phone number.",
     riskNote: "Qoder has no public API for this; magpie signs requests as its desktop client would, which Qoder may treat as third-party use and act on. Use an account you can afford to lose." },
   // the devin CLI's own account is read; more are signed in beside it, each in a data folder of magpie's
   { agent: "devin", name: "Devin", icon: "devin", plans: "Pro · Enterprise", own: true },
@@ -5152,8 +5161,9 @@ function renderSigning(sub) {
   const tt = el("span", "tt");
   if (signing.state === "risk") {
     box.append(el("span", "mark", "!"));
-    tt.append(el("span", "n", t("{name} accounts can be suspended", { name: sub.name })),
-      el("span", "s", t(sub.riskNote || "Google may suspend an Antigravity account it sees used outside Antigravity. Use one you can afford to lose.")));
+    tt.append(el("span", "n", t("{name} accounts can be suspended", { name: sub.name })));
+    if (sub.hint) tt.append(el("span", "s", t(sub.hint)));
+    tt.append(el("span", "s", t(sub.riskNote || "Google may suspend an Antigravity account it sees used outside Antigravity. Use one you can afford to lose.")));
     box.append(tt);
     const go = el("button", "text primary", t("Sign in anyway"));
     go.onclick = () => startSignIn(sub.agent, true);
@@ -5327,7 +5337,7 @@ function renderAccounts(a) {
     row.append(dot, el("span", "n", l.user), el("span", "plan", accountPlan({ agent: a.agent, plan: l.plan })), el("span", "grow"));
     if (l.active) {
       row.append(el("span", "using", l.paused ? t("Paused") : several ? t("First") : t("Current")));
-      if (a.agent === "qoder" || l.own) {
+      if (a.agent === "qoder" || a.agent === "qoder-cn" || l.own) {
         const forget = el("button", "text quiet", t("Remove"));
         if (l.own) forget.title = forgetOwnTitle(a);
         forget.onclick = () => accountAction("login/forget", { agent: a.agent, user: l.user }, t("{user} removed", { user: l.user }));

@@ -495,7 +495,7 @@ func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 	p, model, ok := provider.Resolve(unprefixed(model))
 	// Claude Subscription generations run through the Claude Code binary. Its
 	// OAuth token must not take a direct HTTP side path just for token counting.
-	if ok && p.Account != nil && (p.Account.Agent == "claude" || p.Account.Agent == "cursor" || p.Account.Agent == "grok" || p.Account.Agent == "devin" || p.Account.Agent == "kiro" || p.Account.Agent == "qoder" || p.Account.Agent == "zed" || p.Account.Agent == "factory" || p.Account.Agent == "gemini" || p.Account.Agent == "antigravity") ||
+	if ok && p.Account != nil && (p.Account.Agent == "claude" || p.Account.Agent == "cursor" || p.Account.Agent == "grok" || p.Account.Agent == "devin" || p.Account.Agent == "kiro" || p.Account.Agent == "qoder" || p.Account.Agent == provider.QoderCNID || p.Account.Agent == "zed" || p.Account.Agent == "factory" || p.Account.Agent == "gemini" || p.Account.Agent == "antigravity") ||
 		ok && p.Account != nil && p.Account.Agent == provider.CommandCodePlanID && cmdGoing(r.Context(), p) {
 		req, err := parseAnthropic(body)
 		if err != nil {
@@ -1281,7 +1281,7 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	}
 	// Qoder is served through the API the client talks to, signed with the
 	// COSY envelope, with the account magpie signed in to.
-	if p.Account != nil && p.Account.Agent == "qoder" {
+	if p.Account != nil && (p.Account.Agent == "qoder" || p.Account.Agent == provider.QoderCNID) {
 		call.To = from
 		return s.serveQoder(w, r, from, p, model, body, &call.Usage)
 	}

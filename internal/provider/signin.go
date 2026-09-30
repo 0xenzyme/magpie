@@ -268,9 +268,10 @@ func (s *signInFlow) begin() error {
 		if err := startCommandCodeSignIn(s); err != nil {
 			return err
 		}
-	case "qoder":
-		// Qoder's device flow, run by magpie and kept in its own store
-		if err := startQoderSignIn(s); err != nil {
+	case "qoder", QoderCNID:
+		// Qoder's device flow on the account's site (qoder.com or qoder.cn),
+		// run by magpie and kept in its own store
+		if err := startQoderSignIn(s, qoderSiteOf(agent)); err != nil {
 			return err
 		}
 	case "zed":
