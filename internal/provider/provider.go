@@ -539,8 +539,10 @@ func ShowAccount(id string) error {
 // Delete removes a provider. An account is only hidden from magpie (its
 // model picks kept); signing out is the agent's job.
 func Delete(id string) error {
-	if p, ok := find(Accounts(), id); ok && p.IsPlugin() {
-		// a plugin's sign-in is magpie's own: removing it signs out
+	if p, ok := find(Accounts(), id); ok && p.IsPlugin() && !Moved(p.Account.plugin.ID) {
+		// a plugin's sign-in is magpie's own: removing it signs out. A
+		// built-in moved onto its plugin is only hidden, as the built-in
+		// was, its accounts and model picks kept.
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		return plugin.SignOut(ctx, p.Account.plugin.ID, "")

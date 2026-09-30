@@ -110,3 +110,32 @@ func TestMovedQoderFirstGoes(t *testing.T) {
 		t.Fatal("the removed account is still signed in")
 	}
 }
+
+// Deleting a moved provider hides it, as deleting the built-in did: its
+// accounts stay signed in.
+func TestDeleteMovedHides(t *testing.T) {
+	movedPlugin(t, "zed", map[string]map[string]any{
+		"zed": {"type": "oauth", "access": "a", "refresh": "r", "expires": 0, "accountId": "me@zed"},
+	})
+	if _, err := Find("zed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Delete("zed"); err != nil {
+		t.Fatal(err)
+	}
+	if len(plugin.Auths("zed")) != 1 {
+		t.Fatal("deleting the moved provider signed its account out")
+	}
+	hidden := false
+	for _, p := range Hidden() {
+		hidden = hidden || p.ID == "zed"
+	}
+	for _, p := range All() {
+		if p.ID == "zed" {
+			t.Fatal("deleted, zed is still listed")
+		}
+	}
+	if !hidden {
+		t.Fatal("zed isn't among the hidden")
+	}
+}
