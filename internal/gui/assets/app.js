@@ -3726,7 +3726,10 @@ function drawEditor(p, presetID) {
     const perAccount = subOf(a.agent) ? accountProxyPicker(a) : null;
     if (perAccount) proxies.append(perAccount);
     ed.append(...field(t("Proxy"), proxies));
-    if (p.chat || p.responses || p.anthropic) ed.append(...field(t("Endpoints"), renderEndpoints(p, p)));
+    // a plugin's provider is reached inside magpie: its plugin:// URLs go
+    // nowhere to show or test
+    const urls = [p.chat, p.responses, p.anthropic].filter(Boolean);
+    if (urls.length && !urls.some((u) => u.startsWith("plugin://"))) ed.append(...field(t("Endpoints"), renderEndpoints(p, p)));
     const bar = el("div", "bar");
     // removing only hides it from magpie; the agent stays signed in
     const del = el("button", "text danger", t("Remove"));
