@@ -84,6 +84,20 @@ func TestPluginUsage(t *testing.T) {
 		t.Fatalf("%d usage cards for the plugin's accounts, want 3", cards)
 	}
 
+	// a model the plugin says the plan serves at no cost shows as free,
+	// as WorkBuddy's built-in marked its x0.00 models
+	free := map[string]bool{}
+	for _, pp := range plugin.Cached() {
+		if pp.ID == "fakeco" {
+			for _, m := range pluginCatalog(pp) {
+				free[m.ID] = m.Free
+			}
+		}
+	}
+	if !free["fake-1"] || free["fake-claude"] {
+		t.Fatalf("free models %v, want fake-1 alone", free)
+	}
+
 	// the gateway asks the allowance by the account's UsageAgent
 	var agent string
 	for _, p := range All() {

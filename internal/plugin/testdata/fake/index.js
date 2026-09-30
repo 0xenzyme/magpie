@@ -82,6 +82,8 @@ export const FakePlugin = async ({ client }) => ({
       if (auth?.type === "oauth" && auth.refresh?.startsWith("rot-")) {
         await client.auth.set({ path: { id: "fakeco" }, body: { ...auth, refresh: auth.refresh + "+" } })
       }
+      // fake-1 costs the plan nothing, as a WorkBuddy model of x0.00 credits
+      p.models["fake-1"].free = true
       if (auth?.key === "few") return { "fake-1": p.models["fake-1"] }
       return p.models
     },

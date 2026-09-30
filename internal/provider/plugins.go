@@ -133,10 +133,17 @@ func pluginCatalog(pp plugin.Provider) []catalog.Model {
 		c := catalog.Model{
 			ID: m.ID, Name: m.Name, Provider: pp.ID, Released: m.Released,
 			APIs: []string{string(pluginProtocol(pp.ID, m))}, Images: m.Image,
-			Context: m.Input, Output: m.Output,
+			Context: m.Input, Output: m.Output, Free: m.Free,
 		}
 		if c.Context == 0 {
 			c.Context = m.Context
+		}
+		// Cursor's own ids no catalog knows: one not named a 1M model
+		// holds what the catalog knows its base to, as the built-in's did
+		if pp.ID == "cursor" && c.Context <= cursorDefaultContext {
+			if n := cursorContext(m.ID, m.Name); c.Context == 0 || n < c.Context {
+				c.Context = n
+			}
 		}
 		if c.Name == "" {
 			c.Name = m.ID

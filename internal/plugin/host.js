@@ -487,6 +487,7 @@ async function providers() {
           released: m.release_date ?? "",
           cost: m.cost,
           variants: Object.keys(m.variants ?? {}),
+          free: m.free === true,
         })),
     })
   }

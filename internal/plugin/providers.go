@@ -35,7 +35,10 @@ type Model struct {
 	Image     bool     `json:"image"`
 	Released  string   `json:"released"`
 	Variants  []string `json:"variants"`
-	Cost      *struct {
+	// Free is set by the plugin on a model the plan serves at no cost to
+	// its allowance (WorkBuddy's "credits": "x0.00")
+	Free bool `json:"free"`
+	Cost *struct {
 		Input  float64 `json:"input"`
 		Output float64 `json:"output"`
 	} `json:"cost"`
