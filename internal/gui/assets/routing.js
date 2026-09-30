@@ -958,7 +958,9 @@
   // what a call was for when it isn't a turn of the conversation, as
   // Codex names it (x-openai-subagent): its own guardian review of an
   // approval, a thread's title, memories… — each on the model Codex picks
-  // for it, so a list of Luna calls under a Sol composer reads as it is
+  // for it, so a list of Luna calls under a Sol composer reads as it is.
+  // A web search is magpie's own, run for a model that can't search on the
+  // model it searches with (a DeepSeek chat showing GPT calls, #314)
   const KIND = {
     guardian: "Approval check", auto_review: "Approval check", guardian_review: "Approval check",
     review: "Review", compact: "Compaction",
@@ -966,6 +968,7 @@
     thread_title: "Title", title: "Title",
     collab_spawn: "Subagent", thread_spawn: "Subagent", agent_job: "Subagent",
     luna_reserve: "Luna Reserve",
+    web_search: "Web search",
   };
   const kindName = (k) => KIND[k] ? t(KIND[k]) : k;
   function kindTag(r) {
@@ -986,6 +989,9 @@
   function kindWhy(r) {
     const agent = agentName(r.agent);
     if (r.kind === "luna_reserve") return t("{agent} sent this turn on Luna Reserve, which it turns to once the plan's own allowance is used up; it picks the model itself.", { agent });
+    if (r.kind === "web_search") return r.for
+      ? t("magpie ran this web search for {agent}'s {model}, which can't search the web by itself: {searcher} searched, and {model} goes on answering once it has what was found. Not a turn of the conversation.", { agent: agentName(r.for.agent), model: r.for.model, searcher: r.model })
+      : t("magpie ran this web search for a model that can't search the web by itself: {searcher} searched, and that model goes on answering once it has what was found. Not a turn of the conversation.", { searcher: r.model });
     return t("{agent} made this call itself ({kind}), not as a turn of the conversation, and picks its model itself.", { agent, kind: kindName(r.kind) });
   }
 

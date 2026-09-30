@@ -159,7 +159,9 @@ type Call struct {
 	Agent string    `json:"agent"` // who called, from the client's User-Agent
 	// Kind: what the agent made the call for, when it isn't its turn —
 	// a Codex subagent's (callKind) — "" for a turn
-	Kind     string            `json:"kind,omitempty"`
+	Kind string `json:"kind,omitempty"`
+	// For: the request a call of magpie's own (a web search) was made for
+	For      *CallFor          `json:"for,omitempty"`
 	Model    string            `json:"model"`
 	Provider string            `json:"provider"`
 	From     provider.Protocol `json:"from"`
@@ -655,6 +657,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	w = capture
 	call := Call{Time: start, From: from, Model: unprefixed(modelOf(body)), Agent: agentOf(r), Kind: callKind(r.Header),
 		RequestBody: requestBody, RequestTruncated: requestTruncated}
+	if call.Kind == "web_search" {
+		call.For = searchFor(r.Context())
+	}
 	usage.Saw(call.Agent)
 	finishCapture := func() {
 		call.ResponseBody = capture.body.text()
@@ -885,7 +890,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	if len(cands) == 1 {
 		shown = nil // nobody else to stay away from
 	}
-	tr := s.trace.begin(Route{Time: start, Agent: call.Agent, Kind: call.Kind, Model: call.Model, Effort: requestEffort(from, body), Provider: p.ID, Group: group, Rule: hit, Nested: nested, Affinity: shown, Order: pl.order, Left: pl.left})
+	tr := s.trace.begin(Route{Time: start, Agent: call.Agent, Kind: call.Kind, For: call.For, Model: call.Model, Effort: requestEffort(from, body), Provider: p.ID, Group: group, Rule: hit, Nested: nested, Affinity: shown, Order: pl.order, Left: pl.left})
 	var skipped []string
 	sent := ""       // the reasoning the last try's model was asked for
 	where := ""      // the last try's provider.Where, for the usage

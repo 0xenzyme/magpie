@@ -454,11 +454,21 @@ func codexHeader(k string) bool {
 // conversation, as Codex names it in x-openai-subagent: "guardian" (auto
 // review of an approval), "review", "compact", "memory_consolidation",
 // "thread_title", "collab_spawn"… A turn Codex sends on Luna Reserve, once
-// the plan's own allowance is used up, is "luna_reserve".
+// the plan's own allowance is used up, is "luna_reserve". A call Codex
+// makes on a hidden thread of its own goes without x-openai-subagent: its
+// x-codex-turn-metadata names the thread's source instead — "thread_title"
+// for the title of a new chat (#314), "guardian_review". A web search
+// magpie runs for a model that can't search is "web_search".
 func callKind(h http.Header) string {
 	v := strings.TrimSpace(h.Get("x-openai-subagent"))
 	if v == "" && h.Get("x-openai-memgen-request") != "" {
 		v = "memgen"
+	}
+	if v == "" {
+		v = threadSource(h.Get("x-codex-turn-metadata"))
+	}
+	if v == "" && h.Get("User-Agent") == SearchAgent {
+		v = "web_search"
 	}
 	if v == "" && h.Get("x-openai-codex-luna-reserve") != "" {
 		v = "luna_reserve"
@@ -467,6 +477,29 @@ func callKind(h http.Header) string {
 		v = v[:40]
 	}
 	return v
+}
+
+// threadSource is the source Codex's turn metadata gives the thread a call
+// was made on, when that isn't the user's conversation or a subagent's
+// (which x-openai-subagent names): a feature's own thread, as Codex's
+// ThreadSource has it — "thread_title", "guardian_review",
+// "memory_consolidation".
+func threadSource(meta string) string {
+	if !strings.Contains(meta, "thread_source") {
+		return ""
+	}
+	var m struct {
+		Source string `json:"thread_source"`
+	}
+	if json.Unmarshal([]byte(meta), &m) != nil {
+		return ""
+	}
+	switch s := strings.TrimSpace(m.Source); s {
+	case "", "user", "subagent":
+		return ""
+	default:
+		return s
+	}
 }
 
 func copyHeaders(dst, src http.Header) {
