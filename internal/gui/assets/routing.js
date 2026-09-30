@@ -94,6 +94,8 @@
   const dayBar = el("div", "rt-days");
   const actHead = el("div", "row-head"), actNote = el("span", "note");
   const acts = el("div", "list rt-acts");
+  const actLabel = el("span", "label");
+  actHead.append(actLabel, el("span", "grow"), actNote);
   const hist = el("div", "rt-cols");
   const colA = el("div", "rt-col"), colB = el("div", "rt-col");
   colA.append(reqHead, dayBar, reqs);
@@ -102,6 +104,7 @@
   more.append(hist);
 
   const path = () => { const p = document.createElementNS(NS, "path"); wires.appendChild(p); return p; };
+  const setText = (e, s) => { if (e.textContent !== s) e.textContent = s; };
   const tick = (e) => { e.classList.remove("tick"); void e.offsetWidth; e.classList.add("tick"); };
 
   // ---------- words ----------
@@ -122,10 +125,13 @@
     return t("{n} d", { n: Math.round(m / 1440) });
   }
   const took = (ms = 0) => ms < 1000 ? t("{n} ms", { n: ms }) : t("{n} s", { n: (ms / 1000).toFixed(ms < 10e3 ? 1 : 0) });
+  // (the formats made once: made for each call, they were much of what the
+  // accounts' countdowns cost)
+  const HM = new Intl.DateTimeFormat([], { hour: "2-digit", minute: "2-digit" }), WD = new Intl.DateTimeFormat([], { weekday: "short" });
   function clock(s) {
     const d = new Date(s), n = new Date();
-    const hm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    return d.toDateString() === n.toDateString() ? hm : d.toLocaleDateString([], { weekday: "short" }) + " " + hm;
+    const hm = HM.format(d);
+    return d.toDateString() === n.toDateString() ? hm : WD.format(d) + " " + hm;
   }
   // how long a reply took to begin, and how fast it wrote after (#196)
   const speedOf = (out, ms, ttft) => out && ttft && ms > ttft ? out / ((ms - ttft) / 1000) : 0;
@@ -885,31 +891,41 @@
 
   // ---------- the log: how one request was routed ----------
 
+  // the log is drawn again only when what it says changes: it is asked to
+  // on every trace update (#308)
+  let logR = null, headKey = "", stepsKey = "";
   function renderLog() {
-    const r = pinned || cur;
+    const r = logR = pinned || cur;
     log.hidden = !r;
     if (!r) return;
-    logHead.replaceChildren(
-      el("span", "", rp ? t("How the request at {time} was routed", { time: clock(r.time) })
-        : pinned ? t("How the request at {time} was routed", { time: clock(r.time) }) : t("How the last request was routed")),
-      el("span", "grow"));
-    if (!rp && r.done) {
-      const again = el("button", "text", t("Replay"));
-      again.onclick = () => replay([r], pinned);
-      logHead.append(again);
-      // and on from it: the requests listed after it, as they came
-      const on = listed().filter((x) => x.id >= r.id);
-      if (pinned && on.length > 1) {
-        const from = el("button", "text", t("Replay from here"));
-        from.onclick = () => replay(on, pinned);
-        logHead.append(from);
+    const on = () => listed().filter((x) => x.id >= logR.id);
+    const head = JSON.stringify([document.documentElement.lang, !!rp, pinned?.id, r.id, r.time, r.done, !!pinned && on().length > 1]);
+    if (headKey !== head) {
+      headKey = head;
+      logHead.replaceChildren(
+        el("span", "", rp ? t("How the request at {time} was routed", { time: clock(r.time) })
+          : pinned ? t("How the request at {time} was routed", { time: clock(r.time) }) : t("How the last request was routed")),
+        el("span", "grow"));
+      if (!rp && r.done) {
+        const again = el("button", "text", t("Replay"));
+        again.onclick = () => replay([logR], pinned);
+        logHead.append(again);
+        // and on from it: the requests listed after it, as they came
+        if (pinned && on().length > 1) {
+          const from = el("button", "text", t("Replay from here"));
+          from.onclick = () => replay(on(), pinned);
+          logHead.append(from);
+        }
+      }
+      if (pinned && !rp) {
+        const live = el("button", "text", t("Back to live"));
+        live.onclick = () => { if (day) lookAt(""); else { pinned = null; cur = newest(); sync(true); renderAll(); } };
+        logHead.append(live);
       }
     }
-    if (pinned && !rp) {
-      const live = el("button", "text", t("Back to live"));
-      live.onclick = () => { if (day) lookAt(""); else { pinned = null; cur = newest(); sync(true); renderAll(); } };
-      logHead.append(live);
-    }
+    renderSteps(r);
+  }
+  function renderSteps(r) {
     const items = [];
     const main = r.order.find((x) => !x.fallback);
     items.push([r.group
@@ -934,6 +950,9 @@
       if (tr.done && tr.status < 400 && tr.swapped) items.push([swapWhy(tr), "swap", tr]);
     });
     if (r.done && !r.tries.length) items.push([t("Nothing was tried: {error}", { error: r.error || r.status }), "bad"]);
+    const key = JSON.stringify([r.kind, items.map(([s, c, tr]) => [s, c, tr?.model, tr?.served])]);
+    if (stepsKey === key) return;
+    stepsKey = key;
     steps.replaceChildren(...items.map(([s, c, tr]) => {
       const li = el("li", c, s);
       if (c === "aside kind") li.prepend(kindTag(r), " ");
@@ -1049,17 +1068,23 @@
     dayBar.replaceChildren(b("", t("Live")), ...days.map((d) => b(d.day, dayName(d.day), d.requests)));
     dayBar.hidden = !days.length && !day;
   }
+  // the list's head, made once: a trace update redraws the list, and a
+  // button made again each time is one WebKit may drop a click on
+  const reqLabel = el("span", "label"), replayAll = el("button", "text");
+  replayAll.onclick = () => replay(listed(), pinned);
+  reqHead.append(reqLabel, el("span", "grow"), reqNote, replayAll);
+  // each request's row, kept while what it says is the same: the list
+  // is redrawn on every trace update, and made again whole each time it
+  // was most of what a busy gateway cost the page (#308)
+  const reqRows = new Map(); // id → { b, sig, r }
   function renderHist() {
     const rs = listed();
     hist.hidden = !rs.length && !day && !days.length;
-    reqHead.replaceChildren(el("span", "label", t("Requests")), el("span", "grow"), reqNote);
-    if (rs.filter((r) => r.done).length > 1 && !rp) {
-      const all = el("button", "text", t("Replay them all"));
-      all.onclick = () => replay(rs, pinned);
-      reqHead.append(all);
-    }
-    reqNote.textContent = day ? t(pastCut ? "the last {n} of {day}" : "{n} on {day}", { n: rs.length, day: dayName(day) })
-      : t("the last {n} the gateway keeps", { n: rs.length });
+    setText(reqLabel, t("Requests"));
+    setText(replayAll, t("Replay them all"));
+    replayAll.hidden = !(rs.filter((r) => r.done).length > 1 && !rp);
+    setText(reqNote, day ? t(pastCut ? "the last {n} of {day}" : "{n} on {day}", { n: rs.length, day: dayName(day) })
+      : t("the last {n} the gateway keeps", { n: rs.length }));
     renderDays();
     if (!reqs.style.maxHeight) requestAnimationFrame(fitReqs); // first shown
     // none yet: what the list is for in its place, and no accounts column
@@ -1075,52 +1100,74 @@
         t("Each request an agent sends through magpie shows up here: who answered it, why, and each try."));
       if (!day && days.length) p.append(" " + t("Earlier ones are kept by day, in the bar above."));
       reqs.replaceChildren(p);
+      reqRows.clear();
       renderActs(rs);
       return;
     }
-    // the list scrolls on its own; WebKit, emptied for a moment, would
-    // send it back to its top from under the row just picked
-    const listTop = reqs.scrollTop;
-    reqs.replaceChildren(...rs.map((r) => {
+    const lang = document.documentElement.lang, ids = new Set();
+    const els = rs.map((r) => {
       const [said, how, tr] = outcome(r);
-      const b = el("button", "rt-req " + how);
-      const sel = pinned ? pinned.id === r.id : cur?.id === r.id;
-      b.setAttribute("aria-pressed", String(sel));
+      const sel = String(pinned ? pinned.id === r.id : cur?.id === r.id);
       const ag = agentOf(r.agent);
-      const when = el("span", "at", new Date(r.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-      const asked = el("span", "asked");
-      const sw = el("i", "ag");
-      sw.style.setProperty("--agent", hueOf(r.agent));
-      asked.append(sw, icon(ag?.icon || "generic"), el("span", "m", r.model));
-      if (r.kind) { asked.classList.add("kinded"); asked.append(kindTag(r)); }
-      // the reasoning the model was sent at — the turn's pick, or the
-      // agent's fitted to the model's levels — after the one the agent
-      // asked for when that was another (xhigh → max), so a level the
-      // agent didn't pick reads as the agent's or as magpie's at a glance
-      // (呆滞 on X: Pi 里面选择是 xhigh 但是 magpie 里面显示的是 max);
-      // how it came to be is in its title and the request's story
-      const to = el("span", "to");
-      to.append(el("i"), el("span", "", said));
-      if (tr?.effort) {
-        const ef = el("span", "ef" + (tr.picked ? " picked" : ""));
-        if (r.effort && r.effort !== tr.effort) ef.append(el("span", "was", r.effort), " → ");
-        ef.append(tr.effort);
-        ef.title = effortNote(r, tr);
-        to.append(ef);
-      }
-      if (tr?.swapped && tr.done && tr.status < 400) to.append(swapTag(tr, true)); // beside the model asked for
       const meta = [];
       if (r.tries.length > 1) meta.push(t("{n} tries", { n: r.tries.length }));
       if (r.done && r.ms) meta.push(took(r.ms));
       if (r.done && r.ttft) meta.push(t("TTFT {ms}", { ms: took(r.ttft) }));
       if (r.tokens) meta.push(t("{n} tokens", { n: tokens(r.tokens) }));
-      b.append(when, asked, to, el("span", "meta", meta.join(" · ")));
-      b.title = `${agentName(r.agent)} · ${r.model} → ${r.provider}`;
-      b.onclick = () => pick(r);
-      return b;
-    }));
-    if (reqs.scrollTop !== listTop) reqs.scrollTop = listTop;
+      // all the row says, and its titles
+      const sig = JSON.stringify([lang, said, how, r.time, r.agent, agentName(r.agent), ag?.icon, r.model, r.provider, r.kind, r.effort,
+        tr?.effort, tr?.picked, tr?.fixed, tr?.swapped && tr.done && tr.status < 400 ? [tr.model, tr.served] : 0, meta]);
+      ids.add(r.id);
+      let x = reqRows.get(r.id);
+      if (!x || x.sig !== sig) {
+        const row = x = { sig, b: reqRow(r, said, how, tr, ag, meta) };
+        row.b.onclick = () => pick(row.r); // the request as it is when clicked
+        reqRows.set(r.id, x);
+      }
+      x.r = r;
+      if (x.b.getAttribute("aria-pressed") !== sel) x.b.setAttribute("aria-pressed", sel);
+      return x.b;
+    });
+    for (const id of reqRows.keys()) if (!ids.has(id)) reqRows.delete(id);
+    // the rows moved only where they changed; the list scrolls on its own,
+    // and WebKit, a row taken out for a moment, would send it back to its
+    // top from under the row just picked
+    const kids = reqs.children;
+    if (kids.length !== els.length || els.some((e, i) => kids[i] !== e)) {
+      const listTop = reqs.scrollTop;
+      els.forEach((e, i) => { if (kids[i] !== e) reqs.insertBefore(e, kids[i] || null); });
+      while (kids.length > els.length) reqs.lastElementChild.remove();
+      if (reqs.scrollTop !== listTop) reqs.scrollTop = listTop;
+    }
     renderActs(rs);
+  }
+  function reqRow(r, said, how, tr, ag, meta) {
+    const b = el("button", "rt-req " + how);
+    const when = el("span", "at", new Date(r.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    const asked = el("span", "asked");
+    const sw = el("i", "ag");
+    sw.style.setProperty("--agent", hueOf(r.agent));
+    asked.append(sw, icon(ag?.icon || "generic"), el("span", "m", r.model));
+    if (r.kind) { asked.classList.add("kinded"); asked.append(kindTag(r)); }
+    // the reasoning the model was sent at — the turn's pick, or the
+    // agent's fitted to the model's levels — after the one the agent
+    // asked for when that was another (xhigh → max), so a level the
+    // agent didn't pick reads as the agent's or as magpie's at a glance
+    // (呆滞 on X: Pi 里面选择是 xhigh 但是 magpie 里面显示的是 max);
+    // how it came to be is in its title and the request's story
+    const to = el("span", "to");
+    to.append(el("i"), el("span", "", said));
+    if (tr?.effort) {
+      const ef = el("span", "ef" + (tr.picked ? " picked" : ""));
+      if (r.effort && r.effort !== tr.effort) ef.append(el("span", "was", r.effort), " → ");
+      ef.append(tr.effort);
+      ef.title = effortNote(r, tr);
+      to.append(ef);
+    }
+    if (tr?.swapped && tr.done && tr.status < 400) to.append(swapTag(tr, true)); // beside the model asked for
+    b.append(when, asked, to, el("span", "meta", meta.join(" · ")));
+    b.title = `${agentName(r.agent)} · ${r.model} → ${r.provider}`;
+    return b;
   }
 
   // each account or key the kept requests weighed: how often it was
@@ -1146,8 +1193,8 @@
       }
     }
     const list = [...by.values()].sort((x, y) => (x.w.name || "").localeCompare(y.w.name || "") || x.w.provider.localeCompare(y.w.provider) || x.pos - y.pos);
-    actHead.replaceChildren(el("span", "label", t("Accounts and keys")), el("span", "grow"), actNote);
-    actNote.textContent = t("over those requests");
+    setText(actLabel, t("Accounts and keys"));
+    setText(actNote, t("over those requests"));
     const n = now();
     let prov = "";
     const out = [];
@@ -1220,7 +1267,16 @@
     while (box.children.length > rows.length) box.lastElementChild.remove();
   }
 
-  function renderAll() { render(); renderLog(); renderHist(); }
+  // renderAll redraws once a frame, however many trace updates and plays
+  // asked for it in between (#308), and not at all while nobody sees the
+  // page: coming back into sight redraws it (see resume)
+  let drawing = 0;
+  function renderAll() { if (!drawing) drawing = requestAnimationFrame(drawAll); }
+  function drawAll() {
+    drawing = 0;
+    if (!shown()) return;
+    render(); renderLog(); renderHist();
+  }
   const newest = () => [...routes.values()].reduce((a, b) => (!a || b.id > a.id ? b : a), null);
 
   // ---------- playing a request ----------
@@ -1267,13 +1323,13 @@
   // who routing put first, and lets it go there while it answers; another
   // picks up the answer and brings it back — a failure only as far as
   // magpie, where the first takes the request on to the next.
-  async function play(id) {
+  async function play(id, synced) {
     const routes = src(); // a replay's, if it is one
     let r = routes.get(id);
     const g = gen;
     playing.set(id, g);
     cur = r;
-    sync();
+    if (!synced) sync();
     say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r));
     const aside = asides(r).find((s) => s);
     if (aside) say(aside, true);
@@ -1445,7 +1501,7 @@
   function step(ts) {
     const p = rp;
     if (!p) return;
-    p.v += (ts - p.t) * p.speed;
+    p.v += Math.min(ts - p.t, 250) * p.speed; // a replay out of sight waits
     p.t = ts;
     let fast;
     [p.real, fast] = realAt(p, p.v);
@@ -1465,7 +1521,6 @@
     if (p.v > p.total && !playing.size) { endReplay(); return; }
     requestAnimationFrame(step);
   }
-  const setText = (e, s) => { if (e.textContent !== s) e.textContent = s; };
   function replayBar(p, fast) {
     const d = new Date(p.real);
     rClock.textContent = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + "." + Math.floor(d.getMilliseconds() / 100);
@@ -1565,8 +1620,28 @@
     b.setAttribute("transform", `translate(${pt.x.toFixed(1)} ${pt.y.toFixed(1)}) scale(${b._flip ? -1 : 1} 1) rotate(${b._a.toFixed(1)})`);
   }
 
+  // resume: the page back in sight — another tab left, the window shown
+  // again, or frames not drawn for a while (a hidden or covered window
+  // draws none, and may not say it is hidden). What was flying then is
+  // stale: it ends, the stage is drawn as it is now, and only the requests
+  // still under way fly (#302).
+  const LIVE = 4;
+  function resume() {
+    stopPlays();
+    if (!loaded) return;
+    if (!pinned && !rp) cur = newest() || cur;
+    if (cur) sync(true);
+    const live = pinned ? [] : [...src().values()].filter((r) => !r.done).sort((a, b) => a.id - b.id).slice(-LIVE);
+    for (const r of live) play(r.id);
+    renderAll();
+  }
+  let seen = false, lastFrame = 0;
   function frame(ts) {
-    if (shown()) {
+    const vis = shown();
+    if (vis && (!seen || ts - lastFrame > 1000)) resume();
+    seen = vis;
+    lastFrame = ts;
+    if (vis) {
       const now_ = trips; trips = [];
       for (const tr of now_) {
         if (tr.g !== gen) { tr.res(); continue; }
@@ -1669,7 +1744,12 @@
         } else {
           if (cur && routes.has(cur.id) && !rp) cur = routes.get(cur.id);
           if (pinned && routes.has(pinned.id)) pinned = routes.get(pinned.id);
-          for (const id of fresh) if (!pinned && !rp) play(id);
+          // played only in sight: coming back into it plays those still
+          // under way, not all that came meanwhile (#302)
+          const go = !pinned && !rp && shown() ? fresh : [];
+          for (const id of go) playing.set(id, gen);
+          if (go.length) sync(); // the stage once for them all (#308)
+          for (const id of go) play(id, true);
           for (const id of fresh.slice(-4)) pPlay(id);
           wake();
           renderAll();
