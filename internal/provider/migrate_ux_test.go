@@ -205,14 +205,20 @@ func TestMovedShowsBuiltinHost(t *testing.T) {
 	if h := pluginProvider(pp, pluginLogin{}).Host(); h != "factory" {
 		t.Fatalf("a plugin's own provider: %q", h)
 	}
-	for _, host := range []string{"api.factory.ai", ""} {
+	// the host the move kept, else (moved before it kept one) the built-in's
+	for host, want := range map[string]string{"llm.factory.test": "llm.factory.test", "": HostOf(factoryAPI)} {
 		_ = setMigration("factory", func(m *Migration) { *m = Migration{State: MovePlugin, Host: host} })
 		p := pluginProvider(pp, pluginLogin{})
-		if h := p.Host(); h != host {
-			t.Fatalf("moved: %q, want %q", h, host)
+		if h := p.Host(); h != want || want == "" {
+			t.Fatalf("moved: %q, want %q", h, want)
 		}
-		if w := p.Where(); w != host {
-			t.Fatalf("moved calls go to %q, want %q", w, host)
+		if w := p.Where(); w != want {
+			t.Fatalf("moved calls go to %q, want %q", w, want)
 		}
+	}
+	// one that showed no host shows none
+	_ = setMigration("devin", func(m *Migration) { *m = Migration{State: MovePlugin} })
+	if h := pluginProvider(plugin.Provider{ID: "devin"}, pluginLogin{}).Host(); h != "" {
+		t.Fatalf("moved devin: %q", h)
 	}
 }
