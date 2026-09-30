@@ -474,6 +474,11 @@ func unprefixed(id string) string {
 	return rest
 }
 
+// estimatedMoved are the built-ins that estimated a count, as their
+// plugins do once moved; Command Code's whatever its plan, as the plugin
+// alone knows a Go key.
+var estimatedMoved = []string{"cursor", "grok", "devin", "kiro", "qoder", "zed", "factory", provider.CommandCodePlanID}
+
 // countTokens answers Anthropic's count_tokens: through the provider when
 // it implements counting, else a rough estimate. A failed connection or
 // limited key yields to the next key; other failures reach the client.
@@ -496,7 +501,8 @@ func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 	// Claude Subscription generations run through the Claude Code binary. Its
 	// OAuth token must not take a direct HTTP side path just for token counting.
 	if ok && p.Account != nil && (p.Account.Agent == "claude" || p.Account.Agent == "cursor" || p.Account.Agent == "grok" || p.Account.Agent == "devin" || p.Account.Agent == "kiro" || p.Account.Agent == "qoder" || p.Account.Agent == provider.QoderCNID || p.Account.Agent == "zed" || p.Account.Agent == "factory" || p.Account.Agent == "gemini" || p.Account.Agent == "antigravity") ||
-		ok && p.Account != nil && p.Account.Agent == provider.CommandCodePlanID && cmdGoing(r.Context(), p) {
+		ok && p.Account != nil && p.Account.Agent == provider.CommandCodePlanID && cmdGoing(r.Context(), p) ||
+		ok && p.IsPlugin() && slices.Contains(estimatedMoved, p.ID) {
 		req, err := parseAnthropic(body)
 		if err != nil {
 			writeError(w, provider.Anthropic, 400, err.Error())
