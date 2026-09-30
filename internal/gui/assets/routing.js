@@ -435,6 +435,11 @@
       : t("{level} is the model's nearest to the {asked} {agent} asked for.", { level: tr.effort, asked: r.effort, agent }));
   }
 
+  // what the gateway adds to WorkBuddy's "unapproved channel" refusal
+  // (provider.WBRefusedHint, #182): the agent gets it in English, the page
+  // says it apart from the vendor's words, in its own language
+  const WB_REFUSED = "WorkBuddy refuses chats from Codex and Claude Code (their system prompt); use it from Hermes, OpenCode or Pi, or add another provider to this group";
+
   function trySaid(r, i) {
     const tr = r.tries[i], w = tried(r, tr), agent = agentName(r.agent);
     let name = w ? `${who(w)} (${w.model})` : tr.id;
@@ -919,7 +924,12 @@
     r.tries.forEach((tr, i) => {
       items.push([tryWhy(r, i), tr.done ? (tr.status < 400 ? "ok" : "bad") : "wait"]);
       // what the vendor said, word for word: the why above is magpie's reading of it
-      if (tr.done && tr.status >= 400 && tr.error) items.push([t("It said: {error}", { error: tr.error.length > 600 ? tr.error.slice(0, 600) + "…" : tr.error }), "aside said"]);
+      if (tr.done && tr.status >= 400 && tr.error) {
+        const hinted = tr.error.endsWith(" — " + WB_REFUSED);
+        const said = hinted ? tr.error.slice(0, -(WB_REFUSED.length + 3)) : tr.error;
+        items.push([t("It said: {error}", { error: said.length > 600 ? said.slice(0, 600) + "…" : said }), "aside said"]);
+        if (hinted) items.push([t(WB_REFUSED), "aside"]);
+      }
       // the reply said another model answered it
       if (tr.done && tr.status < 400 && tr.swapped) items.push([swapWhy(tr), "swap", tr]);
     });
