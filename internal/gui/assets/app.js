@@ -8452,14 +8452,17 @@ async function renderSync(v) {
   const toggle = (id) => () => { syncOpen = syncOpen === id ? "" : id; renderSync(); };
   const parts = (ps) => ps.map((p) => t({ providers: "providers", settings: "settings", profiles: "profiles", agents: "agents' models", library: "library" }[p])).join(t(", "));
 
-  // WebDAV
+  // WebDAV or S3
   let status = t("Keeps providers, settings, profiles, agents' models and the library the same on every computer");
+  const s3 = v.on && v.kind === "s3";
   if (v.on) {
-    const host = (() => { try { return new URL(v.url).host; } catch { return v.url; } })();
+    const hostOf = (u) => { try { return new URL(u).host; } catch { return u; } };
+    // a bucket is named by its address, and the server it is on unless AWS
+    const host = s3 ? [v.url, v.endpoint && hostOf(v.endpoint.includes("://") ? v.endpoint : "https://" + v.endpoint)].filter(Boolean).join(" · ") : hostOf(v.url);
     status = v.error ? t("Couldn't sync: {error}", { error: v.error })
       : v.last ? t("Synced {when} · {host}", { when: syncWhen(v.last), host }) : t("Not synced yet · {host}", { host });
   }
-  const sub = row(t("WebDAV sync"), status, ...(v.on
+  const sub = row(t(s3 ? "S3 sync" : v.on ? "WebDAV sync" : "WebDAV or S3 sync"), status, ...(v.on
     ? [btn(t("Sync now"), async (e) => { e.target.classList.add("busy"); renderSync(await api("davsync/now", {}).catch((x) => ({ ...v, error: x.message }))); }),
        btn(t(syncOpen === "dav" ? "Close" : "Edit"), toggle("dav"))]
     : [btn(t(syncOpen === "dav" ? "Close" : "Set up"), toggle("dav"))]));
@@ -8515,22 +8518,51 @@ function syncBar(ed, err, ...tools) {
   return (msg) => { ed.querySelector(".editor-error").textContent = msg || ""; };
 }
 
+// davForm: the sync's settings, a WebDAV folder's or an S3 bucket's (#296).
+// Both sets of fields are made and the kind picked shows one, so what was
+// typed in the other is still there on going back.
 function davForm(v) {
   const ed = el("div", "editor sync-form");
-  const url = input(v.url || "", "https://dav.jianguoyun.com/dav/");
-  const user = input(v.user || "", t("user name"));
-  const pass = input("", v.passwordSet ? t("saved · type a new one to replace it") : t("password, or an app password"), "password");
-  const phrase = input("", v.passphraseSet ? t("saved · type a new one to replace it") : t("the same on every computer"), "password");
+  let kind = v.kind === "s3" ? "s3" : "webdav";
+  const saved = t("saved · type a new one to replace it");
+  const dav = v.kind === "s3" ? {} : v, bk = v.kind === "s3" ? v : {};
+  const url = input(dav.url || "", "https://dav.jianguoyun.com/dav/");
+  const user = input(dav.user || "", t("user name"));
+  const pass = input("", dav.passwordSet ? saved : t("password, or an app password"), "password");
+  // s3://bucket/prefix, as the address is kept
+  const [bucketName, prefixName] = (() => { const m = /^s3:\/\/([^/]*)\/?(.*)$/i.exec(bk.url || ""); return m ? [m[1], m[2]] : ["", ""]; })();
+  const endpoint = input(bk.endpoint || "", "https://<account>.r2.cloudflarestorage.com");
+  const bucket = input(bucketName, t("bucket name"));
+  const prefix = input(prefixName, t("optional"));
+  const region = input(bk.region || "", t("us-east-1, or auto for R2"));
+  const keyID = input(bk.user || "", "AKIA…");
+  const secret = input("", bk.passwordSet ? saved : t("secret access key"), "password");
+  const [pathL, pathStyle] = tick(t("Path-style: the bucket in the path, not the host name"), !!bk.pathStyle);
+  const phrase = input("", v.passphraseSet ? saved : t("the same on every computer"), "password");
   const [keysL, keys] = tick(t("Providers' API keys"), v.keys !== false);
   const [agentsL, agents] = tick(t("Agents' models"), v.agents !== false);
   const [libL, lib] = tick(t("Library: instructions, MCP servers and skills"), v.library !== false);
   const what = el("div", "stack");
   what.append(keysL, agentsL, libL);
-  ed.append(...field(t("Address"), url, t("A folder named magpie is made in it.")),
+  const davFields = [...field(t("Address"), url, t("A folder named magpie is made in it.")),
     ...field(t("User"), user),
-    ...field(t("Password"), pass),
+    ...field(t("Password"), pass)];
+  const s3Fields = [...field(t("Endpoint"), endpoint, t("Empty for AWS S3; for R2, B2, MinIO and the like, their S3 API address.")),
+    ...field(t("Bucket"), bucket),
+    ...field(t("Prefix"), prefix, t("The backup goes in a folder named magpie under it.")),
+    ...field(t("Region"), region),
+    ...field(t("Access key"), keyID),
+    ...field(t("Secret"), secret),
+    ...field("", pathL, t("MinIO and most NAS servers need it."))];
+  const show = () => {
+    for (const x of davFields) x.hidden = kind !== "webdav";
+    for (const x of s3Fields) x.hidden = kind !== "s3";
+  };
+  ed.append(...field(t("Sync to"), segs([["webdav", "WebDAV"], ["s3", "S3"]], kind, (k) => { kind = k; show(); })),
+    ...davFields, ...s3Fields,
     ...field(t("Passphrase"), phrase, t("The file is sealed with it on this computer; the server only ever sees it sealed. Keep it: without it the file can't be opened.")),
     ...field(t("Also sync"), what));
+  show();
   const save = el("button", "text primary", t(v.on ? "Save" : "Turn on"));
   const off = v.on ? el("button", "text danger", t("Turn off")) : el("span");
   const cancel = el("button", "text", t("Cancel"));
@@ -8538,10 +8570,15 @@ function davForm(v) {
   cancel.onclick = () => { syncOpen = ""; renderSync(); };
   off.onclick = async () => { syncOpen = ""; renderSync(await api("davsync/off", {}).catch(() => null) || undefined); };
   save.onclick = async () => {
+    const b = bucket.value.trim(), p = prefix.value.trim().replace(/^\/+|\/+$/g, "");
+    if (kind === "s3" && !b) return say(t("Name the bucket"));
     if (!v.passphraseSet && !phrase.value) return say(t("Pick a passphrase: the file is sealed with it"));
     save.classList.add("busy");
+    const where = kind === "s3"
+      ? { url: "s3://" + b + (p ? "/" + p : ""), user: keyID.value.trim(), password: secret.value, endpoint: endpoint.value.trim(), region: region.value.trim(), pathStyle: pathStyle.checked }
+      : { url: url.value.trim(), user: user.value.trim(), password: pass.value };
     try {
-      const r = await api("davsync/save", { url: url.value.trim(), user: user.value.trim(), password: pass.value, passphrase: phrase.value, keys: keys.checked, agents: agents.checked, library: lib.checked });
+      const r = await api("davsync/save", { ...where, passphrase: phrase.value, keys: keys.checked, agents: agents.checked, library: lib.checked });
       if (!r.error) syncOpen = "";
       renderSync(r);
       if (r.error) return;

@@ -276,10 +276,24 @@ the first's, and the footer names the model. The right-click neither picks
 the chip nor moves the page, Esc closes the menu only, and Test models still
 asks every model. The API is faked.
 
+`s3-sync.test.cjs` sets up sync to an S3 bucket from Settings (#296). It
+works as follows, in English and Chinese:
+
+- WebDAV is picked first. Picking S3 shows the fields for the endpoint,
+  bucket, prefix, region, access key, secret and path-style, each label
+  fitting its column. Switching between WebDAV and S3 leaves the page where
+  it was, and what was typed for WebDAV is still there after switching back.
+- With no bucket, the form says so and posts nothing.
+- Save posts `s3://bucket/prefix`, the access key as the user and the
+  secret as the password, together with the endpoint, region and path-style.
+  The row then reads "S3 sync" with the bucket and server.
+- Edit opens the form with S3 picked and the fields as saved. The secret
+  field is empty, with "saved" as its placeholder.
+
 With Node.js and Playwright available:
 
 ```sh
-node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs internal/gui/tests/usage-ledger.test.cjs internal/gui/tests/update-check.test.cjs internal/gui/tests/omarchy.test.cjs internal/gui/tests/brand.test.cjs node --test internal/gui/tests/signin-callback.test.cjs internal/gui/tests/routing-steady.test.cjs internal/gui/tests/old-webkit.test.cjs internal/gui/tests/session-terminal.test.cjs internal/gui/tests/text-size.test.cjs internal/gui/tests/zcode-site.test.cjs internal/gui/tests/rail-tip.test.cjs internal/gui/tests/sync-update.test.cjs internal/gui/tests/plugin-signin.test.cjs
+node --test internal/gui/tests/menu-scroll.test.cjs internal/gui/tests/click-scroll.test.cjs internal/gui/tests/panel-fold.test.cjs internal/gui/tests/panel-routing.test.cjs internal/gui/tests/gateway-fold.test.cjs internal/gui/tests/routing-kind.test.cjs internal/gui/tests/balance-fix.test.cjs internal/gui/tests/cli-update.test.cjs internal/gui/tests/login-import.test.cjs internal/gui/tests/agy-launch.test.cjs internal/gui/tests/currency.test.cjs internal/gui/tests/usage-ledger.test.cjs internal/gui/tests/update-check.test.cjs internal/gui/tests/omarchy.test.cjs internal/gui/tests/brand.test.cjs node --test internal/gui/tests/signin-callback.test.cjs internal/gui/tests/routing-steady.test.cjs internal/gui/tests/old-webkit.test.cjs internal/gui/tests/session-terminal.test.cjs internal/gui/tests/text-size.test.cjs internal/gui/tests/zcode-site.test.cjs internal/gui/tests/rail-tip.test.cjs internal/gui/tests/sync-update.test.cjs internal/gui/tests/plugin-signin.test.cjs internal/gui/tests/s3-sync.test.cjs
 ```
 
 If Playwright is installed outside the repository, set `NODE_PATH` to the

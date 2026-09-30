@@ -501,6 +501,43 @@ only for agents installed on that machine. Subscriptions are not in it: sign
 in to them on each machine. Piped in, the passphrase is the first line of
 stdin.
 
+### Keeping machines in sync
+
+*Settings → Sync and backup → WebDAV or S3 sync* keeps the same backup on a
+server and brings every machine up to date with it, every 3 minutes while the
+gateway runs. Choose one of these:
+
+- **WebDAV**: a folder on a WebDAV server such as 坚果云, Nextcloud or a
+  Synology.
+- **S3**: a bucket on AWS S3, Cloudflare R2, Backblaze B2, MinIO, Garage, a
+  NAS or any other S3-compatible server.
+
+The file is sealed on your machine with the passphrase, so the server only
+ever stores ciphertext. Each machine writes only over the version it read (a
+conditional write), so an update that another machine made in between is
+merged rather than lost.
+
+```sh
+magpie webdav on https://dav.jianguoyun.com/dav/ user=me@example.com
+magpie s3 on s3://my-bucket/magpie endpoint=https://<account>.r2.cloudflarestorage.com access-key-id=…
+magpie s3 on s3://backups endpoint=http://nas.local:9000 path-style=yes access-key-id=…
+magpie s3                       # where it syncs to and how the last sync went; magpie s3 now, off
+```
+
+For S3:
+
+- `endpoint` is empty for AWS.
+- `region` defaults to `us-east-1`, or to `auto` on R2.
+- `path-style=yes` puts the bucket in the path, which MinIO and most servers
+  you run yourself need.
+- The secret is asked for and saved like the WebDAV password. It is used only
+  with the endpoint and access key it was given for.
+- The bucket must already exist.
+- The access key needs to read and write `<prefix>/magpie/`. On AWS it also
+  needs to list the bucket.
+- A server without conditional writes is supported. There magpie checks the
+  object's ETag just before each write.
+
 ## Files
 
 - `~/.config/magpie/profiles.json` — saved profiles
