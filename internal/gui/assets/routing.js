@@ -319,6 +319,7 @@
     const when = (x.when || []).map(condText).join(", ");
     if (x.use && !x.unready) {
       const held = t("Rule {n} ({when}) sent turn {turn} to {use} as it began; the turn stays with whoever took it then.", { n: x.n, when, turn: x.turn, use: x.use });
+      if (x.compact) return lead ? t("The agent is compacting the conversation, so rule {n} sends the summary to {use}; the conversation stays on the model it was on.", { n: x.n, use: x.use }) + (x.small?.length ? " " + t("Passed over, as the conversation is longer than they take: {models}.", { models: x.small.map((id) => useName(r, id)).join(", ") }) : "") : null;
       if (x.held) return lead || affWhy(r, true) ? held : null;
       if (x.grown) return lead ? t("Within turn {turn} the conversation grew to about {tokens} tokens, more than the model it was on takes, so rule {n} ({when}) moves it to {use}.", { turn: x.turn, tokens: tokens(x.tokens), n: x.n, when, use: x.use }) : null;
       if (!lead) return null;
@@ -401,6 +402,7 @@
     if ((m = /^tokens ≥ (\d+)$/.exec(c))) return t("≥ {n} tokens", { n: Number(m[1]).toLocaleString() });
     if (c === "images") return t("has an image");
     if (c === "reasoning") return t("reasoning on");
+    if (c === "compacting") return t("compacting");
     if ((m = /^effort ≥ (\w+)$/.exec(c))) return t("reasoning ≥ {level}", { level: m[1] });
     if ((m = /^agent (.+)$/.exec(c))) return m[1].split("|").map(agentName).join(" / ");
     return c;
@@ -1706,6 +1708,7 @@
     if (r.effort) bits.push(r.effort === "on" ? t("reasoning on") : t("reasoning ≥ {level}", { level: r.effort }));
     if (r.agents?.length) bits.push(r.agents.map((id) => (state.clients || state.agents || []).find((a) => a.id === id)?.name || id).join(" / "));
     if (r.intent) bits.push(t("asks for “{intent}”", { intent: r.intent }));
+    if (r.compact) bits.push(t("compacting"));
     return bits.join(" · ");
   }
   const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -1969,7 +1972,12 @@
         ii.oninput = () => { r.intent = ii.value; it.classList.toggle("on", !!r.intent.trim()); drawClassifier(); };
         ii.onkeydown = (e) => e.stopPropagation();
         it.append(el("span", "", t("asks for")), ii);
-        when.append(tk, im, ef, ag, it);
+        // compacting: the agent summarizing its conversation (/compact),
+        // which a cheaper, faster model can do
+        const cp = el("button", "rt-cond" + (r.compact ? " on" : ""), t("compacting"));
+        cp.title = t("The agent summarizes the conversation to go on in less room (Claude Code's /compact, Codex, OpenCode…): a cheaper, faster model can do it");
+        cp.onclick = () => { r.compact = !r.compact; cp.classList.toggle("on", r.compact); warn(); };
+        when.append(tk, im, ef, ag, it, cp);
         // the member it sends to
         const use = el("div", "rt-use");
         const ub = el("button", "rt-cond on");
@@ -1982,6 +1990,8 @@
           const m = infoOf(r.use), bits = [];
           if (r.images && m && m.ready && !m.images) bits.push(t("it doesn't take images"));
           if (r.tokens && m?.context && m.context < r.tokens) bits.push(t("it takes {n} tokens", { n: m.context.toLocaleString() }));
+          // a summary longer than it takes goes by the next rule, or the group
+          if (r.compact && m?.context && d.members.some((id) => (infoOf(id)?.context || 0) > m.context)) bits.push(t("longer conversations skip it: it takes {n} tokens", { n: m.context.toLocaleString() }));
           hint.textContent = bits.join(" · ");
         };
         warn();
@@ -1996,7 +2006,7 @@
       });
       drawClassifier();
     };
-    rAdd.onclick = () => { d.rules.push({ use: d.members[d.members.length - 1], tokens: 0, images: false, effort: "", agents: [], intent: "" }); drawRules(); };
+    rAdd.onclick = () => { d.rules.push({ use: d.members[d.members.length - 1], tokens: 0, images: false, effort: "", agents: [], intent: "", compact: false }); drawRules(); };
     // the classifier, once a rule has an intent or the effort is picked
     // per turn: the model asked which intent a turn's message is and how
     // hard it is. Jev (a decision provider's model) answers both in one
@@ -2074,7 +2084,7 @@
     const save = () => {
       if (!d.members.length) { addBtn.focus({ preventScroll: true }); return status(t("A group needs a model in it"), "warn"); }
       d.rules.forEach((r) => { r.intent = (r.intent || "").trim(); });
-      const bare = d.rules.findIndex((r) => !r.tokens && !r.images && !r.effort && !r.agents.length && !r.intent);
+      const bare = d.rules.findIndex((r) => !r.tokens && !r.images && !r.effort && !r.agents.length && !r.intent && !r.compact);
       if (bare >= 0) return status(t("Rule {n} needs a condition", { n: bare + 1 }), "warn");
       if (d.rules.some((r) => r.intent) && !d.classifier) return status(t("Choose the model that tells which intent a message is"), "warn");
       if (d.effort === "auto" && !d.classifier) return status(t("Choose the model that rates how hard a turn is"), "warn");

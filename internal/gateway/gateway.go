@@ -1054,8 +1054,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		model = c.model
 		if call.Status < 400 {
 			servedCandidate(c, call.Usage.Input+call.Usage.Output+call.Usage.CacheRead+call.Usage.CacheWrite)
-			answered(stuck, c, aff.Turn, call.Usage.CacheRead)
-			if hit != nil {
+			// a compaction a rule sent to a model of its own leaves the
+			// conversation, and the turn's size, where they were
+			if hit == nil || !hit.Compact {
+				answered(stuck, c, aff.Turn, call.Usage.CacheRead)
+			}
+			if hit != nil && !hit.Compact {
 				ruleAnswered(ruleAt, call.Usage)
 			}
 			for _, at := range nestedAt {
