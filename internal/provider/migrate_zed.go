@@ -13,7 +13,7 @@ import (
 func init() {
 	movers["zed"] = &mover{
 		pkg:    "@magpie-community/opencode-zed-auth",
-		min:    "0.1.2", // a failed sign-in says why
+		min:    "0.1.3", // the account read as zed.FetchMe; Free named
 		agents: []string{"zed"},
 		out: func() ([]Moving, error) {
 			var out []Moving

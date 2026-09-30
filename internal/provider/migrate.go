@@ -744,14 +744,27 @@ func MoveRetiring(ctx context.Context) map[string]error {
 	return out
 }
 
+// keepMovedCurrent updates the plugin of each built-in moved onto one to
+// the version its move needs, when older: a built-in came up to date with
+// magpie, and its plugin does too. One turned off or run from a folder is
+// left as it is.
+func keepMovedCurrent(ctx context.Context) {
+	for _, id := range OnPlugins() {
+		mv := movers[id]
+		if mv.min == "" {
+			continue
+		}
+		if err := installPlugin(ctx, mv.pkg, mv.min); err != nil {
+			log.Printf("updating %s's plugin: %s", id, err)
+		}
+	}
+}
+
 // KeepRetiringMoved moves the built-ins being retired, run by the magpie
 // serving the gateway (one magpie, never two at once): a little after it
 // starts, then every hour, so a failed move is tried again once moveRetry
-// has gone.
+// has gone. It also keeps each moved built-in's plugin up to date.
 func KeepRetiringMoved(ctx context.Context) {
-	if len(Retiring) == 0 {
-		return
-	}
 	t := time.NewTimer(20 * time.Second)
 	defer t.Stop()
 	for {
@@ -760,6 +773,7 @@ func KeepRetiringMoved(ctx context.Context) {
 			return
 		case <-t.C:
 		}
+		keepMovedCurrent(ctx)
 		for id, err := range MoveRetiring(ctx) {
 			if err != nil {
 				log.Printf("moving %s to its plugin: %s (it stays built-in)", id, err)

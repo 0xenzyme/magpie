@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"github.com/yetone/magpie/internal/update"
 	"os"
 	"path/filepath"
 	"strings"
@@ -227,7 +228,7 @@ func TestZCodeMover(t *testing.T) {
 		!strings.Contains(str(ms["own@example.com"].Auth["refresh"]), `"source":"zcode"`) {
 		t.Fatalf("ZCode's session alone: %+v", ms["own@example.com"])
 	}
-	if movers["zcode"].min != "0.1.2" {
+	if update.Newer("0.1.2", movers["zcode"].min) {
 		t.Fatalf("the move installs zcode-auth %q, which doesn't read ZCode's own", movers["zcode"].min)
 	}
 	os.Remove(creds)

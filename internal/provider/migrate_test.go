@@ -407,3 +407,27 @@ func TestMovedBuiltinQuiet(t *testing.T) {
 		t.Fatalf("a sign-in to the moved built-in: %v", err)
 	}
 }
+
+// A moved built-in's plugin is updated to the version its move needs, as
+// the built-in came up to date with magpie; one moved back isn't touched.
+func TestKeepMovedCurrent(t *testing.T) {
+	claudeHome(t)
+	var inUse []string
+	fakeMover(t, &inUse)
+	movers["fakeco"].min = "0.2.0"
+	var asked []string
+	installPlugin = func(_ context.Context, pkg, min string) error {
+		asked = append(asked, pkg+"@"+min)
+		return nil
+	}
+	_ = setMigration("fakeco", func(m *Migration) { m.State = MovedBack })
+	keepMovedCurrent(context.Background())
+	if len(asked) != 0 {
+		t.Fatalf("one moved back was updated: %v", asked)
+	}
+	_ = setMigration("fakeco", func(m *Migration) { m.State = MovePlugin })
+	keepMovedCurrent(context.Background())
+	if strings.Join(asked, " ") != "fake@0.2.0" {
+		t.Fatalf("asked %v, want fake@0.2.0", asked)
+	}
+}

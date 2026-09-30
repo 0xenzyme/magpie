@@ -20,7 +20,7 @@ import (
 func init() {
 	movers["zcode"] = &mover{
 		pkg:    "@magpie-community/opencode-zcode-auth",
-		min:    "0.1.2", // ZCode's own sign-in read where ZCode keeps it
+		min:    "0.1.3", // the plan kept on the card; no limits made up
 		agents: []string{"zcode"},
 		out: func() ([]Moving, error) {
 			var out []Moving

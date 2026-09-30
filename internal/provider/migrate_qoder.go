@@ -13,6 +13,7 @@ import (
 func init() {
 	movers["qoder"] = &mover{
 		pkg:    "@magpie-community/opencode-qoder-auth",
+		min:    "0.1.2", // a 403 stays a 403; free models marked
 		agents: []string{"qoder"},
 		out: func() ([]Moving, error) {
 			// no refresh of the built-in's runs while the pairs are read
