@@ -27,6 +27,9 @@ type Problem struct {
 	Agent string `json:"agent"`
 	What  string `json:"what"` // instructions, mcp:<name>, skill:<name>
 	Error string `json:"error"`
+	// Own is a skill the agent has a folder of its own for, not the
+	// library's: the page offers to use the library's or keep the agent's
+	Own bool `json:"own,omitempty"`
 }
 
 func (r *Result) changed(agent string) {
