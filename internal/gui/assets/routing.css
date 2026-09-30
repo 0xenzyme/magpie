@@ -171,6 +171,7 @@
 .rt-req .to .ef { flex: none; overflow: visible; margin-left: -2px; color: var(--muted); }
 .rt-req .ef::before { content: "· "; }
 .rt-req .to .ef.picked { color: var(--fg-2); }
+.rt-req .ef .was { opacity: .75; }
 /* what a call was for (a Codex guardian review, a title…): a quiet grey tag by the model */
 .rt-req .asked .kind, .rp-req .kind, .rt-steps li .kind { flex: none; font-size: 10.5px; line-height: 16px; padding: 0 5px; border-radius: 5px; color: var(--muted); background: var(--card-2); border: 1px solid var(--line); white-space: nowrap; }
 .rt-steps li .kind { display: inline-block; vertical-align: 1px; }

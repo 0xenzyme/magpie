@@ -1078,12 +1078,17 @@
       asked.append(sw, icon(ag?.icon || "generic"), el("span", "m", r.model));
       if (r.kind) { asked.classList.add("kinded"); asked.append(kindTag(r)); }
       // the reasoning the model was sent at — the turn's pick, or the
-      // agent's fitted to the model's levels; what the agent asked for is
-      // in its title and the request's story
+      // agent's fitted to the model's levels — after the one the agent
+      // asked for when that was another (xhigh → max), so a level the
+      // agent didn't pick reads as the agent's or as magpie's at a glance
+      // (呆滞 on X: Pi 里面选择是 xhigh 但是 magpie 里面显示的是 max);
+      // how it came to be is in its title and the request's story
       const to = el("span", "to");
       to.append(el("i"), el("span", "", said));
       if (tr?.effort) {
-        const ef = el("span", "ef" + (tr.picked ? " picked" : ""), tr.effort);
+        const ef = el("span", "ef" + (tr.picked ? " picked" : ""));
+        if (r.effort && r.effort !== tr.effort) ef.append(el("span", "was", r.effort), " → ");
+        ef.append(tr.effort);
         ef.title = effortNote(r, tr);
         to.append(ef);
       }
