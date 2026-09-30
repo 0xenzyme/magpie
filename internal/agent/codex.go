@@ -38,6 +38,22 @@ import (
 // again without the table ("Model provider `magpie` not found"), whichever
 // way Codex is routed now.
 
+// codexStandIn is the model Codex is set to use, when magpie is its
+// provider, for a model it names that magpie doesn't serve. Codex asks for
+// some by a name of OpenAI's whatever its provider: auto-review of an
+// approval goes out as "codex-auto-review" (the guardian's reviewer model,
+// "independent of current login"), which magpie answered 404 "magpie knows
+// no model", and Codex reported the review as failed. Codex itself reviews
+// with the turn's model when its catalog lacks the reviewer; so does magpie.
+// Signed in, Codex's own names go on to OpenAI (codexUpstream) instead.
+func codexStandIn(path string) string {
+	if p, _ := edit.GetTOMLTop(path, "model_provider"); p != magpieID {
+		return ""
+	}
+	m, _ := edit.GetTOMLTop(path, "model")
+	return m
+}
+
 func codex(home string) *Agent { return codexIn(here(home)) }
 
 // codexIn is Codex as it lives at a place: this machine's home, or a WSL
