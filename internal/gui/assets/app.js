@@ -876,9 +876,11 @@ async function openAgentModels(a, anchor, ev) {
   tools.append(search, seg);
   const list = el("div", "am-list");
   const foot = el("div", "am-foot");
-  const reset = el("button", "am-reset", t("Show all again"));
-  reset.type = "button";
-  foot.append(el("span", "", t("New models are shown")), el("span", "sp"), reset);
+  // every one at once, the model in use aside
+  const hideAll = el("button", "am-reset am-hide", t("Hide all"));
+  const reset = el("button", "am-reset", t("Show all"));
+  hideAll.type = reset.type = "button";
+  foot.append(el("span", "", t("New models are shown")), el("span", "sp"), hideAll, el("span", "am-dot", "·"), reset);
   box.append(head, tools, list, foot);
 
   // groups as the catalog has them, routing groups first; a long one
@@ -965,6 +967,7 @@ async function openAgentModels(a, anchor, ev) {
     if (!list.childNodes.length) list.append(el("div", "am-none", t("No matches.")));
     list.scrollTop = top;
     reset.disabled = !models.some((m) => m.hidden);
+    hideAll.disabled = !models.some((m) => !m.hidden && !m.inUse);
   };
   q.oninput = () => { list.scrollTop = 0; draw(); };
   const view = (shown) => {
@@ -979,6 +982,11 @@ async function openAgentModels(a, anchor, ev) {
   segOn.onclick = () => view(true);
   reset.onclick = () => {
     for (const m of models) m.hidden = false;
+    save();
+    draw();
+  };
+  hideAll.onclick = () => {
+    for (const m of models) if (!m.inUse && !m.hidden) { m.hidden = true; kept.add(m.id); }
     save();
     draw();
   };

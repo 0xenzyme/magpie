@@ -36,7 +36,8 @@ whole, routing groups come first and OpenRouter's 24 start folded, the model
 Codex is set to can't be taken out, a click takes one out at once with the
 whole list sent and the count under the name following, a search opens a
 folded group, "Shown" keeps one just turned off till the view changes, a
-group's "Show all" comes on hover, "Show all again" sends none, and Esc or a
+group's "Show all" comes on hover, "Hide all" at the foot sends every one
+but the model in use, "Show all" there sends none, and Esc or a
 click elsewhere closes it.
 
 `gateway-fold.test.cjs` folds Connect on the Gateway page with the view

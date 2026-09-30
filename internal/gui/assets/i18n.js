@@ -35,7 +35,6 @@ const I18N = {
     "Current": "在用",
     "{agent} is set to it, so it stays": "{agent} 正在用它，所以不能隐藏",
     "New models are shown": "新模型默认显示",
-    "Show all again": "恢复全部显示",
     "{n} hidden": "已隐藏 {n} 个",
     "{n} hidden agents": "已隐藏的 Agent（{n} 个）",
     "Show {n} more ({h} hidden)": "显示其余 {n} 个（含 {h} 个已隐藏）",
