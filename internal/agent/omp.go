@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/yetone/magpie/internal/edit"
+	"github.com/yetone/magpie/internal/gateway"
+	"github.com/yetone/magpie/internal/provider"
 )
 
 // ompEfforts are the thinking levels omp knows.
@@ -146,6 +148,8 @@ func omp(home string) *Agent {
 type ompModel struct {
 	ID        string       `yaml:"id"`
 	Name      string       `yaml:"name,omitempty"`
+	API       string       `yaml:"api,omitempty"`
+	BaseURL   string       `yaml:"baseUrl,omitempty"`
 	Reasoning bool         `yaml:"reasoning"`
 	Thinking  *ompThinking `yaml:"thinking,omitempty"`
 	Context   int          `yaml:"contextWindow,omitempty"`
@@ -166,11 +170,32 @@ type ompProviderEntry struct {
 }
 
 // ompProvider is magpie's entry in models.yml. The thinking efforts are the
-// levels omp offers for the model; it sends them as reasoning_effort.
+// levels omp offers for the model; on Chat it sends them as
+// reasoning_effort.
+//
+// As for Pi, each model is asked on the API its provider speaks natively, so
+// the gateway relays what omp sent as it is instead of translating Chat: a
+// Claude over Chat lost its thinking's signatures between tool turns, as
+// Chat has no place for them. One served on OpenAI's Responses API goes to
+// baseUrl/responses; one on Anthropic's Messages API to the gateway's
+// /v1/messages (omp adds the /v1). That one thinks adaptively when it takes
+// nothing else, else on a budget: omp's anthropic-budget-effort would also
+// send output_config.effort, which Sonnet 4.5 and Haiku 4.5 refuse.
 func ompProvider() ompProviderEntry {
 	ms := []ompModel{}
 	for _, m := range magpieModels("omp") {
 		e := ompModel{ID: m.ID, Name: m.Name, Context: m.Context, MaxTokens: m.Output}
+		mode := "effort"
+		switch {
+		case slices.Contains(m.APIs, string(provider.Responses)):
+			e.API = "openai-responses"
+		case slices.Contains(m.APIs, string(provider.Anthropic)):
+			e.API, e.BaseURL = "anthropic-messages", gateway.URL()
+			mode = "budget"
+			if gateway.AdaptiveThinking(m.ID) {
+				mode = "anthropic-adaptive"
+			}
+		}
 		// Without input omp takes it from a bundled model its fuzzy id match
 		// finds, else text only; a model the source never answered for is
 		// left to that guess.
@@ -182,13 +207,16 @@ func ompProvider() ompProviderEntry {
 		}
 		var efforts []string
 		for _, x := range ompEfforts { // in omp's order
-			if slices.Contains(m.Efforts, x) {
+			// a model's efforts stop at xhigh (omp 16.3.5 turns the whole
+			// file away over a max): a model whose top is max offers xhigh,
+			// which the gateway fits to max
+			if x == "xhigh" && slices.Contains(m.Efforts, "max") || x != "max" && slices.Contains(m.Efforts, x) {
 				efforts = append(efforts, x)
 			}
 		}
 		if len(efforts) > 0 {
 			e.Reasoning = true
-			e.Thinking = &ompThinking{Mode: "effort", Efforts: efforts}
+			e.Thinking = &ompThinking{Mode: mode, Efforts: efforts}
 		}
 		ms = append(ms, e)
 	}
