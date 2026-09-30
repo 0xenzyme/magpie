@@ -75,6 +75,16 @@ func sideLogins(agent, ownUser string, usable func(savedLogin) bool) []sideLogin
 		if l.own() && (ownUser == "" || l.Hidden != "") || !l.own() && !usable(l) {
 			continue // signed out there, or removed in magpie
 		}
+		// the agent's own that is one of magpie's already, as when the
+		// agent was signed in to another account (or signed out) when
+		// magpie signed this one in, and the agent signed in to it after:
+		// that one stands for it, as above, not listed twice (蓝猫 on
+		// Discord, Devin)
+		if l.own() && slices.ContainsFunc(ls, func(m savedLogin) bool {
+			return m.Agent == agent && !m.own() && strings.EqualFold(m.User, l.User) && usable(m)
+		}) {
+			continue
+		}
 		if l.First || (first < 0 && l.own()) {
 			first = len(out)
 		}
