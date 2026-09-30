@@ -212,6 +212,12 @@ func magpieProviderJSON(shape string) any {
 // narrowed under a different id than its config shape (mimocode shares
 // OpenCode's shape but is seen as itself by magpie visible).
 func magpieProviderJSONFor(shape, catalog string) any {
+	return magpieProviderJSONAt(shape, catalog, gateway.URL())
+}
+
+// magpieProviderJSONAt is magpieProviderJSONFor for an agent that reaches
+// the gateway at gw: one in a WSL distro under NAT (see wsl.go).
+func magpieProviderJSONAt(shape, catalog, gw string) any {
 	models := magpieModels(catalog) // the catalog is the agent's
 	switch shape {
 	case "opencode":
@@ -232,7 +238,7 @@ func magpieProviderJSONFor(shape, catalog string) any {
 			ms[m.ID] = e
 		}
 		return map[string]any{"npm": "@ai-sdk/openai-compatible", "name": "magpie",
-			"options": map[string]any{"baseURL": gatewayV1(), "apiKey": gateway.Token}, "models": ms}
+			"options": map[string]any{"baseURL": gw + "/v1", "apiKey": gateway.Token}, "models": ms}
 	case "crush":
 		var ms []map[string]any
 		for _, m := range models {
@@ -246,7 +252,7 @@ func magpieProviderJSONFor(shape, catalog string) any {
 		if ms == nil {
 			ms = []map[string]any{}
 		}
-		return map[string]any{"type": "openai", "name": "magpie", "base_url": gatewayV1(), "api_key": gateway.Token, "models": ms}
+		return map[string]any{"type": "openai", "name": "magpie", "base_url": gw + "/v1", "api_key": gateway.Token, "models": ms}
 	case "pi":
 		var ms []map[string]any
 		for _, m := range models {
@@ -265,7 +271,7 @@ func magpieProviderJSONFor(shape, catalog string) any {
 			case slices.Contains(m.APIs, string(provider.Responses)):
 				e["api"] = "openai-responses"
 			case slices.Contains(m.APIs, string(provider.Anthropic)):
-				e["api"], e["baseUrl"] = "anthropic-messages", gateway.URL()
+				e["api"], e["baseUrl"] = "anthropic-messages", gw
 				if gateway.AdaptiveThinking(m.ID) {
 					e["compat"] = map[string]any{"forceAdaptiveThinking": true}
 				}
@@ -291,7 +297,7 @@ func magpieProviderJSONFor(shape, catalog string) any {
 		if ms == nil {
 			ms = []map[string]any{}
 		}
-		return map[string]any{"name": "magpie", "baseUrl": gatewayV1(), "api": "openai-completions", "apiKey": gateway.Token, "models": ms}
+		return map[string]any{"name": "magpie", "baseUrl": gw + "/v1", "api": "openai-completions", "apiKey": gateway.Token, "models": ms}
 	}
 	return nil
 }
@@ -481,8 +487,13 @@ func mimocode(home, cfg string) *Agent {
 		[]string{"mimocode"}, "mimo")
 }
 
-func pi(home string) *Agent {
-	dir := filepath.Join(home, ".pi", "agent")
+func pi(home string) *Agent { return piIn(here(home)) }
+
+// piIn is Pi as it lives at a place: this machine's home, or a WSL
+// distro's (see wsl.go), its models.json naming the gateway as it reaches
+// it from there.
+func piIn(at place) *Agent {
+	dir := filepath.Join(at.home, ".pi", "agent")
 	path := filepath.Join(dir, "settings.json")
 	modelsPath := filepath.Join(dir, "models.json")
 	auth := filepath.Join(dir, "auth.json")
@@ -490,7 +501,7 @@ func pi(home string) *Agent {
 	set := func(kvs ...edit.KV) error { return edit.SetJSON(path, kvs...) }
 	pair := pairSet(set, "defaultProvider", "defaultModel")
 	writeMagpie := func() error {
-		return edit.SetJSON(modelsPath, edit.KV{Path: "providers." + magpieID, Value: magpieProviderJSON("pi")})
+		return edit.SetJSON(modelsPath, edit.KV{Path: "providers." + magpieID, Value: magpieProviderJSONAt("pi", "pi", at.gw())})
 	}
 	return &Agent{
 		ID: "pi", Name: "Pi", Icon: "pi", Bin: "pi", Dir: dir, Path: path,
@@ -500,10 +511,10 @@ func pi(home string) *Agent {
 				return ""
 			}
 			return wiringOff("Pi", modelsPath, func(k string) (string, bool) { return edit.GetJSON(modelsPath, "providers."+magpieID+"."+k) },
-				"baseUrl", gatewayV1(), "apiKey", gateway.Token)
+				"baseUrl", at.v1(), "apiKey", gateway.Token)
 		},
 		Sync: func() error {
-			return syncJSON(modelsPath, "providers."+magpieID, func() any { return magpieProviderJSON("pi") })
+			return syncJSON(modelsPath, "providers."+magpieID, func() any { return magpieProviderJSONAt("pi", "pi", at.gw()) })
 		},
 		Fields: []Field{
 			{

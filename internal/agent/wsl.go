@@ -21,12 +21,13 @@ import (
 	"github.com/yetone/magpie/internal/provider"
 )
 
-// Codex installed in a WSL distro reads its config there, not in Windows'
-// home — so does the Codex app's WSL connection. On Windows magpie lists the
-// distros (wsl.exe -l -q), asks each running one once for its $HOME and
-// whether Codex is there (never starting one that is stopped), and edits
-// the files through \\wsl.localhost\<distro>. Each is an agent of its own,
-// codex@wsl:<distro>. The gateway it is pointed at is
+// An agent installed in a WSL distro reads its config there, not in
+// Windows' home — so does the Codex app's WSL connection. On Windows magpie
+// lists the distros (wsl.exe -l -q), asks each running one once for its
+// $HOME and which of wslKinds' agents are there (never starting one that is
+// stopped), and edits the files through \\wsl.localhost\<distro>. Each is
+// an agent of its own, <id>@wsl:<distro> (codex@wsl:Ubuntu,
+// pi@wsl:Ubuntu). The gateway it is pointed at is
 // 127.0.0.1 when WSL shares Windows' network (networkingMode=mirrored in
 // .wslconfig); under NAT it is Windows as WSL sees it, which reaches the
 // gateway only while that listens beyond loopback.
@@ -88,9 +89,9 @@ type distro struct {
 	Name     string            `json:"name"`
 	Home     string            `json:"home"`              // $HOME inside it, e.g. /home/me
 	Root     string            `json:"root"`              // where magpie opens its / from, e.g. \\wsl.localhost\Ubuntu
-	Has      map[string]bool   `json:"has"`               // "dir:.codex", "bin:codex": what the probe found
+	Has      map[string]bool   `json:"has"`               // "dir:.codex", "bin:pi": what the probe found
 	Gateway  string            `json:"gateway,omitempty"` // the Windows host as the distro reaches it, when not mirrored
-	Values   map[string]string `json:"values,omitempty"`  // Codex's fields as last read, shown while it is stopped
+	Values   map[string]string `json:"values,omitempty"`  // its agents' fields as last read (wslKind.memo), shown while it is stopped
 	Mirrored bool              `json:"-"`
 	Running  bool              `json:"-"`
 }
@@ -125,28 +126,111 @@ func (d distro) place(id string) place {
 	return place{home: d.local(d.Home), id: id, spell: d.native, base: d.base}
 }
 
-// wslCodex is Codex in a distro: Codex's own reading and writing, at the
+// wslKind is an agent magpie looks for in a distro: what the probe finds
+// of it, and how it lives at a place. Adding one here is all it takes.
+type wslKind struct {
+	id, name string
+	dir, bin string             // under $HOME, and on its PATH: either says it is there
+	in       func(place) *Agent // the agent at a place, as on this machine
+	restart  string             // advice after a change, when mirrored; "" none
+	// asleep, when set, is a stopped distro's options for a field, which
+	// must read nothing of its files; nil keeps the live agent's
+	asleep func(key string) func(map[string]string) []Option
+}
+
+var wslKinds = []wslKind{
+	{id: "codex", name: "Codex", dir: ".codex", bin: "codex", in: codexIn,
+		restart: "builds its model list at start-up — restart it (and the Codex app's WSL connection) to see this.",
+		asleep: func(key string) func(map[string]string) []Option {
+			switch key {
+			case "model", "subagent":
+				return func(map[string]string) []Option {
+					return append(group("OpenAI", options(ownCodex(), "")), viaMagpieFor("codex", "")...)
+				}
+			case "effort":
+				return func(cur map[string]string) []Option {
+					if e := catalog.Efforts(append(catalog.Codex(), magpieModels("codex")...), cur["model"]); len(e) > 0 {
+						return static(e...)
+					}
+					return static("low", "medium", "high", "xhigh")
+				}
+			}
+			return nil
+		}},
+	{id: "pi", name: "Pi", dir: ".pi", bin: "pi", in: piIn,
+		asleep: func(key string) func(map[string]string) []Option {
+			if key == "model" {
+				// the providers of its auth.json are the distro's files
+				return func(cur map[string]string) []Option {
+					return append(ownOptions("", cur["model"]), viaMagpie("pi", magpieID+"/")...)
+				}
+			}
+			return nil
+		}},
+}
+
+// found reports whether the probe found the agent in d.
+func (k wslKind) found(d distro) bool { return d.Has["dir:"+k.dir] || d.Has["bin:"+k.bin] }
+
+// memo is the key a field of the agent is kept under in distro.Values:
+// Codex's as they are, as wsl.json has always had them.
+func (k wslKind) memo(key string) string {
+	if k.id == "codex" {
+		return key
+	}
+	return k.id + "." + key
+}
+
+// wslFound reports whether any agent magpie knows is in d.
+func wslFound(d distro) bool {
+	for _, k := range wslKinds {
+		if k.found(d) {
+			return true
+		}
+	}
+	return false
+}
+
+func wslKindOf(id string) wslKind {
+	for _, k := range wslKinds {
+		if k.id == id {
+			return k
+		}
+	}
+	panic("no WSL agent " + id)
+}
+
+// wslCodex is Codex in a distro.
+func wslCodex(d distro) *Agent { return wslAgent(wslKindOf("codex"), d) }
+
+// wslPi is Pi in a distro.
+func wslPi(d distro) *Agent { return wslAgent(wslKindOf("pi"), d) }
+
+// wslAgent is an agent in a distro: its own reading and writing, at the
 // distro's home, with the distro's way to the gateway. A distro that isn't
 // running is shown as magpie last saw it, and nothing of it is read: any
 // access to its files starts it. Picking a value starts it, as asked.
-func wslCodex(d distro) *Agent {
-	id := "codex@wsl:" + d.Name
-	a := codexIn(d.place(id))
-	a.ID, a.Name, a.Aliases, a.Bin, a.UA, a.WSL = id, "Codex · WSL "+d.Name, nil, "", nil, d.Name
-	a.detect = func() bool { return d.Has["dir:.codex"] || d.Has["bin:codex"] }
-	// its requests carry Codex's User-Agent and are counted as Codex's
-	// on Windows, so a prompt with none of "its" own seen isn't a bypass
+func wslAgent(k wslKind, d distro) *Agent {
+	id := k.id + "@wsl:" + d.Name
+	a := k.in(d.place(id))
+	a.ID, a.Name, a.Aliases, a.Bin, a.UA, a.WSL = id, k.name+" · WSL "+d.Name, nil, "", nil, d.Name
+	a.detect = func() bool { return k.found(d) }
+	// its requests carry the agent's User-Agent and are counted as its
+	// Windows twin's, so a prompt with none of "its" own seen isn't a bypass
 	a.LastUsed = nil
 	a.Notice = func() string {
 		if !d.Mirrored {
-			return "WSL " + d.Name + " isn't in mirrored networking, so its Codex can't reach magpie on 127.0.0.1 and was pointed at Windows (" + d.base() +
+			return "WSL " + d.Name + " isn't in mirrored networking, so its " + k.name + " can't reach magpie on 127.0.0.1 and was pointed at Windows (" + d.base() +
 				"), which answers only while the gateway listens beyond loopback and Windows' firewall lets WSL in. " +
 				"Set networkingMode=mirrored under [wsl2] in %UserProfile%\\.wslconfig and run wsl --shutdown, then pick the model again."
 		}
-		return "Codex in WSL " + d.Name + " builds its model list at start-up — restart it (and the Codex app's WSL connection) to see this."
+		if k.restart == "" {
+			return ""
+		}
+		return k.name + " in WSL " + d.Name + " " + k.restart
 	}
 	if !d.Running {
-		return asleep(a, d)
+		return asleep(a, k, d)
 	}
 	if reached := a.Reached; reached != nil {
 		a.Reached = func(since time.Time) (time.Time, string, bool) {
@@ -159,7 +243,7 @@ func wslCodex(d distro) *Agent {
 	}
 	for i := range a.Fields {
 		f := &a.Fields[i]
-		get, key := f.Get, f.Key
+		get, key := f.Get, k.memo(f.Key)
 		f.Get = func() string { v := get(); wslRemember(d.Name, key, v); return v }
 	}
 	// what a set leaves is kept at once, in case the distro stops before
@@ -180,11 +264,11 @@ func wslCodex(d distro) *Agent {
 	return a
 }
 
-// asleep is a stopped distro's Codex: its fields read what magpie last saw,
-// their options come from magpie alone, and it has no files to check, sync
-// or migrate (Path and Dir are empty); setting a field goes to the files,
-// which starts the distro.
-func asleep(live *Agent, d distro) *Agent {
+// asleep is a stopped distro's agent: its fields read what magpie last
+// saw, their options come from magpie alone, and it has no files to check,
+// sync or migrate (Path and Dir are empty); setting a field goes to the
+// files, which starts the distro.
+func asleep(live *Agent, k wslKind, d distro) *Agent {
 	started := false
 	a := &Agent{ID: live.ID, Name: live.Name, Icon: live.Icon, WSL: d.Name, detect: live.detect,
 		Notice: func() string {
@@ -193,11 +277,10 @@ func asleep(live *Agent, d distro) *Agent {
 			}
 			return "WSL " + d.Name + " isn't running: magpie shows what it last saw there, and starts it only to change something."
 		}}
-	own := func() []Option { return group("OpenAI", options(ownCodex(), "")) }
 	for _, lf := range live.Fields {
 		key, set := lf.Key, lf.Set
 		f := Field{Key: key, Label: lf.Label, Quiet: lf.Quiet, Options: lf.Options,
-			Get: func() string { return wslLastSeen(d.Name, key) },
+			Get: func() string { return wslLastSeen(d.Name, k.memo(key)) },
 			Set: func(v string) error {
 				// opening a stopped distro's files is aborted rather than
 				// waiting for it to start, so it is started first
@@ -208,20 +291,14 @@ func asleep(live *Agent, d distro) *Agent {
 				err := set(v)
 				// a model settles the effort too
 				for _, f := range live.Fields {
-					wslRemember(d.Name, f.Key, f.Get())
+					wslRemember(d.Name, k.memo(f.Key), f.Get())
 				}
 				wslSave()
 				return err
 			}}
-		switch key {
-		case "model", "subagent":
-			f.Options = func(map[string]string) []Option { return append(own(), viaMagpieFor("codex", "")...) }
-		case "effort":
-			f.Options = func(cur map[string]string) []Option {
-				if e := catalog.Efforts(append(catalog.Codex(), magpieModels("codex")...), cur["model"]); len(e) > 0 {
-					return static(e...)
-				}
-				return static("low", "medium", "high", "xhigh")
+		if k.asleep != nil {
+			if o := k.asleep(key); o != nil {
+				f.Options = o
 			}
 		}
 		a.Fields = append(a.Fields, f)
@@ -240,17 +317,19 @@ func wslAgents() []*Agent {
 func wslAgentsOf(ds []distro) []*Agent {
 	var out []*Agent
 	for _, d := range ds {
-		// only where Codex is: magpie writes nothing into a distro without it
-		if a := wslCodex(d); a.Detected() {
-			out = append(out, a)
+		// only the agents it has: magpie writes nothing for one that isn't there
+		for _, k := range wslKinds {
+			if a := wslAgent(k, d); a.Detected() {
+				out = append(out, a)
+			}
 		}
 	}
 	return out
 }
 
 // Only running distros are probed — asking one anything starts it — once
-// each in a process, and again only after a probe that failed. Those Codex
-// was found in are kept in wsl.json beside magpie's settings (not the
+// each in a process, and again only after a probe that failed. Those an
+// agent of wslKinds was found in are kept in wsl.json beside magpie's settings (not the
 // stash, which profiles and backups carry), with their fields as last
 // read, so a stopped one is listed without being started.
 var wsl struct {
@@ -319,7 +398,7 @@ func wslDistros() []distro {
 					wsl.failed[n] = time.Now()
 				} else {
 					wsl.probed[n] = true
-					if d.Has["dir:.codex"] || d.Has["bin:codex"] {
+					if wslFound(*d) {
 						if old := wsl.seen[n]; old != nil {
 							d.Values = old.Values
 						}
@@ -399,12 +478,17 @@ func wslList(args ...string) (names []string, ok bool) {
 	return parseDistros(b), true
 }
 
-// wslProbeScript prints the distro's home, what of Codex it has, and its
-// default route (the Windows host under NAT).
-const wslProbeScript = `echo "home:$HOME"; [ -d "$HOME/.codex" ] && echo dir:.codex; ` +
-	`command -v codex >/dev/null 2>&1 && echo bin:codex; ` +
-	`ip route show default 2>/dev/null | head -n1 | sed 's/^/route:/'; ` +
-	`grep -m1 '^nameserver' /etc/resolv.conf 2>/dev/null | sed 's/^/ns:/'; true`
+// wslProbeScript prints the distro's home, what of each of wslKinds it
+// has, and its default route (the Windows host under NAT).
+var wslProbeScript = func() string {
+	s := `echo "home:$HOME"; `
+	for _, k := range wslKinds {
+		s += `[ -d "$HOME/` + k.dir + `" ] && echo dir:` + k.dir + `; ` +
+			`command -v ` + k.bin + ` >/dev/null 2>&1 && echo bin:` + k.bin + `; `
+	}
+	return s + `ip route show default 2>/dev/null | head -n1 | sed 's/^/route:/'; ` +
+		`grep -m1 '^nameserver' /etc/resolv.conf 2>/dev/null | sed 's/^/ns:/'; true`
+}()
 
 func wslProbe(name string) *distro {
 	b, err := wslRun(30*time.Second, "-d", name, "-e", "sh", "-lc", wslProbeScript)
@@ -415,7 +499,7 @@ func wslProbe(name string) *distro {
 	if d == nil {
 		return nil
 	}
-	if d.Has["dir:.codex"] || d.Has["bin:codex"] {
+	if wslFound(*d) {
 		d.Root = wslRoot(name)
 	}
 	return d
