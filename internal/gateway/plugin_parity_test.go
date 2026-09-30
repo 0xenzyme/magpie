@@ -87,3 +87,34 @@ func TestMovedCountTokensEstimated(t *testing.T) {
 		t.Fatalf("the vendor was asked to count: %v, %d", asked, got.InputTokens)
 	}
 }
+
+// thoughtChat is a fast request with an assistant turn that reasoned, and
+// chatBody the chat request built of it for host.
+var thoughtChat = &Request{Fast: true, Messages: []Message{
+	{Role: "user", Parts: []Part{{Kind: Text, Text: "hi"}}},
+	{Role: "assistant", Parts: []Part{{Kind: Thinking, Text: "pondered"}, {Kind: Text, Text: "hello"}}},
+	{Role: "user", Parts: []Part{{Kind: Text, Text: "again"}}},
+}}
+
+func chatBody(t *testing.T, host string) map[string]any {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal(buildChat(thoughtChat, "m", host, false), &m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// Cursor moved onto its plugin is told fast mode as the built-in told
+// Cursor: its plugin reads the chat request's service_tier. No other
+// chat upstream is told it.
+func TestCursorPluginFast(t *testing.T) {
+	if m := chatBody(t, "cursor"); m["service_tier"] != "priority" {
+		t.Errorf("Cursor's plugin wasn't told fast: %v", m["service_tier"])
+	}
+	for _, host := range []string{"api.openai.com", "openrouter.ai", "zed", "api.deepseek.com", provider.CommandCodePlanID} {
+		if m := chatBody(t, host); m["service_tier"] != nil {
+			t.Errorf("%s was told a service tier", host)
+		}
+	}
+}

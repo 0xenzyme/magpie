@@ -294,6 +294,11 @@ func buildChat(r *Request, model, host string, rejectTemp bool) []byte {
 	if r.Stream {
 		out["stream_options"] = map[string]any{"include_usage": true}
 	}
+	// Cursor's plugin reads fast mode here, as the built-in told Cursor;
+	// another's chat upstream may not know the tier
+	if r.Fast && host == "cursor" {
+		out["service_tier"] = "priority"
+	}
 	if r.MaxTokens > 0 {
 		if strings.HasSuffix(host, "openai.com") {
 			out["max_completion_tokens"] = r.MaxTokens
