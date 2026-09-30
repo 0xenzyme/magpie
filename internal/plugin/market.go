@@ -405,3 +405,35 @@ func Upgrade(ctx context.Context, name string) error {
 	}
 	return fmt.Errorf("no plugin %q", name)
 }
+
+// Icon is the icon the market gives the plugin spec, or else any listed
+// plugin signing in to provider id; "" when none does. It never goes to
+// the network: the list fetched last, else the cached copy, else the one
+// built in.
+func Icon(spec, id string) string {
+	marketMu.Lock()
+	l := marketList
+	marketMu.Unlock()
+	if l == nil {
+		if b, err := os.ReadFile(marketCache()); err == nil {
+			l, _ = parseMarket(b)
+		}
+		if l == nil {
+			l, _ = parseMarket(builtinMarket)
+		}
+	}
+	pkg := Name(spec)
+	for _, x := range l {
+		if x.Package == pkg && x.Icon != "" {
+			return x.Icon
+		}
+	}
+	for _, x := range l {
+		for _, p := range x.Providers {
+			if p == id && x.Icon != "" {
+				return x.Icon
+			}
+		}
+	}
+	return ""
+}

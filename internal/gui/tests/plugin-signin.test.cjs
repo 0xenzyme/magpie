@@ -14,7 +14,8 @@ const { chromium, webkit } = require("playwright");
 const assets = path.resolve(__dirname, "../assets");
 
 const plugin = { id: "fakeco", pid: "fakeco", name: "FakeCo", icon: "generic", spec: "opencode-fakeco-auth", signedIn: false, models: 3,
-  methods: [{ type: "api", label: "API key" }, { type: "oauth", label: "Browser sign-in" }] };
+  methods: [{ type: "api", label: "API key" }, { type: "oauth", label: "Browser sign-in" },
+    { type: "api", label: "Paste an existing FakeCo session token from another device you are signed in on" }] };
 
 function server(lang, asked) {
   let signedIn = false;
@@ -87,6 +88,15 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await box.locator(".n", { hasText: w.how }).waitFor();
         if (process.env.ARTIFACT_DIR) await sheet.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `plugin-method-${engine}-${lang}.png`) });
         assert.equal(asked.length, 0, "nothing asked before the way is picked");
+        // however long the plugin names its ways, the question keeps its
+        // line and every way stays inside the box
+        const fit = await box.evaluate((b) => {
+          const r = b.getBoundingClientRect(), n = b.querySelector(".tt").getBoundingClientRect();
+          return { question: n.width / r.width, spill: [...b.querySelectorAll(".choices button")].map((x) => x.getBoundingClientRect().right - r.right) };
+        });
+        assert.ok(fit.question > 0.5, "the question squeezed to " + fit.question);
+        assert.equal(fit.spill.length, 3);
+        for (const s of fit.spill) assert.ok(s <= 0, "a way runs past the box by " + s);
         await box.locator("button", { hasText: "Browser sign-in" }).click();
         await box.locator(".n", { hasText: "Where do you work?" }).waitFor();
         await box.locator("button", { hasText: "Work" }).click();

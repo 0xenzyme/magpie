@@ -4975,12 +4975,13 @@ function renderPluginAsk(sub) {
   if (signing.state === "method") {
     tt.append(el("span", "n", t("How do you sign in to {name}?", { name: sub.name })),
       el("span", "s", t("The plugin {spec} signs in and sends {name}'s requests; magpie only passes them on.", { spec: sub.plugin.spec, name: sub.name })));
-    box.append(close);
+    const ch = el("div", "choices");
+    box.append(close, ch);
     sub.plugin.methods.forEach((m, i) => {
       const b = el("button", "text primary", m.label || t(m.type === "api" ? "API key" : "Browser"));
       b.dataset.method = String(i);
       b.onclick = () => startPluginSignIn(sub, i);
-      box.append(b);
+      ch.append(b);
     });
     return box;
   }
@@ -4990,12 +4991,13 @@ function renderPluginAsk(sub) {
   const why = el("span", "s why", flow.error || "");
   if (flow.state === "prompt" && q.type === "select") {
     tt.append(el("span", "n", q.message), why);
-    box.append(close);
+    const ch = el("div", "choices");
+    box.append(close, ch);
     for (const o of q.options || []) {
       const b = el("button", "text primary", o.label);
       if (o.hint) b.title = o.hint;
       b.onclick = () => pluginAnswer(sub, o.value);
-      box.append(b);
+      ch.append(b);
     }
     return box;
   }

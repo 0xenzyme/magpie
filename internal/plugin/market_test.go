@@ -72,3 +72,23 @@ func TestMarketSources(t *testing.T) {
 	}
 	reset()
 }
+
+// A plugin's provider shows its vendor's icon: the one its package is
+// listed with, else that of a listed plugin for the same provider.
+func TestMarketIcon(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	marketMu.Lock()
+	marketList = nil
+	marketMu.Unlock()
+	for _, c := range []struct{ spec, id, want string }{
+		{"@cognitionai/opencode-devin@0.3.1", "devin", "devin"},
+		{"opencode-antigravity-auth", "google", "antigravity-color"},
+		{"/Users/me/plugins/packages/zed", "zed", "zed"},
+		{"some-unlisted-plugin", "commandcode-plan", "commandcode"},
+		{"some-unlisted-plugin", "nobody", ""},
+	} {
+		if got := Icon(c.spec, c.id); got != c.want {
+			t.Errorf("Icon(%q, %q) = %q, want %q", c.spec, c.id, got, c.want)
+		}
+	}
+}

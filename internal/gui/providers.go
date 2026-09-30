@@ -274,7 +274,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		if pp, ok := provider.PluginOf(p.ID); ok && p.IsPlugin() {
 			// a plugin's sign-in: named for the provider it signs in to,
 			// the page following it by the provider's id
-			out.Account.Agent, out.Account.Name, out.Account.Icon = p.ID, pp.Name, pluginIcon(pp.ID)
+			out.Account.Agent, out.Account.Name, out.Account.Icon = p.ID, pp.Name, pluginIcon(pp.Spec, pp.ID)
 			out.Account.Logins = nil
 		}
 	}
