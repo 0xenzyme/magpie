@@ -846,7 +846,9 @@ func placeMoved(out, plugins []Provider) []Provider {
 			rest = append(rest, p)
 			continue
 		}
-		i := slices.IndexFunc(out, func(q Provider) bool { return !q.IsPlugin() && at(q.ID) > at(p.ID) })
+		// moved ones placed already count too: two moved in the plugins'
+		// order (WorkBuddy AI before WorkBuddy) keep the built-ins'
+		i := slices.IndexFunc(out, func(q Provider) bool { return at(q.ID) > at(p.ID) })
 		if i < 0 {
 			i = len(out)
 		}
