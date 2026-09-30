@@ -5273,7 +5273,7 @@ function renderSigning(sub) {
   if (signing.pasteCallback || signing.pasteCode) {
     const flow = signing;
     const what = flow.pasteCode ? t("Code") : t("Callback URL");
-    if (!flow.pasteCode) tt.append(el("span", "s", t("If the browser cannot return to magpie, paste its final callback URL here.")));
+    if (!flow.pasteCode) tt.append(el("span", "s", t("If the page the browser ends on won't load (magpie runs on a server or in Docker), copy its whole address and paste it here.")));
     const form = el("form", "callback-form");
     const url = input(flow.callbackURL || "", what);
     url.setAttribute("aria-label", what);

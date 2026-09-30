@@ -486,11 +486,15 @@ API key, and only then publish the port beyond 127.0.0.1.
 For the browser UI run the image with `magpie web --addr 0.0.0.0:3430 --no-open`
 in place of the default `serve`, and open
 `http://localhost:3430/?k=<key from docker logs magpie>` (set `MAGPIE_WEB_KEY`
-to keep one key across restarts). There you add providers and import
-sign-ins from a file; a subscription sign-in started in the container cannot
-finish, because the vendor sends the browser back to the container's own
-loopback, so sign in on a machine where magpie runs with a browser. Keys and
-sign-ins live in the volume, so a restart keeps them.
+to keep one key across restarts). There you add providers, sign in to
+subscriptions and import sign-ins from a file. The vendor sends a sign-in's
+browser back to `localhost` (ChatGPT to `http://localhost:1455/auth/callback?code=…`),
+which is your own machine, not the container, so that page won't load: copy
+its whole address from the address bar and paste it into the sign-in's
+*Callback URL* field. `docker exec -it magpie /magpie accounts add codex`
+does the same in a terminal: open the link it prints, then paste the address
+the browser ended on. Keys and sign-ins live in the volume, so a restart
+keeps them.
 
 ### Developing
 

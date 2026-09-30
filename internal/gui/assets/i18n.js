@@ -434,7 +434,7 @@ const I18N = {
     "Sign-in link": "登录链接",
     "Account in use": "正在使用的账号",
     "Open it in another browser or profile: copy it there": "要用其他浏览器或浏览器配置登录，复制此链接到那里打开",
-    "If the browser cannot return to magpie, paste its final callback URL here.": "如果浏览器无法返回 magpie，请在此粘贴浏览器最终跳转的回调 URL。",
+    "If the page the browser ends on won't load (magpie runs on a server or in Docker), copy its whole address and paste it here.": "如果登录后浏览器停在打不开的页面（magpie 运行在服务器或 Docker 里），请把那个页面的完整地址复制并粘贴到这里。",
     "Callback URL": "回调 URL",
     "Finish sign-in": "完成登录",
     "1 provider to bring over": "有 1 个供应商可导入",
