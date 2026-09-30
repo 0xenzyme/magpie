@@ -439,14 +439,15 @@ func Run(version string, showMain bool, link string) error {
 }
 
 // singleInstance makes a second launch hand over to this one, off the Mac.
-// The id covers the executable and the config dir, so a build elsewhere or
-// a sandboxed HOME runs on its own.
+// The id covers the config dir, so a sandboxed HOME runs on its own, but
+// not the executable: two copies of magpie on one config (one autostarted
+// from where it was first run, another from where it was put later) would
+// share the gateway's port and put two icons in the tray.
 func singleInstance(h *host) *application.SingleInstanceOptions {
 	if runtime.GOOS == "darwin" || !sessionBus() {
 		return nil
 	}
-	exe, _ := os.Executable()
-	sum := sha256.Sum256([]byte(exe + "\x00" + settings.Dir()))
+	sum := sha256.Sum256([]byte(settings.Dir()))
 	return &application.SingleInstanceOptions{
 		UniqueID: "ai.usemagpie.app.i" + hex.EncodeToString(sum[:6]),
 		OnSecondInstanceLaunch: func(d application.SecondInstanceData) {
