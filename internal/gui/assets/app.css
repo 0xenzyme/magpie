@@ -1442,6 +1442,9 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .editor .side .text { padding: 3px 6px; }
 .editor .headers .pair .side .text { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border-radius: 6px; }
 .editor .stack { display: flex; flex-direction: column; gap: 6px; }
+.editor .move { align-items: flex-start; font-size: 12px; line-height: 1.5; padding-top: 4px; }
+.editor .move .hint { margin-top: 0; }
+.editor .move > button { padding-left: 0; padding-right: 0; }
 .editor .headers { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .editor .headers .pair { width: 100%; }
 .editor .headers .hadds { display: flex; flex-wrap: wrap; gap: 2px 12px; }

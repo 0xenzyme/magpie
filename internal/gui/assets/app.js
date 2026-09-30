@@ -2843,7 +2843,7 @@ function renderAdd() {
       return grid;
     };
     let any = false;
-    const subs = SUBS.filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "subscription".includes(f));
+    const subs = SUBS.filter((x) => !(providers.onPlugins || []).includes(x.agent)).filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "subscription".includes(f));
     if (subs.length) {
       any = true;
       const grid = section("Subscriptions", "sign in, no key");
@@ -3656,6 +3656,7 @@ function drawEditor(p, presetID) {
     if (subOf(a.agent)) {
       ed.append(...field(t("Accounts"), renderAccounts(a), p.routing ? t("Tick every account to use; Routing says how requests spread over them.") : subOf(a.agent).single ? t("{agent} keeps one account; the gateway runs it for every request. Signing in to another replaces it.", { agent: a.agentName }) : subOf(a.agent).plugin ? t("The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota.") : subOf(a.agent).own ? t("The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota. {agent} itself stays signed in as it is.", { agent: a.agentName }) : t("{agent} signs in to the first. Tick more and the gateway moves on to the next when the one before it is out of quota. Sessions already running keep theirs until restarted.", { agent: a.agentName })));
       if ((a.logins || []).filter((l) => l.active || l.on).length > 1) ed.append(...renderRouting(p));
+      if (p.move) ed.append(...renderMove(p));
     } else {
       const acct = el("div", "acct");
       acct.append(icon(a.agentIcon), el("span", "n", a.user), el("span", "plan", accountPlan(a)));
@@ -5880,6 +5881,27 @@ function respellURL(u, api) {
   u = u.trim().replace(/\/+$/, "");
   if (api === "anthropic") return u.replace(/\/v1$/, "");
   return /\/v\d+[a-z]*$/.test(u) || !/^https?:\/\/[^/]+$/.test(u) ? u : u + "/v1";
+}
+
+// renderMove: a built-in subscription a community plugin can run — which
+// of the two runs it, and the way to the other. Accounts, models and the
+// agents on them stay as they are either way.
+function renderMove(p) {
+  const m = p.move;
+  const box = el("div", "stack move");
+  const onPlugin = m.state === "plugin";
+  box.append(el("div", "", onPlugin
+    ? t("The community plugin {pkg}, with the accounts you had here.", { pkg: m.package })
+    : t("magpie's built-in sign-in. The community plugin {pkg} can run it instead, with the same accounts and models.", { pkg: m.package })));
+  if (m.state === "failed" && m.error) box.append(el("div", "hint", t("The last move didn't go through, so it stays built-in: {error}", { error: m.error })));
+  const b = el("button", "text", onPlugin ? t("Use the built-in again") : t("Move to the plugin"));
+  b.onclick = () => {
+    b.classList.add("busy");
+    b.disabled = true;
+    providerAction(onPlugin ? "moveback" : "move", { id: p.id }, onPlugin ? t("{name} is built-in again", { name: p.name }) : t("{name} runs on its plugin now", { name: p.name }));
+  };
+  box.append(b);
+  return field(t("Runs on"), box, onPlugin ? t("Going back puts every account, with the plugin's newer sign-ins, back into the built-in.") : t("If an account doesn't work through the plugin, nothing changes."));
 }
 
 async function providerAction(action, body, okMsg, base = "provider/") {

@@ -401,3 +401,63 @@ func init() {
 		optMu.Unlock()
 	})
 }
+
+// Import keeps auth (a plugin-auth.json entry) as one more of provider's
+// accounts — or, the same account as one kept already, in its place — and
+// gives the account's key. The plugin's host is started for it: it alone
+// writes the file while it runs.
+func Import(ctx context.Context, provider string, auth map[string]any) (string, error) {
+	var r struct {
+		Account string `json:"account"`
+	}
+	if err := Call(ctx, "import", map[string]any{"provider": provider, "auth": auth}, &r); err != nil {
+		return "", err
+	}
+	return r.Account, nil
+}
+
+// Check tries one of provider's accounts as a request would — its auth
+// loader, then its models as the plugin lists them for it — and gives the
+// model ids.
+func Check(ctx context.Context, provider, account string) ([]string, error) {
+	var r struct {
+		Models []string `json:"models"`
+	}
+	if err := Call(ctx, "check", map[string]any{"provider": provider, "account": account}, &r); err != nil {
+		return nil, err
+	}
+	return r.Models, nil
+}
+
+// Auths are provider's sign-ins as plugin-auth.json keeps them, by key.
+func Auths(provider string) map[string]map[string]any {
+	var m map[string]map[string]any
+	if b, err := os.ReadFile(AuthPath()); err == nil {
+		_ = json.Unmarshal(b, &m)
+	}
+	out := map[string]map[string]any{}
+	for k, v := range m {
+		if ProviderOf(k) == provider {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// Take gives provider's accounts named by keys (every one when there are
+// none) and signs them out in one step, so the plugin renews none of their
+// tokens after it gave them.
+func Take(ctx context.Context, provider string, keys []string) (map[string]map[string]any, error) {
+	var r struct {
+		Auths map[string]map[string]any `json:"auths"`
+	}
+	if err := Call(ctx, "take", map[string]any{"provider": provider, "accounts": keys}, &r); err != nil {
+		return nil, err
+	}
+	return r.Auths, nil
+}
+
+// Restore puts auth back as provider's account key.
+func Restore(ctx context.Context, provider, key string, auth map[string]any) error {
+	return Call(ctx, "import", map[string]any{"provider": provider, "key": key, "auth": auth}, nil)
+}

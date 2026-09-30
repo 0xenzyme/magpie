@@ -52,6 +52,19 @@ export const FakePlugin = async ({ client }) => ({
       },
     }),
   },
+  // the models an account has: refused for a dead one; a "rot-" sign-in
+  // spends its refresh token asking, as a rotating one does
+  provider: {
+    id: "fakeco",
+    models: async (p, { auth }) => {
+      if (auth?.refresh === "r-dead" || auth?.key === "dead") throw new Error("the vendor refused the sign-in")
+      if (auth?.type === "oauth" && auth.refresh?.startsWith("rot-")) {
+        await client.auth.set({ path: { id: "fakeco" }, body: { ...auth, refresh: auth.refresh + "+" } })
+      }
+      if (auth?.key === "few") return { "fake-1": p.models["fake-1"] }
+      return p.models
+    },
+  },
   "chat.headers": async (input, output) => {
     if (input.model.providerID === "fakeco") output.headers["x-plugin-model"] = input.model.id
   },

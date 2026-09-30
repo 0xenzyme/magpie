@@ -391,7 +391,10 @@ function fromModelsDev(p, m) {
 // info is the provider as OpenCode builds it: models.dev's entry, what
 // the config (with the plugins' config hooks) says of it, the plugin's
 // provider.models hook.
-async function info(id, key) {
+// info is what OpenCode knows of provider id, its models as the plugin
+// lists them for account key (the first when none); strict fails where the
+// plugin's list does, rather than keeping the list it was given.
+async function info(id, key, strict) {
   const md = mdev()[id]
   const cfg = config.provider?.[id]
   const out = {
@@ -433,9 +436,11 @@ async function info(id, key) {
     if (ph?.id !== id || typeof ph.models !== "function") continue
     try {
       const all = readAuth()
-      const next = await ph.models(JSON.parse(JSON.stringify(out)), { auth: all[key ?? accountsOf(all, id)[0] ?? id] })
+      const k = key ?? accountsOf(all, id)[0] ?? id
+      const next = await inScope(id, k, () => ph.models(JSON.parse(JSON.stringify(out)), { auth: all[k] }))
       out.models = Object.fromEntries(Object.entries(next ?? {}).map(([k, m]) => [k, { ...m, id: k, providerID: id }]))
     } catch (e) {
+      if (strict) throw e
       send({ event: "log", level: "error", message: `${h.spec}: provider.models: ${e?.message ?? e}` })
     }
   }
@@ -703,6 +708,39 @@ const handlers = {
   callback,
   apiKey,
   load,
+  // check tries one account as a request would: its loader, then its
+  // models as the plugin lists them for it
+  async check(p) {
+    const key = accountKey(p.provider, p.account)
+    await load({ provider: p.provider, account: key })
+    const pi = await info(p.provider, key, true)
+    return { models: Object.keys(pi.models) }
+  },
+  // import keeps a sign-in made elsewhere (a built-in subscription's, moved
+  // onto its plugin) as one more account, or as the account it already is
+  // import keeps a sign-in made elsewhere as one of provider's accounts;
+  // with a key, as that account again (one taken back)
+  import(p) {
+    if (p.key && providerOf(p.key) === p.provider) {
+      setAuth(p.key, p.auth)
+      return { account: p.key }
+    }
+    const key = freshKey(p.provider)
+    setAuth(key, p.auth)
+    return { account: settle(p.provider, key) }
+  },
+  // take gives the accounts named (else every account of the provider) and
+  // forgets them in one step: nothing renews a token between the two
+  take(p) {
+    const all = readAuth()
+    const out = {}
+    for (const k of p.accounts?.length ? p.accounts : accountsOf(all, p.provider)) {
+      if (!(k in all)) continue
+      out[k] = all[k]
+      removeAuth(k)
+    }
+    return { auths: out }
+  },
   // signOut forgets the account named, else every account of the provider
   signOut(p) {
     const keys = p.account ? [p.account] : accountsOf(readAuth(), p.provider)

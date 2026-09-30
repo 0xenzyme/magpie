@@ -275,6 +275,8 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	go provider.KeepClaudeWindowsWarm(ctx, warmClaude)
 	// and checks the WorkBuddy accounts in for the day's credits
 	go provider.KeepWorkBuddyCheckedIn(ctx)
+	// and moves the built-in subscriptions being retired onto their plugins
+	go provider.KeepRetiringMoved(ctx)
 	for _, f := range WhileServing {
 		go f(ctx)
 	}

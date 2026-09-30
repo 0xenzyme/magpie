@@ -32,8 +32,12 @@ const ConversationHeader = "X-Magpie-Conversation"
 
 // PluginID is the id magpie gives the provider OpenCode calls id: the same,
 // unless a preset or a built-in subscription has it (google, openai,
-// anthropic), when it is id-plugin.
+// anthropic), when it is id-plugin — but for a built-in moved onto the
+// plugin, whose id the plugin has now.
 func PluginID(id string) string {
+	if Moved(id) {
+		return id
+	}
 	if slices.Contains(accountIDs, id) || Preset(id) != nil || id == "magpie" {
 		return id + "-plugin"
 	}
@@ -58,6 +62,9 @@ func PluginOf(id string) (plugin.Provider, bool) {
 func pluginAccounts() []Provider {
 	var out []Provider
 	for _, pp := range plugin.Cached() {
+		if movingNow(pp.ID) {
+			continue // shown once the move is through (migrate.go)
+		}
 		if ls := pluginLogins(pp); len(ls) > 0 {
 			out = append(out, pluginProvider(pp, ls[0].acct, ls[0].User))
 		}
