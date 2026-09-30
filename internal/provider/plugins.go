@@ -314,9 +314,32 @@ func pluginFetch(pp plugin.Provider, account string, req *http.Request) (*http.R
 		Headers: h, Body: body, Session: req.Header.Get(ConversationHeader),
 	})
 	if err == nil {
-		notePluginLapse(pp, account, resp.StatusCode)
+		notePluginSignIn(pp, account, resp)
 	}
 	return resp, err
+}
+
+// SignInHeader is how a plugin says what its answer means for the
+// account's sign-in, whatever its status, so it can answer with the
+// status its built-in did: "expired" marks the account lapsed, as a
+// built-in whose vendor refused the sign-in marked it, though the status
+// be a 502; "kept" leaves the account as it is, as a built-in answering a
+// 401 of the vendor's without its sign-in refused did. Without it a 401
+// marks the account and a success clears the mark.
+const SignInHeader = "X-Magpie-Sign-In"
+
+// notePluginSignIn marks or clears an account's lapse as the plugin's
+// answer says, and takes SignInHeader off it.
+func notePluginSignIn(pp plugin.Provider, account string, resp *http.Response) {
+	said := strings.ToLower(strings.TrimSpace(resp.Header.Get(SignInHeader)))
+	resp.Header.Del(SignInHeader)
+	switch said {
+	case "expired":
+		notePluginLapse(pp, account, http.StatusUnauthorized)
+	case "kept":
+	default:
+		notePluginLapse(pp, account, resp.StatusCode)
+	}
 }
 
 func modelAPIID(m plugin.Model) string {

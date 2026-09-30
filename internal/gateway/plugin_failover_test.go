@@ -240,3 +240,90 @@ func contains(xs []string, x string) bool {
 	}
 	return false
 }
+
+// A plugin answers with the status its built-in did and says apart what
+// it means for the sign-in: a 502 of a refused renewal marks the account
+// lapsed, as the built-in's did; a 401 the built-in didn't take for a
+// refused sign-in leaves it be. The agent never sees the header.
+func TestPluginSaysSignIn(t *testing.T) {
+	bun, err := exec.LookPath("bun")
+	if err != nil {
+		t.Skip("no bun on PATH")
+	}
+	fresh(t)
+	t.Setenv("MAGPIE_BUN", bun)
+	t.Cleanup(plugin.Settle)
+
+	var mu sync.Mutex
+	status, said := 200, ""
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.ReadAll(r.Body)
+		mu.Lock()
+		st, sa := status, said
+		mu.Unlock()
+		if sa != "" {
+			w.Header().Set(provider.SignInHeader, sa)
+		}
+		if st != 200 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(st)
+			fmt.Fprint(w, `{"error":{"message":"the vendor said no"}}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, `data: {"id":"c","object":"chat.completion.chunk","model":"fake-1","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`+"\n\ndata: [DONE]\n\n")
+	}))
+	defer up.Close()
+	t.Setenv("FAKE_BASE", up.URL+"/v1")
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	abs, _ := filepath.Abs("../plugin/testdata/fake/index.js")
+	if _, err := plugin.Add(ctx, abs); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plugin.Providers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plugin.APIKey(ctx, "fakeco", 0, nil, "k1", plugin.NewAccount); err != nil {
+		t.Fatal(err)
+	}
+	s := New()
+	lapsed := func() string {
+		for _, l := range provider.Logins("fakeco") {
+			return l.Lapsed
+		}
+		return "?"
+	}
+	for _, c := range []struct {
+		status int
+		said   string
+		lapsed bool
+	}{
+		{502, "expired", true}, // a refused renewal the built-in answered 502
+		{200, "", false},       // a request through takes the mark off
+		{401, "kept", false},   // a 401 the built-in didn't take for a lapse
+		{401, "", true},        // a plugin that says nothing: a 401 is a lapse
+		{200, "kept", true},    // kept is kept, the mark too
+		{200, "", false},
+	} {
+		mu.Lock()
+		status, said = c.status, c.said
+		mu.Unlock()
+		restingUntil.Lock()
+		restingUntil.m = map[string]time.Time{}
+		restingUntil.Unlock()
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest("POST", "/v1/chat/completions",
+			strings.NewReader(`{"model":"fakeco/fake-1","messages":[{"role":"user","content":"hello"}]}`)))
+		if rec.Header().Get(provider.SignInHeader) != "" {
+			t.Fatalf("%d %s: the agent was handed the plugin's header", c.status, c.said)
+		}
+		if got := lapsed() != ""; got != c.lapsed {
+			t.Fatalf("%d %q: lapsed %v, want %v (%q; answered %d %s)", c.status, c.said, got, c.lapsed, lapsed(), rec.Code, rec.Body.String())
+		}
+		if c.status != 200 && rec.Code != c.status {
+			t.Fatalf("%d %q: the agent got %d", c.status, c.said, rec.Code)
+		}
+	}
+}
