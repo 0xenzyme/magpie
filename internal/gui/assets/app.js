@@ -916,7 +916,7 @@ async function openAgentModels(a, anchor, ev) {
       if (!rows.length) continue;
       const on = g.models.filter((m) => !m.hidden).length;
       const folded = !words && shut.has(g.name);
-      const sec = el("section", "am-g" + (folded ? " shut" : ""));
+      const sec = el("section", "am-g" + (folded ? " shut" : "") + (g.name === ROUTING_GROUPS ? " routes" : ""));
       const gh = el("div", "am-gh");
       const fold = el("button", "am-fold");
       fold.type = "button";
@@ -950,10 +950,19 @@ async function openAgentModels(a, anchor, ev) {
           if (m.inUse) n.append(el("span", "am-tag", t("Current")));
           const ck = el("span", "ck");
           if (!m.hidden) ck.append(svg("m3.5 8.5 3 3 6-7", 12, 1.9));
-          // its maker's logo; a group whose maker isn't known shows it is
-          // a route, anything else keeps the slot empty, so the names line up
-          const lg = m.logo ? icon(m.logo) : el("span", "ic");
-          if (!m.logo && g.name === ROUTING_GROUPS) lg.append(svg(FAN, 14, 1.5));
+          // a routing group: its providers' icons stacked, as everywhere
+          // else, a lone one in a disc like them; a model: its maker's
+          // logo, or an empty slot, so the names line up
+          const route = g.name === ROUTING_GROUPS;
+          let lg;
+          if (route && m.icons?.length > 1) lg = stackIcon(m.icons);
+          else if (route && m.icons?.length) {
+            const d = el("span", "disc");
+            d.append(icon(m.icons[0] || "generic"));
+            lg = el("span", "ic-stack");
+            lg.append(d);
+          } else lg = m.logo && !route ? icon(m.logo) : el("span", "ic");
+          if (route && !m.icons?.length) lg.append(svg(FAN, 14, 1.5));
           lg.classList.add("lg");
           r.append(lg, n, el("span", "x", ctxShort(m.context)), ck);
           if (m.inUse) r.setAttribute("aria-disabled", "true");
