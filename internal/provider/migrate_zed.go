@@ -13,7 +13,7 @@ import (
 func init() {
 	movers["zed"] = &mover{
 		pkg:    "@magpie-community/opencode-zed-auth",
-		min:    "0.1.4", // a failure before the answer keeps its status, as the built-in's
+		min:    "0.1.5", // a failure's status and its sign-in mark as the built-in's
 		agents: []string{"zed"},
 		out: func() ([]Moving, error) {
 			var out []Moving

@@ -13,7 +13,7 @@ import (
 func init() {
 	movers["factory"] = &mover{
 		pkg:    "@magpie-community/opencode-factory-auth",
-		min:    "0.1.3", // a refusal explained as the built-in's Explain joins it
+		min:    "0.1.4", // a failure's status and its sign-in mark as the built-in's
 		agents: []string{"factory"},
 		out: func() ([]Moving, error) {
 			ls := factoryLogins()

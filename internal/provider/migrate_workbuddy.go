@@ -16,7 +16,7 @@ func init() {
 	for _, w := range []*wbSite{wbCN, wbAI} {
 		movers[w.id] = &mover{
 			pkg:    "@magpie-community/opencode-workbuddy-auth",
-			min:    "0.1.4", // every refusal in words; a body in bytes read
+			min:    "0.1.5", // a failure's status and its sign-in mark as the built-in's
 			agents: []string{w.id},
 			out: func() ([]Moving, error) {
 				var out []Moving
