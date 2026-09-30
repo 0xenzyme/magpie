@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/filememo"
 )
 
@@ -123,6 +124,10 @@ func writeLogins(ls []savedLogin) error {
 // writePrivate replaces a file readable by the user alone, atomically, so
 // an agent reading it at that moment sees either version, never half.
 func writePrivate(path string, b []byte) error {
+	path, err := edit.Target(path) // a symlink stays, its target written
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
