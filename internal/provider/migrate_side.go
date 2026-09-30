@@ -17,7 +17,7 @@ import (
 func init() {
 	movers["devin"] = &mover{
 		pkg:    "@magpie-community/opencode-devin-auth",
-		min:    "0.1.3", // its windows named as the built-in's
+		min:    "0.1.4", // errors worded as the built-in's
 		agents: []string{"devin"},
 		out: func() ([]Moving, error) {
 			var out []Moving
@@ -131,7 +131,7 @@ func init() {
 
 	movers[CommandCodePlanID] = &mover{
 		pkg:    "@magpie-community/opencode-commandcode-auth",
-		min:    "0.1.3", // a Responses-only model asked on Responses
+		min:    "0.1.4", // an error's status and words as the built-in's
 		agents: []string{CommandCodePlanID},
 		out: func() ([]Moving, error) {
 			var out []Moving
@@ -202,7 +202,7 @@ func init() {
 	// the plugin reads cursor-agent's token as the built-in does.
 	movers["cursor"] = &mover{
 		pkg:    "@magpie-community/opencode-cursor-auth",
-		min:    "0.1.3", // the plan named as cursor-agent about does
+		min:    "0.1.4", // a bare error worded as the built-in's
 		agents: []string{"cursor"},
 		out: func() ([]Moving, error) {
 			if CursorExecutable() == "" || cursorSignedOut() {

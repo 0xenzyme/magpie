@@ -21,7 +21,7 @@ import (
 func init() {
 	movers["kiro"] = &mover{
 		pkg:    "@magpie-community/opencode-kiro-auth",
-		min:    "0.1.3", // only a sign-in truly gone is a 401
+		min:    "0.1.4", // an exception before the answer is a 429 or 502, as the built-in's
 		agents: []string{"kiro"},
 		out: func() ([]Moving, error) {
 			var out []Moving
