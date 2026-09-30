@@ -268,6 +268,14 @@ the app says Omarchy's bar isn't there; in English and Chinese.
 on Windows, macOS and Linux alike, beside the tabs; hidden in the Windows
 window, whose title bar has them; shown in the Mac window.
 
+`model-test-one.test.cjs` tests one model on its own from a provider's
+editor, in Chromium and WebKit, English and Chinese: a model chip's
+right-click opens "Test this model", which posts provider/test with that
+model alone; its dot and title show the answer, a second model's test keeps
+the first's, and the footer names the model. The right-click neither picks
+the chip nor moves the page, Esc closes the menu only, and Test models still
+asks every model. The API is faked.
+
 With Node.js and Playwright available:
 
 ```sh
