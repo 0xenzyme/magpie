@@ -1,11 +1,14 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/settings"
@@ -159,5 +162,92 @@ func TestAllLoginsMoved(t *testing.T) {
 	}
 	if strings.Join(got, ",") != "*zed:me@zed,zed:two@zed" {
 		t.Fatalf("every agent's accounts: %v", got)
+	}
+}
+
+// A moved Devin's sign-in goes as the built-in's did: the Devin CLI
+// installed first when it isn't there, the code the page asks about shown
+// to copy, and the account it signs in to named as the one in use.
+func TestMovedSignInAsBuiltIn(t *testing.T) {
+	bun, err := exec.LookPath("bun")
+	if err != nil {
+		t.Skip("no bun on PATH")
+	}
+	home := claudeHome(t)
+	t.Setenv("MAGPIE_BUN", bun)
+	t.Cleanup(plugin.Settle)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	dir := filepath.Join(home, "devin-plugin")
+	os.MkdirAll(dir, 0o755)
+	src := filepath.Join(dir, "index.js")
+	os.WriteFile(src, []byte(`export const P = async () => ({
+  config: async (cfg) => {
+    cfg.provider = cfg.provider ?? {}
+    cfg.provider.devin = { name: "Devin", npm: "@ai-sdk/openai-compatible", api: "https://fake.invalid/v1", models: { m: { name: "M" } } }
+  },
+  auth: {
+    provider: "devin",
+    methods: [{
+      type: "oauth",
+      label: "Devin (browser)",
+      authorize: async () => ({
+        url: "https://fake.invalid/device",
+        instructions: "Confirm the code ABCD-EFGH on Devin's page",
+        method: "auto",
+        callback: async () => {
+          await new Promise((r) => setTimeout(r, 300))
+          return { type: "success", refresh: "r", access: "a", expires: 0, accountId: "dev@fake" }
+        },
+      }),
+    }],
+  },
+})
+`), 0o644)
+	if _, err := plugin.Add(ctx, src); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plugin.Providers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := setMigration("devin", func(m *Migration) { m.State, m.Package = MovePlugin, src }); err != nil {
+		t.Fatal(err)
+	}
+	old := pluginOwnUser
+	pluginOwnUser = func(string) string { return "" }
+	t.Cleanup(func() { pluginOwnUser = old })
+	exe := filepath.Join(home, "bin", "devin")
+	oldExe := DevinExecutable
+	DevinExecutable = func() string {
+		if isFile(exe) {
+			return exe
+		}
+		return ""
+	}
+	t.Cleanup(func() { DevinExecutable = oldExe })
+	release := make(chan struct{})
+	oldRun := runInstaller
+	runInstaller = func(ctx context.Context, c agentCLI) ([]byte, error) {
+		<-release
+		os.MkdirAll(filepath.Dir(exe), 0o755)
+		return nil, os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755)
+	}
+	t.Cleanup(func() { runInstaller = oldRun })
+
+	st, err := StartPluginSignIn("devin", 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Agent != "devin" || st.State != "installing" || st.Installing != "Devin CLI" || st.URL != "" {
+		t.Fatalf("started %+v", st)
+	}
+	close(release)
+	st = waitPast(t, st.ID, "installing")
+	if st.State != "waiting" || st.URL != "https://fake.invalid/device" || st.Code != "ABCD-EFGH" {
+		t.Fatalf("after the install %+v", st)
+	}
+	st = waitPast(t, st.ID, "waiting")
+	if st.State != "done" || st.User != "dev@fake" || !st.Using {
+		t.Fatalf("finished %+v", st)
 	}
 }
