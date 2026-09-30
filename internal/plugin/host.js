@@ -499,7 +499,10 @@ async function info(id, key, strict) {
       // sign-in, as an answer's X-Magpie-Sign-In does: a built-in whose
       // model list the vendor refused marked the account
       if (["expired", "kept", "renewed"].includes(e?.signIn) && all[k]) send({ event: "signIn", provider: id, account: k, said: e.signIn })
-      if (strict) throw e
+      // strict (a move's check) fails on what the account can't do, but
+      // a sign-in the vendor refused isn't that: it is marked, as the
+      // built-in marked it, and goes along untried, as a lapsed one does
+      if (strict && !(e?.signIn === "expired" && all[k])) throw e
       send({ event: "log", level: "error", message: `${h.spec}: provider.models: ${e?.message ?? e}` })
     }
   }

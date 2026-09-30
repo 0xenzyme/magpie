@@ -639,6 +639,15 @@ func MoveBack(ctx context.Context, id string) error {
 		return ls
 	}
 	arrange := func(ls []savedLogin, users map[string]string) []savedLogin {
+		// an account the vendor refused through the plugin goes back
+		// marked, as the built-in had marked it: back writes the plugin's
+		// sign-in as one just made, but the plugin's mark is the newer word
+		lapsed := map[string]string{}
+		for _, l := range ls {
+			if u := users[l.Home]; l.Agent == "plugin:"+id && u != "" && l.Lapsed != "" {
+				lapsed[strings.ToLower(u)] = l.Lapsed
+			}
+		}
 		// the plugin's rows of the accounts going back go with them, or
 		// the accounts page lists each twice, the plugin's copy empty
 		ls = slices.DeleteFunc(ls, func(l savedLogin) bool {
@@ -660,6 +669,11 @@ func MoveBack(ctx context.Context, id string) error {
 						ls[j].On = on
 					}
 				}
+			}
+		}
+		for j := range ls {
+			if t := lapsed[strings.ToLower(ls[j].User)]; t != "" && slices.Contains(mv.agents, ls[j].Agent) && !ls[j].own() {
+				ls[j].Lapsed = t
 			}
 		}
 		if firstUser != "" {
