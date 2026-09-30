@@ -628,26 +628,31 @@ func (f *mcpFile) del(name string) error {
 // or only those under it, which putCodex writes inline instead.
 // Include child array tables (such as env_vars), which would otherwise
 // implicitly recreate the removed server.
+// Each is one edit of the file: a step that fails puts it back as it was.
 func delCodex(path, name string, self bool) error {
-	table := "mcp_servers." + name
-	if err := edit.SetTOMLTables(path, []string{table + "."}, nil); err != nil {
-		return err
-	}
-	if !self {
-		return nil
-	}
-	return edit.DelTOMLTable(path, table)
+	return edit.Atomically(func() error {
+		table := "mcp_servers." + name
+		if err := edit.SetTOMLTables(path, []string{table + "."}, nil); err != nil {
+			return err
+		}
+		if !self {
+			return nil
+		}
+		return edit.DelTOMLTable(path, table)
+	}, path)
 }
 
 func putCodex(path, name string, o ordered) error {
-	if err := delCodex(path, name, false); err != nil {
-		return err
-	}
-	var kvs []edit.KV
-	for _, e := range o {
-		kvs = append(kvs, edit.KV{Path: tomlKey(e.k), Value: edit.Raw(tomlValue(e.v))})
-	}
-	return edit.SetTOMLTable(path, "mcp_servers."+name, kvs...)
+	return edit.Atomically(func() error {
+		if err := delCodex(path, name, false); err != nil {
+			return err
+		}
+		var kvs []edit.KV
+		for _, e := range o {
+			kvs = append(kvs, edit.KV{Path: tomlKey(e.k), Value: edit.Raw(tomlValue(e.v))})
+		}
+		return edit.SetTOMLTable(path, "mcp_servers."+name, kvs...)
+	}, path)
 }
 
 func tomlString(s string) string {

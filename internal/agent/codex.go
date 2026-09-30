@@ -246,7 +246,7 @@ func codexIn(at place) *Agent {
 		return settle()
 	}
 
-	return &Agent{
+	return atomic(&Agent{
 		ID: "codex", Name: "Codex", Icon: "codex-color", Bin: "codex", Dir: dir, Path: path,
 		UA: []string{"codex"},
 		Sync: func() error {
@@ -413,7 +413,7 @@ func codexIn(at place) *Agent {
 				},
 			},
 		},
-	}
+	}, path, catalogPath)
 }
 
 func contains(xs []string, x string) bool {
