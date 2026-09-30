@@ -8961,6 +8961,7 @@ function renderTrayUsage(s, keep) {
   $("#quotaLeftSegs").replaceChildren(segs([[false, t("Used")], [true, t("Left")]], !!s.quotaLeft,
     (on) => { if (on !== quotaLeft) setQuotaLeft(on); }));
   $("#currencySegs").replaceChildren(segs(CURRENCIES.map(([id, name]) => [id, t(name)]), s.currency || "usd", (v) => savePrefs({ ...keep, currency: v })));
+  renderAlerts(s, keep);
   // the agents' lists name a model with its provider's after it, or alone
   // (#335): set on its own, so the agents are told
   $("#plainNamesSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.plainNames ? "off" : "on", (v) =>
@@ -9072,6 +9073,48 @@ function renderWarmAt(box, sub, at, onReset, via, save) {
     box.append(i);
   }
   box.append(segs([["off", t("Off")], ["on", t("On")]], at ? "on" : "off", (v) => save(v === "on" ? at || "06:00" : "")));
+}
+
+// renderAlerts draws the usage alerts (#368): a notification when a window
+// that routing counts reaches the share set, or a balance falls to the
+// amount set, each once; Off, or the number in a field beside On.
+function renderAlerts(s, keep) {
+  const problem = s.notifyProblem === "denied" ? t("Notifications are turned off for magpie in the system's settings")
+    : s.notifyProblem === "unavailable" ? t("Notifications can't be shown on this system") : "";
+  const sub = (id, what) => {
+    const box = $(id);
+    box.textContent = what;
+    box.title = what;
+    // the problem said whole, the line let wrap for it
+    box.classList.toggle("wraps", !!problem);
+    if (problem) box.append(" · ", el("span", "warn", problem));
+  };
+  sub("#usageAlertSub", t("A notification when a 5-hour, weekly or monthly window reaches this share used, once each time it runs"));
+  sub("#balanceAlertSub", t("A notification when a balance falls to this amount, in its own currency or credits, once until it is topped up"));
+  const field = (box, value, label, unit, ok, save) => {
+    box.replaceChildren();
+    if (value) {
+      const i = input(String(value), "", "number");
+      i.className = "at num";
+      i.inputMode = "decimal";
+      i.setAttribute("aria-label", label);
+      i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") i.blur(); };
+      i.onchange = () => {
+        const n = Number(i.value);
+        if (!ok(n)) { i.value = String(value); return; }
+        if (n !== value) save(n);
+      };
+      box.append(i);
+      if (unit) box.append(el("span", "unit", unit));
+    }
+    return box;
+  };
+  field($("#usageAlertSegs"), s.usageAlert || 0, t("Share used"), "%", (n) => Number.isInteger(n) && n >= 1 && n <= 100,
+    (n) => savePrefs({ ...keep, usageAlert: n }))
+    .append(segs([["off", t("Off")], ["on", t("On")]], s.usageAlert ? "on" : "off", (v) => savePrefs({ ...keep, usageAlert: v === "on" ? s.usageAlert || 80 : 0 })));
+  field($("#balanceAlertSegs"), s.balanceAlert || 0, t("Amount"), "", (n) => Number.isFinite(n) && n > 0,
+    (n) => savePrefs({ ...keep, balanceAlert: n }))
+    .append(segs([["off", t("Off")], ["on", t("On")]], s.balanceAlert ? "on" : "off", (v) => savePrefs({ ...keep, balanceAlert: v === "on" ? s.balanceAlert || 5 : 0 })));
 }
 
 // renderImages: the model that describes images to a model that can't see
@@ -9414,7 +9457,8 @@ function prefsKeep(s) {
     trayUsages: s.trayUsages || [],
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, noStats: !!s.noStats,
-    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, vision: s.vision || "", imageGen: s.imageGen || "", currency: s.currency || "usd" };
+    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, vision: s.vision || "", imageGen: s.imageGen || "", currency: s.currency || "usd",
+    usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };
 }
 
 // savePrefs sends what the page was drawn with (prefsBase) and the choice

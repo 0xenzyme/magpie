@@ -119,6 +119,15 @@ type Settings struct {
 	// QuotaLeft shows a subscription's windows by how much of each is left,
 	// not used: the Usage page, the tray panel and the menu bar alike.
 	QuotaLeft bool `json:"quotaLeft,omitempty"`
+	// UsageAlert is how much of a subscription's or plan's window, in
+	// percent, is used when magpie says so with a notification (#368):
+	// once for each time the window runs, for every window routing counts
+	// (not one set aside, as on-demand spending is); 0 is off.
+	UsageAlert int `json:"usageAlert,omitempty"`
+	// BalanceAlert is the balance a key or account has fallen to when
+	// magpie says so, in that balance's own currency or credits, once until
+	// it is topped up past it again; 0 is off.
+	BalanceAlert float64 `json:"balanceAlert,omitempty"`
 	// PlainNames has the model lists magpie gives agents name each model
 	// by its name alone, without its provider's or "routing group" after it
 	// (#335) — but for two in one list that would read the same, which keep
@@ -473,6 +482,12 @@ func Save(s Settings) error {
 	}
 	if !slices.Contains(TrayEvery, s.TrayUsageEvery) {
 		return fmt.Errorf("the menu bar's usage is refreshed every %v minutes, not %d", TrayEvery, s.TrayUsageEvery)
+	}
+	if s.UsageAlert < 0 || s.UsageAlert > 100 {
+		return fmt.Errorf("a usage alert is at a percentage from 1 to 100, or 0 for off, not %d", s.UsageAlert)
+	}
+	if math.IsNaN(s.BalanceAlert) || math.IsInf(s.BalanceAlert, 0) || s.BalanceAlert < 0 {
+		return fmt.Errorf("a balance alert is at an amount of 0 or more (0 for off), not %v", s.BalanceAlert)
 	}
 	if !slices.Contains(TextSizes, s.TextSize) {
 		return fmt.Errorf("text size must be one of %v percent, not %d", TextSizes, s.TextSize)

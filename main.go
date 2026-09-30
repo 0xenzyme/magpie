@@ -154,6 +154,11 @@ func run(args []string) error {
 		return runGUI(true, "")
 	case "tray":
 		return runGUI(false, "")
+	case "-Embedding":
+		// Windows starting magpie for a click on one of its notifications
+		// (a usage alert, #368) left in the Action Center after it quit:
+		// the window, on the Usage page
+		return runWindow("usage")
 	case "panel":
 		return runPanel()
 	case "autostart":

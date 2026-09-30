@@ -187,6 +187,9 @@ type settingsJSON struct {
 	WorkBuddyCheckins []provider.WorkBuddyCheckin `json:"workbuddyCheckins,omitempty"`
 	// FX is the dollar-to-yuan rate the cny currency choice shows costs at
 	FX fxJSON `json:"fx"`
+	// NotifyProblem is why a usage alert set wouldn't be seen: "denied"
+	// (notifications turned off for magpie) or "unavailable"
+	NotifyProblem string `json:"notifyProblem,omitempty"`
 }
 
 func settingsState() settingsJSON {
@@ -198,6 +201,9 @@ func settingsState() settingsJSON {
 		s.TerminalDefault = found.Default
 	}
 	s.FX = currentFX()
+	if (s.UsageAlert > 0 || s.BalanceAlert > 0) && notifyProblem != nil {
+		s.NotifyProblem = notifyProblem()
+	}
 	s.ProxyNow, s.ProxySource = netproxy.Describe()
 	s.Login = autostart.Enabled()
 	if s.LAN {
@@ -502,6 +508,12 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// the cards the menu bar shows, any of them (TrayUsage is only the first)
 		if (!slices.Equal(settings.Load().TrayUsages, cur.TrayUsages) || in.TrayUsageEvery != cur.TrayUsageEvery) && onTrayUsage != nil {
 			onTrayUsage()
+		}
+		// an alert turned on or moved is looked at now, the Mac asked for its
+		// leave to notify as it is turned on (#368)
+		if (in.UsageAlert != cur.UsageAlert || in.BalanceAlert != cur.BalanceAlert) &&
+			(in.UsageAlert > 0 || in.BalanceAlert > 0) && onAlerts != nil {
+			onAlerts()
 		}
 		// the tray menu follows the page's language (#301)
 		if in.Lang != cur.Lang && onLang != nil {
