@@ -709,6 +709,19 @@ function sdkHeaders(npm, key) {
   return { authorization: `Bearer ${key}` }
 }
 
+// bodyOf is the body as OpenCode hands it to a plugin's fetch: the string
+// the AI SDK built, as the plugins reshape only a string body. One that
+// isn't UTF-8 text stays bytes.
+function bodyOf(b64) {
+  if (!b64) return undefined
+  const b = Buffer.from(b64, "base64")
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(b)
+  } catch {
+    return b
+  }
+}
+
 async function doFetch(id, params) {
   const key = accountKey(params.provider, params.account)
   return inScope(params.provider, key, () => fetchAs(id, key, params))
@@ -750,7 +763,7 @@ async function fetchAs(id, key, { provider, model, npm, url, method, headers, bo
     const res = await f(url, {
       method: method ?? "POST",
       headers: h,
-      body: body ? Buffer.from(body, "base64") : undefined,
+      body: bodyOf(body),
       signal: ctl.signal,
     })
     const rh = {}

@@ -145,6 +145,10 @@ func TestFakePlugin(t *testing.T) {
 	if h.Get("Authorization") != "Bearer fresh-r-blue" || h.Get("X-Plugin-Model") != "fake-1" || h.Get("X-Models") != "fake-1,fake-claude,fake-gemini" {
 		t.Fatalf("headers = %v", h)
 	}
+	// the plugin's fetch got the body as a string, as OpenCode hands it
+	if h.Get("X-Body-Type") != "string" {
+		t.Fatalf("the plugin got a %s body", h.Get("X-Body-Type"))
+	}
 	b, _ = os.ReadFile(AuthPath())
 	json.Unmarshal(b, &saved)
 	if saved["fakeco"]["access"] != "fresh-r-blue" {

@@ -50,6 +50,7 @@ export const FakePlugin = async ({ client }) => ({
         const h = new Headers(init.headers)
         h.set("authorization", "Bearer " + (a.type === "oauth" ? a.access : a.key))
         h.set("x-models", Object.keys(provider.models).sort().join(","))
+        h.set("x-body-type", typeof init.body)
         return fetch(url, { ...init, headers: h })
       },
     }),
