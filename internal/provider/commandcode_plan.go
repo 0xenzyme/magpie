@@ -7,6 +7,11 @@ package provider
 // Anthropic's Messages) and billed against the plan's own credits and its
 // 5-hour and weekly limits, not as pay-as-you-go.
 //
+// Go has no API access: its key is only taken where the CLI itself asks,
+// POST /alpha/generate, in the CLI's own format (the gateway's
+// commandcode.go). Which plan an account is on is asked of billing/
+// subscriptions, and kept a while (cmdPlanNow).
+//
 // The CLI's own account is read, never changed, from ~/.commandcode/
 // auth.json. Further accounts are signed in by magpie with the CLI's own
 // browser sign-in: commandcode.ai/studio/auth/cli sends the new key to a
@@ -28,6 +33,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yetone/magpie/internal/catalog"
@@ -53,6 +59,27 @@ var cmdModels = []catalog.Model{
 	{ID: "moonshotai/Kimi-K3", Name: "Kimi K3", Context: 1_000_000},
 	{ID: "zai-org/GLM-5.3", Name: "GLM-5.3", Context: 1_000_000},
 	{ID: "MiniMaxAI/MiniMax-M3", Name: "MiniMax M3", Context: 1_000_000},
+}
+
+// cmdGoModels are the models the Go plan is let use, as the CLI's own
+// table has it (1.72.2): the "opensource" ones, less those it blocks for
+// Go (gpt-5.6-sol, claude-sonnet-5-5, grok-4.6 and the like) —
+//
+//	"individual-go":{allowedCategories:[zr],blockedModels:Qr=[…]}
+//
+// Command Code has no list to ask for them: a model the plan hasn't is
+// refused with MODEL_NOT_IN_PLAN.
+var cmdGoModels = []catalog.Model{
+	{ID: "gpt-6-luna", Name: "GPT-6 Luna", Context: 1_050_000, Images: true, Efforts: []string{"low", "medium", "high", "xhigh", "max"}},
+	{ID: "gpt-5.6-luna", Name: "GPT-5.6 Luna", Context: 1_050_000, Images: true, Efforts: []string{"low", "medium", "high", "xhigh", "max"}},
+	{ID: "deepseek/deepseek-v4-pro", Name: "DeepSeek V4 Pro", Context: 1_000_000, Efforts: []string{"high", "max"}},
+	{ID: "deepseek/deepseek-v4-flash", Name: "DeepSeek V4 Flash", Context: 1_000_000, Efforts: []string{"high", "max"}},
+	{ID: "moonshotai/Kimi-K3", Name: "Kimi K3", Context: 1_000_000, Images: true, Efforts: []string{"low", "high", "max"}},
+	{ID: "zai-org/GLM-5.3", Name: "GLM-5.3", Context: 1_000_000, Efforts: []string{"low", "high", "max"}},
+	{ID: "MiniMaxAI/MiniMax-M3", Name: "MiniMax M3", Context: 1_000_000},
+	{ID: "Qwen/Qwen3.8-Max", Name: "Qwen 3.8 Max", Context: 1_000_000, Images: true, Efforts: []string{"low", "medium", "xhigh"}},
+	{ID: "Qwen/Qwen3.8-Flash", Name: "Qwen 3.8 Flash", Context: 1_000_000},
+	{ID: "xiaomi/mimo-v2.6-pro", Name: "MiMo V2.6 Pro", Context: 1_048_576, Images: true},
 }
 
 // cmdAuth is an account's key, as auth.json and the sign-in name it.
@@ -164,23 +191,109 @@ func cmdProvider(who, plan string, a cmdAuth) Provider {
 	p := Provider{ID: CommandCodePlanID, Name: "Command Code Plan", Icon: "commandcode",
 		Chat: cmdAPI + "/provider/v1", Responses: cmdAPI + "/provider/v1", Anthropic: cmdAPI + "/provider",
 		Website: cmdStudio}
-	acct := &Account{Agent: CommandCodePlanID, User: who, Plan: plan}
+	acct := &Account{Agent: CommandCodePlanID, User: who, Plan: cmdPlanKnown(a, plan)}
 	acct.sign = func(ctx context.Context, req *http.Request, body []byte) error {
 		req.Header.Del("Authorization")
 		req.Header.Set("Authorization", "Bearer "+a.APIKey)
 		req.Header.Set("x-api-key", a.APIKey)
 		return nil
 	}
-	acct.models = func() []catalog.Model { return cmdModels }
+	acct.models = func() []catalog.Model {
+		if cmdPlanKnown(a, plan) == "Go" {
+			return cmdGoModels
+		}
+		return cmdModels
+	}
 	// the plan's list is the Provider API's, with what each model is
-	// served on; it is asked as a keyed provider's is
+	// served on; it is asked as a keyed provider's is. Go's key has no
+	// Provider API: its list is the CLI's.
 	acct.fetch = func(ctx context.Context) ([]catalog.Model, error) {
+		if cmdPlanNow(ctx, a, plan) == "Go" {
+			return cmdGoModels, nil
+		}
 		keyed := p
 		keyed.Account, keyed.Key = nil, a.APIKey
 		return keyed.Fetch(ctx)
 	}
+	acct.generate = func(ctx context.Context) (string, bool) {
+		return a.APIKey, cmdPlanNow(ctx, a, plan) == "Go"
+	}
 	p.Account = acct
 	return p
+}
+
+// CommandCodeGenerate says whether p is a Command Code account on the Go
+// plan, which is asked at api+"/alpha/generate" in the CLI's own format
+// rather than on the Provider API, with key; ok is false for every other
+// account and provider.
+func CommandCodeGenerate(ctx context.Context, p Provider) (api, key string, ok bool) {
+	if p.Account == nil || p.Account.generate == nil {
+		return "", "", false
+	}
+	if key, ok = p.Account.generate(ctx); !ok {
+		return "", "", false
+	}
+	return cmdAPI, key, true
+}
+
+// ---- which plan ---------------------------------------------------------------
+
+// cmdPlansSeen is each key's plan, as billing/subscriptions last said
+// ("" when it couldn't be read), and when.
+var cmdPlansSeen = struct {
+	sync.Mutex
+	m map[string]cmdSeen
+}{m: map[string]cmdSeen{}}
+
+type cmdSeen struct {
+	plan string
+	at   time.Time
+}
+
+// How long a plan read is kept, and a failure to read it before it is
+// asked again.
+var (
+	cmdPlanKeep  = 10 * time.Minute
+	cmdPlanRetry = time.Minute
+)
+
+// cmdRemember keeps what billing/subscriptions said of a key's plan.
+func cmdRemember(key, plan string) {
+	cmdPlansSeen.Lock()
+	cmdPlansSeen.m[key] = cmdSeen{plan, time.Now()}
+	cmdPlansSeen.Unlock()
+}
+
+// cmdPlanKnown is the account's plan as last read, else saved (the one
+// its sign-in said), asking no one.
+func cmdPlanKnown(a cmdAuth, saved string) string {
+	cmdPlansSeen.Lock()
+	seen := cmdPlansSeen.m[a.APIKey]
+	cmdPlansSeen.Unlock()
+	return firstNonEmpty(seen.plan, saved)
+}
+
+// cmdPlanNow is the account's plan, read again once what was read is
+// older than cmdPlanKeep; saved while it can't be read. The CLI's own
+// account has none saved, so it is always asked.
+func cmdPlanNow(ctx context.Context, a cmdAuth, saved string) string {
+	cmdPlansSeen.Lock()
+	seen, ok := cmdPlansSeen.m[a.APIKey]
+	cmdPlansSeen.Unlock()
+	switch {
+	case ok && seen.plan != "" && time.Since(seen.at) < cmdPlanKeep:
+		return seen.plan
+	case ok && seen.plan == "" && time.Since(seen.at) < cmdPlanRetry:
+		return saved
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, plan, _, _, read := cmdSubscription(ctx, a)
+	if !read {
+		plan = ""
+	}
+	cmdRemember(a.APIKey, plan)
+	return firstNonEmpty(plan, saved)
 }
 
 // ---- allowance ----------------------------------------------------------------
@@ -351,6 +464,7 @@ func cmdQuota(ctx context.Context, l Login, a cmdAuth) SubscriptionQuota {
 	}
 	if planOK {
 		q.Plan, q.Until, q.Renew = plan, until, renew
+		cmdRemember(a.APIKey, plan)
 	}
 	return q
 }

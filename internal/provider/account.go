@@ -58,6 +58,10 @@ type Account struct {
 	// go (google.go).
 	codeAssist string
 
+	// generate is set on a Command Code account: its key, and whether its
+	// plan is Go, asked at /alpha/generate (commandcode_plan.go).
+	generate func(ctx context.Context) (key string, ok bool)
+
 	sign   func(ctx context.Context, req *http.Request, body []byte) error
 	body   func(body []byte) []byte // request tweaks the backend insists on
 	models func() []catalog.Model
