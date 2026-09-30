@@ -2855,7 +2855,7 @@ function renderAdd() {
       const w = subs.find((x) => signing?.agent === x.agent);
       if (w) tiles.append(renderSigning(w));
     }
-    const plugged = pluginSubs().filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "plugin".includes(f));
+    const plugged = pluginSubs().map((x) => subOf(x.agent)).filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "plugin".includes(f));
     if (plugged.length) {
       any = true;
       const grid = section("From plugins", "signed in by an OpenCode plugin");
@@ -4794,7 +4794,16 @@ const SUBS = [
   // accounts can also come from another tool's export (Antigravity Cockpit, Antigravity Manager, CLIProxyAPI)
   { agent: "antigravity", name: "Antigravity", icon: "antigravity-color", plans: "Google AI Pro · Ultra · free", risk: true, importable: true },
 ];
-const subOf = (agent) => SUBS.find((x) => x.agent === agent) || pluginSubs().find((x) => x.agent === agent);
+// subOf: the subscription an agent id is. One moved onto its plugin signs
+// in through the plugin, still named, drawn and warned about as it was.
+const subOf = (agent) => {
+  const own = SUBS.find((x) => x.agent === agent);
+  const pl = pluginSubs().find((x) => x.agent === agent);
+  if (own && pl && (providers?.onPlugins || []).includes(agent)) {
+    return { ...pl, name: own.name, icon: own.icon, plans: own.plans, risk: own.risk, riskNote: own.riskNote, single: own.single };
+  }
+  return own || pl;
+};
 
 // pluginSubs: the providers OpenCode plugins sign in to (Settings →
 // Plugins), as subscriptions like the built-in ones. The plugin, not
@@ -4834,13 +4843,13 @@ let justAdded = ""; // the account that just came in, to greet it
 
 async function startSignIn(agent, risky, site) {
   if (signingOpen()) api("signin/" + signing.id + "/cancel", {}).catch(() => {});
-  if (subOf(agent)?.plugin) return startPluginSignIn(subOf(agent));
   // an account Google may suspend is added only once that is said
   if (subOf(agent)?.risk && !risky) {
     signing = { agent, state: "risk" };
     renderProviders();
     return;
   }
+  if (subOf(agent)?.plugin) return startPluginSignIn(subOf(agent));
   // one on more than one site says which first
   if (subOf(agent)?.sites && !site) {
     signing = { agent, state: "site" };

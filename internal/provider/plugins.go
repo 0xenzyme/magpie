@@ -66,7 +66,7 @@ func pluginAccounts() []Provider {
 			continue // shown once the move is through (migrate.go)
 		}
 		if ls := pluginLogins(pp); len(ls) > 0 {
-			out = append(out, pluginProvider(pp, ls[0].acct, ls[0].User))
+			out = append(out, pluginProvider(pp, ls[0]))
 		}
 	}
 	return out
@@ -152,15 +152,16 @@ func pluginCatalog(pp plugin.Provider) []catalog.Model {
 	return out
 }
 
-// pluginProvider is the provider as one of its accounts, user as the
-// accounts list names it.
-func pluginProvider(pp plugin.Provider, acct plugin.Account, user string) Provider {
+// pluginProvider is the provider as one of its accounts, l as the
+// accounts list has it.
+func pluginProvider(pp plugin.Provider, l pluginLogin) Provider {
+	acct, user := l.acct, l.User
 	id := PluginID(pp.ID)
 	name := pp.Name
 	if name == "" {
 		name = pp.ID
 	}
-	a := &Account{Agent: "plugin", User: user, Stream: true, plugin: &pp, pluginKey: acct.Key}
+	a := &Account{Agent: "plugin", User: user, Plan: l.Plan, Stream: true, plugin: &pp, pluginKey: acct.Key}
 	a.models = func() []catalog.Model {
 		if cur, ok := PluginOf(id); ok {
 			return pluginCatalog(cur)
@@ -182,6 +183,9 @@ func pluginProvider(pp plugin.Provider, acct plugin.Account, user string) Provid
 	a.sign = func(ctx context.Context, req *http.Request, body []byte) error { return nil }
 	a.transport = func(req *http.Request) (*http.Response, error) { return pluginFetch(pp, acct.Key, req) }
 	p := Provider{ID: id, Name: name, Icon: plugin.Icon(pp.Spec, pp.ID), Account: a}
+	if c, ok := movedCards[pp.ID]; ok && Moved(pp.ID) {
+		p.Icon, p.Website = c.icon, c.site // as the built-in was
+	}
 	for _, m := range pp.Models {
 		switch pluginProtocol(pp.ID, m) {
 		case Chat:

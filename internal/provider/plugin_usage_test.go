@@ -94,6 +94,16 @@ func TestPluginUsage(t *testing.T) {
 	if agent != "plugin:fakeco" {
 		t.Fatalf("UsageAgent = %q", agent)
 	}
+	// the plan the usage told stays with the account, shown beside it
+	plan := false
+	for _, p := range All() {
+		if p.IsPlugin() && p.ID == "fakeco" && p.Account.User == "a@fake" {
+			plan = p.Account.Plan == "Fake Pro"
+		}
+	}
+	if !plan {
+		t.Fatal("a@fake's provider doesn't carry its plan")
+	}
 	if q := LoginUsage(ctx, agent)["full@fake"]; q.Resets == nil || !q.Resets.ByWindow || q.Resets.FiveHour != 2 || q.Resets.Weekly != 1 || q.Resets.Count != 3 || q.User != "Full@Fake.example" {
 		t.Fatalf("full@fake = %+v, resets %+v", q, q.Resets)
 	}
