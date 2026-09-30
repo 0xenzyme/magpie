@@ -446,7 +446,9 @@
     const who = el("div", "pm-who");
     const nm = el("div", "pm-name");
     nm.append(el("b", "", l.name));
-    who.append(nm, el("div", "pm-by", l.community ? t("magpie community") + " · " + l.package : [l.npm?.publisher, l.package].filter(Boolean).join(" · ")));
+    const by = el("div", "pm-by"); // the words in a span of their own, or a flex row cuts them without the ellipsis
+    by.append(el("span", "", l.community ? t("magpie community") + " · " + l.package : [l.npm?.publisher, l.package].filter(Boolean).join(" · ")));
+    who.append(nm, by);
     const actBox = el("div", "pm-dact");
     // redrawn only when what it would say changes: a button made afresh
     // loses the pointer's hover
@@ -513,34 +515,43 @@
   // pictures (a README's badges and screenshots come from anywhere)
   function markdown(src) {
     const root = el("div", "pm-md");
-    const lines = src.replace(/\r\n?/g, "\n").replace(/<!--[\s\S]*?-->|<(script|style)\b[\s\S]*?<\/\1\s*>/gi, "").split("\n");
+    const lines = src.replace(/\r\n?/g, "\n").replace(/<!--[\s\S]*?-->|<(script|style)\b[\s\S]*?<\/\1\s*>/gi, "")
+      .replace(/\[\s*!\[[^\]]*\]\([^)]*\)\s*\]\([^)]*\)/g, "") // a badge: a picture in a link
+      .split("\n");
+    // a link: to the web, opened outside; to a heading of the README
+    // ("#-quick-start"), there, as the reader asked
+    const link = (href, text, into) => {
+      const a = el("a", "", "");
+      a.href = href;
+      inline(text.replace(/!\[[^\]]*\]\([^)]*\)/g, "").trim() || href, a);
+      a.onclick = (ev) => {
+        ev.preventDefault();
+        if (href[0] !== "#") return api("open", { url: href }).catch(() => {});
+        const to = root.querySelector(`[data-slug="${CSS.escape(decodeURIComponent(href.slice(1)).toLowerCase())}"]`);
+        if (to && window.scrollOnPurpose?.(ev)) to.scrollIntoView({ block: "start", behavior: "smooth" });
+      };
+      into.append(a);
+    };
     const inline = (text, into) => {
-      const re = /(`[^`]+`)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*\s][^*]*)\*|!\[[^\]]*\]\([^)]*\)|\[([^\]]+)\]\(([^)\s]+)[^)]*\)|<(https?:\/\/[^>\s]+)>|<\/?[a-zA-Z][^>]*>/g;
+      const re = /(`[^`]+`)|\*\*(.+?)\*\*|__(.+?)__|\*([^*\s][^*]*)\*|!\[[^\]]*\]\([^)]*\)|\[([^\]]+)\]\(([^)\s]+)[^)]*\)|<(https?:\/\/[^>\s]+)>|<a\s[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a\s*>|<\/?[a-zA-Z][^>]*>/g;
       let at = 0, m;
       while ((m = re.exec(text))) {
         if (m.index > at) into.append(text.slice(at, m.index));
         if (m[1]) into.append(el("code", "", m[1].slice(1, -1)));
-        else if (m[2] || m[3]) into.append(el("strong", "", m[2] || m[3]));
-        else if (m[4]) into.append(el("em", "", m[4]));
-        else if (m[5]) {
-          const href = m[6];
-          if (/^https?:\/\//.test(href)) {
-            const a = el("a", "", "");
-            a.href = href;
-            inline(m[5].replace(/!\[[^\]]*\]\([^)]*\)/g, "").trim() || href, a);
-            a.onclick = (ev) => { ev.preventDefault(); api("open", { url: href }).catch(() => {}); };
-            into.append(a);
-          } else inline(m[5], into);
-        } else if (m[7]) {
-          const a = el("a", "", m[7]);
-          a.href = m[7];
-          a.onclick = (ev) => { ev.preventDefault(); api("open", { url: m[7] }).catch(() => {}); };
-          into.append(a);
-        }
+        else if (m[2] || m[3]) { const b = el("strong"); inline(m[2] || m[3], b); into.append(b); }
+        else if (m[4]) { const e = el("em"); inline(m[4], e); into.append(e); }
+        else if (m[5] || m[8]) {
+          const href = m[6] || m[8], text = m[5] || m[9].replace(/<[^>]*>/g, "");
+          if (/^https?:\/\//.test(href) || /^#./.test(href)) link(href, text, into);
+          else inline(text, into);
+        } else if (m[7]) link(m[7], m[7], into);
         at = re.lastIndex;
       }
       if (at < text.length) into.append(text.slice(at));
     };
+    // GitHub's anchor for a heading: lower case, its punctuation and
+    // emoji gone, spaces as dashes ("💡 Philosophy" is "-philosophy")
+    const slug = (s) => s.trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, "").replace(/\s/g, "-");
     let i = 0, list = null, para = null;
     const flush = () => { list = null; para = null; };
     while (i < lines.length) {
@@ -562,6 +573,7 @@
         flush();
         const e = el("h" + Math.min(6, h[1].length + 2));
         inline(h[2], e);
+        e.dataset.slug = slug(e.textContent);
         if (e.textContent.trim()) root.append(e);
         i++;
         continue;

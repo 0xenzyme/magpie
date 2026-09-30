@@ -31,8 +31,13 @@ const listings = [
 const README = [
   "# opencode-copilot-auth",
   "![badge](https://img.shields.io/npm/v/x.svg) Copilot for **OpenCode**.",
+  "**Curated by [Ann](https://example.test/ann)**",
+  "[![npm version](https://img.shields.io/npm/v/x.svg)](https://www.npmjs.com/package/x)",
+  "[![Tests](https://github.com/x/y/badge.svg)](https://github.com/x/y/actions)",
+  "[Jump](#-install) · <a href=\"https://example.test/html\"><b>HTML link</b></a>",
+  ...Array.from({ length: 40 }, (_, i) => "\nFiller paragraph " + i + " so the page scrolls."),
   "",
-  "## Install",
+  "## 🚀 Install",
   "```sh",
   "opencode auth login",
   "```",
@@ -151,6 +156,20 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.doesNotMatch(await dlg.locator(".pm-md").innerText(), /pwned/);
         assert.equal(await dlg.locator(".pm-md pre code").innerText(), "opencode auth login");
         await shot(page.locator("#modal .dialog"), `plugins-page-${engine}-${lang}`);
+        // markdown in bold is still markdown; a badge (a picture in a link) goes whole; nothing shows as source
+        assert.equal((await dlg.locator(".pm-md strong a").innerText()).trim(), "Ann");
+        assert.doesNotMatch(await dlg.locator(".pm-md").innerText(), /!\[|\]\(|npm version|Tests|<\/?[ab]\b/);
+        assert.equal((await dlg.locator(".pm-md a", { hasText: "HTML link" }).innerText()).trim(), "HTML link");
+        // a link to a heading goes to it, in the page, not out
+        const body = dlg.locator(".ebody");
+        assert.equal(await body.evaluate((b) => b.scrollTop), 0);
+        await dlg.locator(".pm-md a", { hasText: "Jump" }).click();
+        await page.waitForFunction(() => {
+          const b = document.querySelector("#modal .pm-detail .ebody"), h = b.querySelector("h4[data-slug='-install']");
+          const r = h?.getBoundingClientRect(), v = b.getBoundingClientRect();
+          return h && b.scrollTop > 0 && r.top >= v.top - 1 && r.bottom <= v.bottom + 1;
+        });
+        assert(!asked.some(([k]) => k === "open"), "a heading's link isn't opened outside");
         await dlg.locator(".pm-md a", { hasText: "the docs" }).click();
         assert.deepEqual(asked.find(([k]) => k === "open")[1], { url: "https://example.test/docs" });
 
