@@ -1325,6 +1325,18 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 			req.Header.Del("anthropic-beta")
 		}
 	}
+	if p.Account == nil && (to == provider.Responses || to == provider.Chat) && fromCodex(in) {
+		// a relay that serves only Codex (Discord: "This account only
+		// allows Codex official clients") knows it by its User-Agent,
+		// originator and x-codex- headers, which go on as Codex sent them,
+		// as they do when Codex talks to the relay itself; its key to
+		// magpie never does
+		for k, vs := range in {
+			if codexClientHeader(k) {
+				req.Header[k] = slices.Clone(vs)
+			}
+		}
+	}
 	if p.IsOpenCode() {
 		req.Header.Set("x-opencode-session", conversationID(in, body))
 	}
@@ -1367,6 +1379,31 @@ func claudeCodeHeader(k string) bool {
 		}
 	}
 	return false
+}
+
+// fromCodex is a request Codex sent — its CLI, exec, the IDE extension or
+// the desktop app — by the User-Agent (codex_cli_rs/0.159.2 (Mac OS 26.6.0;
+// arm64) kitty, Codex Desktop/0.162.3 …) or the originator it gives
+// (codex_cli_rs, codex_exec, codex_vscode, Codex Desktop).
+func fromCodex(in http.Header) bool {
+	for _, v := range []string{in.Get("User-Agent"), in.Get("originator")} {
+		if strings.HasPrefix(strings.ToLower(v), "codex") {
+			return true
+		}
+	}
+	return false
+}
+
+// codexClientHeader is one of the headers Codex tells itself by to an API
+// it talks to with a key: its User-Agent and originator, the session and
+// thread (session-id, thread-id), and what codexHeader lets through. Never
+// the key it was given, nor its sign-in's attestation.
+func codexClientHeader(k string) bool {
+	switch strings.ToLower(k) {
+	case "user-agent", "originator", "session-id", "thread-id":
+		return true
+	}
+	return codexHeader(k)
 }
 
 // passthrough relays a request the provider understands as-is, with the
