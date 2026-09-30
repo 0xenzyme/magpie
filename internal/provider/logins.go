@@ -550,6 +550,27 @@ func Logins(agent string) []Login {
 	return append(out, side...)
 }
 
+// InUseLogin is the account of an agent's the gateway goes to first: the
+// one the agent is signed in to, unless it is paused, else the first other
+// one on; "" when the agent has none.
+func InUseLogin(agent string) string {
+	return inUseOf(Logins(agent))
+}
+
+func inUseOf(ls []Login) string {
+	for _, l := range ls {
+		if l.Active && !l.Paused {
+			return l.User
+		}
+	}
+	for _, l := range ls {
+		if l.On && !l.Paused {
+			return l.User
+		}
+	}
+	return ""
+}
+
 // SwitchLogin signs an agent in to a remembered account. Sessions of the
 // agent that are already running keep the account they started with until
 // they restart; so does Codex's background app-server, which new Codex

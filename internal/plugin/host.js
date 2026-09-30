@@ -553,7 +553,12 @@ async function authorize({ provider, method, inputs, account }) {
   if (!m) throw new Error(`no sign-in method ${method} for ${provider}`)
   if (m.type !== "oauth") throw new Error("not an oauth method")
   const key = signInKey(provider, account)
-  const a = await inScope(provider, key, () => m.authorize(inputs ?? {}))
+  // the inputs go only to a method that asks something, as OpenCode's TUI
+  // (/connect) passes them: an object with none is how its CLI (opencode
+  // auth login) calls, and a plugin told so asks its questions on the
+  // terminal, magpie's stdin here (opencode-antigravity-auth waited on its
+  // "Project ID" prompt, the sign-in never starting)
+  const a = await inScope(provider, key, () => m.authorize(m.prompts?.length ? inputs ?? {} : undefined))
   const session = String(nextSession++)
   sessions.set(session, { provider, key, a, inputs })
   return { session, url: a.url ?? "", instructions: a.instructions ?? "", method: a.method }
