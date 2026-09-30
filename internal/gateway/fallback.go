@@ -310,7 +310,11 @@ func planLevel(g provider.Group, ms []provider.Member, depth int, from provider.
 			}
 			all = append(all, cs...)
 		}
-		cs, wg := weigh(provider.Provider{ID: provider.GroupPrefix + g.ID, Routing: g.Routing}, all, "", from)
+		routing := g.Routing
+		if routing == provider.Manual {
+			routing = "" // the member picked, its keys or accounts weighed smartly
+		}
+		cs, wg := weigh(provider.Provider{ID: provider.GroupPrefix + g.ID, Routing: routing}, all, "", from)
 		for i, c := range cs {
 			m := of[c.seat()]
 			w := weighed(c, m.Provider, wg, false, from)

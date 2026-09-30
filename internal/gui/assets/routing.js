@@ -153,6 +153,7 @@
     order: ["In order", "In order: the first answers everything until it can't; then the next."],
     rotate: ["In turn", "In turn: each conversation's next turn goes to the account after the one that answered its last, and a new conversation starts one further along; the requests within a turn stay put, keeping the prompt cache."],
     usage: ["Least used", "Least used first: the account with the most of its allowance left goes first; a key by the tokens magpie sent it lately."],
+    manual: ["Manual", "Manual: every request goes to the model picked on the group's card, over its own accounts or keys."],
   };
   const GROUP_ORDER = "In order: member by member, the first model the group names until it can't answer, each over its own accounts or keys as its provider routes them.";
   const KEYS_SMART = "Smart: keys that suit the request go first — one made for the model's own API — then in their order. One resting after a failure goes last.";
@@ -1787,6 +1788,9 @@
   // so the list sits right under it
   more.append(gsec);
   const ROUTE_OPTS = [["", "Smart"], ["order", "In order"], ["rotate", "In turn"], ["usage", "Least used"]];
+  // a group may also be routed by hand: every request to the member the
+  // user picks on its card (provider.Manual, #317) — a provider's keys can't
+  const GROUP_ROUTE_OPTS = [...ROUTE_OPTS, ["manual", "Manual"]];
   const AFF_OPTS = [["", "Auto"], ["session", "Session"], ["turn", "Within a turn"], ["off", "Off"]];
   const AFF_HINT = {
     "": "A conversation stays with the account or key that answered it while what the vendor cached of it is worth keeping — within a turn always, across turns while it's fresh.",
@@ -1799,6 +1803,7 @@
     order: "In order: the first model until it can't answer, then the next — each over its own accounts or keys as its provider routes them.",
     rotate: "In turn: each conversation's next turn goes to the next member's account or key, spreading the load.",
     usage: "Least used first: the account or key with the most of its allowance left goes first.",
+    manual: "Manual: every request goes to the model you pick on the group's card, over its own accounts or keys; the others, and the rules, wait until you pick another — none takes over when it fails.",
   };
   const EFFORTS = ["low", "medium", "high", "xhigh", "max"]; // provider.Efforts
   // what a rule matches, in words
@@ -1887,25 +1892,58 @@
     const nm = el("div", "nm");
     nm.append(el("b", "", g.name), el("code", "mdl", "group/" + g.id));
     if (g.auto) nm.append(el("small", "auto", t("found by magpie")));
+    const manual = g.routing === "manual";
     const sep = g.routing === "order" ? " → " : " · ";
-    const mem = el("div", "mem", g.members.map((id) => memberLabel(g, id)).join(sep));
+    const mem = manual ? pickRow(g) : el("div", "mem", g.members.map((id) => memberLabel(g, id)).join(sep));
     main.append(nm, mem);
-    const m = ROUTE_OPTS.find(([id]) => id === (g.routing || "")) || ROUTE_OPTS[0];
+    const m = GROUP_ROUTE_OPTS.find(([id]) => id === (g.routing || "")) || ROUTE_OPTS[0];
     const tags = el("span", "tags");
     tags.append(el("span", "tag", t(m[1])));
     if (g.affinity) tags.append(el("span", "tag", t(AFF_OPTS.find(([id]) => id === g.affinity)?.[1] || "")));
     if (g.rules?.length) {
-      const r = el("span", "tag", t(g.rules.length === 1 ? "1 rule" : "{n} rules", { n: g.rules.length }));
-      r.title = g.rules.map((x, i) => `${i + 1}. ${ruleText(x)} → ${memberLabel(g, x.use)}`).join("\n");
+      const r = el("span", "tag" + (manual ? " idle" : ""), t(g.rules.length === 1 ? "1 rule" : "{n} rules", { n: g.rules.length }));
+      r.title = (manual ? t("The rules wait while you pick the model by hand.") + "\n" : "") + g.rules.map((x, i) => `${i + 1}. ${ruleText(x)} → ${memberLabel(g, x.use)}`).join("\n");
       tags.append(r);
     }
     if (!g.ready) tags.append(el("span", "tag bad", t("no member ready")));
     const edit = el("button", "text", t("Edit"));
     edit.onclick = (e) => { e.stopPropagation(); open(); };
-    const open = () => { gEdit = { id: g.id, draft: { name: g.name, members: [...g.members], routing: g.routing || "", affinity: g.affinity || "", classifier: g.classifier || "", effort: g.effort || "", levels: [...(g.levels || [])], rules: (g.rules || []).map((r) => ({ ...r, intent: r.intent || "", agents: [...(r.agents || [])] })) } }; renderGroups(); };
+    const open = () => { gEdit = { id: g.id, draft: { name: g.name, members: [...g.members], routing: g.routing || "", pick: g.pick || "", affinity: g.affinity || "", classifier: g.classifier || "", effort: g.effort || "", levels: [...(g.levels || [])], rules: (g.rules || []).map((r) => ({ ...r, intent: r.intent || "", agents: [...(r.agents || [])] })) } }; renderGroups(); };
     row.onclick = open;
     row.append(ics, main, tags, edit);
     return row;
+  }
+  // pickRow: a manual group's members on its card, the one every request
+  // goes to marked; clicking another sends them there from the next
+  // request on (#317), as CC Switch switches a provider
+  function pickRow(g) {
+    const picked = g.picked || (g.members.includes(g.pick) ? g.pick : g.members[0]);
+    const box = el("div", "rt-picks");
+    box.setAttribute("role", "radiogroup");
+    box.setAttribute("aria-label", t("Model every request goes to"));
+    for (const id of g.members) {
+      const info = g.memberInfo?.find((x) => x.id === id);
+      const on = id === picked;
+      const b = el("button", "rt-pick" + (on ? " on" : "") + (info && !info.ready ? " off" : ""));
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(on));
+      b.dataset.member = id;
+      b.append(el("span", "dot"), memberIcon(id), el("span", "n", memberName(id)));
+      const note = memberNote(id);
+      if (note) b.append(el("small", "", note));
+      b.title = on ? t("Every request goes to {name}", { name: memberLabel(g, id) })
+        : info && !info.ready ? t("No provider serves {id} now; it is skipped", { id })
+        : t("Send every request to {name}", { name: memberLabel(g, id) });
+      b.onclick = (e) => {
+        e.stopPropagation(); // the card opens the editor; this picks
+        if (on) return;
+        groupAction("save", { id: g.id, name: g.name, members: g.members, routing: "manual", pick: id, affinity: g.affinity || "", rules: g.rules || [], effort: g.effort || "", classifier: g.classifier || "", context: g.context || 0, levels: g.levels || [], family: g.family || "" },
+          t("{name}: every request to {model}", { name: g.name, model: memberName(id) }));
+      };
+      box.append(b);
+    }
+    return box;
   }
   function groupEditor(g) {
     const d = gEdit.draft;
@@ -2014,7 +2052,7 @@
 
     const rHint = el("div", "hint", t(GROUP_HINT[d.routing] || GROUP_HINT[""]));
     const rw = el("div");
-    rw.append(segs(ROUTE_OPTS.map(([id, n]) => [id, t(n)]), d.routing, (v) => { d.routing = v; rHint.textContent = t(GROUP_HINT[v] || GROUP_HINT[""]); }), rHint);
+    rw.append(segs(GROUP_ROUTE_OPTS.map(([id, n]) => [id, t(n)]), d.routing, (v) => { d.routing = v; rHint.textContent = t(GROUP_HINT[v] || GROUP_HINT[""]); drawRules(); }), rHint);
     ed.append(el("label", "", t("Routing")), rw);
     const aHint = el("div", "hint", t(AFF_HINT[d.affinity] || AFF_HINT[""]));
     const aw = el("div");
@@ -2030,7 +2068,9 @@
     const drawRules = () => {
       rlist.replaceChildren();
       rAdd.hidden = d.members.length < 2;
-      rHint2.textContent = t(d.members.length < 2 ? "With two models or more, a rule can send some turns to one of them first." : "Checked top first when you send a message: the first that matches sends that turn to its model first; the rest stay behind it if it fails. A turn under way is never moved.");
+      rHint2.textContent = t(d.members.length < 2 ? "With two models or more, a rule can send some turns to one of them first."
+        : d.routing === "manual" ? "The rules wait while you pick the model by hand."
+        : "Checked top first when you send a message: the first that matches sends that turn to its model first; the rest stay behind it if it fails. A turn under way is never moved.");
       d.rules.forEach((r, i) => {
         const row = el("div", "rt-rule");
         const when = el("div", "when");
@@ -2225,7 +2265,7 @@
       if (d.effort === "auto" && !d.classifier) return status(t("Choose the model that rates how hard a turn is"), "warn");
       if (own && !d.levels.length) return status(t("Pick a level to offer, or leave them to its models"), "warn");
       saveBtn.classList.add("busy");
-      groupAction("save", { id: idOf(), from: g?.id, name: d.name.trim() || idOf(), members: d.members, routing: d.routing, affinity: d.affinity, rules: d.rules, effort: d.effort, classifier: d.rules.some((r) => r.intent) || d.effort === "auto" ? d.classifier : "", context: g?.context || 0, levels: own ? d.levels : [], family: g?.family || "" }, t(g ? "{name} saved" : "{name} added", { name: d.name.trim() || idOf() }));
+      groupAction("save", { id: idOf(), from: g?.id, name: d.name.trim() || idOf(), members: d.members, routing: d.routing, pick: d.pick || "", affinity: d.affinity, rules: d.rules, effort: d.effort, classifier: d.rules.some((r) => r.intent) || d.effort === "auto" ? d.classifier : "", context: g?.context || 0, levels: own ? d.levels : [], family: g?.family || "" }, t(g ? "{name} saved" : "{name} added", { name: d.name.trim() || idOf() }));
     };
     saveBtn.onclick = save;
     bar.append(cancel, saveBtn);
