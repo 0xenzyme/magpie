@@ -19,7 +19,8 @@ shared helper; a control under what it unrolls (`data-unrolls`) going down
 with it; a click that asks to go somewhere with `scrollOnPurpose(e)`;
 the room kept at the foot going as the reader scrolls back; and the wheel.
 
-`signin-callback.test.cjs` checks DimAgent's pasted callback in a narrow Chinese
+`signin-callback.test.cjs` checks a sign-in's pasted callback (the field a
+sign-in with pasteCallback shows) in a narrow Chinese
 dark window: invalid input remains editable, retry reaches the callback route,
 and a pending or accepted submission cannot be submitted twice.
 

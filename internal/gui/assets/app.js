@@ -134,9 +134,9 @@ function icon(name) {
     return e;
   }
   if (name) {
-    if (name.endsWith("-color") || name === "crush" || name === "zcode" || name === "alma" || name === "hanako" || name === "cindy" || name === "typesafe" || name === "dimagent") {
+    if (name.endsWith("-color") || name === "crush" || name === "zcode" || name === "alma" || name === "hanako" || name === "cindy" || name === "typesafe") {
       const img = el("img");
-      img.src = `icons/${name}.${name === "crush" || name === "zcode" || name === "alma" || name === "hanako" || name === "cindy" || name === "typesafe" || name === "dimagent" ? "png" : "svg"}`;
+      img.src = `icons/${name}.${name === "crush" || name === "zcode" || name === "alma" || name === "hanako" || name === "cindy" || name === "typesafe" ? "png" : "svg"}`;
       img.alt = "";
       img.draggable = false;
       e.append(img);
@@ -4610,9 +4610,6 @@ const SUBS = [
     riskNote: "Qoder has no public API for this; magpie signs requests as its desktop client would, which Qoder may treat as third-party use and act on. Use an account you can afford to lose." },
   // the devin CLI's own account is read; more are signed in beside it, each in a data folder of magpie's
   { agent: "devin", name: "Devin", icon: "devin", plans: "Pro · Enterprise", own: true },
-  // DimAgent's own subscription: the browser's sign-in at dimagent.cn, its relay serving the vendor's models
-  { agent: "dimagent", name: "DimAgent", icon: "dimagent", plans: "Credits", own: true, risk: true,
-    riskNote: "DimAgent serves this API to its own desktop client; magpie signs requests as that client would, which DimAgent may treat as third-party use and act on. Use an account you can afford to lose." },
   // Zed's hosted models (Zed Pro, its trial), signed in at zed.dev as the editor is
   { agent: "zed", name: "Zed", icon: "zed", plans: "Pro · Student · Business", own: true, risk: true,
     riskNote: "Zed serves these models to its own editor; magpie signs requests as the editor would, which Zed may treat as third-party use and act on. Use an account you can afford to lose." },
