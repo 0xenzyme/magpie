@@ -1359,7 +1359,13 @@ func claudeCodeHeader(k string) bool {
 // but not this one.
 func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.Provider, proto provider.Protocol, model string, body []byte, u *Usage) (status int, msg string, done bool) {
 	body = rewriteModel(body, model)
+	searchFn := false // Codex's tool search sent as a function
 	switch proto {
+	case provider.Responses:
+		// only the ChatGPT backend runs Codex's tool search as Codex sends it
+		if p.Account == nil || p.Account.Agent != "codex" {
+			body, searchFn = searchAsFunction(body)
+		}
 	case provider.Chat:
 		body = developerAsSystem(body)
 		if strings.HasSuffix(p.Host(), "openai.com") || p.IsAzure() {
@@ -1481,6 +1487,10 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	if proto == provider.Chat && sse {
 		tidy = &chatTidy{}
 	}
+	var search *searchTidy
+	if searchFn && sse {
+		search = &searchTidy{}
+	}
 	buf := make([]byte, 32<<10)
 	for {
 		n, err := rd.Read(buf)
@@ -1489,6 +1499,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			out := buf[:n]
 			if tidy != nil {
 				out = tidy.write(out)
+			}
+			if search != nil {
+				out = search.write(out)
 			}
 			if _, werr := w.Write(out); werr != nil {
 				return res.StatusCode, "", true
@@ -1503,6 +1516,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	}
 	if tidy != nil {
 		w.Write(tidy.flush())
+	}
+	if search != nil {
+		w.Write(search.flush())
 	}
 	return res.StatusCode, "", true
 }
