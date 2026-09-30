@@ -79,6 +79,10 @@ type host struct {
 	glides      atomic.Int64 // the newest panel glide; older ones stop
 	query       string       // what the windows' URLs carry (a forced theme)
 
+	// closing is set while a full-screen main window, closed, leaves full
+	// screen; it is hidden once it has
+	closing atomic.Bool
+
 	ready     chan struct{} // closed once the main window can be shown
 	readyOnce sync.Once
 }
@@ -93,6 +97,7 @@ func (h *host) whenReady(fn func()) {
 
 func (h *host) HidePanel() { h.panel.Hide() }
 func (h *host) ShowMain(view string) {
+	h.closing.Store(false) // opened again while leaving full screen: it stays
 	h.panel.Hide()
 	if view != "" {
 		h.main.SetURL(mainURL(view, h.query))
@@ -111,6 +116,7 @@ func (h *host) Import(link string) {
 	h.whenReady(func() {
 		h.panel.Hide()
 		h.main.SetURL("/?view=providers&import=" + id + h.query)
+		h.closing.Store(false)
 		h.dock(settings.Load(), true)
 		h.main.Show()
 		h.main.Focus()
@@ -296,20 +302,16 @@ func Run(version string, showMain bool, link string) error {
 	// page keeps it so as its theme changes (TintTitleBar)
 	winOpts, winBg := windowChrome(cmp.Or(os.Getenv("MAGPIE_THEME"), settings.Load().Theme))
 	h.main = h.app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:      "main",
-		Title:     "magpie",
-		URL:       "/?" + theme,
-		Width:     max(width, minW),
-		Height:    max(height, minH),
-		MinWidth:  minW,
-		MinHeight: minH,
-		Zoom:      zoom,
-		Hidden:    true,
-		Mac: application.MacWindow{
-			// no InvisibleTitleBarHeight: that strip drags from anywhere in
-			// it, tabs included; the header marks what drags instead
-			TitleBar: application.MacTitleBarHiddenInset,
-		},
+		Name:             "main",
+		Title:            "magpie",
+		URL:              "/?" + theme,
+		Width:            max(width, minW),
+		Height:           max(height, minH),
+		MinWidth:         minW,
+		MinHeight:        minH,
+		Zoom:             zoom,
+		Hidden:           true,
+		Mac:              mainMacWindow(),
 		Windows:          winOpts,
 		BackgroundColour: winBg,
 	})
@@ -341,9 +343,17 @@ func Run(version string, showMain bool, link string) error {
 	})
 	// Closing the window keeps the tray alive; quitting is a menu action.
 	h.main.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
-		h.main.Hide()
-		h.dock(settings.Load(), false)
 		e.Cancel()
+		if closeStep(runtime.GOOS, h.main.IsFullscreen()) == closeLeaveFullscreen {
+			h.leaveFullscreenThenHide()
+			return
+		}
+		h.hideMain()
+	})
+	h.main.OnWindowEvent(events.Mac.WindowDidExitFullScreen, func(*application.WindowEvent) {
+		if h.closing.Swap(false) {
+			h.hideMain()
+		}
 	})
 
 	// the menu in the page's language, relabelled when that changes (#301)
