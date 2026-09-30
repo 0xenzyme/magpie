@@ -1460,6 +1460,7 @@ const I18N = {
     "{agent} reads the shared instructions now": "{agent} 现在读取共享指令",
     "{agent} reads {file} instead of this file while it has anything in it.": "只要 {file} 有内容，{agent} 就会读它而不是这个文件。",
     "{agent} reads Claude Code's CLAUDE.md when it has no AGENTS.md of its own.": "{agent} 在没有自己的 AGENTS.md 时会读取 Claude Code 的 CLAUDE.md。",
+    "Antigravity reads Gemini CLI's ~/.gemini/GEMINI.md as well as this file, so text given to both is read twice.": "Antigravity 除了这个文件，也会读取 Gemini CLI 的 ~/.gemini/GEMINI.md，两边都给的内容会被读两遍。",
     "Only for {agent}, after the shared text": "仅给 {agent}，接在共享内容之后",
     "Anything only {agent} should be told": "只需告诉 {agent} 的内容",
     "Switch {agent} on for it to read this.": "开启 {agent} 后它才会读到这些。",
