@@ -186,6 +186,13 @@ func start(ctx context.Context) (*host, error) {
 	if err := os.MkdirAll(settings.Dir(), 0o700); err != nil {
 		return nil, err
 	}
+	if catalog.Source() == "" {
+		// a plugin's provider has the models models.dev lists for it, as in
+		// OpenCode; a magpie that has never fetched them does first
+		cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		_ = catalog.Sync(cctx)
+		cancel()
+	}
 	// the host outlives the request that started it
 	cmd := bunCommand(context.Background(), bun, settings.Dir(), "run", js)
 	in, err := cmd.StdinPipe()
