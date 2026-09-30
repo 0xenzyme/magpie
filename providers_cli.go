@@ -548,7 +548,8 @@ func announce(id string) error {
 
 func showProvider(p provider.Provider) error {
 	kv := func(k, v string) {
-		if v != "" {
+		// a plugin's provider is reached through the plugin, not a URL
+		if v != "" && !strings.HasPrefix(v, "plugin://") {
 			fmt.Printf("  %s %s\n", muted.Render(pad(k, 10)), v)
 		}
 	}
@@ -566,7 +567,14 @@ func showProvider(p provider.Provider) error {
 		if p.Account.Plan != "" {
 			who += muted.Render("  " + p.Account.Plan)
 		}
-		kv("account", who+muted.Render("  from "+p.Account.Agent+"'s own sign-in"))
+		from := p.Account.Agent + "'s own sign-in"
+		if p.IsPlugin() {
+			from = p.Name + "'s sign-in"
+			if provider.Moved(p.ID) {
+				from = p.ID + "'s own sign-in" // as the built-in said
+			}
+		}
+		kv("account", who+muted.Render("  from "+from))
 	case p.Key != "":
 		kv("key", muted.Render(provider.Mask(p.Key)))
 	case p.Ready():
