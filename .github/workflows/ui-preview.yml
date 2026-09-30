@@ -84,11 +84,14 @@ jobs:
           path: ci
           sparse-checkout: .github/ui-preview
           persist-credentials: false
+      # the fork's code, on purpose: this job is the one meant to run it,
+      # with a read-only token and no credentials left in the checkout
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.detect.outputs.sha }}
           path: pr
           persist-credentials: false
+          allow-unsafe-pr-checkout: true
       - uses: actions/download-artifact@v4
         with:
           name: pr-info
