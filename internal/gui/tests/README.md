@@ -170,6 +170,13 @@ kiro-cli's own sign-in behind one of magpie's, then alone and first: its
 Remove is there both times, its title saying magpie only hides it and it
 shows again when Kiro signs in anew, and it posts login/forget; magpie's
 own account in use first has no Remove; in English and Chinese.
+
+`nokey-editor.test.cjs` opens two local Ollama providers saved with no key,
+one from the preset and one custom, as /api/providers gives them: a click
+on each row opens its editor (the key box saying one is optional) and
+nothing throws, where the row only toggled; in Chromium and WebKit, English
+and Chinese.
+
 `old-webkit.test.cjs` holds the page to Safari 15.0, the WebKit macOS 12 can
 have (#220: a regex lookbehind in app.js, a syntax error before Safari 16.4,
 left the panel with its headings and nothing working). Every script in
