@@ -564,6 +564,9 @@ func (s *Server) handle(from provider.Protocol) http.HandlerFunc {
 			writeError(w, from, 400, err.Error())
 			return
 		}
+		if from == provider.Chat {
+			body = thinkingEffort(body)
+		}
 		s.serve(w, r, from, body)
 	}
 }
