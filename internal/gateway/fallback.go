@@ -380,6 +380,21 @@ func restLast(out []candidate, pl planned) ([]candidate, planned) {
 	return append(ready, resting...), pl
 }
 
+// spentAfter says whether every candidate in cs rests with its allowance
+// run out: none of them is likely to answer.
+func spentAfter(cs []candidate) bool {
+	for _, c := range cs {
+		r, ok := restOf(c.restKey())
+		if !ok && c.restID() != c.restKey() {
+			r, ok = restOf(c.restID())
+		}
+		if !ok || r.Why != failQuota && r.Why != failCredit {
+			return false
+		}
+	}
+	return len(cs) > 0
+}
+
 var restingUntil = struct {
 	sync.Mutex
 	m    map[string]time.Time
