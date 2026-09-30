@@ -123,18 +123,12 @@ func factorySignedInWith(ctx context.Context, t factoryTokens) (string, error) {
 			}
 		}
 	}
-	var who struct {
-		UserID string `json:"userId"`
-		OrgID  string `json:"orgId"`
-		Email  string `json:"email"`
-		Region string `json:"region"`
-	}
-	err := factoryGet(ctx, c, "/api/cli/whoami", map[string]string{"X-Factory-Whoami-Extended": "true"}, &who)
+	who, err := factoryWhoami(ctx, c)
 	if err != nil && firstNonEmpty(c.Email, c.UserID) == "" {
 		return "", err
 	}
 	if err == nil {
-		c.Active, c.Region = who.OrgID, who.Region
+		c.Active, c.Region, c.Prem = who.OrgID, who.Region, who.Prem
 		c.Email = firstNonEmpty(c.Email, who.Email)
 		c.UserID = firstNonEmpty(c.UserID, who.UserID)
 	}

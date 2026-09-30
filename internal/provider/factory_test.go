@@ -20,7 +20,8 @@ func factorySite(t *testing.T, h http.HandlerFunc) *httptest.Server {
 	t.Cleanup(srv.Close)
 	oldW, oldA, oldE := factoryWorkOS, factoryAPI, factoryAPIEU
 	factoryWorkOS, factoryAPI, factoryAPIEU = srv.URL+"/wos", srv.URL, srv.URL+"/eu"
-	t.Cleanup(func() { factoryWorkOS, factoryAPI, factoryAPIEU = oldW, oldA, oldE })
+	factoryAsked.Clear()
+	t.Cleanup(func() { factoryWorkOS, factoryAPI, factoryAPIEU = oldW, oldA, oldE; factoryAsked.Clear() })
 	return srv
 }
 
@@ -96,8 +97,9 @@ func TestFactorySignIn(t *testing.T) {
 			}
 			factoryJSON(w, 200, map[string]any{"workosOrgIds": []string{"org_A", "org_B"}})
 		case "/api/cli/whoami":
+			// droid's whoami sends the token and the extended flag alone
 			if r.Header.Get("Authorization") != "Bearer "+inOrg || r.Header.Get("X-Factory-Whoami-Extended") != "true" ||
-				r.Header.Get("X-Factory-Org-Id") != "" || r.Header.Get("X-Factory-Client") != "cli" {
+				r.Header.Get("X-Factory-Org-Id") != "" || r.Header.Get("X-Factory-Client") != "" || r.Header.Get("X-Client-Version") != "" {
 				w.WriteHeader(401)
 				return
 			}
@@ -355,6 +357,12 @@ func factoryOrgSite(t *testing.T, tokens map[string]string, renewed string) func
 			if r.Header.Get("X-Factory-Org-Id") != "" {
 				t.Errorf("whoami asked with an org header: %q", r.Header.Get("X-Factory-Org-Id"))
 			}
+			if tokens[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")] != "org_A" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(403)
+				io.WriteString(w, refused)
+				return
+			}
 			factoryJSON(w, 200, map[string]any{"userId": "user_1", "orgId": "fac_A", "region": "us"})
 		case "/api/cli/org":
 			factoryJSON(w, 200, map[string]any{"workosOrgIds": []string{"org_A"}})
@@ -472,6 +480,10 @@ func TestFactoryActiveOrg(t *testing.T) {
 	if code, b := factorySend(t, p); code != 200 {
 		t.Fatalf("an older login: %d %s", code, b)
 	}
+	// it asked whoami, as droid does for a token it holds, and keeps the org
+	if c := factoryKept(t, "old@example.com"); c.Active != "fac_A" {
+		t.Fatalf("older login kept active %q", c.Active)
+	}
 }
 
 // Factory refusing the active org magpie sends: it is dropped and the
@@ -503,7 +515,8 @@ func TestFactoryOrgRefused(t *testing.T) {
 	if code, b := factorySend(t, p); code != 200 {
 		t.Fatalf("active org gone: %d %s", code, b)
 	}
-	if c := factoryKept(t, "ada"); c.Active != "" || c.Access != tokA {
+	// whoami, asked again without it, names the org the token is in
+	if c := factoryKept(t, "ada"); c.Active != "fac_A" || c.Access != tokA {
 		t.Fatalf("ada kept active %q", c.Active)
 	}
 	if got := renewed(); len(got) != 0 {
@@ -529,9 +542,172 @@ func TestFactoryOrgRefused(t *testing.T) {
 		t.Fatalf("usage: %+v", q)
 	}
 
-	// any other refusal is not retried
+	// any other refusal to an account that sent its org is not retried
+	if err := SwitchLogin("factory", "cy"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ = find(Accounts(), "factory")
+	if c := factoryKept(t, "cy"); c.Active != "fac_A" {
+		t.Fatalf("cy kept active %q", c.Active)
+	}
 	if p.Retry(context.Background(), 403, []byte(`{"error":{"message":"model not allowed"}}`)) ||
 		p.Retry(context.Background(), 401, []byte(`Requested active organization is not accessible`)) {
 		t.Fatal("retried an unrelated refusal")
+	}
+}
+
+// #242 after v0.1.438: a login kept with no active org sent no
+// X-Factory-Org-Id, and Factory answered GLM-5.2 on chat completions with a
+// bare 403 {"detail":"Forbidden"}. droid never sends a request without it:
+// it asks whoami for each token it holds (droid's auth Do → _r → Ar) and
+// keeps the orgId. magpie asks too, with droid's whoami headers alone, and
+// sends what droid sends; whoami failing at first, the 403 asks it again and
+// the request goes once more. An org served from a host of its own gets its
+// model requests there, and a 403 left over says what to do.
+func TestFactoryForbiddenWithoutOrg(t *testing.T) {
+	signIn(t)
+	tok := factoryToken(map[string]any{"sub": "user_t", "org_id": "org_T"})
+	forbidden := `{"detail":"Forbidden","status":403,"title":"Forbidden"}`
+	var mu sync.Mutex
+	whoamis, whoamiDown := 0, 0
+	prem := ""
+	var sent []http.Header
+	var paths []string
+	srv := factorySite(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/api/cli/whoami":
+			whoamis++
+			h := r.Header
+			if h.Get("Authorization") != "Bearer "+tok || h.Get("X-Factory-Whoami-Extended") != "true" || h.Get("X-Factory-Org-Id") != "" ||
+				h.Get("X-Factory-Client") != "" || h.Get("X-Client-Version") != "" || strings.HasPrefix(h.Get("User-Agent"), "factory-cli") {
+				t.Errorf("whoami headers: %v", h)
+			}
+			if whoamiDown > 0 {
+				whoamiDown--
+				w.WriteHeader(502)
+				return
+			}
+			factoryJSON(w, 200, map[string]any{"userId": "user_t", "orgId": "fac_T", "email": "tassel@example.com",
+				"region": "us", "premBaseHostV2": prem})
+		case "/api/llm/o/v1/chat/completions", "/api/llm/a/v1/messages", "/prem/api/llm/a/v1/messages":
+			if r.Header.Get("X-Factory-Org-Id") != "fac_T" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(403)
+				io.WriteString(w, forbidden)
+				return
+			}
+			sent = append(sent, r.Header.Clone())
+			paths = append(paths, r.URL.Path)
+			io.WriteString(w, `{"id":"ok"}`)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(404)
+		}
+	})
+	// kept by v0.1.432: the WorkOS org and no active org
+	keep := func(user string) Provider {
+		t.Helper()
+		auth, _ := json.Marshal(map[string]any{"accessToken": tok, "refreshToken": "r1",
+			"expiresAt": time.Now().Add(time.Hour).UnixMilli(), "orgId": "org_T", "email": user})
+		if err := addSideLogin(savedLogin{Agent: "factory", User: user, Auth: auth}, "", func(savedLogin) {}); err != nil {
+			t.Fatal(err)
+		}
+		if err := SwitchLogin("factory", user); err != nil {
+			t.Fatal(err)
+		}
+		p, _ := find(Accounts(), "factory")
+		return p
+	}
+	send := func(p Provider, url string, proto Protocol, body string) (int, string) {
+		t.Helper()
+		do := func() (int, []byte) {
+			req, _ := http.NewRequest("POST", url, strings.NewReader(body))
+			if err := p.Sign(context.Background(), req, proto, []byte(body)); err != nil {
+				t.Fatal(err)
+			}
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			b, _ := io.ReadAll(res.Body)
+			return res.StatusCode, b
+		}
+		code, b := do()
+		if code == 403 && p.Retry(context.Background(), code, b) {
+			code, b = do()
+		}
+		return code, string(b)
+	}
+	glm := `{"model":"glm-5.2","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"max"}`
+
+	// whoami answers: the first request carries the org, as droid's would
+	p := keep("tassel@example.com")
+	if code, b := send(p, p.Chat+"/chat/completions", Chat, glm); code != 200 {
+		t.Fatalf("glm-5.2: %d %s", code, b)
+	}
+	if whoamis != 1 || len(sent) != 1 {
+		t.Fatalf("whoami asked %d times, %d requests through", whoamis, len(sent))
+	}
+	h := sent[0]
+	for k, want := range map[string]string{
+		"Authorization": "Bearer " + tok, "X-Factory-Client": "cli", "X-Client-Version": factoryVersion,
+		"User-Agent": "factory-cli/" + factoryVersion, "X-Factory-Org-Id": "fac_T", "x-api-provider": "baseten",
+		"x-session-id": factorySession, "x-provider-routing-source": "registry_default",
+		"OpenAI-Platform": "", "X-Api-Key": "",
+	} {
+		if got := h.Get(k); got != want {
+			t.Errorf("%s: %q, want %q", k, got, want)
+		}
+	}
+	if h.Get("x-assistant-message-id") == "" {
+		t.Error("no x-assistant-message-id")
+	}
+	if c := factoryKept(t, "tassel@example.com"); c.Active != "fac_T" {
+		t.Fatalf("kept active %q", c.Active)
+	}
+	// kept: not asked again
+	if code, _ := send(p, p.Chat+"/chat/completions", Chat, glm); code != 200 || whoamis != 1 {
+		t.Fatalf("second request: %d, whoami %d", code, whoamis)
+	}
+
+	// Claude goes on Anthropic's Messages with droid's placeholder key
+	if code, b := send(p, p.Anthropic+"/v1/messages", Anthropic, `{"model":"claude-opus-5-5"}`); code != 200 {
+		t.Fatalf("claude: %d %s", code, b)
+	}
+	if got := sent[len(sent)-1]; got.Get("X-Api-Key") != "placeholder" || got.Get("x-api-provider") != "anthropic" {
+		t.Errorf("claude headers: %v", got)
+	}
+
+	// whoami down at first: the request is refused, whoami asked again, and
+	// it goes once more with the org
+	whoamiDown = 1
+	p = keep("down@example.com")
+	if code, b := send(p, p.Chat+"/chat/completions", Chat, glm); code != 200 {
+		t.Fatalf("after a failed whoami: %d %s", code, b)
+	}
+	if c := factoryKept(t, "down@example.com"); c.Active != "fac_T" || whoamis != 3 {
+		t.Fatalf("kept active %q, whoami %d", c.Active, whoamis)
+	}
+
+	// an org Factory serves from a host of its own
+	prem = srv.URL + "/prem"
+	p = keep("prem@example.com")
+	if code, b := send(p, p.Anthropic+"/v1/messages", Anthropic, `{"model":"claude-opus-5-5"}`); code != 200 {
+		t.Fatalf("prem: %d %s", code, b)
+	}
+	if got := paths[len(paths)-1]; got != "/prem/api/llm/a/v1/messages" {
+		t.Errorf("prem request went to %s", got)
+	}
+
+	// a 403 still answered says what to do; others pass as they are
+	msg := p.Explain("Factory: Forbidden", 403, []byte(forbidden))
+	if !strings.HasPrefix(msg, "Factory: Forbidden — ") || !strings.Contains(msg, "`droid`") || !strings.Contains(msg, "sign in to it again") {
+		t.Errorf("explained: %s", msg)
+	}
+	if got := p.Explain("Factory: overloaded", 529, nil); got != "Factory: overloaded" {
+		t.Errorf("a 529 explained: %s", got)
 	}
 }

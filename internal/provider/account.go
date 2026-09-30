@@ -75,6 +75,9 @@ type Account struct {
 	// account has put right what it names and the request is worth
 	// sending once more (a Factory org the server can't reach, factory.go).
 	retry func(ctx context.Context, status int, body []byte) bool
+	// explain adds what the user can do about a refusal the account's
+	// backend answered, "" when there is nothing to add (factory.go).
+	explain func(status int, body []byte) string
 }
 
 // APIs lists the APIs model is served on, as the provider's last model
@@ -159,6 +162,18 @@ func (p Provider) Retry(ctx context.Context, status int, body []byte) bool {
 		return false
 	}
 	return p.Account.retry(p.Via(ctx), status, body)
+}
+
+// Explain is the error a refusal is passed on as: msg, with what the
+// user can do about it when the account knows.
+func (p Provider) Explain(msg string, status int, body []byte) string {
+	if p.Account == nil || p.Account.explain == nil {
+		return msg
+	}
+	if more := p.Account.explain(status, body); more != "" {
+		return msg + " — " + more
+	}
+	return msg
 }
 
 // Prepare adjusts a request body the way the backend wants it.
