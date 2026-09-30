@@ -887,12 +887,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	}
 	tr := s.trace.begin(Route{Time: start, Agent: call.Agent, Kind: call.Kind, Model: call.Model, Effort: requestEffort(from, body), Provider: p.ID, Group: group, Rule: hit, Nested: nested, Affinity: shown, Order: pl.order, Left: pl.left})
 	var skipped []string
-	sent := ""        // the reasoning the last try's model was asked for
-	where := ""       // the last try's provider.Where, for the usage
-	again := 0        // times the last one left has been tried again
-	resealed := false // the conversation's reasoning sealed by another account taken out
-	floored := false  // the reply's length raised to what the provider takes
-	var other *Try    // the first failure that wasn't an allowance run out
+	sent := ""       // the reasoning the last try's model was asked for
+	where := ""      // the last try's provider.Where, for the usage
+	again := 0       // times the last one left has been tried again
+	resealed := 0    // what of the conversation another account sealed was taken out: its reasoning, then its compaction
+	floored := false // the reply's length raised to what the provider takes
+	var other *Try   // the first failure that wasn't an allowance run out
 	for i := 0; i < len(cands); i++ {
 		c := cands[i]
 		last := i == len(cands)-1
@@ -983,15 +983,29 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
 			break
 		}
-		if !resealed && from == provider.Responses && !hw.passing && hw.code() >= 400 && foreignReasoning.Match(hw.errBody()) {
+		if resealed < 2 && from == provider.Responses && !hw.passing && hw.code() >= 400 && foreignReasoning.Match(hw.errBody()) {
 			// the conversation moved here from another account or vendor,
 			// whose sealed reasoning this one can't read: asked again
 			// without it, and what it refused isn't sent here again. xAI
 			// says so as a 400, or as the stream's error, which may be
-			// read as another status
-			if b, ok := withoutReasoning(body); ok {
-				refused(stuck, c.who(), attemptBody)
-				resealed, body = true, b
+			// read as another status. Refused again, or with no reasoning
+			// to leave out, it's the compaction OpenAI sealed that goes
+			// (waroy: Codex compacted on GPT, then switched to Grok)
+			b, ok := []byte(nil), false
+			if resealed == 0 {
+				resealed = 1
+				if b, ok = withoutReasoning(body); ok {
+					refused(stuck, c.who(), attemptBody, "reasoning")
+				}
+			}
+			if !ok {
+				resealed = 2
+				if b, ok = withoutCompaction(body); ok {
+					refused(stuck, c.who(), attemptBody, compactionKinds...)
+				}
+			}
+			if ok {
+				body = b
 				try.Fail = failForeign
 				s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
 				i--
