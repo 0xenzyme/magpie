@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"time"
 
@@ -91,6 +92,7 @@ func pluginLogins(pp plugin.Provider) []pluginLogin {
 	loginsMu.Unlock()
 	var out []pluginLogin
 	for _, l := range sideLogins(agent, "", func(l savedLogin) bool { _, ok := byKey[l.Home]; return ok }) {
+		l.Lapsed = l.saved.Lapsed // a refused sign-in shows on the account
 		out = append(out, pluginLogin{l, byKey[l.saved.Home]})
 	}
 	return out
@@ -170,6 +172,42 @@ func keepPluginPlan(pp plugin.Provider, key, plan string) {
 				_ = writeLogins(ls)
 			}
 			return
+		}
+	}
+}
+
+// notePluginLapse marks the account at key lapsed when its vendor refused
+// a request (401), as a built-in's refused sign-in is marked, and clears
+// the mark once one goes through.
+func notePluginLapse(pp plugin.Provider, key string, status int) {
+	refused := status == http.StatusUnauthorized
+	if !refused && (status < 200 || status > 299) {
+		return
+	}
+	name, _ := pluginCard(pp)
+	loginsMu.Lock()
+	defer loginsMu.Unlock()
+	ls := readLogins()
+	for i, l := range ls {
+		if l.Agent == pluginAgent(pp) && l.Home == key {
+			want := ""
+			if refused {
+				want = l.User + "'s " + name + " sign-in has expired — sign in again"
+			}
+			if l.Lapsed != want {
+				ls[i].Lapsed = want
+				_ = writeLogins(ls)
+			}
+			return
+		}
+	}
+}
+
+// clearPluginLapse takes the mark off an account signed in again.
+func clearPluginLapse(saved plugin.Saved) {
+	for _, pp := range plugin.Cached() {
+		if pp.ID == saved.Provider {
+			notePluginLapse(pp, saved.Account, http.StatusOK)
 		}
 	}
 }

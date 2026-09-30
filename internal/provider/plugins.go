@@ -282,10 +282,14 @@ func pluginFetch(pp plugin.Provider, account string, req *http.Request) (*http.R
 			h[strings.ToLower(k)] = vs[0]
 		}
 	}
-	return plugin.Fetch(ctx, plugin.FetchRequest{
+	resp, err := plugin.Fetch(ctx, plugin.FetchRequest{
 		Provider: pp.ID, Account: account, Model: api, NPM: m.NPM, URL: url, Method: req.Method,
 		Headers: h, Body: body, Session: req.Header.Get(ConversationHeader),
 	})
+	if err == nil {
+		notePluginLapse(pp, account, resp.StatusCode)
+	}
+	return resp, err
 }
 
 func modelAPIID(m plugin.Model) string {

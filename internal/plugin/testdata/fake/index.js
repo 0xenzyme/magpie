@@ -32,7 +32,9 @@ export const FakePlugin = async ({ client }) => ({
           callback: async (code) =>
             code === "good"
               ? { type: "success", refresh: "r-" + (inputs.team ?? "none"), access: "stale", expires: 0, accountId: (inputs.team ?? "me") + "@fake" }
-              : { type: "failed" },
+              : code === "expired"
+                ? { type: "failed", error: "the sign-in page expired" }
+                : { type: "failed" },
         }),
       },
     ],
