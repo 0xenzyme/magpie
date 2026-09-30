@@ -1833,8 +1833,6 @@ const I18N = {
     "Search plugins": "搜索插件",
     "Couldn't load the plugins: {error}": "无法加载插件：{error}",
     "written for magpie, checked against its own sign-ins": "为 magpie 编写，与内置登录对照验证过",
-    "From OpenCode's community": "来自 OpenCode 社区",
-    "popular OpenCode plugins that work in magpie": "在 magpie 中可用的热门 OpenCode 插件",
     "Suggested": "推荐",
     "On npm": "npm 上的插件",
     "OpenCode plugins anyone published — read what one does before you install it": "任何人都可发布的 OpenCode 插件，安装前请先了解它做什么",

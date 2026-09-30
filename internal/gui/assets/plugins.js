@@ -297,10 +297,9 @@
     const ls = market.listings.filter((l) => !f || [l.name, l.package, summary(l), (l.providers || []).join(" "), l.npm?.publisher || ""].join(" ").toLowerCase().includes(f));
     if (!f) {
       body.append(intro());
+      // magpie's community's alone: others' plugins are found by a search
       const ours = ls.filter((l) => l.community);
-      const theirs = ls.filter((l) => !l.community).sort((a, b) => (b.npm?.weekly || 0) - (a.npm?.weekly || 0));
       if (ours.length) body.append(section(t("magpie community"), t("written for magpie, checked against its own sign-ins"), ours));
-      if (theirs.length) body.append(section(t("From OpenCode's community"), t("popular OpenCode plugins that work in magpie"), theirs));
       body.append(manual());
       return;
     }
