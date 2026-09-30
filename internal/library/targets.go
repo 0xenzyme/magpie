@@ -199,8 +199,14 @@ func targetOf(a *agent.Agent) *Target {
 		t.Skills = filepath.Join(a.Dir, "skills")
 	case "claude-desktop":
 		// Claude Desktop reads only commands from its file: a remote server
-		// is added in its own Connectors settings
+		// is added in its own Connectors settings. In its 3p mode (magpie's
+		// gateway, or any other) it reads the file in Claude-3p instead, so
+		// where that folder is the servers go into both: each mode finds
+		// them, a switch between the two leaves nothing behind in either
 		t.MCP = &mcpFile{Path: filepath.Join(filepath.Dir(a.Path), "claude_desktop_config.json"), Format: fmtDesktop}
+		if p := agent.DesktopConfig3p(h); p != t.MCP.Path && isDir(filepath.Dir(p)) {
+			t.MCP.Also = []string{p}
+		}
 	default:
 		return nil
 	}
@@ -214,8 +220,14 @@ func apps() []*agent.Agent {
 	if err != nil {
 		return nil
 	}
+	// Desktop only ever run in its 3p mode has no Claude folder, only
+	// Claude-3p: its file is the one there
+	dir := filepath.Join(d, "Claude")
+	if p := agent.DesktopConfig3p(home()); !isDir(dir) && isDir(filepath.Dir(p)) {
+		dir = filepath.Dir(p)
+	}
 	return []*agent.Agent{
-		{ID: "claude-desktop", Name: "Claude Desktop", Icon: "claude-color", Dir: filepath.Join(d, "Claude"), Path: filepath.Join(d, "Claude", "claude_desktop_config.json")},
+		{ID: "claude-desktop", Name: "Claude Desktop", Icon: "claude-color", Dir: dir, Path: filepath.Join(dir, "claude_desktop_config.json")},
 	}
 }
 

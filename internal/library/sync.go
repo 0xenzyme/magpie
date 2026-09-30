@@ -107,7 +107,7 @@ func (l *Library) syncMCP(t *Target, b *backups, res *Result) {
 		if s := l.server(name); s != nil && slices.Contains(s.Agents, id) && t.MCP.supports(s) == nil {
 			continue
 		}
-		if _, ok := entries[name]; ok && !write("mcp:"+name, func() error { return t.MCP.del(name) }) {
+		if _, ok := entries[name]; (ok || t.MCP.holds(name)) && !write("mcp:"+name, func() error { return t.MCP.del(name) }) {
 			mine = append(mine, name)
 		}
 	}
