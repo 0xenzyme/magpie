@@ -163,6 +163,12 @@ func listPlugins(ctx context.Context, asJSON bool) error {
 		fmt.Println(string(b))
 		return nil
 	}
+	// a built-in with accounts the plugin could run: not signed in to the
+	// plugin is its normal state, not something to fix
+	onBuiltin := map[string]provider.MoveCandidate{}
+	for _, c := range provider.MoveCandidates() {
+		onBuiltin[c.ID] = c
+	}
 	for _, e := range l.Plugins {
 		state := green.Render("on")
 		switch {
@@ -177,6 +183,9 @@ func listPlugins(ctx context.Context, asJSON bool) error {
 				continue
 			}
 			who := muted.Render("not signed in · magpie plugin login " + p.ID)
+			if c, ok := onBuiltin[p.ID]; ok && !p.SignedIn {
+				who = muted.Render(fmt.Sprintf("runs on magpie's built-in (%d accounts) · magpie plugin move %s", c.Accounts, p.ID))
+			}
 			if p.SignedIn {
 				who = green.Render("signed in")
 				if p.AccountID != "" {
