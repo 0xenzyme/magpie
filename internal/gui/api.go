@@ -492,6 +492,10 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		if (in.TrayUsage != cur.TrayUsage || in.TrayUsageEvery != cur.TrayUsageEvery) && onTrayUsage != nil {
 			onTrayUsage()
 		}
+		// the tray menu follows the page's language (#301)
+		if in.Lang != cur.Lang && onLang != nil {
+			onLang()
+		}
 		// an update check that failed, without the proxy set just now, is
 		// tried again through it, not in six hours (#294)
 		if strings.TrimSpace(in.Proxy) != strings.TrimSpace(cur.Proxy) && updates.json().State == "error" {

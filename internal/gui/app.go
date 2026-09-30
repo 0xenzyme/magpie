@@ -346,22 +346,35 @@ func Run(version string, showMain bool, link string) error {
 		e.Cancel()
 	})
 
+	// the menu in the page's language, relabelled when that changes (#301)
+	labels := trayMenuLabels(trayLang(settings.Load().Lang, systemLang), version, "")
 	menu := h.app.NewMenu()
-	menu.Add("Open magpie").OnClick(func(*application.Context) { h.ShowMain("") })
+	open := menu.Add(labels.open).OnClick(func(*application.Context) { h.ShowMain("") })
 	menu.AddSeparator()
-	menu.Add("Version " + version).SetEnabled(false)
-	restart := menu.Add("Restart to Update").SetHidden(true)
+	ver := menu.Add(labels.version).SetEnabled(false)
+	restart := menu.Add(labels.restart).SetHidden(true)
 	restart.OnClick(func(*application.Context) {
 		// the window comes back if it was open; the tray alone if not
 		if restartToUpdate(false, h.MainShown(), "") {
 			h.app.Quit()
 		}
 	})
-	menu.Add("Quit magpie").OnClick(func(*application.Context) { h.app.Quit() })
+	quit := menu.Add(labels.quit).OnClick(func(*application.Context) { h.app.Quit() })
+	var ready string // the version waiting for a restart; on the main thread
+	relabel := func() {
+		l := trayMenuLabels(trayLang(settings.Load().Lang, systemLang), version, ready)
+		open.SetLabel(l.open)
+		ver.SetLabel(l.version)
+		restart.SetLabel(l.restart)
+		quit.SetLabel(l.quit)
+		menu.Update()
+	}
+	onLang = func() { application.InvokeSync(relabel) }
 	updates.onReady = func(v string) {
 		application.InvokeSync(func() {
-			restart.SetLabel("Restart to Update to " + v).SetHidden(false)
-			menu.Update()
+			ready = v
+			restart.SetHidden(false)
+			relabel()
 		})
 	}
 	updates.start()
