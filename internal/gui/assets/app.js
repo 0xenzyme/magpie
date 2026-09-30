@@ -8244,7 +8244,9 @@ function renderRedactRules(s, row) {
   }
   row(t("Masking rules"), d.err || t("Secrets magpie doesn't know, such as a gateway's own keys: what they start with, or a regular expression. Masked while Mask secrets is on"),
     kind, by, match, add);
+  // its words above in full, the fields on a line of their own under them
   const head = $("#redactList").lastElementChild;
+  head.classList.add("rule-row");
   head.querySelector(".val").classList.add("rule-add");
   if (d.err) head.querySelector(".sub").classList.add("err");
   // and the rules under it, each by the name its placeholders have
