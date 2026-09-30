@@ -9046,6 +9046,9 @@ $("#sync").onclick = async () => {
   const b = $("#sync");
   if (b.classList.contains("spin")) return;
   b.classList.add("spin");
+  // a newer magpie is looked for too: the Update pill beside it shows once
+  // it's in (inaction on Discord looked for it here, not in Settings)
+  api("update/check", {}).then(renderUpdateBadge, () => {});
   try {
     state = await api("sync", {});
     renderAgents();
