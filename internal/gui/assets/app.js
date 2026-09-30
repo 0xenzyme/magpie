@@ -3436,6 +3436,9 @@ function openModal(content) {
   const m = $("#modal"), d = m.firstElementChild;
   const fresh = m.hidden || m.classList.contains("out");
   const top = m.hidden ? 0 : d.querySelector(".ebody")?.scrollTop || 0;
+  // Names & levels scrolls inside the editor body, so keep its own position.
+  const names = !fresh && d.querySelector(".mnames:not([hidden])");
+  const namesAt = names && { provider: names.dataset.provider, top: names.scrollTop };
   m.classList.remove("out");
   d.classList.remove("swap");
   if (!fresh) { void d.offsetWidth; d.classList.add("swap"); } // content changed: a soft refresh, not a re-entrance
@@ -3444,6 +3447,8 @@ function openModal(content) {
   m.hidden = false;
   const body = content.querySelector(":scope > .ebody");
   if (body) body.scrollTop = top; // a re-render keeps the place
+  const nextNames = content.querySelector(".mnames:not([hidden])");
+  if (namesAt && nextNames?.dataset.provider === namesAt.provider) nextNames.scrollTop = namesAt.top;
   if (!fresh) return;
   for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.cancel();
   d.style.opacity = d.style.transform = m.style.opacity = "";
@@ -4478,6 +4483,7 @@ function renderModels(p) {
   const box = el("div", "models");
   const chips = el("div", "mchips");
   const names = el("div", "mnames");
+  names.dataset.provider = p.id;
   const q = p.models.length > 24 ? input("", t("filter {n} models…", { n: p.models.length })) : null;
   const draw = () => {
     if (agentMenu && chips.contains(agentMenu.anchor)) closeAgentMenu();
