@@ -2437,13 +2437,22 @@ var tooLongRe = regexp.MustCompile(`(?i)context_length_exceeded|prompt is too lo
 // tooLong is whether a vendor's error says the conversation no longer
 // fits. One about max_tokens is left alone: the reply's allowance, not
 // the conversation, is what is too big there, and compacting won't help.
+// Nor is a rate limit, however it counts ("Too many tokens, please wait",
+// Bedrock's; "tokens per minute"): told the prompt is too long, Claude Code
+// compacts, and again after the next one, until it gives up as thrashing.
 func tooLong(status int, msg string) bool {
-	if status < 400 || status >= 500 {
+	if status < 400 || status >= 500 || status == http.StatusTooManyRequests {
 		return false
 	}
 	m := strings.ToLower(msg)
 	if strings.Contains(m, "max_tokens") || strings.Contains(m, "max_output_tokens") || strings.Contains(m, "max_completion_tokens") {
 		return false
 	}
+	if paceWords.MatchString(msg) {
+		return false
+	}
 	return tooLongRe.MatchString(msg)
 }
+
+// paceWords say a limit on how fast or how much, not on one prompt's size.
+var paceWords = regexp.MustCompile(`(?i)rate.?limit|per (minute|hour|day)|\bTP[MD]\b|please wait|try again later|throttl`)
