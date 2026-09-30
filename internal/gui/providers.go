@@ -107,6 +107,8 @@ type moveJSON struct {
 	// State is "" (built-in, never moved), "plugin", "back" or "failed"
 	State string `json:"state"`
 	Error string `json:"error,omitempty"`
+	// Why is a failed move's reason, which the page says in its language
+	Why *provider.MoveWhy `json:"why,omitempty"`
 }
 
 // stepPlanJSON: whether a StepFun provider's platform sign-in is kept, and
@@ -255,7 +257,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 	out.Key.Masked = provider.Mask(p.Key)
 	if provider.Movable(p.ID) {
 		m, _ := provider.MigrationOf(p.ID)
-		out.Move = &moveJSON{Package: provider.MovePackage(p.ID), State: m.State, Error: m.Err}
+		out.Move = &moveJSON{Package: provider.MovePackage(p.ID), State: m.State, Error: m.Err, Why: m.Why}
 		if m.State == provider.MoveMoving {
 			out.Move.State = ""
 		}
@@ -443,6 +445,14 @@ func ago(t time.Time) string {
 	}
 }
 
+// failMove is fail with why the move failed, for the page to say it in
+// its reader's language.
+func failMove(rw http.ResponseWriter, err error) {
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(rw).Encode(map[string]any{"error": err.Error(), "why": provider.WhyOf(err)})
+}
+
 // moveProvider and moveBackProvider are provider.Move and MoveBack, for
 // tests to stand in for.
 var (
@@ -569,7 +579,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			ctx, cancel := moveContext(r)
 			defer cancel()
 			if err := moveProvider(ctx, in.ID); err != nil {
-				fail(rw, err)
+				failMove(rw, err)
 				return
 			}
 		case "moveback":

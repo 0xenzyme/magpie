@@ -85,6 +85,10 @@ type Account struct {
 	// carries its requests: the plugin's fetch.
 	plugin    *plugin.Provider
 	pluginKey string // the account's key in plugin-auth.json
+	// wasHost is the built-in's API host, for a moved one's to show as it
+	// did; moved says there is one to show ("" too: Zed's had none).
+	wasHost   string
+	moved     bool
 	transport func(req *http.Request) (*http.Response, error)
 }
 

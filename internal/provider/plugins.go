@@ -215,6 +215,8 @@ func pluginProvider(pp plugin.Provider, l pluginLogin) Provider {
 	p := Provider{ID: id, Name: name, Icon: plugin.Icon(pp.Spec, pp.ID), Account: a}
 	if c, ok := movedCards[pp.ID]; ok && Moved(pp.ID) {
 		p.Name, p.Icon, p.Website = c.name, c.icon, c.site // as the built-in was
+		m, _ := MigrationOf(pp.ID)
+		a.moved, a.wasHost = true, m.Host
 		if n, ok := movedNames[pp.ID]; ok {
 			p.Name = n
 		}
