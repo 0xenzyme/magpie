@@ -62,6 +62,13 @@ under way, one with two tries, in Chromium and WebKit, English and Chinese, at
 text is drawn over another (#273: in two columns of ~470px it sat on the time
 taken).
 
+`routing-levels.test.cjs` edits a group's reasoning levels in Chromium and
+WebKit, English and Chinese (#295: a member with low/high/max took medium and
+xhigh from the rest). "Its models' shared" names those levels; "Named" shows a
+toggle per level, starting from the shared ones, and toggling them moves
+nothing; saved, they go lowest first and the group's family stays. A group with
+its own opens on them, none picked is refused, and back to shared saves none.
+
 `routing-served.test.cjs` lists a request whose vendor's reply names another
 model than the one asked for (gpt-6-sol served as gpt-6-luna), one answered
 under the model's dated name and ones naming none: only the first is marked
