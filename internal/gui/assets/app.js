@@ -5270,7 +5270,9 @@ function quotaFill(w) {
   return quotaLeft ? 100 - used : used;
 }
 function quotaText(w) {
-  const pct = t(quotaLeft ? "{n} left" : "{n} used", { n: quotaFill(w) + "%" });
+  const used = Math.max(0, Math.min(100, w.used));
+  const n = quotaLeft ? 100 - used : used;
+  const pct = t(quotaLeft ? "{n} left" : "{n} used", { n: (Number.isInteger(n) ? n : n.toFixed(1)) + "%" });
   return w.display ? w.display + " · " + pct : pct;
 }
 async function setQuotaLeft(on) {
