@@ -139,3 +139,25 @@ func TestDeleteMovedHides(t *testing.T) {
 		t.Fatal("zed isn't among the hidden")
 	}
 }
+
+// Every agent's accounts list a moved built-in's by its id, the one in use
+// marked, not as plugin:<id>.
+func TestAllLoginsMoved(t *testing.T) {
+	movedPlugin(t, "zed", map[string]map[string]any{
+		"zed":   {"type": "oauth", "access": "a", "refresh": "r", "expires": 0, "accountId": "me@zed"},
+		"zed#2": {"type": "oauth", "access": "b", "refresh": "s", "expires": 0, "accountId": "two@zed"},
+	})
+	var got []string
+	for _, l := range Logins("") {
+		if strings.Contains(l.Agent, "zed") {
+			s := l.Agent + ":" + l.User
+			if l.Active {
+				s = "*" + s
+			}
+			got = append(got, s)
+		}
+	}
+	if strings.Join(got, ",") != "*zed:me@zed,zed:two@zed" {
+		t.Fatalf("every agent's accounts: %v", got)
+	}
+}

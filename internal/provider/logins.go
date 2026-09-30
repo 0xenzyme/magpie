@@ -23,6 +23,7 @@ import (
 
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/filememo"
+	"github.com/yetone/magpie/internal/plugin"
 )
 
 // Login is a remembered subscription account, without its secrets.
@@ -528,6 +529,15 @@ func Logins(agent string) []Login {
 				side = append(side, b.list()...)
 			}
 		}
+		// a plugin's accounts go by its provider's id (a moved built-in's
+		// by the built-in's), the one in use first marked, as its own page
+		// lists them
+		for _, pp := range plugin.Cached() {
+			for _, l := range pluginLoginList(pp) {
+				l.Agent = PluginID(pp.ID)
+				side = append(side, l)
+			}
+		}
 	}
 	rememberLogins(false)
 	loginsMu.Lock()
@@ -541,7 +551,7 @@ func Logins(agent string) []Login {
 	var out []Login
 	ls := readLogins()
 	for _, l := range ls {
-		if (agent != "" && l.Agent != agent) || sideAgent(l.Agent) {
+		if (agent != "" && l.Agent != agent) || sideAgent(l.Agent) || strings.HasPrefix(l.Agent, "plugin:") {
 			continue
 		}
 		using := strings.EqualFold(active[l.Agent], l.User)
