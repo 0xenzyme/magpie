@@ -382,6 +382,7 @@ func Run(version string, showMain bool, link string) error {
 		// set before the tray starts, it is the item's id too, which
 		// Omarchy's bar pins it by (Wails calls it "Wails" otherwise)
 		h.tray.SetLabel("magpie")
+		go dropTrayName()
 	}
 	h.tray.SetTooltip("magpie")
 	if runtime.GOOS == "darwin" {
