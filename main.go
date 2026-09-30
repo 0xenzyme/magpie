@@ -287,7 +287,7 @@ func set(a *agent.Agent, key, value string) error {
 	// value it had already is said to be so
 	now := f.Get()
 	shown := now
-	if value == "" {
+	if value == "" || now == "" {
 		shown = muted.Render("default")
 	}
 	if now == before {
