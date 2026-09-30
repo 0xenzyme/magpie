@@ -7,6 +7,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/yetone/magpie/internal/provider"
 )
 
 // ---- OpenAI Chat Completions --------------------------------------------------
@@ -176,7 +178,9 @@ func buildChat(r *Request, model, host string, rejectTemp bool) []byte {
 	if r.System != "" {
 		msgs = append(msgs, map[string]any{"role": "system", "content": r.System})
 	}
-	deepseek := strings.Contains(host, "deepseek")
+	// DeepSeek takes a turn's reasoning back, as Command Code's plugin does
+	// for a Go key, as the built-in replayed it to /alpha/generate
+	replay := strings.Contains(host, "deepseek") || host == provider.CommandCodePlanID
 	// A tool message holds text only, so the images tools returned go to
 	// the model in a user message after the tool messages, as the start of
 	// the user's own message when one comes next: some models' chat
@@ -231,7 +235,7 @@ func buildChat(r *Request, model, host string, rejectTemp bool) []byte {
 			if len(calls) > 0 {
 				am["tool_calls"] = calls
 			}
-			if deepseek && think != "" {
+			if replay && think != "" {
 				am["reasoning_content"] = think
 			}
 			msgs = append(msgs, am)
