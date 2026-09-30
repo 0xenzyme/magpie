@@ -61,6 +61,11 @@ export const FakePlugin = async ({ client }) => ({
     // hours, which count only fake-claude
     usage: async (getAuth) => {
       const a = await getAuth()
+      // $FAKE_USAGE: the plan is what the vendor's page there says
+      if (process.env.FAKE_USAGE) {
+        const r = await fetch(process.env.FAKE_USAGE)
+        return { plan: await r.text() }
+      }
       if (a.type !== "oauth") return { error: "an API key has no plan" }
       if (a.refresh === "r-gone") return { error: `${a.accountId}: the FakeCo sign-in has expired — sign in again` }
       if (a.refresh === "r-offline") throw new Error("fetch failed")

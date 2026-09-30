@@ -46,6 +46,61 @@ const sessions = new Map() // oauth sign-in in progress → its authorize result
 const inflight = new Map() // fetch id → AbortController
 let config = { provider: {} } // what the plugins' config hooks made of it
 
+// ---- a provider's own proxy ---------------------------------------------------
+
+// A request made for a provider or an account with a proxy of its own
+// (#237) goes through it, and so does every fetch the plugin makes for
+// it; one for a provider set to "direct" goes through none. Bun reads
+// *_PROXY once, and a fetch given no proxy option can't be told to skip
+// them, so the host is started with them as MAGPIE_*_PROXY and each
+// fetch is given magpie's own here when it has none of its own.
+// Loopback never goes through one.
+const via = new AsyncLocalStorage() // the proxy: "", "direct" or its URL
+const bunFetch = globalThis.fetch
+
+function proxyVar(k) {
+  return process.env["MAGPIE_" + k] || process.env["MAGPIE_" + k.toLowerCase()] || ""
+}
+
+const globalProxy = {
+  https: proxyVar("HTTPS_PROXY") || proxyVar("ALL_PROXY"),
+  http: proxyVar("HTTP_PROXY") || proxyVar("ALL_PROXY"),
+  no: proxyVar("NO_PROXY")
+    .split(",")
+    .map((s) => s.trim().toLowerCase().replace(/^\*?\./, ""))
+    .filter(Boolean),
+}
+
+function hostOf(input) {
+  try {
+    const u = new URL(typeof input === "string" || input instanceof URL ? input : input.url)
+    return { protocol: u.protocol, host: u.hostname.toLowerCase().replace(/^\[|\]$/g, "") }
+  } catch {
+    return null
+  }
+}
+
+function loopback(host) {
+  return host === "localhost" || host.endsWith(".localhost") || host === "::1" || /^127\./.test(host)
+}
+
+// proxyFor is the proxy a fetch of input goes through, "" for none.
+function proxyFor(input) {
+  const u = hostOf(input)
+  if (!u || loopback(u.host)) return ""
+  const own = via.getStore()
+  if (own === "direct") return ""
+  if (own) return own
+  if (globalProxy.no.some((n) => n === "*" || u.host === n || u.host.endsWith("." + n))) return ""
+  return u.protocol === "https:" ? globalProxy.https : u.protocol === "http:" ? globalProxy.http : ""
+}
+
+globalThis.fetch = Object.assign(function fetch(input, init) {
+  if (init && "proxy" in init) return bunFetch(input, init)
+  const p = proxyFor(input)
+  return p ? bunFetch(input, { ...init, proxy: p }) : bunFetch(input, init)
+}, bunFetch)
+
 // ---- auth.json ---------------------------------------------------------------
 
 function readAuth() {
@@ -661,7 +716,11 @@ async function load({ provider, account }) {
 //       stop the account) }]
 //   }
 // Run in the account's scope, a token it renews is saved to that account.
-async function usage({ provider, account }) {
+async function usage({ provider, account, proxy }) {
+  return via.run(proxy ?? "", () => usageOf(provider, account))
+}
+
+async function usageOf(provider, account) {
   const a = auths().get(provider)?.auth
   if (typeof a?.usage !== "function") throw new Error(`${provider}'s plugin doesn't tell its usage`)
   const key = accountKey(provider, account)
@@ -725,7 +784,7 @@ function bodyOf(b64) {
 
 async function doFetch(id, params) {
   const key = accountKey(params.provider, params.account)
-  return inScope(params.provider, key, () => fetchAs(id, key, params))
+  return via.run(params.proxy ?? "", () => inScope(params.provider, key, () => fetchAs(id, key, params)))
 }
 
 async function fetchAs(id, key, { provider, model, npm, url, method, headers, body, session }) {

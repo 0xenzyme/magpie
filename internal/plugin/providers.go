@@ -558,6 +558,6 @@ type UsageWindow struct {
 // AccountUsage asks the plugin for account's usage of provider.
 func AccountUsage(ctx context.Context, provider, account string) (Usage, error) {
 	var u Usage
-	err := Call(ctx, "usage", map[string]any{"provider": provider, "account": account}, &u)
+	err := Call(ctx, "usage", map[string]any{"provider": provider, "account": account, "proxy": proxyOf(ctx)}, &u)
 	return u, err
 }

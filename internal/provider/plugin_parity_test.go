@@ -1,10 +1,12 @@
 package provider
 
 import (
+	"context"
 	"slices"
 	"testing"
 
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/plugin"
 )
 
@@ -91,5 +93,20 @@ func TestMovedAccountKeepsItsPlace(t *testing.T) {
 	}
 	if !out[2].IsPlugin() {
 		t.Fatal("the moved Grok isn't its plugin's")
+	}
+}
+
+// A moved provider's usage is asked through the proxy set for it, or for
+// the account: they are kept under its id, not its sign-ins' "plugin:grok".
+func TestMovedLoginProxy(t *testing.T) {
+	movedGrok(t)
+	if err := store(file{Providers: []Provider{{ID: "grok", Proxy: "http://127.0.0.1:1", AccountProxies: map[string]string{"me@example.com": "direct"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	for user, want := range map[string]string{"me@example.com": "direct", "other@example.com": "http://127.0.0.1:1"} {
+		l := Login{Agent: "plugin:grok", User: user}
+		if got := netproxy.Choice(ViaLogin(context.Background(), loginProvider(l), l.User)); got != want {
+			t.Errorf("%s's usage goes through %q, want %q", user, got, want)
+		}
 	}
 }

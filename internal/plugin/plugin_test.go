@@ -13,8 +13,11 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/yetone/magpie/internal/netproxy"
 )
 
 // sandbox gives the test its own magpie folders and the Bun on PATH; a
@@ -307,5 +310,90 @@ func TestUnloadedPluginKeepsProviders(t *testing.T) {
 	}
 	if ps, _ := Providers(ctx); len(ps) != 0 {
 		t.Fatalf("after removing it, Providers = %+v", ps)
+	}
+}
+
+// A request made for a provider or an account with its own proxy goes
+// through it, the plugin's own fetches and its usage's among them; one
+// set to go direct goes through none, though magpie's global proxy is in
+// the host's env.
+func TestPluginProxy(t *testing.T) {
+	sandbox(t)
+	var mu sync.Mutex
+	var own, global []string // what each proxy was asked for
+	proxy := func(seen *[]string, answer string) *httptest.Server {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			*seen = append(*seen, r.URL.String())
+			mu.Unlock()
+			fmt.Fprint(w, answer)
+		}))
+		t.Cleanup(srv.Close)
+		return srv
+	}
+	ownSrv, globalSrv := proxy(&own, "own"), proxy(&global, "global")
+	t.Setenv("HTTP_PROXY", globalSrv.URL)
+	t.Setenv("http_proxy", globalSrv.URL)
+	t.Setenv("FAKE_BASE", "http://vendor.invalid/v1")
+	t.Setenv("FAKE_USAGE", "http://vendor.invalid/usage")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	abs, _ := filepath.Abs("testdata/fake/index.js")
+	if _, err := Add(ctx, abs); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Providers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := APIKey(ctx, "fakeco", 0, nil, "k1", NewAccount); err != nil {
+		t.Fatal(err)
+	}
+	fetch := func(ctx context.Context) (string, error) {
+		res, err := Fetch(ctx, FetchRequest{Provider: "fakeco", Model: "fake-1", NPM: "@ai-sdk/openai-compatible",
+			URL: "http://vendor.invalid/v1/chat/completions", Method: "POST", Body: []byte(`{}`)})
+		if err != nil {
+			return "", err
+		}
+		defer res.Body.Close()
+		b, err := io.ReadAll(res.Body)
+		return string(b), err
+	}
+	last := func(seen *[]string) string {
+		mu.Lock()
+		defer mu.Unlock()
+		if len(*seen) == 0 {
+			return ""
+		}
+		return (*seen)[len(*seen)-1]
+	}
+
+	// none of its own: magpie's
+	if b, err := fetch(ctx); err != nil || b != "global" {
+		t.Fatalf("with no proxy of its own: %q, %v", b, err)
+	}
+	// its own, as host:port
+	mine := netproxy.With(ctx, strings.TrimPrefix(ownSrv.URL, "http://"))
+	if b, err := fetch(mine); err != nil || b != "own" || last(&own) != "http://vendor.invalid/v1/chat/completions" {
+		t.Fatalf("with its own proxy: %q, %v; the proxy saw %q", b, err, last(&own))
+	}
+	if u, err := AccountUsage(mine, "fakeco", ""); err != nil || u.Plan != "own" || last(&own) != "http://vendor.invalid/usage" {
+		t.Fatalf("usage with its own proxy: %+v, %v", u, err)
+	}
+	// direct: vendor.invalid can't be reached but through a proxy
+	mu.Lock()
+	n := len(global) + len(own)
+	mu.Unlock()
+	if b, err := fetch(netproxy.With(ctx, "direct")); err == nil {
+		t.Fatalf("went direct, yet answered %q", b)
+	}
+	mu.Lock()
+	m := len(global) + len(own)
+	mu.Unlock()
+	if m != n {
+		t.Fatalf("a direct request went through a proxy: own %v, global %v", own, global)
+	}
+	// and the next with none of its own takes magpie's again
+	if b, err := fetch(ctx); err != nil || b != "global" {
+		t.Fatalf("after a direct one: %q, %v", b, err)
 	}
 }
