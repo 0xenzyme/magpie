@@ -474,6 +474,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		in.RedactRules = cur.RedactRules // the masking rules, set on their own
 		// used or left is the Usage page's toggle as much as Settings', set on its own
 		in.QuotaLeft = cur.QuotaLeft
+		// which Codex accounts spend a reset by themselves, set on the Usage card
+		in.CodexAutoReset = cur.CodexAutoReset
 		// and the text size, which the keyboard changes too (text-size below)
 		in.TextSize = cur.TextSize
 		if v := strings.TrimSpace(in.Vision); v != "" && v != "off" && v != cur.Vision {
@@ -527,6 +529,27 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		}
 		if changed && onTrayUsage != nil {
 			onTrayUsage()
+		}
+		writeJSON(rw, settingsState())
+	})
+	// whether a Codex account spends one of its resets by itself once its
+	// week is used up, the Usage card's toggle, set on its own
+	mux.HandleFunc("POST /api/settings/codex-auto-reset", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct {
+			User string
+			On   bool
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		if strings.TrimSpace(in.User) == "" {
+			fail(rw, fmt.Errorf("which Codex account?"))
+			return
+		}
+		if err := provider.SetCodexAutoReset(in.User, in.On); err != nil {
+			fail(rw, err)
+			return
 		}
 		writeJSON(rw, settingsState())
 	})

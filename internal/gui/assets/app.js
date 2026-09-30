@@ -6254,7 +6254,11 @@ function renderQuotas() {
         const use = el("button", "text", t("Use a reset"));
         use.title = resetUseTitle(sub.resets);
         use.onclick = () => askCodexReset(sub);
-        if (!sub.resets.byWindow) r.append(use); // a GLM team's are spent on bigmodel.cn
+        if (!sub.resets.byWindow) { // a GLM team's are spent on bigmodel.cn
+          const auto = autoResetButton(sub, "text auto-reset");
+          if (auto) r.append(auto);
+          r.append(use);
+        }
         card.append(r);
       }
     }
@@ -6489,7 +6493,11 @@ function panelQuotaCard(q) {
     const use = el("button", "pq-use", t("Use one…"));
     use.title = resetUseTitle(q.resets);
     use.onclick = () => askCodexReset(q);
-    if (!q.resets.byWindow) r.append(use);
+    if (!q.resets.byWindow) {
+      const auto = autoResetButton(q, "pq-use pq-auto");
+      if (auto) r.append(auto);
+      r.append(use);
+    }
     card.append(r);
   }
   return card;
@@ -6530,6 +6538,34 @@ function resetUseTitle(r) {
     ? t("Uses the reset that runs out first ({when}), never one that lasts longer.", { when: new Date(r.until).toLocaleString() })
     : t("Uses one of its resets; none of them runs out."))
     + "\n" + t("This account's windows start again at once, as if none had been used. You're asked before anything is spent.");
+}
+
+// autoResetButton turns on or off a Codex account spending a reset by
+// itself: once its week is used up and no other account can answer, one
+// a week at most. Off unless the user turns it on; nothing for an account
+// with no name to keep it by.
+function autoResetButton(q, cls) {
+  if (!q.user || q.provider !== "codex") return null;
+  const who = q.user.toLowerCase();
+  const on = !!(state.settings?.codexAutoReset || []).includes(who);
+  const b = el("button", cls + (on ? " on" : ""), t("Auto-use"));
+  b.setAttribute("aria-pressed", String(on));
+  b.title = t(on ? "On: a reset is used by itself when this account's week is used up and no other account can answer, one a week at most. Click to turn it off."
+    : "Use a reset by itself when this account's week is used up and no other account can answer, one a week at most. The five hours running out never uses one.");
+  b.onclick = async (e) => {
+    e.stopPropagation();
+    b.disabled = true;
+    try {
+      prefs = await writingPrefs(api("settings/codex-auto-reset", { user: q.user, on: !on }));
+      state.settings = prefs;
+      status(t(on ? "{who} no longer uses a reset by itself" : "{who} uses a reset by itself once its week is used up", { who: q.user }), "ok");
+      renderQuotas();
+    } catch (err) {
+      b.disabled = false;
+      status(err.message, "err");
+    }
+  };
+  return b;
 }
 
 // askCodexReset: spending a reset can't be taken back, so it asks first;

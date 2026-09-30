@@ -901,6 +901,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	resealed := 0    // what of the conversation another account sealed was taken out: its reasoning, then its compaction
 	floored := false // the reply's length raised to what the provider takes
 	var other *Try   // the first failure that wasn't an allowance run out
+	autoReset := false // a Codex reset looked at, once a request
 	for i := 0; i < len(cands); i++ {
 		c := cands[i]
 		last := i == len(cands)-1
@@ -1088,6 +1089,20 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				call.Status, call.Error = 499, "the agent canceled the request"
 			}
 			break
+		}
+		if !autoReset && last && other == nil && hw.failed() && !hw.passing && failure(hw.code(), hw.errBody()) == failQuota {
+			// everyone is out of their allowance: a Codex account the user
+			// lets spend its resets by itself, its week used up, spends one
+			// and is asked again
+			autoReset = true
+			if pick, out, ok := s.autoReset(r.Context(), cands, c); ok {
+				try.Fail = failQuota
+				try.Reset = &AutoReset{Who: pick.p.Account.User, Text: out.Text()}
+				s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+				skipped = append(skipped, c.label()+": "+call.Error, pick.label()+": used one of its resets by itself ("+out.Text()+")")
+				cands = append(cands[:len(cands):len(cands)], pick)
+				continue
+			}
 		}
 		if hw.refused && !hw.passing {
 			// nobody is left: the agent is told it was refused, as a

@@ -161,7 +161,7 @@ func accountsCmd(args []string) error {
 			line += "  " + quotaCell(w)
 		}
 		if r.Resets != nil {
-			line += "  " + resetsCell(r.Resets)
+			line += "  " + resetsCell(r.Resets, r.Agent == "codex" && provider.CodexAutoReset(r.User))
 		}
 		if r.Lapsed != "" {
 			line += "  " + muted.Render(r.Lapsed)

@@ -81,6 +81,11 @@ type Settings struct {
 	// with CodexWarmup or without it. ClaudeWarmAt is the Claude accounts'.
 	CodexWarmAt  string `json:"codexWarmAt,omitempty"`
 	ClaudeWarmAt string `json:"claudeWarmAt,omitempty"`
+	// CodexAutoReset are the ChatGPT accounts (lower-case) that spend one
+	// of their rate-limit resets by themselves once their weekly window is
+	// used up and no other account can take the request: at most one a
+	// week each (see provider.AutoUseCodexReset).
+	CodexAutoReset []string `json:"codexAutoReset,omitempty"`
 	// WorkBuddyCheckin presses WorkBuddy's daily check-in (签到) for each
 	// signed-in WorkBuddy (China) account once a Beijing day, claiming the
 	// credits it gives while its event runs.
@@ -475,6 +480,10 @@ func Save(s Settings) error {
 	s.RedactRules = rules
 	s.AgentOrder, s.AgentsHidden, s.AgentsShown = ids(s.AgentOrder), ids(s.AgentsHidden), ids(s.AgentsShown)
 	s.TrayUsages = ids(s.TrayUsages)
+	for i, u := range s.CodexAutoReset {
+		s.CodexAutoReset[i] = strings.ToLower(u)
+	}
+	s.CodexAutoReset = ids(s.CodexAutoReset)
 	s.TrayUsage = ""
 	if len(s.TrayUsages) > 0 {
 		s.TrayUsage = s.TrayUsages[0]
