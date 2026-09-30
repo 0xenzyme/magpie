@@ -1301,6 +1301,8 @@ const I18N = {
     "reply too short": "回复长度过短",
     "needs verification": "账号需验证",
     "refused (safety filter)": "被安全过滤拒绝",
+    "request not understood": "请求格式不被接受",
+    "{who} answered {status}: its API couldn't read something in the request that another's may, so it goes on to the next before any of the reply reaches {agent}. Nothing is wrong with {who}, so it doesn't rest.": "{who} 返回 {status}：它的 API 读不懂请求里的某些内容，而别家的可能可以，所以在任何回复到达 {agent} 之前就转给了下一个。{who} 本身没出问题，所以不用休息。",
     "{who}'s safety filter refused the request before saying anything, so it goes on to the next before any of the reply reaches {agent}. Nothing is wrong with {who}, so it doesn't rest.": "{who} 的安全过滤在说出任何内容前拒绝了这个请求，所以在任何回复到达 {agent} 之前就转给了下一个。{who} 本身没出问题，所以不用休息。",
     "{who}'s safety filter refused the request before saying anything, and nobody is left to try, so {agent} gets an error saying so, not an empty reply to ask again for.": "{who} 的安全过滤在说出任何内容前拒绝了这个请求，且没有其他可试的，所以 {agent} 收到一个说明被拒绝的错误，而不是一个会让它反复重试的空回复。",
     "The vendor wants the account verified first: it rests half an hour, or until you say it's verified": "服务商要求先验证这个账号：它休息半小时，或等你确认已验证",

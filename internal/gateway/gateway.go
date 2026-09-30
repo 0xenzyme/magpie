@@ -1063,6 +1063,18 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 			continue
 		}
+		if !last && hw.failed() && shapeRefused(hw.code(), hw.errBody()) {
+			// a request this vendor's API can't read (xAI's 422 over an
+			// input item it doesn't know, #350) another's may: the next is
+			// asked once, as each is, and this one doesn't rest
+			if other == nil {
+				other = &Try{Status: call.Status, Error: call.Error}
+			}
+			try.Fail = failShape
+			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+			skipped = append(skipped, c.label()+": "+call.Error)
+			continue
+		}
 		if wait, ok := passing(hw.code(), hw.header, again); ok && !last && again < lastRetries && hw.failed() && spentAfter(cands[i+1:]) {
 			// the others left are out of their allowance (Discord, waroy: a
 			// Codex account run out, Grok busy a moment): this one is the
@@ -1456,6 +1468,11 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	searchFn := false // Codex's tool search sent as a function
 	switch proto {
 	case provider.Responses:
+		// Responses Lite's tools, as an input item, go as OpenAI takes them
+		// only to OpenAI (#350)
+		if (p.Account == nil || p.Account.Agent != "codex") && !strings.HasSuffix(p.Host(), "openai.com") {
+			body = liftAdditionalTools(body)
+		}
 		// only the ChatGPT backend runs Codex's tool search as Codex sends it
 		if p.Account == nil || p.Account.Agent != "codex" {
 			body, searchFn = searchAsFunction(body)
