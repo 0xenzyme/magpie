@@ -875,11 +875,14 @@ const handlers = {
   usage,
   // check tries one account as a request would: its loader, then its
   // models as the plugin lists them for it
-  async check(p) {
-    const key = accountKey(p.provider, p.account)
-    await load({ provider: p.provider, account: key })
-    const pi = await info(p.provider, key, true)
-    return { models: Object.keys(pi.models) }
+  // (through the account's proxy, as its requests go)
+  check(p) {
+    return via.run(p.proxy ?? "", async () => {
+      const key = accountKey(p.provider, p.account)
+      await load({ provider: p.provider, account: key })
+      const pi = await info(p.provider, key, true)
+      return { models: Object.keys(pi.models) }
+    })
   },
   // import keeps a sign-in made elsewhere (a built-in subscription's, moved
   // onto its plugin) as one more account, or as the account it already is

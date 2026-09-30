@@ -195,6 +195,17 @@ func Moved(id string) bool {
 	return ok && m.State == MovePlugin
 }
 
+// movedAgent is whether the logins.json agent's accounts are a moved
+// built-in's, its plugin's now.
+func movedAgent(agent string) bool {
+	for id, mv := range movers {
+		if slices.Contains(mv.agents, agent) && Moved(id) {
+			return true
+		}
+	}
+	return false
+}
+
 // OnPlugins are the built-ins moved onto their plugins.
 func OnPlugins() []string {
 	var out []string
@@ -391,7 +402,8 @@ func move(ctx context.Context, id string, mv *mover) (err error) {
 		if a.Lapsed {
 			continue
 		}
-		models, err := plugin.Check(ctx, id, moved[i].Key)
+		// through the account's proxy, as its requests go
+		models, err := plugin.Check(ViaLogin(ctx, id, a.User), id, moved[i].Key)
 		if err != nil {
 			return fmt.Errorf("%s through the plugin: %w", a.User, err)
 		}
@@ -665,6 +677,12 @@ func MoveBack(ctx context.Context, id string) error {
 	// the backup first, for back to write into the accounts it came from
 	prep := func(ls []savedLogin, _ map[string]string) []savedLogin {
 		for _, b := range m.Backup {
+			// the agent's own sign-in is one row: one written while moved
+			// (the agent signed in to another account meanwhile) gives
+			// way to the one set aside, which takes the agent's user anew
+			if b.own() {
+				ls = slices.DeleteFunc(ls, func(l savedLogin) bool { return l.Agent == b.Agent && l.own() && !sameMoved(l, b) })
+			}
 			if !slices.ContainsFunc(ls, func(l savedLogin) bool { return sameMoved(l, b) }) {
 				ls = append(ls, b)
 			}

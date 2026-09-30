@@ -494,7 +494,7 @@ func Check(ctx context.Context, provider, account string) ([]string, error) {
 	var r struct {
 		Models []string `json:"models"`
 	}
-	if err := Call(ctx, "check", map[string]any{"provider": provider, "account": account}, &r); err != nil {
+	if err := Call(ctx, "check", map[string]any{"provider": provider, "account": account, "proxy": proxyOf(ctx)}, &r); err != nil {
 		return nil, err
 	}
 	return r.Models, nil

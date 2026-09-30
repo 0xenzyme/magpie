@@ -26,9 +26,17 @@ func init() {
 				if err != nil {
 					continue
 				}
+				// the CLI's own account has its plan from the CLI, as the
+				// built-in shows it, not saved on its row
+				plan := l.Plan
+				if l.Home == "" {
+					if _, p, ok := devinIdentity(); ok && p != "" {
+						plan = p
+					}
+				}
 				md := map[string]any{"email": l.User}
-				if l.Plan != "" {
-					md["plan"] = l.Plan
+				if plan != "" {
+					md["plan"] = plan
 				}
 				if s := strings.TrimRight(server, "/"); s != "" && s != devinServer {
 					md["server"] = s
@@ -36,7 +44,7 @@ func init() {
 				if l.Home == "" {
 					md["cli"] = true // the plugin reads the CLI's key again, as the built-in does
 				}
-				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Plan: l.Plan, Own: l.Home == "",
+				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Plan: plan, Own: l.Home == "",
 					Auth: map[string]any{"type": "api", "key": key, "metadata": md}})
 			}
 			return out, nil

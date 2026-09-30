@@ -99,6 +99,11 @@ export const FakePlugin = async ({ client }) => ({
       // fake-1 costs the plan nothing, as a WorkBuddy model of x0.00 credits
       p.models["fake-1"].free = true
       if (auth?.key === "few") return { "fake-1": p.models["fake-1"] }
+      // $FAKE_MODELS: the vendor's list, whose answer names one more model
+      if (process.env.FAKE_MODELS && auth) {
+        const r = await fetch(process.env.FAKE_MODELS).then((r) => r.text()).catch(() => "")
+        if (r) p.models["fake-" + r] = { ...p.models["fake-1"], id: "fake-" + r, name: r }
+      }
       return p.models
     },
   },

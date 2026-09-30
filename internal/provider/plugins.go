@@ -152,6 +152,11 @@ func pluginCatalog(pp plugin.Provider) []catalog.Model {
 		if m.Reasoning {
 			c.Efforts = m.Variants
 		}
+		// a built-in moved onto its plugin keeps the levels it had for a
+		// model its vendor gives none: its maker's, as effortsOf borrows
+		if len(c.Efforts) == 0 && Moved(pp.ID) {
+			c.Efforts = borrowedEfforts(m.ID)
+		}
 		// OpenCode's price of a model it has none for is 0, as the
 		// plugins give a plan's models: a price is only one above it
 		if m.Cost != nil && (m.Cost.Input > 0 || m.Cost.Output > 0) {

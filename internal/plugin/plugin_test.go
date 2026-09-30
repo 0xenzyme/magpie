@@ -337,6 +337,7 @@ func TestPluginProxy(t *testing.T) {
 	t.Setenv("http_proxy", globalSrv.URL)
 	t.Setenv("FAKE_BASE", "http://vendor.invalid/v1")
 	t.Setenv("FAKE_USAGE", "http://vendor.invalid/usage")
+	t.Setenv("FAKE_MODELS", "http://vendor.invalid/models")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	abs, _ := filepath.Abs("testdata/fake/index.js")
@@ -379,6 +380,10 @@ func TestPluginProxy(t *testing.T) {
 	}
 	if u, err := AccountUsage(mine, "fakeco", ""); err != nil || u.Plan != "own" || last(&own) != "http://vendor.invalid/usage" {
 		t.Fatalf("usage with its own proxy: %+v, %v", u, err)
+	}
+	// a move's check of the account asks the vendor as its requests do
+	if ms, err := Check(mine, "fakeco", ""); err != nil || !slices.Contains(ms, "fake-own") || last(&own) != "http://vendor.invalid/models" {
+		t.Fatalf("a check with its own proxy: %v, %v", ms, err)
 	}
 	// direct: vendor.invalid can't be reached but through a proxy
 	mu.Lock()
