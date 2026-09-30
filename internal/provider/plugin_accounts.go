@@ -184,7 +184,6 @@ func notePluginLapse(pp plugin.Provider, key string, status int) {
 	if !refused && (status < 200 || status > 299) {
 		return
 	}
-	name, _ := pluginCard(pp)
 	loginsMu.Lock()
 	defer loginsMu.Unlock()
 	ls := readLogins()
@@ -192,7 +191,7 @@ func notePluginLapse(pp plugin.Provider, key string, status int) {
 		if l.Agent == pluginAgent(pp) && l.Home == key {
 			want := ""
 			if refused {
-				want = l.User + "'s " + name + " sign-in has expired — sign in again"
+				want = lapsedText(pp, l.User)
 			}
 			if l.Lapsed != want {
 				ls[i].Lapsed = want
@@ -201,6 +200,12 @@ func notePluginLapse(pp plugin.Provider, key string, status int) {
 			return
 		}
 	}
+}
+
+// lapsedText is what a plugin account the vendor refused says.
+func lapsedText(pp plugin.Provider, user string) string {
+	name, _ := pluginCard(pp)
+	return user + "'s " + name + " sign-in has expired — sign in again"
 }
 
 // clearPluginLapse takes the mark off an account signed in again.

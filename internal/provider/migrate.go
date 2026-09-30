@@ -118,6 +118,9 @@ type Moving struct {
 	// Lapsed is an account the vendor already refused: it goes along, but
 	// isn't tried.
 	Lapsed bool
+	// Plan is the plan the account showed, kept beside it until the
+	// plugin tells it anew.
+	Plan string
 	// Own is the agent's own sign-in (its CLI's, its app's), which the
 	// plugin reads where the agent keeps it, as the built-in did.
 	Own  bool
@@ -411,7 +414,11 @@ func keepOrder(pp plugin.Provider, accts []Moving, moved []movedAccount) error {
 			continue
 		}
 		ls = slices.DeleteFunc(ls, func(l savedLogin) bool { return l.Agent == agent && l.Home == ma.Key })
-		ls = append(ls, savedLogin{Agent: agent, User: a.User, Home: ma.Key, On: a.On || a.First, First: ma.Key == first, Seen: time.Now().UTC().Truncate(time.Second)})
+		l := savedLogin{Agent: agent, User: a.User, Plan: a.Plan, Home: ma.Key, On: a.On || a.First, First: ma.Key == first, Seen: time.Now().UTC().Truncate(time.Second)}
+		if a.Lapsed {
+			l.Lapsed = lapsedText(pp, a.User)
+		}
+		ls = append(ls, l)
 	}
 	if first != "" {
 		for i := range ls {

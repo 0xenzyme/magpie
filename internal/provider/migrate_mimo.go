@@ -28,7 +28,7 @@ func init() {
 				if !c.Issued.IsZero() {
 					expires = c.Issued.Add(24 * time.Hour).UnixMilli()
 				}
-				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Auth: map[string]any{
+				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Plan: l.Plan, Auth: map[string]any{
 					"type":      "oauth",
 					"refresh":   jsonText(map[string]any{"userId": c.UserID, "cUserId": c.CUserID, "passToken": c.PassToken, "deviceId": c.DeviceID, "region": c.Region, "base": c.Base}),
 					"access":    jsonText(cookies),

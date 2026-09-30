@@ -77,7 +77,8 @@ var OnSubscriptionUsage func()
 
 // subscriptionTimeout bounds one refresh; the vendors' endpoints can be
 // unreachable without a proxy, and then each fetch would hang to it.
-var subscriptionTimeout = 10 * time.Second
+// A plugin's account waits as long as the plugin itself does (20s).
+var subscriptionTimeout = 20 * time.Second
 
 // SubscriptionUsage returns rolling quotas for signed-in first-party agents.
 // Results are cached because these private account endpoints are aggressively

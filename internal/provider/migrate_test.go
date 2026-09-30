@@ -25,7 +25,7 @@ func fakeMover(t *testing.T, inUse *[]string) {
 		out: func() ([]Moving, error) {
 			var out []Moving
 			for _, l := range sideLogins("fakeco", "", func(l savedLogin) bool { return fakeToken(l) != "" }) {
-				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.saved.Lapsed != "", Auth: map[string]any{
+				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.saved.Lapsed != "", Plan: l.Plan, Auth: map[string]any{
 					"type": "oauth", "refresh": fakeToken(l.saved), "access": "a", "expires": 9e15, "accountId": l.User,
 				}})
 			}
@@ -168,7 +168,7 @@ func TestMoveToPlugin(t *testing.T) {
 
 	// a move through: b first, a on behind it, d off; a lapsed one goes
 	// along untried
-	reset(fakeLogin("a@fake", "rot-a", false, true), fakeLogin("b@fake", "r-b", true, true), fakeLogin("d@fake", "r-d", false, false),
+	reset(fakeLogin("a@fake", "rot-a", false, true), fakeLogin("b@fake", "r-b", true, true), func() savedLogin { l := fakeLogin("d@fake", "r-d", false, false); l.Plan = "Fake Max"; return l }(),
 		func() savedLogin { l := fakeLogin("e@fake", "r-dead", false, false); l.Lapsed = "expired"; return l }())
 	if err := Move(ctx, "fakeco"); err != nil {
 		t.Fatal(err)
@@ -184,6 +184,12 @@ func TestMoveToPlugin(t *testing.T) {
 	}
 	if got := strings.Join(pluginUsers(), " "); got != "b@fake+ a@fake+ d@fake e@fake" {
 		t.Fatalf("the plugin's accounts: %s", got)
+	}
+	// each keeps the plan it showed, and a refused one stays marked so
+	for _, l := range pluginLogins(mustPlugin(t)) {
+		if (l.User == "d@fake") != (l.Plan == "Fake Max") || (l.User == "e@fake") != (l.Lapsed != "") {
+			t.Fatalf("moved %s: plan %q, lapsed %q", l.User, l.Plan, l.Lapsed)
+		}
 	}
 	if err := Move(ctx, "fakeco"); err != nil {
 		t.Fatalf("moving again: %v", err)

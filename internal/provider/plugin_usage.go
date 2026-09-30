@@ -8,6 +8,8 @@ package provider
 
 import (
 	"context"
+	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -31,6 +33,9 @@ var movedCards = map[string]struct{ name, icon, site string }{
 	"devin":           {"Devin", "devin", "https://devin.ai"},
 }
 
+// movedNames are the built-ins' provider names that aren't their card's.
+var movedNames = map[string]string{CommandCodePlanID: "Command Code Plan"}
+
 // pluginCard is the name and icon pp's usage cards show.
 func pluginCard(pp plugin.Provider) (string, string) {
 	if c, ok := movedCards[pp.ID]; ok && Moved(pp.ID) {
@@ -50,6 +55,9 @@ func pluginUsageLogins(pp plugin.Provider) []Login {
 	}
 	return pluginLoginList(pp)
 }
+
+// signInGone is a plugin's usage saying the account's sign-in is gone.
+var signInGone = regexp.MustCompile(`(?i)sign-in has (expired|lapsed)|sign in again`)
 
 // pluginLoginQuota is the allowance of one of a plugin provider's
 // accounts, l.Agent being "plugin:" and its id.
@@ -77,6 +85,14 @@ func pluginLoginQuota(ctx context.Context, l Login) SubscriptionQuota {
 	if err != nil {
 		q.Error = err.Error()
 		return q
+	}
+	// a sign-in the vendor refused marks the account, as a built-in's
+	// usage read did, and a clean read takes the mark off
+	switch {
+	case signInGone.MatchString(u.Error):
+		notePluginLapse(pp, key, http.StatusUnauthorized)
+	case u.Error == "":
+		notePluginLapse(pp, key, http.StatusOK)
 	}
 	keepPluginPlan(pp, key, u.Plan)
 	return quotaOfPlugin(q, u)

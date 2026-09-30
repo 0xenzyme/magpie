@@ -458,6 +458,13 @@ async function providers() {
   for (const [id, a] of auths()) {
     const keys = accountsOf(stored, id)
     const p = await info(id)
+    // each account's own models, as the built-ins read each account's: a
+    // plan may serve fewer, or others, than the first account's. One that
+    // can't be read is taken to have them all.
+    const own = await Promise.all(keys.slice(1).map((k) => info(id, k, true).catch(() => null)))
+    const models = { ...p.models }
+    for (const q of own) for (const [k, m] of Object.entries(q?.models ?? {})) models[k] ??= m
+    const ids = (q) => Object.values(q.models).filter((m) => m.status !== "deprecated").map((m) => m.id)
     const first = stored[keys[0]]
     out.push({
       id,
@@ -470,8 +477,14 @@ async function providers() {
       signedIn: keys.length > 0,
       authType: first?.type ?? "",
       accountId: whoOf(first),
-      accounts: keys.map((k) => ({ key: k, type: stored[k]?.type ?? "", accountId: whoOf(stored[k]), hint: hintOf(stored[k]) })),
-      models: Object.values(p.models)
+      accounts: keys.map((k, i) => ({
+        key: k,
+        type: stored[k]?.type ?? "",
+        accountId: whoOf(stored[k]),
+        hint: hintOf(stored[k]),
+        models: own.length === 0 ? undefined : i === 0 ? ids(p) : own[i - 1] ? ids(own[i - 1]) : undefined,
+      })),
+      models: Object.values(models)
         .filter((m) => m.status !== "deprecated")
         .map((m) => ({
           id: m.id,

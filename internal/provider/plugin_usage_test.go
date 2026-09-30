@@ -2,8 +2,10 @@ package provider
 
 import (
 	"context"
+	"net/http"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,5 +132,122 @@ func TestPluginUsage(t *testing.T) {
 	}
 	if full.Full("fake-claude", 100, time.Now()).IsZero() || !full.Full("fake-1", 100, time.Now()).IsZero() {
 		t.Fatal("full@fake is used up for fake-claude alone")
+	}
+}
+
+// A usage read that finds the sign-in refused marks the account, as the
+// built-ins' did, and a clean one takes the mark off; one the network
+// failed shows the last reading, as a built-in's did.
+func TestPluginUsageLapse(t *testing.T) {
+	bun, err := exec.LookPath("bun")
+	if err != nil {
+		t.Skip("no bun on PATH")
+	}
+	claudeHome(t)
+	t.Setenv("MAGPIE_BUN", bun)
+	t.Cleanup(plugin.Settle)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	abs, _ := filepath.Abs("../plugin/testdata/fake/index.js")
+	if _, err := plugin.Add(ctx, abs); err != nil {
+		t.Fatal(err)
+	}
+	auth := func(user, refresh string) map[string]any {
+		return map[string]any{"type": "oauth", "refresh": refresh, "access": "a", "expires": 9e15, "accountId": user}
+	}
+	keys := map[string]string{}
+	var rows []savedLogin
+	for user, refresh := range map[string]string{"gone@fake": "r-gone", "ok@fake": "r-ok", "off@fake": "r-offline"} {
+		k, err := plugin.Import(ctx, "fakeco", auth(user, refresh))
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys[user] = k
+		rows = append(rows, savedLogin{Agent: "plugin:fakeco", User: user, Home: k, On: true})
+	}
+	saveLogins(t, rows...)
+	if _, err := plugin.Providers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	pp := mustPlugin(t)
+	notePluginLapse(pp, keys["ok@fake"], http.StatusUnauthorized)
+	lapsed := func() map[string]bool {
+		out := map[string]bool{}
+		for _, l := range pluginLogins(mustPlugin(t)) {
+			out[l.User] = l.Lapsed != ""
+		}
+		return out
+	}
+	if l := lapsed(); !l["ok@fake"] || l["gone@fake"] {
+		t.Fatalf("before: %v", l)
+	}
+	for _, u := range []string{"gone@fake", "ok@fake"} {
+		pluginLoginQuota(ctx, Login{Agent: "plugin:fakeco", User: u})
+	}
+	if l := lapsed(); l["ok@fake"] || !l["gone@fake"] {
+		t.Fatalf("after reading usage: %v", l)
+	}
+	if !passing.MatchString(pluginLoginQuota(ctx, Login{Agent: "plugin:fakeco", User: "off@fake"}).Error) {
+		t.Fatal("a failed fetch isn't taken for the network")
+	}
+}
+
+// Each of a plugin provider's accounts has the models its own plan
+// serves, as each of a built-in's accounts had: a key that has fewer
+// doesn't take on the first account's.
+func TestPluginAccountModels(t *testing.T) {
+	bun, err := exec.LookPath("bun")
+	if err != nil {
+		t.Skip("no bun on PATH")
+	}
+	claudeHome(t)
+	t.Setenv("MAGPIE_BUN", bun)
+	t.Cleanup(plugin.Settle)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	abs, _ := filepath.Abs("../plugin/testdata/fake/index.js")
+	if _, err := plugin.Add(ctx, abs); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plugin.Providers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	st, err := StartPluginSignIn("fakeco", 1, map[string]string{"where": "work", "team": "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SubmitSignInCallback(st.ID, "good"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PluginAPIKey(ctx, "fakeco", 0, nil, "few"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plugin.Providers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][]string{}
+	pp := mustPlugin(t)
+	for _, l := range pluginLogins(pp) {
+		for _, m := range pluginProvider(pp, l).Available() {
+			got[l.User] = append(got[l.User], m.ID)
+		}
+	}
+	if len(got) != 2 || len(got["a@fake"]) < 2 || strings.Join(got["API key"], " ") != "fake-1" {
+		t.Fatalf("each account's models: %v", got)
+	}
+}
+
+// A built-in moved onto its plugin keeps the name, icon and site its
+// provider had, whatever the plugin calls itself.
+func TestMovedProviderName(t *testing.T) {
+	claudeHome(t)
+	for id, want := range map[string]string{CommandCodePlanID: "Command Code Plan", "grok": "Grok (SuperGrok)", "kiro": "Kiro"} {
+		if err := setMigration(id, func(m *Migration) { m.State = MovePlugin }); err != nil {
+			t.Fatal(err)
+		}
+		p := pluginProvider(plugin.Provider{ID: id, Name: "Plugin's own " + id}, pluginLogin{})
+		if p.Name != want || p.Icon != movedCards[id].icon || p.Website != movedCards[id].site {
+			t.Fatalf("%s: %q %q %q, want %q", id, p.Name, p.Icon, p.Website, want)
+		}
 	}
 }

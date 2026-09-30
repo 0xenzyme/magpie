@@ -58,6 +58,8 @@ export const FakePlugin = async ({ client }) => ({
     usage: async (getAuth) => {
       const a = await getAuth()
       if (a.type !== "oauth") return { error: "an API key has no plan" }
+      if (a.refresh === "r-gone") return { error: `${a.accountId}: the FakeCo sign-in has expired — sign in again` }
+      if (a.refresh === "r-offline") throw new Error("fetch failed")
       const full = a.accountId === "full@fake"
       return {
         plan: "Fake Pro",

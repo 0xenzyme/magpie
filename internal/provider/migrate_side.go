@@ -36,7 +36,7 @@ func init() {
 				if l.Home == "" {
 					md["cli"] = true // the plugin reads the CLI's key again, as the built-in does
 				}
-				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Own: l.Home == "",
+				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Plan: l.Plan, Own: l.Home == "",
 					Auth: map[string]any{"type": "api", "key": key, "metadata": md}})
 			}
 			return out, nil
@@ -101,7 +101,7 @@ func init() {
 				if !c.ExpiresAt.IsZero() {
 					exp = c.ExpiresAt.UnixMilli()
 				}
-				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Own: samePath(l.Home, GrokHome()),
+				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Plan: l.Plan, Own: samePath(l.Home, GrokHome()),
 					Auth: map[string]any{"type": "oauth", "refresh": l.Home, "access": c.Key, "expires": exp, "accountId": firstNonEmpty(c.Email, l.User)}})
 			}
 			return out, nil
@@ -148,7 +148,7 @@ func init() {
 				if l.Own {
 					md["cli"] = true // the plugin reads the CLI's key again, as the built-in does
 				}
-				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Own: l.Own,
+				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Plan: l.Plan, Own: l.Own,
 					Auth: map[string]any{"type": "api", "key": l.auth.APIKey, "metadata": md}})
 			}
 			return out, nil

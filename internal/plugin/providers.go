@@ -71,6 +71,9 @@ type Account struct {
 	AccountID string `json:"accountId"`
 	// Hint tells an account with no id from another: the end of its key.
 	Hint string `json:"hint,omitempty"`
+	// Models are the ids of the provider's models this account has, when
+	// the provider has more than one account; none, it has them all.
+	Models []string `json:"models,omitempty"`
 }
 
 var (
@@ -95,12 +98,40 @@ func Providers(ctx context.Context) ([]Provider, error) {
 		return nil, err
 	}
 	provMu.Lock()
+	ps = keepUnloaded(ps, provCache)
 	provCache, provGood = ps, true
 	provMu.Unlock()
 	if b, err := json.Marshal(ps); err == nil {
 		_ = os.WriteFile(providersPath(), b, 0o600)
 	}
 	return ps, nil
+}
+
+// keepUnloaded is ps with the providers last known of an installed
+// plugin that told none this time: one that failed to load (a broken
+// update, its files gone, Bun refusing it) keeps its providers, their
+// accounts and what moved onto them in sight, its requests failing with
+// why, rather than going as if it were removed.
+func keepUnloaded(ps, last []Provider) []Provider {
+	if last == nil {
+		if b, err := os.ReadFile(providersPath()); err == nil {
+			_ = json.Unmarshal(b, &last)
+		}
+	}
+	told := map[string]bool{}
+	for _, p := range ps {
+		told[p.Spec] = true
+	}
+	installed := map[string]bool{}
+	for _, e := range Load().Plugins {
+		installed[e.Spec] = true
+	}
+	for _, p := range last {
+		if installed[p.Spec] && !told[p.Spec] {
+			ps = append(ps, p)
+		}
+	}
+	return ps
 }
 
 // refreshing is Cached's refreshes in the background.
@@ -141,7 +172,15 @@ func Cached() []Provider {
 		if !on[p.Spec] {
 			continue
 		}
+		was := p.Accounts
 		p.Accounts = accountsOf(auth, p.ID)
+		for i, a := range p.Accounts {
+			for _, w := range was {
+				if w.Key == a.Key {
+					p.Accounts[i].Models = w.Models
+				}
+			}
+		}
 		p.SignedIn = len(p.Accounts) > 0
 		p.AuthType = ""
 		if p.SignedIn {

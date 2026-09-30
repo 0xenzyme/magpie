@@ -159,6 +159,18 @@ func pluginCatalog(pp plugin.Provider) []catalog.Model {
 	return out
 }
 
+// pluginAccountCatalog is what the account at key serves: its own list
+// when the plugin told one, as the built-ins read each account's.
+func pluginAccountCatalog(pp plugin.Provider, key string) []catalog.Model {
+	all := pluginCatalog(pp)
+	for _, a := range pp.Accounts {
+		if a.Key == key && a.Models != nil {
+			return slices.DeleteFunc(all, func(m catalog.Model) bool { return !slices.Contains(a.Models, m.ID) })
+		}
+	}
+	return all
+}
+
 // pluginProvider is the provider as one of its accounts, l as the
 // accounts list has it.
 func pluginProvider(pp plugin.Provider, l pluginLogin) Provider {
@@ -171,9 +183,9 @@ func pluginProvider(pp plugin.Provider, l pluginLogin) Provider {
 	a := &Account{Agent: "plugin", User: user, Plan: l.Plan, Stream: true, plugin: &pp, pluginKey: acct.Key}
 	a.models = func() []catalog.Model {
 		if cur, ok := PluginOf(id); ok {
-			return pluginCatalog(cur)
+			return pluginAccountCatalog(cur, acct.Key)
 		}
-		return pluginCatalog(pp)
+		return pluginAccountCatalog(pp, acct.Key)
 	}
 	a.fetch = func(ctx context.Context) ([]catalog.Model, error) {
 		ps, err := plugin.Providers(ctx)
@@ -182,7 +194,7 @@ func pluginProvider(pp plugin.Provider, l pluginLogin) Provider {
 		}
 		for _, cur := range ps {
 			if cur.ID == pp.ID {
-				return catalog.Chat(pluginCatalog(cur)), nil
+				return catalog.Chat(pluginAccountCatalog(cur, acct.Key)), nil
 			}
 		}
 		return nil, fmt.Errorf("%s's plugin no longer lists it", name)
@@ -191,7 +203,10 @@ func pluginProvider(pp plugin.Provider, l pluginLogin) Provider {
 	a.transport = func(req *http.Request) (*http.Response, error) { return pluginFetch(pp, acct.Key, req) }
 	p := Provider{ID: id, Name: name, Icon: plugin.Icon(pp.Spec, pp.ID), Account: a}
 	if c, ok := movedCards[pp.ID]; ok && Moved(pp.ID) {
-		p.Icon, p.Website = c.icon, c.site // as the built-in was
+		p.Name, p.Icon, p.Website = c.name, c.icon, c.site // as the built-in was
+		if n, ok := movedNames[pp.ID]; ok {
+			p.Name = n
+		}
 	}
 	for _, m := range pp.Models {
 		switch pluginProtocol(pp.ID, m) {

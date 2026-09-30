@@ -26,7 +26,7 @@ func init() {
 			var out []Moving
 			for _, l := range zcodeLogins() {
 				// the own account's copy goes back to nothing: ZCode keeps it
-				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Own: l.Own, Auth: zcodeOut(l.User, l.Plan, l.key, l.Own)})
+				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Plan: l.Plan, Own: l.Own, Auth: zcodeOut(l.User, l.Plan, l.key, l.Own)})
 			}
 			return out, nil
 		},

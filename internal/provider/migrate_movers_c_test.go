@@ -64,15 +64,16 @@ func TestKiroMover(t *testing.T) {
 	}
 
 	ms := movingOf(t, "kiro")
-	if k := ms["Kiro API key"]; !k.First || k.Auth["type"] != "api" || k.Auth["key"] != "ksk_1" {
+	if k := ms["Kiro API key"]; !k.First || k.Auth["type"] != "api" || k.Auth["key"] != "ksk_1" || k.Auth["accountId"] != "Kiro API key" {
 		t.Fatalf("the key: %+v", k)
 	}
 	own := ms["Kiro account"]
 	if !own.Own || own.First || own.Auth["source"] != "kiro" || own.Auth["access"] != "" {
 		t.Fatalf("Kiro's own: %+v", own)
 	}
+	// with the key, the built-in used nothing else: b goes along off
 	b := ms["b@x"]
-	if b.Own || b.First || !b.On || b.Auth["access"] != "b-a" || b.Auth["refresh"] != "b-r" || b.Auth["expires"] != exp.UnixMilli() ||
+	if b.Own || b.First || b.On || b.Auth["access"] != "b-a" || b.Auth["refresh"] != "b-r" || b.Auth["expires"] != exp.UnixMilli() ||
 		b.Auth["method"] != "idc" || b.Auth["loginProvider"] != "Enterprise" || b.Auth["region"] != "eu-west-1" ||
 		b.Auth["profileArn"] != "arn:p" || b.Auth["clientId"] != "cid" || b.Auth["clientSecret"] != "cs" || b.Auth["plan"] != "Pro" {
 		t.Fatalf("b@x: %+v", b.Auth)

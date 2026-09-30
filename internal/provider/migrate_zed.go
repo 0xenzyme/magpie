@@ -19,7 +19,7 @@ func init() {
 			var out []Moving
 			for _, l := range zedLogins() {
 				c := l.creds
-				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Auth: map[string]any{
+				out = append(out, Moving{User: l.User, First: l.Active, On: l.On, Lapsed: l.Lapsed != "", Plan: l.Plan, Auth: map[string]any{
 					"type":      "oauth",
 					"access":    c.Access,
 					"refresh":   jsonText(map[string]any{"userId": c.UserID, "systemId": c.SystemID, "org": c.Org, "plan": c.Plan, "login": c.Login, "name": c.Name}),

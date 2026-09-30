@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -208,7 +209,7 @@ func TestPluginAccounts(t *testing.T) {
 		t.Fatalf("accounts %+v %+v", blue, red)
 	}
 	ps, err := Providers(ctx)
-	if err != nil || len(ps) != 1 || len(ps[0].Accounts) != 2 || ps[0].Accounts[0].AccountID != "blue@fake" || ps[0].Accounts[1] != (Account{Key: red.Account, Type: "oauth", AccountID: "red@fake"}) {
+	if err != nil || len(ps) != 1 || len(ps[0].Accounts) != 2 || ps[0].Accounts[0].AccountID != "blue@fake" || !reflect.DeepEqual(ps[0].Accounts[1], Account{Key: red.Account, Type: "oauth", AccountID: "red@fake", Models: ps[0].Accounts[0].Models}) || len(ps[0].Accounts[1].Models) == 0 {
 		t.Fatalf("Providers = %+v, %v", ps, err)
 	}
 	if c := Cached(); len(c) != 1 || len(c[0].Accounts) != 2 || c[0].Accounts[1].Key != red.Account || c[0].AccountID != "blue@fake" {
@@ -258,5 +259,43 @@ func TestPluginAccounts(t *testing.T) {
 	Restart()
 	if err := SignOut(ctx, "fakeco", ""); err != nil || SignedIn("fakeco") {
 		t.Fatalf("SignOut all: %v", err)
+	}
+}
+
+// A plugin that fails to load (a broken update, its files gone) keeps its
+// providers in sight, as it keeps its sign-ins: a provider moved onto it
+// doesn't vanish as if the plugin were removed.
+func TestUnloadedPluginKeepsProviders(t *testing.T) {
+	sandbox(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	src, _ := os.ReadFile("testdata/fake/index.js")
+	file := filepath.Join(t.TempDir(), "index.js")
+	if err := os.WriteFile(file, src, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Add(ctx, file); err != nil {
+		t.Fatal(err)
+	}
+	if ps, err := Providers(ctx); err != nil || len(ps) != 1 {
+		t.Fatalf("Providers = %+v, %v", ps, err)
+	}
+	if err := os.WriteFile(file, []byte("export default {{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	Restart()
+	ps, err := Providers(ctx)
+	if err != nil || len(ps) != 1 || ps[0].ID != "fakeco" {
+		t.Fatalf("with the plugin failing to load, Providers = %+v, %v", ps, err)
+	}
+	if cs := Cached(); len(cs) != 1 || cs[0].ID != "fakeco" {
+		t.Fatalf("Cached = %+v", cs)
+	}
+	// removed, it goes
+	if err := Remove(ctx, file); err != nil {
+		t.Fatal(err)
+	}
+	if ps, _ := Providers(ctx); len(ps) != 0 {
+		t.Fatalf("after removing it, Providers = %+v", ps)
 	}
 }

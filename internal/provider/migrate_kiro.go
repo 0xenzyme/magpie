@@ -27,10 +27,14 @@ func init() {
 			var out []Moving
 			key := kiroKey()
 			if key != "" {
-				out = append(out, Moving{User: "Kiro API key", First: true, On: true, Auth: map[string]any{"type": "api", "key": key}})
+				// named as the built-in named it, which per-account proxies
+				// and headers are keyed on
+				out = append(out, Moving{User: "Kiro API key", First: true, On: true, Auth: map[string]any{"type": "api", "key": key, "accountId": "Kiro API key"}})
 			}
 			for _, l := range kiroLogins() {
-				m := Moving{User: l.User, First: l.Active && key == "", On: l.On, Lapsed: l.Lapsed != ""}
+				// with a key, the built-in used nothing else: the accounts
+				// go along off, the key alone in use
+				m := Moving{User: l.User, First: l.Active && key == "", On: l.On && key == "", Lapsed: l.Lapsed != "", Plan: l.Plan}
 				if l.Home == "" {
 					m.Own = true
 					m.Auth = map[string]any{"type": "oauth", "source": "kiro", "access": "", "refresh": "", "expires": 0, "accountId": l.User}
