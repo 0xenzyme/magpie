@@ -207,6 +207,9 @@ func renewed(agent, user string) {
 
 func init() { provider.OnRenewed(renewed) }
 
+// staleAllowance is provider.StaleAllowance, swapped in tests.
+var staleAllowance = provider.StaleAllowance
+
 // Unrest lifts the rest of what rests by key — an account just verified
 // with its vendor, say — so the next request asks it again. False when it
 // wasn't resting.
@@ -320,12 +323,14 @@ func (s *Server) restAfterMarked(c candidate, status int, header http.Header, bo
 			d, r.By = t.Sub(now), "window"
 		}
 	}
+	// an account is kept by the agent its usage is asked of: a plugin's
+	// by the plugin's provider ("plugin:grok"), not by "plugin"
 	if a := c.p.Account; a != nil && why != failOther && why != failVerify {
-		provider.StaleAllowance(a.Agent, a.User) // ask again what it has left
+		staleAllowance(a.UsageAgent(), a.User) // ask again what it has left
 	}
 	r.Until = now.Add(d)
 	if a := c.p.Account; a != nil {
-		r.agent, r.user = a.Agent, a.User
+		r.agent, r.user = a.UsageAgent(), a.User
 	}
 	id := c.restKey()
 	// OpenRouter identifies a provider's shared pool separately from its
