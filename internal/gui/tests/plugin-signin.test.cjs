@@ -3,8 +3,8 @@
 // "From plugins"; its sign-in asks the way to sign in, the method's
 // questions (a pick, then a text the plugin checks), then opens the
 // browser and takes the code its page shows; an "api" way takes a key and
-// opens the account. Settings → Plugins lists the plugins, why one didn't
-// load, and adds one. English and Chinese; the API is faked here.
+// opens the account. (The Plugins tab is plugin-market.test.cjs.) English
+// and Chinese; the API is faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -50,11 +50,6 @@ function server(lang, asked) {
     }
     if (url.pathname === "/api/signin/p1/callback") { asked.push(["code", body()]); return route.fulfill({ status: 204 }); }
     if (url.pathname === "/api/signin/p1") return json({ id: "p1", agent: "fakeco", state: "waiting", url: "https://fake.test/auth", pasteCode: true, instructions: "Paste the code FakeCo shows." });
-    if (url.pathname === "/api/plugins") return json({ bun: true, bunVersion: "1.3.0", plugins: [
-      { spec: "opencode-fakeco-auth", providers: ["FakeCo"] },
-      { spec: "opencode-broken", error: "Cannot find module 'x'", providers: [] },
-    ] });
-    if (url.pathname === "/api/plugins/add") { asked.push(["add", body()]); return json({ bun: true, plugins: [{ spec: "opencode-fakeco-auth", providers: ["FakeCo"] }, { spec: body().spec, providers: ["Other"] }] }); }
     if (url.pathname.startsWith("/api/")) return json({});
     const file = path.join(assets, url.pathname === "/" ? "index.html" : url.pathname);
     const contentType = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" }[path.extname(file)];
@@ -63,10 +58,8 @@ function server(lang, asked) {
 }
 
 const L = {
-  en: { section: "From plugins", how: "How do you sign in to FakeCo?", next: "Next", code: "Code", finish: "Finish sign-in", key: "FakeCo API key", signIn: "Sign in",
-    plugins: "Plugins", failed: /Didn't load: Cannot find module/, signs: "Signs in to FakeCo", add: "Add" },
-  zh: { section: "来自插件", how: "用哪种方式登录 FakeCo？", next: "下一步", code: "验证码", finish: "完成登录", key: "FakeCo API Key", signIn: "登录",
-    plugins: "插件", failed: /没有加载成功：Cannot find module/, signs: "可登录 FakeCo", add: "添加" },
+  en: { section: "From plugins", how: "How do you sign in to FakeCo?", next: "Next", code: "Code", finish: "Finish sign-in", key: "FakeCo API key", signIn: "Sign in" },
+  zh: { section: "来自插件", how: "用哪种方式登录 FakeCo？", next: "下一步", code: "验证码", finish: "完成登录", key: "FakeCo API Key", signIn: "登录" },
 };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -126,19 +119,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.waitForFunction(() => editing === "fakeco");
         assert.deepEqual(asked.filter(([k]) => k === "signin").pop()[1], { provider: "fakeco", method: 0, inputs: {}, key: "k1" });
 
-        // Settings → Plugins
-        await page.goto("http://magpie.test/?view=settings");
-        const list = page.locator("#pluginsList");
-        await list.locator(".sub", { hasText: w.signs }).waitFor();
-        await list.locator(".sub.bad", { hasText: w.failed }).waitFor();
-        await list.getByRole("textbox").fill("opencode-other-auth");
-        await list.locator("button", { hasText: new RegExp("^" + w.add + "$") }).click();
-        await list.locator(".name", { hasText: "opencode-other-auth" }).waitFor();
-        assert.deepEqual(asked.find(([k]) => k === "add")[1], { spec: "opencode-other-auth" });
-        if (process.env.ARTIFACT_DIR) {
-          await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
-          await list.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `plugins-${engine}-${lang}.png`) });
-        }
         assert.deepEqual(errors, []);
       });
     }

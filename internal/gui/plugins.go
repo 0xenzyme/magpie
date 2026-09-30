@@ -63,6 +63,8 @@ type pluginEntryJSON struct {
 	plugin.Entry
 	Error     string   `json:"error,omitempty"` // why it didn't load
 	Providers []string `json:"providers"`       // the names of those it signs in to
+	Version   string   `json:"version,omitempty"` // installed
+	Latest    string   `json:"latest,omitempty"`  // on npm, when the market asked
 }
 
 type pluginsJSON struct {
@@ -92,7 +94,7 @@ func pluginsState(ctx context.Context) pluginsJSON {
 		}
 	}
 	for _, e := range l.Plugins {
-		j := pluginEntryJSON{Entry: e, Error: errs[e.Spec], Providers: names[e.Spec]}
+		j := pluginEntryJSON{Entry: e, Error: errs[e.Spec], Providers: names[e.Spec], Version: plugin.Installed(e.Spec)}
 		if j.Providers == nil {
 			j.Providers = []string{}
 		}
@@ -101,7 +103,67 @@ func pluginsState(ctx context.Context) pluginsJSON {
 	return s
 }
 
+// pluginMarketJSON is the plugin market: the plugins magpie suggests, what npm
+// says of each, and those added.
+type pluginMarketJSON struct {
+	Listings []pluginListingJSON `json:"listings"`
+	State    pluginsJSON   `json:"state"`
+}
+
+type pluginListingJSON struct {
+	plugin.Listing
+	NPM plugin.NPM `json:"npm"`
+}
+
+func pluginMarketState(ctx context.Context) pluginMarketJSON {
+	var ls []plugin.Listing
+	var st pluginsJSON
+	done := make(chan struct{})
+	go func() { st = pluginsState(ctx); close(done) }()
+	ls = plugin.Market(ctx)
+	names := []string{}
+	for _, l := range ls {
+		names = append(names, l.Package)
+	}
+	<-done
+	for _, e := range st.Plugins {
+		if !plugin.IsPath(e.Spec) {
+			names = append(names, plugin.Name(e.Spec))
+		}
+	}
+	info := plugin.Info(ctx, names)
+	m := pluginMarketJSON{Listings: []pluginListingJSON{}, State: st}
+	for _, l := range ls {
+		m.Listings = append(m.Listings, pluginListingJSON{Listing: l, NPM: info[l.Package]})
+	}
+	for i, e := range m.State.Plugins {
+		m.State.Plugins[i].Latest = info[plugin.Name(e.Spec)].Version
+	}
+	return m
+}
+
 func pluginRoutes(mux *http.ServeMux, w Windows) {
+	mux.HandleFunc("GET /api/plugins/market", func(rw http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
+		defer cancel()
+		writeJSON(rw, pluginMarketState(ctx))
+	})
+	mux.HandleFunc("GET /api/plugins/search", func(rw http.ResponseWriter, r *http.Request) {
+		hits, err := plugin.Search(r.Context(), r.URL.Query().Get("q"))
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, map[string]any{"hits": hits})
+	})
+	mux.HandleFunc("GET /api/plugins/page", func(rw http.ResponseWriter, r *http.Request) {
+		p, err := plugin.Readme(r.Context(), r.URL.Query().Get("name"))
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, p)
+	})
 	mux.HandleFunc("GET /api/plugins", func(rw http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
 		defer cancel()
@@ -128,6 +190,8 @@ func pluginRoutes(mux *http.ServeMux, w Windows) {
 			err = plugin.Remove(ctx, in.Spec)
 		case "update":
 			err = plugin.Update(ctx)
+		case "upgrade":
+			err = plugin.Upgrade(ctx, plugin.Name(in.Spec))
 		case "off":
 			err = plugin.SetOff(in.Spec, in.Off)
 		default:

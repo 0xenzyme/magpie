@@ -98,6 +98,7 @@ const CHECK = "m3.5 8.5 3 3 6-7";
 const PLUS = "M8 3.5v9M3.5 8h9";
 const OUT = "M6.5 3.5h-3v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5";
 const COPY_ICON = "M5.5 5.5V3.5h7v7h-2M3.5 5.5h7v7h-7z";
+const PUZZLE = "M6.2 2.8h2.3a1.3 1.3 0 1 1 2.5 0h2.2V5a1.3 1.3 0 1 0 0 2.6v5.6H3V7.6a1.3 1.3 0 1 1 0-2.6V2.8z";
 
 // A brand icon: colour logos are images, mono logos take the text colour.
 // Nothing is ever invented: a model with no known vendor keeps the slot
@@ -1309,7 +1310,10 @@ async function load() {
     state = next;
     load.done = true;
     // the library may have drawn itself before the saved language was known
-    if (applyPrefs(state.settings, state.fx) && view === "library") window.loadLibrary?.();
+    if (applyPrefs(state.settings, state.fx)) {
+      if (view === "library") window.loadLibrary?.();
+      if (view === "plugins") window.loadPlugins?.();
+    }
     tintPanel();
     tintTitleBar();
     renderAgents();
@@ -2844,6 +2848,7 @@ function renderAdd() {
       any = true;
       const grid = section("Subscriptions", "sign in, no key");
       for (const x of subs) grid.append(subTile(x));
+      if (!f) grid.append(morePluginsTile());
       const w = subs.find((x) => signing?.agent === x.agent);
       if (w) tiles.append(renderSigning(w));
     }
@@ -2880,7 +2885,9 @@ function renderAdd() {
       none.append(t("Nothing called “{q}”. ", { q: presetQuery.trim() }));
       const b = el("button", "link", t("Add it as a custom provider"));
       b.onclick = () => { editing = { custom: true }; draft = null; renderProviders(); };
-      none.append(b);
+      const pl = el("button", "link", t("look for a plugin"));
+      pl.onclick = () => openPlugins(presetQuery.trim());
+      none.append(b, t(", or "), pl);
       tiles.append(none);
     } else if (!f) {
       // a vendor not listed: one line under them all
@@ -2906,6 +2913,47 @@ function pickRow(ic, name, cls = "") {
   nm.append(el("span", "n", name));
   b.append(icon(ic), nm);
   return b;
+}
+
+// morePluginsTile: the add sheet's way to the Plugins tab, where more
+// subscriptions are, each signed in to by a plugin
+function morePluginsTile() {
+  const b = el("button", "tile more-plugins");
+  b.dataset.pick = "plugins";
+  const nm = el("span", "nm");
+  nm.append(el("span", "n", t("More in Plugins")));
+  const ic = el("span", "puzzle");
+  ic.append(svg(PUZZLE, 15, 1.4));
+  b.append(ic, nm, svg(CHEV_R, 11, 1.6));
+  b.title = t("Subscriptions magpie doesn't sign in to itself: install a plugin for one in the Plugins tab");
+  b.onclick = () => openPlugins();
+  return b;
+}
+
+// openPlugins: the Plugins tab, looking for q when there is one
+function openPlugins(q) {
+  if (mode !== "window") { api("window/main?view=plugins", {}).catch(() => {}); return; }
+  show("plugins");
+  window.pluginQuery?.(q || "");
+}
+
+// pluginSignIn: a plugin's provider signed in to as every subscription is,
+// in the Providers add sheet
+function pluginSignIn(id) {
+  closeModal();
+  show("providers");
+  adding = true; editing = null; draft = null; presetQuery = "";
+  renderProviders();
+  startSignIn(id);
+}
+
+// openProvider: a provider opened in the Providers tab
+function openProvider(id) {
+  closeModal();
+  show("providers");
+  adding = false; editing = id; draft = null; presetQuery = "";
+  renderProviders();
+  syncURL();
 }
 
 // a row already added: a green dot after its name, and how many accounts
@@ -5860,6 +5908,15 @@ function hostOf(u) { try { return new URL(u.includes("://") ? u : "https://" + u
 // view goes down with it. The button stays at the view's foot however long
 // the list is; with the sheet already open it takes the view down to it,
 // and it steps aside while the sheet's head is in sight.
+// moreSubs: beside Add provider, the reminder that more subscriptions are
+// a plugin away — three of them in a stack, and where to find them
+{
+  const b = $("#moreSubs");
+  for (const ic of ["cursor", "githubcopilot", "gemini-color"]) b.firstElementChild.append(icon(ic));
+  b.append(svg(CHEV_R, 10, 1.7));
+  b.onclick = () => { openPlugins(); b.blur(); };
+}
+
 $("#addProvider").onclick = (e) => {
   const view = $("#view-providers"), sheet = $("#addSheet");
   if (!adding) {
@@ -8338,7 +8395,6 @@ function renderSettings() {
   renderImages(s, keep);
   renderRedact(s, keep);
   renderLAN(s);
-  renderPlugins();
   renderSync();
 
   const about = $("#about");
@@ -8399,93 +8455,6 @@ function renderSessionTerminal(s, keep) {
   }));
   select.value = chosen;
   select.onchange = () => savePrefs({ ...keep, sessionTerminal: select.value === "system" ? "" : select.value });
-}
-
-// renderPlugins: OpenCode's provider plugins, each signing in to a
-// subscription magpie doesn't (or no longer does) itself. They are other
-// people's code: magpie runs them on Bun and passes their requests on.
-let pluginsView = null;
-let pluginsBusy = "";
-async function renderPlugins(v) {
-  const box = $("#pluginsList");
-  if (!box) return;
-  if (v) pluginsView = v;
-  else if (!pluginsView) {
-    pluginsView = { plugins: [], loading: true };
-    api("plugins").then((x) => renderPlugins(x), (e) => renderPlugins({ plugins: [], error: e.message }));
-  }
-  v = pluginsView;
-  box.replaceChildren();
-  const run = async (op, body, busy) => {
-    pluginsBusy = busy;
-    renderPlugins();
-    try {
-      const r = await api("plugins/" + op, body);
-      pluginsBusy = "";
-      renderPlugins(r);
-      providers = await api("providers");
-      renderProviders();
-    } catch (e) {
-      pluginsBusy = "";
-      renderPlugins();
-      status(e.message, "err");
-    }
-  };
-  for (const p of v.plugins) {
-    const r = el("div", "row pref plugin-row" + (p.off ? " off" : ""));
-    const who = el("div", "who");
-    who.append(el("div", "name", p.spec));
-    const sub = el("div", "sub", p.off ? t("Off")
-      : p.error ? t("Didn't load: {error}", { error: p.error })
-      : p.providers.length ? t("Signs in to {names}", { names: p.providers.join(t(", ")) })
-      : v.loading ? t("Loading…") : t("Signs in to nothing magpie can use"));
-    if (p.error && !p.off) sub.classList.add("bad");
-    who.append(sub);
-    const val = el("div", "val");
-    const onoff = el("button", "text", t(p.off ? "Switch on" : "Switch off"));
-    onoff.onclick = () => run("off", { spec: p.spec, off: !p.off }, p.spec);
-    const rm = el("button", "text quiet", t("Remove"));
-    rm.title = t("Removes the plugin and what it installed; its sign-ins are kept until you sign out");
-    rm.onclick = () => run("remove", { spec: p.spec }, p.spec);
-    onoff.disabled = rm.disabled = !!pluginsBusy;
-    val.append(onoff, rm);
-    r.append(who, val);
-    box.append(r);
-  }
-  // a new one: an npm package or a file on this computer
-  const r = el("div", "row pref plugin-add");
-  const who = el("div", "who");
-  who.append(el("div", "name", t("Add a plugin")));
-  who.append(el("div", "sub", pluginsBusy === "+" ? (v.bun ? t("Installing…") : t("Downloading Bun {v}, which plugins run on, then installing…", { v: v.bunVersion || "" }))
-    : v.error ? t("Couldn't ask the plugins: {error}", { error: v.error })
-    : t("An OpenCode provider plugin — its npm package or a path. Plugins are other people's code: they sign in and make the requests.")));
-  const val = el("div", "val");
-  const form = el("form", "proxy-segs");
-  const spec = input("", "opencode-gemini-auth");
-  spec.className = "proxy";
-  spec.setAttribute("aria-label", t("Plugin"));
-  spec.autocomplete = "off";
-  spec.spellcheck = false;
-  spec.onkeydown = (e) => e.stopPropagation();
-  const add = el("button", "text primary", t("Add"));
-  add.type = "submit";
-  add.disabled = spec.disabled = !!pluginsBusy;
-  form.onsubmit = add.onclick = (e) => {
-    e.preventDefault();
-    if (!spec.value.trim() || pluginsBusy) return;
-    run("add", { spec: spec.value.trim() }, "+");
-  };
-  form.append(spec, add);
-  val.append(form);
-  if (v.plugins.length) {
-    const up = el("button", "text", t(pluginsBusy === "update" ? "Updating…" : "Update all"));
-    up.title = t("Installs the newest version of each plugin");
-    up.disabled = !!pluginsBusy;
-    up.onclick = () => run("update", {}, "update");
-    val.append(up);
-  }
-  r.append(who, val);
-  box.append(r);
 }
 
 // renderSync: the Settings page's sync and backup — WebDAV keeping the
@@ -9408,7 +9377,7 @@ function show(v) {
   view = v;
   if (mode === "window") { for (const b of $("#nav").querySelectorAll("button")) b.classList.toggle("on", b.dataset.view === v); slide($("#nav"), "nav"); }
   $("#prefs").classList.toggle("on", v === "settings");
-  for (const id of ["agents", "providers", "gateway", "routing", "usage", "library", "settings"]) $("#view-" + id).hidden = v !== id;
+  for (const id of ["agents", "providers", "gateway", "routing", "usage", "library", "plugins", "settings"]) $("#view-" + id).hidden = v !== id;
   // back to where the reader was in it, and again once it has what it loads
   const back = () => backToReader($("#view-" + v));
   requestAnimationFrame(back);
@@ -9419,6 +9388,7 @@ function show(v) {
   if (v === "usage") loadUsage().then(back, (e) => status(e.message, "err"));
   if (v === "settings") loadSettings().then(back, (e) => status(e.message, "err"));
   if (v === "library") window.loadLibrary?.()?.then(back);
+  if (v === "plugins") window.loadPlugins?.()?.then(back);
   syncURL();
 }
 
@@ -9482,7 +9452,7 @@ setTimeout(wag, 250);
 
 // A narrow window has no room for the whole header: the name goes, leaving
 // the magpie, and Update becomes its arrow; narrower still, the tabs stop
-// centring and take the room between.
+// centring and take the room between, and at the narrowest they draw in.
 function fitTop() {
   const top = $(".top"), nav = $("#nav"), brand = $(".brand"), actions = $(".actions");
   const fits = () => {
@@ -9493,10 +9463,12 @@ function fitTop() {
     const n = nav.getBoundingClientRect();
     return left + 8 <= n.left && n.right + 8 <= a.left;
   };
-  top.classList.remove("tight", "cramped");
+  top.classList.remove("tight", "cramped", "crowded");
   if (fits()) return;
   top.classList.add("tight");
-  if (!fits()) top.classList.add("cramped");
+  if (fits()) return;
+  top.classList.add("cramped");
+  if (!fits()) top.classList.add("crowded");
 }
 const topFit = new ResizeObserver(fitTop);
 for (const e of [".top", ".brand", ".actions"]) topFit.observe($(e));
@@ -9655,6 +9627,6 @@ if (mode === "window" && params.get("import")) {
   }).catch(() => {});
 }
 if (mode === "window" && params.get("view") === "providers" && params.get("edit")) editing = params.get("edit");
-if (mode === "window" && ["providers", "gateway", "routing", "usage", "library", "settings"].includes(params.get("view"))) show(params.get("view"));
+if (mode === "window" && ["providers", "gateway", "routing", "usage", "library", "plugins", "settings"].includes(params.get("view"))) show(params.get("view"));
 else if (mode === "window") slide($("#nav"), "nav");
 load();
