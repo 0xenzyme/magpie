@@ -17,6 +17,10 @@ func codexHome(t *testing.T, auth, config string) (home string, read func() stri
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("HANA_HOME", "")
+	// folders an agent's own variable moves out of the sandbox home
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
+	t.Setenv("OPENCHAMBER_DATA_DIR", "")
+	t.Setenv("MIMOCODE_HOME", "")
 	// Windows' own folders too: Claude Desktop's are in LOCALAPPDATA
 	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
 	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
