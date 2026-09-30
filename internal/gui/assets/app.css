@@ -1861,6 +1861,9 @@ body.window .row.agent .who.with-models { flex-wrap: wrap; row-gap: 0; }
 @media (hover: none) { .am-all { opacity: 1; } }
 .am-mr { display: flex; align-items: center; gap: 10px; width: calc(100% - 4px); height: 32px; margin: 0 2px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--fg); font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background-color .12s; }
 .am-mr:hover { background: var(--pill); }
+/* under its group: the model's icon in the group icon's column, past the
+   twisty, so the rows read as the group's */
+.am-rows .am-mr { padding-left: 28px; }
 .am-mr:focus-visible { outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
 .am-mr .lg { flex: none; }
 .am-mr .lg > svg { color: var(--muted); }

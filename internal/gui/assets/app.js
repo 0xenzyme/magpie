@@ -829,7 +829,13 @@ function fillModelsEntry(b, a) {
 const ctxShort = (n) => !n ? "" : n >= 1e6 ? (n % 1e6 ? (n / 1e6).toFixed(1) : n / 1e6) + "M" : Math.round(n / 1e3) + "K";
 
 let agentModels = null;
+// the list being fetched, before its box is up: a second click on the line
+// takes it back, as it would close the box, and another open or a close
+// supersedes it — each fetch that came back drew a box of its own, and the
+// one agentModels no longer held stayed on the screen, nothing closing it
+let agentModelsLoading = null;
 function closeAgentModels() {
+  agentModelsLoading?.drop();
   const m = agentModels;
   if (!m) return;
   agentModels = null;
@@ -846,13 +852,28 @@ function closeAgentModels() {
 
 async function openAgentModels(a, anchor, ev) {
   ev.stopPropagation();
-  const again = agentModels?.a.id === a.id;
+  const again = agentModels?.a.id === a.id || agentModelsLoading?.id === a.id;
   closeAgentModels();
   closePicker();
   if (again) return;
+  // a click elsewhere while it loads is one away from it, as it is once open
+  const loading = agentModelsLoading = {
+    id: a.id,
+    away: (e) => { if (!anchor.contains(e.target)) loading.drop(); },
+    drop() {
+      if (agentModelsLoading === loading) agentModelsLoading = null;
+      document.removeEventListener("mousedown", loading.away, true);
+    },
+  };
+  document.addEventListener("mousedown", loading.away, true);
   let models;
   try { models = (await api("agent-models/" + encodeURIComponent(a.id))).models; }
-  catch (e) { status(e.message, "err"); return; }
+  catch (e) {
+    if (agentModelsLoading === loading) { loading.drop(); status(e.message, "err"); }
+    return;
+  }
+  if (agentModelsLoading !== loading) return;
+  loading.drop();
   if (!anchor.isConnected) return;
   const box = el("div", "pop am-pop");
   box.setAttribute("role", "dialog");
