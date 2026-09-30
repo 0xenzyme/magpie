@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -95,12 +96,15 @@ func (h *host) HidePanel() { h.panel.Hide() }
 func (h *host) ShowMain(view string) {
 	h.panel.Hide()
 	if view != "" {
-		h.main.SetURL("/?view=" + view + h.query)
+		h.main.SetURL("/?view=" + url.QueryEscape(view) + h.query)
 	}
 	h.dock(settings.Load(), true)
 	h.main.Show()
 	h.main.Focus()
 }
+
+// MainShown says whether the window is up.
+func (h *host) MainShown() bool { return h.main != nil && h.main.IsVisible() }
 
 // Import opens the window on an import link, for the user to confirm.
 func (h *host) Import(link string) {
@@ -349,7 +353,8 @@ func Run(version string, showMain bool, link string) error {
 	menu.Add("Version " + version).SetEnabled(false)
 	restart := menu.Add("Restart to Update").SetHidden(true)
 	restart.OnClick(func(*application.Context) {
-		if restartToUpdate(false) {
+		// the window comes back if it was open; the tray alone if not
+		if restartToUpdate(false, h.MainShown(), "") {
 			h.app.Quit()
 		}
 	})
@@ -421,7 +426,7 @@ func Run(version string, showMain bool, link string) error {
 		h.whenReady(h.applyZoom)
 	}
 	if showMain {
-		h.whenReady(func() { h.ShowMain("") })
+		h.whenReady(func() { h.ShowMain(OpenView) })
 	}
 	if OpenPanel {
 		h.whenReady(func() { application.InvokeAsync(h.togglePanel) })
@@ -467,6 +472,8 @@ func singleInstance(h *host) *application.SingleInstanceOptions {
 			case len(args) == 1 && args[0] == "tray":
 			case len(args) == 1 && args[0] == "panel":
 				h.whenReady(func() { application.InvokeAsync(h.togglePanel) })
+			case len(args) == 2 && (args[0] == "gui" || args[0] == "app"):
+				h.whenReady(func() { h.ShowMain(args[1]) })
 			default:
 				h.whenReady(func() { h.ShowMain("") })
 			}
@@ -541,6 +548,10 @@ func panelOptions(goos, theme string) application.WebviewWindowOptions {
 // does; a second `magpie panel` toggles it in the running one. Omarchy's bar
 // icon runs it (see omarchy.AddWidget).
 var OpenPanel bool
+
+// OpenView is the tab the window opens on, as `magpie gui settings` asks:
+// a restart to update comes back where it was asked for.
+var OpenView string
 
 // togglePanel opens the quick panel by the tray icon, or closes it.
 func (h *host) togglePanel() {

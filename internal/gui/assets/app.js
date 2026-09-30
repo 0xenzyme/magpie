@@ -1044,6 +1044,12 @@ async function load() {
   renderUpdateBadge();
 }
 
+// installFrom is what a restart to update tells the app: the window's tab,
+// for the new version to open its window there (Windows, Linux).
+function installFrom() {
+  return mode === "window" ? { view } : {};
+}
+
 // renderUpdateBadge shows the header's Update pill once a newer magpie is
 // downloaded (a click restarts into it) or, where magpie can't replace
 // itself, out (a click opens the release page).
@@ -1064,7 +1070,7 @@ async function renderUpdateBadge() {
     label.textContent = t("Restarting…");
     // an answer means it didn't: the password prompt dismissed, the swap
     // failed, or a newer version is out and downloading first
-    const a = await api("update/install", {}).catch(() => ({}));
+    const a = await api("update/install", installFrom()).catch(() => ({}));
     if (!a) return backAsNew(u.current);
     if (a) {
       if (["checking", "downloading"].includes(a.state)) b.dataset.pulling = "1";
@@ -8440,7 +8446,7 @@ async function renderUpdate(r, u) {
       sub.textContent = t("{v} is downloaded", { v: u.latest }) + (u.error ? " · " + u.error : "");
       // back with an answer only when it didn't restart
       btn(t("Restart to update"), async () => {
-        const a = await api("update/install", {}).catch(() => ({ state: "error" }));
+        const a = await api("update/install", installFrom()).catch(() => ({ state: "error" }));
         if (a) return renderUpdate(r, a.current ? a : undefined);
         sub.textContent = t("Restarting…");
         backAsNew(u.current);
