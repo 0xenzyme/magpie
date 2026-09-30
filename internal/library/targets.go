@@ -104,10 +104,8 @@ func targetOf(a *agent.Agent) *Target {
 		t.MCP = &mcpFile{Path: a.Path, Format: fmtOpenCode}
 		t.Skills = filepath.Join(d, "skills")
 	case "pi":
-		d := os.Getenv("PI_CODING_AGENT_DIR")
-		if d == "" {
-			d = filepath.Join(h, ".pi", "agent")
-		}
+		// PI_CODING_AGENT_DIR's, else ~/.pi/agent (agent.piDir)
+		d := a.Dir
 		t.Instructions = filepath.Join(d, "AGENTS.md")
 		// Pi 0.99 reads MCP servers itself, from its mcp.json; before it,
 		// and while an MCP extension replaces its own (pi-mcp-adapter,
@@ -124,7 +122,8 @@ func targetOf(a *agent.Agent) *Target {
 		t.MCP = &mcpFile{Path: files[0], Also: files[1:], Format: fmtDsh}
 		t.Skills = filepath.Join(d, "skills")
 	case "omp":
-		d := filepath.Join(h, ".omp", "agent")
+		// ~/.omp/agent, or where omp's variables move it (agent.ompDir)
+		d := a.Dir
 		t.Instructions = filepath.Join(d, "AGENTS.md")
 		t.Skills = filepath.Join(d, "skills")
 	case "omo":

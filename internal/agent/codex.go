@@ -7,8 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pelletier/go-toml/v2"
 
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/codexcat"
@@ -76,7 +79,13 @@ func codexIn(at place) *Agent {
 		return catalog.Codex()
 	}
 	// keep the effort valid for the model; a fresh model gets its default.
+	// Routed, the Codex app offers magpie's models' efforts too (#310).
 	settle := func() error {
+		if routed() {
+			if err := codexEnableEfforts(path, magpieModels("codex")); err != nil {
+				return err
+			}
+		}
 		ms := models()
 		model, effort := get("model"), get("model_reasoning_effort")
 		if e := catalog.Efforts(ms, model); len(e) > 0 && !contains(e, effort) {
@@ -454,6 +463,76 @@ func contains(xs []string, x string) bool {
 		}
 	}
 	return false
+}
+
+// The reasoning efforts the Codex app knows, in its order (the enum of its
+// enabled-reasoning-efforts setting), and those it offers while the
+// setting is unset.
+var (
+	codexAppEfforts   = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent"}
+	codexAppEffortsOn = []string{"low", "medium", "high", "xhigh", "ultra", "persistent"}
+)
+
+// codexEnableEfforts adds the efforts magpie's models take to the Codex
+// app's [desktop] enabled-reasoning-efforts in config.toml: its model
+// picker offers a model's efforts only when they are there, so a model's
+// "max" or "minimal" was never offered (#310). The user's entries stay,
+// only what is missing is added, and nothing is written when nothing is;
+// an effort the app doesn't know is left out, as it would drop the whole
+// setting for it. A [desktop] spelled some other way (inline, dotted
+// keys) is left alone.
+func codexEnableEfforts(path string, ms []catalog.Model) error {
+	raw, err := edit.Read(path)
+	if err != nil {
+		return nil
+	}
+	var cfg struct {
+		Desktop map[string]any `toml:"desktop"`
+	}
+	if err := toml.Unmarshal(raw, &cfg); err != nil {
+		return nil
+	}
+	on := codexAppEffortsOn
+	if cfg.Desktop != nil {
+		if tables, _ := edit.TOMLTables(path); !slices.Contains(tables, "desktop") {
+			return nil
+		}
+		if v, ok := cfg.Desktop["enabled-reasoning-efforts"]; ok {
+			xs, ok := v.([]any)
+			if !ok {
+				return nil
+			}
+			on = nil
+			for _, x := range xs {
+				s, ok := x.(string)
+				if !ok {
+					return nil
+				}
+				on = append(on, s)
+			}
+		}
+	}
+	add := false
+	out := slices.Clone(on)
+	for _, e := range codexAppEfforts {
+		if slices.Contains(on, e) {
+			continue
+		}
+		for _, m := range ms {
+			if slices.Contains(m.Efforts, e) {
+				out, add = append(out, e), true
+				break
+			}
+		}
+	}
+	if !add {
+		return nil
+	}
+	q := make([]string, len(out))
+	for i, e := range out {
+		q[i] = strconv.Quote(e)
+	}
+	return edit.SetTOMLKey(path, "desktop", "enabled-reasoning-efforts", edit.Raw("["+strings.Join(q, ", ")+"]"))
 }
 
 // ownCodex is Codex's own models, narrowed to the ones ticked on its ChatGPT
