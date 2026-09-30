@@ -281,7 +281,7 @@
           sent = me.want;
           const v = await api("library/" + path, { name, agents: sent });
           take(v);
-          if (same() && Date.now() - refused > 6000) report(v.result);
+          if (same() && Date.now() - refused > 6000) report(v.result, null, sent);
         }
       } catch (e) {
         failed = true;
@@ -368,7 +368,9 @@
       return false;
     }
   }
-  function report(res, done) {
+  // given, for a row's agent chips, is the agents that have it now: an
+  // agent written that isn't one of them had it taken out (#332).
+  function report(res, done, given) {
     if (!res) return;
     if (res.problems?.length) {
       const p = res.problems[0];
@@ -376,7 +378,10 @@
       return;
     }
     const n = res.changed?.length || 0;
+    const out = given ? (res.changed || []).filter((id) => !given.includes(id)).length : 0;
     if (done) status(done, "ok");
+    else if (out && out === n) status(n === 1 ? t("Removed from {agent}", { agent: nameOf(res.changed[0]) }) : t("Removed from {n} agents", { n }), "ok");
+    else if (out) status(t("{n} agents updated", { n }), "ok");
     else if (n) status(n === 1 ? t("Written to {agent}", { agent: nameOf(res.changed[0]) }) : t("Written to {n} agents", { n }), "ok");
     else status(t("Saved — the agents already had it"), "ok");
   }
