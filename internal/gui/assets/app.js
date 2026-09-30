@@ -4933,9 +4933,8 @@ const subOf = (agent) => {
   const own = SUBS.find((x) => x.agent === agent);
   const pl = pluginSubs().find((x) => x.agent === agent);
   if (own && pl && movedSub(agent)) {
-    // own too: the agent's own sign-in stays where it was, and its editor says so as the built-in's does
     const { name, icon, plans, risk, riskNote, hint, sites, importable } = own;
-    return { ...pl, name, icon, plans, risk, riskNote, hint, sites, importable, own: own.own, moved: true };
+    return { ...pl, name, icon, plans, risk, riskNote, hint, sites, importable, moved: true };
   }
   return own || pl;
 };
@@ -5425,7 +5424,7 @@ function renderAccounts(a) {
       dot.title = l.paused ? t("Resume: the gateway uses this account first again") : t("Pause: the gateway uses the other accounts, {agent} stays signed in to this one", { agent: a.agentName });
       dot.onclick = () => accountAction("login/" + (l.paused ? "on" : "off"), { agent: a.agent, user: l.user });
     } else if (l.active) {
-      dot.title = sub?.own || sub?.plugin ? t("The gateway uses this account first") : t("{agent} is signed in to this account", { agent: a.agentName });
+      dot.title = sub?.own ? t("The gateway uses this account first") : t("{agent} is signed in to this account", { agent: a.agentName });
       dot.classList.add("fixed");
     } else {
       dot.title = on ? t("Stop using this account") : t("Use this account too");
@@ -5445,8 +5444,8 @@ function renderAccounts(a) {
       forget.title = l.own ? forgetOwnTitle(a) : t("magpie forgets this account's sign-in; the account itself is untouched");
       forget.onclick = () => accountAction("login/forget", { agent: a.agent, user: l.user }, t("{user} removed", { user: l.user }));
       const use = el("button", "text", on ? t("Make first") : t("Use"));
-      use.title = sub?.own || sub?.plugin ? t("The gateway uses this account first") : t("Sign {agent} in to this account", { agent: a.agentName });
-      use.onclick = () => { use.classList.add("busy"); accountAction("login/switch", { agent: a.agent, user: l.user }, sub?.own || sub?.plugin ? t("The gateway now uses {user} first", { user: l.user }) : t("{agent} is now signed in as {user}", { agent: a.agentName, user: l.user })); };
+      use.title = sub?.own ? t("The gateway uses this account first") : t("Sign {agent} in to this account", { agent: a.agentName });
+      use.onclick = () => { use.classList.add("busy"); accountAction("login/switch", { agent: a.agent, user: l.user }, sub?.own ? t("The gateway now uses {user} first", { user: l.user }) : t("{agent} is now signed in as {user}", { agent: a.agentName, user: l.user })); };
       row.append(forget, use);
     }
     row.append(accountQuota(l.lapsed ? { [l.user]: { error: l.lapsed } } : quota, l.user));
@@ -6116,7 +6115,7 @@ function renderMove(p) {
   const failed = m.state === "failed" && (m.why || m.error);
   say(failed ? t("It stays built-in: {error}", { error: moveWhy(m, p) }) : "");
   const idle = () => onPlugin ? t("Use the built-in again") : failed ? t("Try again") : t("Move to the plugin");
-  const b = el("button", "text", idle());
+  const b = el("button", "text action", idle()); // a button, not a line of text: it changes what runs the subscription
   b.onclick = async () => {
     b.classList.add("busy");
     b.disabled = true;

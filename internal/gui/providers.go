@@ -360,7 +360,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		out.DrawIDs = append(out.DrawIDs, m.ID)
 	}
 	out.Draws = len(out.DrawIDs)
-	if t, ok := p.Fetched(); ok {
+	if t, ok := p.Listed(); ok {
 		out.Fetched = &t
 	}
 	for _, a := range agents {

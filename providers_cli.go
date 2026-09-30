@@ -94,7 +94,7 @@ func providers() error {
 			r.key = amber.Render("○ no key")
 		}
 		n := len(p.Exposed())
-		if t, ok := p.Fetched(); ok {
+		if t, ok := p.Listed(); ok {
 			r.models = fmt.Sprintf("%d of %d models", n, len(p.Available())) + muted.Render(" · fetched "+ago(t))
 		} else {
 			r.models = fmt.Sprintf("%d models", n)
@@ -609,7 +609,7 @@ func showProvider(p provider.Provider) error {
 	}
 	ms := p.Exposed()
 	src := "models.dev"
-	if t, ok := p.Fetched(); ok {
+	if t, ok := p.Listed(); ok {
 		src = fetchedFrom(p) + " · fetched " + ago(t)
 	}
 	kv("models", fmt.Sprintf("%d exposed of %d %s", len(ms), len(p.Available()), muted.Render("from "+src)))

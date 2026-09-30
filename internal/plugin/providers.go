@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yetone/magpie/internal/settings"
 )
@@ -86,6 +87,16 @@ var (
 )
 
 func providersPath() string { return filepath.Join(settings.Dir(), "plugin-providers.json") }
+
+// ListedAt is when the plugins last listed their providers and models, as
+// a built-in's list is dated by when it was fetched.
+func ListedAt() (time.Time, bool) {
+	st, err := os.Stat(providersPath())
+	if err != nil {
+		return time.Time{}, false
+	}
+	return st.ModTime(), true
+}
 
 func forgetProviders() {
 	provMu.Lock()

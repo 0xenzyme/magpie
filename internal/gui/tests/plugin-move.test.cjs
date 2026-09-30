@@ -29,7 +29,7 @@ function serve(lang, posts) {
       // enough models that the editor scrolls to reach Runs on
       models: Array.from({ length: 30 }, (_, i) => ({ id: "m" + i, name: "Model " + i, on: i === 0 })),
       agents: [], fallback: [], headers: {}, keyList: [], key: {},
-      account: { agent: "zed", agentName: "Zed", user: "ada", logins: [{ user: "ada", active: true, on: true }, { user: "bob", on: true }] },
+      account: { agent: "zed", agentName: "Zed", user: "ada", logins: [{ user: "ada", active: true, on: true, own: true }, { user: "bob", on: true }] },
       move,
     };
     return {
@@ -73,12 +73,12 @@ const L = {
     move: "Move to the plugin", busy: "Installing the plugin and checking each account…", again: "Try again", back: "Use the built-in again",
     failed: "It stays built-in: magpie couldn't reach npm to install the plugin. Check the network or proxy, then try again.",
     onPlugin: "The community Zed plugin", builtin: "magpie's built-in · or the community Zed plugin", done: "Zed now runs on its plugin — 2 accounts, 1 model.",
-    subs: "Subscriptions", card: "Move my Zed accounts (2)" },
+    subs: "Subscriptions", card: "Move my Zed accounts (2)", own: "Zed itself stays signed in as it is." },
   zh: { runs: "运行方式", line: "Zed 可以改由社区插件运行，账号不变。", look: "看看",
     move: "迁移到插件", busy: "正在安装插件并逐个检查账号…", again: "重试", back: "改回内置",
     failed: "仍使用内置：无法连接 npm 安装插件，请检查网络或代理后重试。",
     onPlugin: "社区 Zed 插件", builtin: "magpie 内置 · 也可改用社区 Zed 插件", done: "Zed 现在由插件运行——2 个账号，1 个模型。",
-    subs: "订阅", card: "迁移我的 Zed 账号（2）" },
+    subs: "订阅", card: "迁移我的 Zed 账号（2）", own: "Zed 本身的登录保持不变。" },
 };
 
 const launch = (engine) => engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" });
@@ -112,6 +112,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await ed.locator(".move").getAttribute("title"), null);
       assert.equal(await ed.locator(".move > div").first().getAttribute("title"), pkg, "the package isn't in the tooltip");
       assert.ok(!text.includes(pkg), "names the npm package in the sentence");
+      assert.ok(text.includes(w.own), "doesn't say Zed stays signed in");
 
       // the reader scrolled to the field: nothing the move does moves it
       const body = ed.locator(".ebody");
@@ -137,6 +138,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await back.waitFor();
       assert.equal(await page.locator("#modal .editor").count(), 1, "the editor closed");
       assert.ok((await ed.innerText()).includes(w.onPlugin), "doesn't say the plugin runs it");
+      // as the built-in said: the agent's own sign-in is where it was
+      assert.ok((await ed.innerText()).includes(w.own), "the moved Zed no longer says Zed stays signed in");
       assert.equal(await why.count() && await why.isVisible(), false, "the failure is still said");
       assert.equal(await body.evaluate((e) => e.scrollTop), top, "the move moved the editor");
       assert.ok((await page.locator("#status").innerText()).startsWith(w.done), "no toast saying what moved");
