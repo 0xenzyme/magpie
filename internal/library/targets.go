@@ -178,8 +178,11 @@ func targetOf(a *agent.Agent) *Target {
 		// is: ~/.kimi/skills, ~/.claude/skills, ~/.codex/skills — so one of
 		// its own would hide Claude Code's from it — and ~/.config/agents/
 		// skills, ~/.agents/skills (kimi_cli/skill), wherever KIMI_SHARE_DIR
-		// is; before its 1.x brand/generic split, only the first of all five
-		if d := filepath.Join(h, ".config", "agents", "skills"); isDir(d) {
+		// is; before its 1.x brand/generic split, only the first of all five.
+		// The new Kimi Code (2.x) reads its own and ~/.agents/skills only.
+		if _, legacy := agent.KimiDir(h); !legacy {
+			t.Skills = sharedSkillsDir()
+		} else if d := filepath.Join(h, ".config", "agents", "skills"); isDir(d) {
 			t.Skills = d
 		} else {
 			t.Skills = sharedSkillsDir()
