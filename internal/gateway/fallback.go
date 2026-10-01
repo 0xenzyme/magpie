@@ -581,6 +581,12 @@ type holdWriter struct {
 	tail  []byte // the end of the last write, for a marker split across two
 
 	first firstToken // when its first content and text came (#196)
+
+	// stop ends the try's request to the vendor: a stream whose error
+	// came before any content has failed, and one that kept its
+	// connection open after it — a 429 said as an event — kept the agent
+	// waiting with nothing sent, the next account never asked
+	stop func()
 }
 
 func newHoldWriter(w http.ResponseWriter, hold bool) *holdWriter {
@@ -725,6 +731,9 @@ func (h *holdWriter) scan() {
 			continue
 		case eventError:
 			h.failure, h.failMsg = status, msg
+			if h.stop != nil {
+				h.stop()
+			}
 			return
 		case eventRefusal:
 			h.failure, h.failMsg, h.refused = status, msg, true

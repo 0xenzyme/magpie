@@ -1153,7 +1153,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			held, call.Status, call.Error = true, http.StatusForbidden, said
 			writeError(hw, from, call.Status, said)
 		} else {
-			call.Status, call.Error = s.attempt(hw, r, from, c.p, c.model, attemptBody, &call)
+			// a stream that fails before anything is said is let go at
+			// once (hw.stop), not read on until the vendor hangs up
+			ctx, stop := context.WithCancel(r.Context())
+			hw.stop = stop
+			call.Status, call.Error = s.attempt(hw, r.WithContext(ctx), from, c.p, c.model, attemptBody, &call)
+			stop()
 		}
 		hw.settle()
 		if hw.failure != 0 { // the stream failed before any of it was sent
