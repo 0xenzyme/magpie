@@ -303,13 +303,13 @@ func Restore(b Bundle, parts Parts) (Result, error) {
 		}
 	}
 	if parts.Settings && (b.Settings != nil || b.GatewayKeys != nil) {
-		// the window's size and the proxy are this machine's own
+		// the window's size, the proxy, the menu bar's usage are this machine's own
 		cur := settings.Load()
 		s := cur
 		if b.Settings != nil {
 			s = *b.Settings
 		}
-		s.Window, s.Proxy, s.Dock, s.DockWindow = cur.Window, cur.Proxy, cur.Dock, cur.DockWindow
+		s.KeepOwn(cur)
 		if !b.Keys {
 			s.LANKey, s.LANKeyID = cur.LANKey, cur.LANKeyID
 		} else if b.GatewayKeys == nil {

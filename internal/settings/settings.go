@@ -417,6 +417,16 @@ func CarryPerModel(in, cur *Settings) {
 	}
 }
 
+// KeepOwn puts back cur's settings that are this computer's own, which a
+// sync or a restored backup never brings from another: the window's size,
+// the proxy, the Dock, and what the menu bar or tray shows beside magpie's
+// icon (yoooo on Discord: usage turned off on a Mac came back from a
+// Windows box that shows it).
+func (s *Settings) KeepOwn(cur Settings) {
+	s.Window, s.Proxy, s.Dock, s.DockWindow = cur.Window, cur.Proxy, cur.Dock, cur.DockWindow
+	s.TrayUsages, s.TrayUsage, s.TrayUsageEvery, s.TrayNoLogos = cur.TrayUsages, cur.TrayUsage, cur.TrayUsageEvery, cur.TrayNoLogos
+}
+
 // RenamePerModel moves what the user said of a provider's models to the id
 // it has now: in every per-model map (see ModelNames) each key beginning
 // with from+"/" is rewritten to to+"/", and it says whether any key moved at
