@@ -9764,7 +9764,7 @@ function renderSessTools() {
   const cols = el("div", "sess-tools-cols");
 
   // the most called, each with its kind's dot, calls, sessions and share
-  const top = el("div", "sess-bars");
+  const top = el("div", "sess-bars tools");
   const peak = Math.max(1, ...tu.top.map((x) => x.calls));
   for (const x of tu.top) {
     const r = el("div", "sess-bar tool");
