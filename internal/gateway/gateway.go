@@ -346,6 +346,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/models", s.models)
 	mux.HandleFunc("GET /models", s.models)
 	mux.HandleFunc("GET /v1/models/{id...}", s.model)
+	mux.HandleFunc("GET /muse-code/models", s.museModels)
 	// Claude Desktop's third-party gateway looks for one here before it
 	// takes the address
 	mux.HandleFunc("GET /api/hello", func(w http.ResponseWriter, r *http.Request) {
