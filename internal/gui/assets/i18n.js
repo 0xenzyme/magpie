@@ -450,7 +450,7 @@ const I18N = {
     "Make first": "设为首选",
     "{name} tries {key} first": "{name} 会先用 {key}",
     "Add another key": "添加另一个密钥",
-    "Name, e.g. Team": "名称，例如 团队",
+    "Name (optional), e.g. Team": "名称（可选），例如 团队",
     "Name, e.g. Personal or Team": "名称，例如 个人 或 团队",
     "Rename": "重命名",
     "Key removed": "已移除密钥",

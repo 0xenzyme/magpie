@@ -3597,6 +3597,18 @@ function proxyDraft(p) {
   for (const [u, x] of Object.entries(p?.accountProxies || {})) accountProxies[u] = { mode: x === "direct" ? "direct" : "custom", url: x === "direct" ? "" : x };
   return { proxyMode: !v ? "" : v === "direct" ? "direct" : "custom", proxyURL: v && v !== "direct" ? v : "", accountProxies };
 }
+// asTyped: the editor's form as it stands, for Refresh and the Tests to
+// ask with before a Save — a key just pasted over the saved one is the one
+// tried, and nothing is saved by it. Outside the editor, nothing.
+function asTyped() {
+  if (!draft) return {};
+  const body = { typed: true, key: (draft.key || "").trim(), chat: (draft.chat || "").trim(), responses: (draft.responses || "").trim(), anthropic: (draft.anthropic || "").trim(), modelsURL: (draft.modelsURL || "").trim() };
+  if (draft.headers) body.headers = headersOf(draft.headers);
+  const proxy = draft.proxyMode === undefined ? null : proxyOfDraft();
+  if (proxy !== null) body.proxy = proxy;
+  return body;
+}
+
 // proxyOfDraft is the draft's proxy as it is saved, or null when Custom
 // has no address yet.
 function proxyOfDraft() {
@@ -4922,7 +4934,7 @@ function renderEndpoints(p, src) {
       test.classList.add("busy");
       for (const s of Object.values(slots)) { s.className = "res wait"; s.textContent = "…"; }
       try {
-        const r = await api("provider/test", { id: p.id });
+        const r = await api("provider/test", { ...asTyped(), id: p.id });
         for (const x of r.results) {
           const s = slots[x.protocol];
           if (!s) continue;
@@ -5138,7 +5150,7 @@ function renderModels(p) {
   refresh.onclick = async () => {
     refresh.classList.add("busy");
     try {
-      const r = await api("provider/models", { id: p.id });
+      const r = await api("provider/models", { ...asTyped(), id: p.id });
       status(t("{p}: {n} models", { p: p.name, n: r.count }), "ok");
       const chosen = draft.chosen;
       await loadProviders();
@@ -5159,7 +5171,7 @@ function renderModels(p) {
     for (const id of ids) got[id] = null;
     draw();
     try {
-      const r = await api("provider/test", { id: p.id, test: ids });
+      const r = await api("provider/test", { ...asTyped(), id: p.id, test: ids });
       r.results.forEach((x, i) => { got[ids[i]] = x; });
       const bad = r.results.filter((x) => !x.ok).length;
       status(bad ? t("{n} of {all} models didn't answer", { n: bad, all: ids.length }) : t("All {n} models answered", { n: ids.length }), bad ? "err" : "ok");
@@ -5174,7 +5186,7 @@ function renderModels(p) {
     got[id] = null;
     draw();
     try {
-      const r = await api("provider/test", { id: p.id, test: [id] });
+      const r = await api("provider/test", { ...asTyped(), id: p.id, test: [id] });
       const x = got[id] = r.results[0];
       status(x.ok ? t("{model} answered in {ms} ms", { model: id, ms: x.ms }) : t("{model} didn't answer: {error}", { model: id, error: (x.status ? x.status + " · " : "") + x.error }), x.ok ? "ok" : "err");
     } catch (e) { delete got[id]; status(e.message, "err"); }
@@ -6355,7 +6367,8 @@ function renderKeyAccounts(p) {
   }
   if (addingKey?.id === p.id) {
     const box = el("div", "acc adding");
-    const name = input(addingKey.name, t("Name, e.g. Team"));
+    // the key is what's needed; a name is only for telling keys apart
+    const name = input(addingKey.name, t("Name (optional), e.g. Team"));
     name.oninput = () => { addingKey.name = name.value; };
     const key = input(addingKey.key, t("paste an API key"), "password");
     key.oninput = () => { addingKey.key = key.value; };
@@ -6380,7 +6393,7 @@ function renderKeyAccounts(p) {
     bar.append(el("span", "grow"), x, add);
     box.append(fields, bar);
     list.append(box);
-    queueMicrotask(() => (addingKey.name ? key : name).focus());
+    queueMicrotask(() => key.focus());
   } else {
     const add = el("button", "acc add");
     const ic = el("span", "dot");
