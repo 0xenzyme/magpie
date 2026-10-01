@@ -11529,11 +11529,14 @@ function fitTop() {
     const n = nav.getBoundingClientRect();
     return left + 8 <= n.left && n.right + 8 <= a.left;
   };
-  top.classList.remove("tight", "cramped", "crowded", "packed");
+  top.classList.remove("tight", "cramped", "inrow", "crowded", "packed");
   if (fits()) return;
   top.classList.add("tight");
   if (fits()) return;
+  // the tabs closer together are tried in the middle first (#442)
   top.classList.add("cramped");
+  if (fits()) return;
+  top.classList.add("inrow");
   if (fits()) return;
   top.classList.add("crowded");
   if (!fits()) top.classList.add("packed");
