@@ -1959,7 +1959,7 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 		}
 		if offEffort(req.Effort) && !s.fits(p.ID, offRefused(model), to) {
 			r := *req
-			r.Effort, req = fitFor(p, model, "low"), &r
+			r.Effort, req = onEffort(p, model), &r
 		}
 		if to == provider.Anthropic && p.IsBedrock() && req.Metadata != nil {
 			// not the plain id Bedrock checks metadata.user_id against (#176)
@@ -2011,7 +2011,7 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 			// at its lowest, and so from then on
 			s.markUnfit(p.ID, offRefused(model), to)
 			r := *req
-			r.Effort, req = fitFor(p, model, "low"), &r
+			r.Effort, req = onEffort(p, model), &r
 			continue
 		}
 		if to == provider.Chat && res.StatusCode == http.StatusBadRequest && req.Effort != "none" &&
@@ -2574,6 +2574,14 @@ func conversationID(in http.Header, body []byte) string {
 
 // offEffort is an effort turning reasoning off, or as near off as asked.
 func offEffort(e string) bool { return e == "none" || e == "minimal" }
+
+// onEffort is the lowest level offered with reasoning on, or low when none
+// are known. A catalog's minimal must not be picked again after off was
+// refused; the catalog itself stays as it was.
+func onEffort(p provider.Provider, model string) string {
+	levels := slices.DeleteFunc(slices.Clone(p.Efforts(model)), offEffort)
+	return fitEffort("low", levels)
+}
 
 // offRefused is how unfit remembers a provider refusing reasoning turned
 // off for model.
