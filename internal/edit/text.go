@@ -51,15 +51,66 @@ func SetYAMLTop(path string, kvs ...KV) error {
 		if !yamlPlain.MatchString(v) || (isString && (yaml.Unmarshal([]byte(v), &decoded) != nil || decoded != v)) {
 			v = strconv.Quote(v)
 		}
-		lines = setLine(lines, kv.Path, kv.Path+": "+v, nil, func(line string) (string, bool) {
-			m := yamlKV.FindStringSubmatch(line)
-			if m == nil {
-				return "", false
-			}
-			return m[1], true
-		})
+		lines = setYAMLLine(lines, kv.Path, kv.Path+": "+v)
 	}
 	return WriteAtomic(path, []byte(joinLines(lines)))
+}
+
+// setYAMLLine replaces the top-level entry for key with newLine, or inserts
+// newLine after the last top-level entry. An entry is its key line and the
+// lines that belong to it (see yamlEntryEnd), so a new key never lands
+// between a block such as extensions: and its children.
+func setYAMLLine(lines []string, key, newLine string) []string {
+	at := 0
+	for i := 0; i < len(lines); i++ {
+		m := yamlKV.FindStringSubmatch(lines[i])
+		if m == nil {
+			continue
+		}
+		end := yamlEntryEnd(lines, i)
+		if m[1] == key {
+			out := append(lines[:i:i], newLine)
+			return append(out, lines[end:]...)
+		}
+		at = end
+		i = end - 1
+	}
+	out := make([]string, 0, len(lines)+1)
+	out = append(out, lines[:at]...)
+	out = append(out, newLine)
+	return append(out, lines[at:]...)
+}
+
+// yamlKeepScalar matches a block scalar header that keeps trailing blank lines
+// (|+, >+, |2+ …); those blank lines are part of its value.
+var yamlKeepScalar = regexp.MustCompile(`^[|>](\+[0-9]?|[0-9]\+)\s*(#.*)?$`)
+
+// yamlEntryEnd returns the index just past the top-level entry whose key is on
+// line i: its indented lines, a sequence written at column 0 under it, and
+// any blank or column-0 comment lines between them. Blank lines and comments
+// after its last such line are left to what follows, unless it is a block
+// scalar that keeps them.
+func yamlEntryEnd(lines []string, i int) int {
+	keep := false
+	if m := yamlKV.FindStringSubmatch(lines[i]); m != nil {
+		keep = yamlKeepScalar.MatchString(m[2])
+	}
+	end := i + 1
+	for j := i + 1; j < len(lines); j++ {
+		l := lines[j]
+		switch {
+		case strings.TrimSpace(l) == "":
+			if keep && j < len(lines)-1 {
+				end = j + 1
+			}
+		case l[0] == ' ' || l[0] == '\t' || l == "-" || strings.HasPrefix(l, "- "):
+			end = j + 1
+		case l[0] == '#':
+		default:
+			return end
+		}
+	}
+	return end
 }
 
 // DelYAMLTop removes top-level scalar keys from a YAML file.
@@ -73,11 +124,13 @@ func DelYAMLTop(path string, keys ...string) error {
 		drop[k] = true
 	}
 	var out []string
-	for _, line := range splitLines(string(raw)) {
-		if m := yamlKV.FindStringSubmatch(line); m != nil && drop[m[1]] {
+	lines := splitLines(string(raw))
+	for i := 0; i < len(lines); i++ {
+		if m := yamlKV.FindStringSubmatch(lines[i]); m != nil && drop[m[1]] {
+			i = yamlEntryEnd(lines, i) - 1
 			continue
 		}
-		out = append(out, line)
+		out = append(out, lines[i])
 	}
 	return WriteAtomic(path, []byte(joinLines(out)))
 }
