@@ -2307,6 +2307,7 @@ function renderList() {
     if (pick.modelPicker && o.value && !o.custom) {
       const star = el("button", "favorite" + (isFavorite(o) ? " on" : ""));
       star.title = isFavorite(o) ? t("Remove from favorites") : t("Add to favorites");
+      star.setAttribute("aria-pressed", String(isFavorite(o)));
       star.append(svg("m8 2 1.8 3.7 4.1.6-3 2.9.7 4.1L8 11.4l-3.6 1.9.7-4.1-3-2.9 4.1-.6z", 14, 1.4));
       star.onclick = (ev) => {
         ev.stopPropagation();

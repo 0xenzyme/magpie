@@ -1273,4 +1273,11 @@ and the badge then says what it has. A click moves no row and scrolls
 nothing; a subscription with one account has no badge; no border stripes,
 every string has its Chinese. It runs in Chromium and WebKit, in English and
 node --test internal/gui/tests/account-models.test.cjs
+
+`favorite-star.test.cjs` checks a model's favourite star in the model
+picker (#482): not a favourite, an outline star on hover; a favourite, a
+filled star shown always, with its title and aria-pressed to match. In the
+window and the tray panel, light and dark, English and Chinese, Chromium and
+WebKit:
+node --test internal/gui/tests/favorite-star.test.cjs
 ```
