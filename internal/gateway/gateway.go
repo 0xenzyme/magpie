@@ -971,6 +971,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	} else {
 		cands, pl = s.plan(p, model, from)
 	}
+	if len(cands) == 0 && len(pl.left) > 0 && !slices.ContainsFunc(pl.left, func(w Weighed) bool { return !w.Barred }) {
+		// every account or key there is was set not to serve the model
+		call.Status, call.Error = 403, "every account barred"
+		writeError(w, from, 403, barredError(call.Model, pl.left))
+		turnedAway()
+		return
+	}
 	if len(cands) == 0 {
 		call.Status, call.Error = 404, "no member ready"
 		writeError(w, from, 404, fmt.Sprintf("none of %s's models is ready", call.Model))

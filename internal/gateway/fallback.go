@@ -120,6 +120,14 @@ func perKey(p provider.Provider, model string, from provider.Protocol) []candida
 // protocol that suits the request best, and the others are tried only
 // after them, in the order they suit it.
 func perKeyOf(p provider.Provider, model string, from provider.Protocol) (out, aside, left []candidate) {
+	out, aside, left, _ = perKeyBarred(p, model, from)
+	return out, aside, left
+}
+
+// perKeyBarred is perKeyOf, and the accounts or keys the user set not to
+// serve the model (provider.AccountModels, #474): never tried, whatever
+// else there is — none, when every one of them is.
+func perKeyBarred(p provider.Provider, model string, from provider.Protocol) (out, aside, left, barred []candidate) {
 	if p.Account != nil {
 		also := p.AlsoOn()
 		var all []candidate
@@ -131,6 +139,13 @@ func perKeyOf(p provider.Provider, model string, from provider.Protocol) (out, a
 		for i, q := range also {
 			all = append(all, candidate{p: q, model: model, rest: p.ID + "@" + q.Account.User, rank: i + 1})
 		}
+		all = slices.DeleteFunc(all, func(c candidate) bool {
+			if p.AccountServes(c.p.Account.User, model) {
+				return false
+			}
+			barred = append(barred, c)
+			return true
+		})
 		// an account whose plan lacks the model (a Free one behind a Plus)
 		// would only answer 400; it is tried only when none lists it
 		for _, c := range all {
@@ -141,9 +156,9 @@ func perKeyOf(p provider.Provider, model string, from provider.Protocol) (out, a
 			}
 		}
 		if len(out) == 0 {
-			return all, nil, nil
+			return all, nil, nil, barred
 		}
-		return out, nil, left
+		return out, nil, left, barred
 	}
 	keys := p.KeysOn()
 	var unlisted []candidate
@@ -156,6 +171,10 @@ func perKeyOf(p provider.Provider, model string, from provider.Protocol) (out, a
 		if len(keys) > 1 {
 			rest += "#" + provider.KeyID(k.Key)
 		}
+		if !p.AccountServes(provider.KeyID(k.Key), model) {
+			barred = append(barred, candidate{p: q, model: model, rest: rest, rank: i})
+			continue
+		}
 		if !p.Serves(k, model) {
 			// the vendor lists the model to another key only
 			unlisted = append(unlisted, candidate{p: q, model: model, rest: rest, rank: i})
@@ -166,8 +185,11 @@ func perKeyOf(p provider.Provider, model string, from provider.Protocol) (out, a
 	if len(out) == 0 {
 		out, unlisted = unlisted, nil // no key lists it: try them all the same
 	}
+	if len(out) == 0 && len(barred) > 0 {
+		return nil, nil, nil, barred
+	}
 	if len(out) == 0 {
-		return []candidate{{p: p, model: model, rest: p.ID}}, nil, nil
+		return []candidate{{p: p, model: model, rest: p.ID}}, nil, nil, nil
 	}
 	sort.SliceStable(out, func(i, j int) bool { return keyFit(out[i].p, model, from) < keyFit(out[j].p, model, from) })
 	pool := out[:0:0]
@@ -178,7 +200,7 @@ func perKeyOf(p provider.Provider, model string, from provider.Protocol) (out, a
 			aside = append(aside, c)
 		}
 	}
-	return pool, aside, unlisted
+	return pool, aside, unlisted, barred
 }
 
 // keyFit ranks how well a key suits a request, best first: 0 fits, 1 needs
@@ -234,7 +256,8 @@ func (s *Server) candidates(p provider.Provider, model string, from provider.Pro
 func (s *Server) plan(p provider.Provider, model string, from provider.Protocol) ([]candidate, planned) {
 	var pl planned
 	add := func(q provider.Provider, m string, fallback bool) []candidate {
-		cs, aside, left := perKeyOf(q, m, from)
+		cs, aside, left, barred := perKeyBarred(q, m, from)
+		pl.left = append(pl.left, barredOf(barred, q, fallback, from, nil)...)
 		cs, wg := weigh(q, cs, m, from)
 		for i, c := range cs {
 			w := weighed(c, q, wg, fallback, from)
@@ -287,7 +310,8 @@ func (s *Server) planGroup(g provider.Group, ms []provider.Member, from provider
 // those unlisted it gathers for planGroup to put last.
 func planLevel(g provider.Group, ms []provider.Member, depth int, from provider.Protocol, pl *planned, asides *[]candidate, wAsides *[]Weighed) []candidate {
 	keys := func(m provider.Member) []candidate {
-		cs, aside, left := perKeyOf(m.Provider, m.Model, from)
+		cs, aside, left, barred := perKeyBarred(m.Provider, m.Model, from)
+		pl.left = append(pl.left, barredOf(barred, m.Provider, false, from, m.Groups())...)
 		// the effort the member is fixed at goes with each of its keys:
 		// the same model at another effort is another member's
 		for _, l := range [][]candidate{cs, aside, left} {
@@ -355,6 +379,30 @@ func planLevel(g provider.Group, ms []provider.Member, depth int, from provider.
 		i++
 	}
 	return out
+}
+
+// barredOf is how the trace tells the accounts or keys the user set not
+// to serve the model: left out, as those not listing it are.
+func barredOf(cs []candidate, q provider.Provider, fallback bool, from provider.Protocol, via []string) []Weighed {
+	var out []Weighed
+	for _, c := range cs {
+		w := weighed(c, q, weighing{}, fallback, from)
+		w.Unlisted, w.Barred, w.Via = true, true, via
+		out = append(out, w)
+	}
+	return out
+}
+
+// barredError says why a request for model went nowhere when every account
+// or key that could take it was set not to serve it.
+func barredError(model string, ws []Weighed) string {
+	var names []string
+	for _, w := range ws {
+		if !slices.Contains(names, w.Name) {
+			names = append(names, w.Name)
+		}
+	}
+	return fmt.Sprintf("model %q is set not to be served by any account or key of %s: each one's own list of models leaves it out. Add it to an account's models in magpie (Providers → the account's Models), or pick another model", model, strings.Join(names, ", "))
 }
 
 // asideOf is how the trace tells the keys made for another protocol than

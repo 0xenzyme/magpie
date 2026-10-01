@@ -1236,4 +1236,15 @@ Chinese:
 
 ```sh
 node --test internal/gui/tests/agent-grip.test.cjs
+
+`account-models.test.cjs` keeps an account of a subscription, and a key of a
+provider, for some of the provider's models only (#474): an account with a
+list of its own has a badge saying how many, always shown, and one without
+says All models on hover; a click opens the provider's models under the row
+as chips, Save waits for one picked and posts `provider/accountmodels` with
+the account (or the key's id) and the models picked, All models posts none,
+and the badge then says what it has. A click moves no row and scrolls
+nothing; a subscription with one account has no badge; no border stripes,
+every string has its Chinese. It runs in Chromium and WebKit, in English and
+node --test internal/gui/tests/account-models.test.cjs
 ```

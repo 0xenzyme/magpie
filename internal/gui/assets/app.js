@@ -6332,7 +6332,7 @@ function arrangeAccountRows(list, p) {
     row.onpointerdown = (e) => {
       if (accountArranging || e.target.closest("input, textarea, select, a, [contenteditable=true], button:not(.rename)")) return;
       // Text selection is native; drag the row's background/empty space instead.
-      if (e.target.closest(".n:not(button), .plan, .aq")) return;
+      if (e.target.closest(".n:not(button), .plan, .aq, .acct-models")) return;
       const current = [...list.children].filter((r) => r.dataset.accountId);
       accountArranging = dragRows(e, row, row, list, current, (to) => move(row, to), () => {},
         () => { if (!accountSaving) accountArrangementDone(); });
@@ -6387,7 +6387,11 @@ function renderAccounts(a, p) {
       dot.title = on ? t("Stop using this account") : t("Use this account too");
       dot.onclick = () => accountAction("login/" + (on ? "off" : "on"), { agent: a.agent, user: l.user });
     }
-    row.append(dot, el("span", "n", l.user), el("span", "plan", accountPlan({ agent: a.agent, builtin: a.builtin, plan: l.plan })), el("span", "grow"));
+    row.append(dot, el("span", "n", l.user), el("span", "plan", accountPlan({ agent: a.agent, builtin: a.builtin, plan: l.plan })));
+    // its own models (#474), when there is another account to send the rest to
+    const [amPill, amBox] = ls.length > 1 || accountModelsOf(p, l.user).length ? accountModels(p, l.user, false, l.user) : [];
+    if (amPill) row.append(amPill);
+    row.append(el("span", "grow"));
     if (l.active) {
       const using = el("span", "using", l.paused ? t("Paused") : back ? t("First for now") : several ? t("First") : t("In use"));
       if (back && !l.paused) using.title = t("{user} was nearly used up, so magpie signed {agent} in to this one; it goes back to {user} once that has room again", { user: back.user, agent: a.agentName });
@@ -6414,6 +6418,7 @@ function renderAccounts(a, p) {
     }
     row.append(accountQuota(l.lapsed ? { [l.user]: { error: l.lapsed } } : quota, l.user));
     row.classList.add("with-aq"); // not :has(.aq), which Safari 15.0 lacks (#220)
+    if (amBox) row.append(amBox);
     list.append(row);
   }
   if (a.agent === "codex" && providers?.codexDaemon) list.append(renderCodexDaemon(providers.codexDaemon));
@@ -6815,6 +6820,63 @@ async function accountAction(path, body, okMsg) {
   }
 }
 
+// An account's or key's own models (#474): one of several can be kept for
+// some of the provider's models only — a small allowance kept for the cheap
+// ones — and the gateway never sends it another. Unset, it serves all the
+// provider's, as before. The pill on its row says which it serves; a click
+// opens the provider's models under it as chips, picked and saved apart
+// from the editor's Save. acctModels is the row being picked: { id, ref,
+// chosen }.
+let acctModels = null;
+function accountModelsOf(p, ref) { return p.accountModels?.[String(ref).toLowerCase()] || []; }
+// It gives the pill, and the open picker the row ends with, or null.
+function accountModels(p, ref, isKey, name) {
+  const own = accountModelsOf(p, ref);
+  const pill = el("button", "amodels" + (own.length ? " set" : ""), own.length ? t(own.length === 1 ? "1 model" : "{n} models", { n: own.length }) : t("All models"));
+  pill.title = own.length ? t("Serves only {models}", { models: own.join(", ") }) : t(isKey ? "Every model of the provider goes to this key. Click to keep it for some only" : "Every model of the provider goes to this account. Click to keep it for some only");
+  const open = acctModels?.id === p.id && acctModels.ref === ref;
+  pill.classList.toggle("open", open);
+  pill.setAttribute("aria-expanded", open ? "true" : "false");
+  pill.onclick = () => { acctModels = open ? null : { id: p.id, ref, chosen: [...own] }; renderProviders(); };
+  if (!open) return [pill, null];
+  const box = el("div", "acct-models");
+  const chips = el("div", "mchips");
+  // the models the provider serves agents, and any the account has that it no longer lists
+  const ids = p.models.filter((m) => m.on).map((m) => m.id);
+  for (const id of acctModels.chosen) if (!ids.includes(id)) ids.push(id);
+  const foot = el("div", "acm-foot");
+  const save = el("button", "text primary", t("Save"));
+  const post = async (allow, msg) => {
+    const was = acctModels;
+    acctModels = null;
+    if (!await accountAction("provider/accountmodels", { id: p.id, account: ref, allow }, msg)) { acctModels = was; renderProviders(); }
+  };
+  const draw = () => {
+    chips.replaceChildren();
+    for (const id of ids) {
+      const m = p.models.find((x) => x.id === id);
+      const on = acctModels.chosen.includes(id);
+      const c = el("button", "mchip" + (on ? " on" : ""));
+      c.append(el("span", "", m?.name && m.name !== id ? m.name : id));
+      if (m?.name && m.name !== id) c.title = id;
+      c.onclick = () => { acctModels.chosen = on ? acctModels.chosen.filter((x) => x !== id) : [...acctModels.chosen, id]; draw(); };
+      chips.append(c);
+    }
+    if (!ids.length) chips.append(el("span", "hint", t("Pick the provider's models first.")));
+    save.disabled = !acctModels.chosen.length;
+  };
+  draw();
+  save.onclick = () => { save.classList.add("busy"); post(acctModels.chosen, t("{who} serves only {models}", { who: name, models: acctModels.chosen.join(", ") })); };
+  const all = el("button", "text action", t("All models"));
+  all.title = t("Every model of the provider, as an account without a list of its own");
+  all.onclick = () => own.length ? post([], t("{who} serves every model again", { who: name })) : (acctModels = null, renderProviders());
+  const x = el("button", "text", t("Cancel"));
+  x.onclick = () => { acctModels = null; renderProviders(); };
+  foot.append(el("span", "hint", t(isKey ? "Only the models picked go to this key; the others go to the provider's other keys." : "Only the models picked go to this account; the others go to the provider's other accounts.")), el("span", "grow"), all, x, save);
+  box.append(chips, foot);
+  return [pill, box];
+}
+
 // renderKeyAccounts: a key provider's accounts, one per key, the same list
 // a subscription has. addingKey holds the half-typed new one.
 let addingKey = null;
@@ -6847,6 +6909,9 @@ function renderKeyAccounts(p) {
     if (k.name) row.append(el("span", "plan mono", k.masked));
     const proto = protoPicker(p, k.protocol, (v) => accountAction("keys/protocol", { id: p.id, ref: k.id, protocol: v }));
     if (proto) row.append(proto);
+    // its own models (#474), when there is another key to send the rest to
+    const [amPill, amBox] = p.keyList.length > 1 || accountModelsOf(p, k.id).length ? accountModels(p, k.id, true, k.name || k.masked) : [];
+    if (amPill) row.append(amPill);
     row.append(el("span", "grow"));
     if (!k.active || several) {
       const rm = el("button", "text quiet", t("Remove"));
@@ -6859,6 +6924,7 @@ function renderKeyAccounts(p) {
       first.onclick = () => { first.classList.add("busy"); accountAction("keys/use", { id: p.id, ref: k.id }, t("{name} tries {key} first", { name: p.name, key: k.name || k.masked })); };
       row.append(first);
     }
+    if (amBox) row.append(amBox), row.classList.add("with-am");
     list.append(row);
   }
   if (addingKey?.id === p.id) {
