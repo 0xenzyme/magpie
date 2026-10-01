@@ -510,8 +510,10 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		if (in.Dock != cur.Dock || in.DockWindow != cur.DockWindow) && onDock != nil {
 			onDock(in)
 		}
-		// the cards the menu bar shows, any of them (TrayUsage is only the first)
-		if (!slices.Equal(settings.Load().TrayUsages, cur.TrayUsages) || in.TrayUsageEvery != cur.TrayUsageEvery) && onTrayUsage != nil {
+		// the cards the menu bar shows, any of them (TrayUsage is only the first),
+		// how often, and with their logos or not
+		if (!slices.Equal(settings.Load().TrayUsages, cur.TrayUsages) || in.TrayUsageEvery != cur.TrayUsageEvery ||
+			in.TrayNoLogos != cur.TrayNoLogos) && onTrayUsage != nil {
 			onTrayUsage()
 		}
 		// an alert turned on or moved is looked at now, the Mac asked for its

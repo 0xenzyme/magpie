@@ -152,6 +152,8 @@ const I18N = {
     "{n} subscriptions": "{n} 个订阅",
     "Menu bar refresh": "菜单栏刷新频率",
     "How often the usage beside the icon is asked for again": "图标旁的用量多久重新获取一次",
+    "Menu bar logos": "菜单栏图标",
+    "Each subscription's logo before its numbers; off, the numbers alone with a thin line between subscriptions": "每个订阅的数字前显示它的图标；关闭后只显示数字，订阅之间以细线分隔",
     "Usage shows": "用量显示",
     "How much of each window is used, or how much is left, on the Usage page, the panel and the menu bar": "每个窗口显示已用多少或剩余多少，用量页、面板和菜单栏一致",
     "Currency": "货币",

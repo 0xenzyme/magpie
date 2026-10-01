@@ -124,6 +124,10 @@ type Settings struct {
 	// TrayUsageEvery is how often, in minutes, that text is brought up to
 	// date; 0 is every 3 (one of TrayEvery).
 	TrayUsageEvery int `json:"trayUsageEvery,omitempty"`
+	// TrayNoLogos draws the Mac menu bar's cards without their logos: each
+	// is its windows stacked alone, a thin line between one card and the
+	// next.
+	TrayNoLogos bool `json:"trayNoLogos,omitempty"`
 	// QuotaLeft shows a subscription's windows by how much of each is left,
 	// not used: the Usage page, the tray panel and the menu bar alike.
 	QuotaLeft bool `json:"quotaLeft,omitempty"`
