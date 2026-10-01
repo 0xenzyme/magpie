@@ -3,6 +3,13 @@
 // built-in's plugin does.
 const ID = process.env.FAKE_ID || "fakeco"
 
+// fakeWho is who a team signs in as: team@fake, and a team named name/uid
+// is name@fake with that uid, as WorkBuddy's plugin keeps one
+function fakeWho(team) {
+  const [name, uid] = (team ?? "me").split("/")
+  return uid ? { accountId: name + "@fake", uid } : { accountId: name + "@fake" }
+}
+
 export const FakePlugin = async ({ client }) => ({
   config: async (cfg) => {
     cfg.provider = cfg.provider ?? {}
@@ -36,7 +43,7 @@ export const FakePlugin = async ({ client }) => ({
           method: "code",
           callback: async (code) =>
             code === "good"
-              ? { type: "success", refresh: "r-" + (inputs.team ?? "none"), access: "stale", expires: 0, accountId: (inputs.team ?? "me") + "@fake" }
+              ? { type: "success", refresh: "r-" + (inputs.team ?? "none"), access: "stale", expires: 0, ...fakeWho(inputs.team) }
               : code === "expired"
                 ? { type: "failed", error: "the sign-in page expired" }
                 : { type: "failed" },

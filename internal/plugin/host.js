@@ -311,9 +311,16 @@ function secretOf(a) {
   return a?.type === "oauth" ? a.refresh ?? a.access ?? "" : a?.key ?? ""
 }
 
+// uidOf is the vendor's id a plugin keeps beside an account's name
+// (WorkBuddy's uid): two accounts of one name are told apart by it (#413).
+function uidOf(a) {
+  return typeof a?.uid === "string" ? a.uid : ""
+}
+
 // settle keeps a sign-in just saved at key once: one to an account already
-// signed in (the same account id, else the same secret) replaces that one's
-// and goes. It gives where it is kept.
+// signed in (the same account id and, where both have one, the same uid,
+// else the same secret) replaces that one's and goes. It gives where it is
+// kept.
 function settle(provider, key) {
   const all = readAuth()
   const now = all[key]
@@ -323,7 +330,8 @@ function settle(provider, key) {
   for (const k of accountsOf(all, provider)) {
     if (k === key) continue
     const was = all[k]
-    if ((who && whoOf(was) === who) || (!who && !whoOf(was) && secret && secretOf(was) === secret)) {
+    const other = uidOf(now) && uidOf(was) && uidOf(now) !== uidOf(was)
+    if ((who && whoOf(was) === who && !other) || (!who && !whoOf(was) && secret && secretOf(was) === secret)) {
       all[k] = now
       delete all[key]
       writeAuth(all)

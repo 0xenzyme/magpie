@@ -497,6 +497,7 @@ const I18N = {
     "Try again": "重试",
     "Signed in as {user}": "已登录 {user}",
     "{user} added — switch to it any time": "已添加 {user}，随时可以切换",
+    "{user} is already listed — its sign-in was renewed": "{user}：该账号已在列表中，已更新登录",
     "Import instead…": "改为导入…",
     "Bring in accounts exported from Antigravity Cockpit, Antigravity Manager or CLIProxyAPI": "导入从 Antigravity Cockpit、Antigravity Manager 或 CLIProxyAPI 导出的账号",
     "Import accounts from a file…": "从文件导入账号…",

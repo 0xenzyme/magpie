@@ -5511,6 +5511,8 @@ async function signedIn(st) {
   const who = st.user || subOf(st.agent)?.name || st.agent;
   // signed in but listed nowhere (#155): say so rather than "added"
   if (!p) status(t("{user} signed in, but magpie can't list it — please report this", { user: who }), "err");
+  // an account listed already is said to be, not added (#413)
+  else if (st.again) status(t("{user} is already listed — its sign-in was renewed", { user: who }), "ok");
   else status(st.using ? t("Signed in as {user}", { user: who }) : t("{user} added — switch to it any time", { user: who }), "ok");
   state = await api("state");
   renderAgents();
