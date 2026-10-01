@@ -418,7 +418,7 @@ light and dark; ARTIFACT_DIR gets screenshots at 100% and 150%.
 
 `settings-groups.test.cjs` puts the Settings page's warm-ups and check-in
 under a tab per service (#124): Codex, Claude Code and WorkBuddy tabs where a
-heading would be, after Preferences, before Local network, Codex's picked to
+heading would be, in the Usage part after its list, Codex's picked to
 begin with and each showing its rows alone, named without the service; the
 last warm-up and today's check-in still on the short lines, no left-border
 stripe; a daily warm-up's time field only while it is on; each control
@@ -428,6 +428,23 @@ at the page's very end (a shorter card, then a taller one) leaving the tabs
 where they were; the tab remembered across a reload, Codex's shown when the
 remembered WorkBuddy one is gone; the WorkBuddy tab only with an account
 signed in; in English and Chinese.
+
+`settings-sections.test.cjs` checks the Settings page in parts (#471): a tab
+list at its top — General, Usage, Network and sharing, Models, Privacy,
+Observability, Sync and backup, About — each tab showing its part's rows
+alone, posting nothing and leaving the page and the tab where they were; a
+part's controls still posting what they did; one tab in the Tab order and
+the arrows, Home and End along them; the part kept in the address
+(?view=settings&tab=…) across a reload, out of it on another view, and
+remembered for Settings opened again without one; a link to a part opening
+on it. The tabs fit, on a line more where they must, in the 560×420 window
+at 100, 110 and 125% and in magpie web on a phone, nothing running off to
+the side. Chromium and WebKit, English and Chinese; ARTIFACT_DIR gets a
+screenshot of each size:
+
+```sh
+node --test --test-concurrency=1 internal/gui/tests/settings-sections.test.cjs internal/gui/tests/settings-groups.test.cjs
+```
 
 `update-check.test.cjs` checks the version row: the button stays, dimmed,
 through a check, a second click asks nothing, and the answer puts it back.

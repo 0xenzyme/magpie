@@ -1366,6 +1366,9 @@ const I18N = {
 
     // settings
     "Preferences": "偏好",
+    // the Settings page's parts, a tab each
+    "General": "常规",
+    "Network and sharing": "网络与共享",
     "Session terminal": "会话终端",
     "Used by the terminal button in Sessions; only apps registered for .command files appear": "用于会话列表中的终端按钮；仅显示已注册处理 .command 文件的应用",
     "System default ({name})": "系统默认（{name}）",

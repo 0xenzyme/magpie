@@ -186,7 +186,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
       // Settings → What's new → Open opens them again, the waiting update's first
       ctl.update = { state: "ready", current: "0.1.604", latest: "0.1.605", notes: "## New Features\n\n- A new thing. (#470)", url: "https://github.com/yetone/magpie-releases/releases/tag/v0.1.605" };
-      await page.goto("http://magpie.test/?view=settings");
+      await page.goto("http://magpie.test/?view=settings&tab=about");
       const notesRow = page.locator("#about .row.pref.whatsnew-row");
       assert.equal(await notesRow.locator(".name").textContent(), w.again);
       const again = notesRow.getByRole("button", { name: w.open, exact: true });

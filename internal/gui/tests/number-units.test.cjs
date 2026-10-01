@@ -160,6 +160,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await rest(p, lang === "en", lang + " default");
 
         await p.locator("#prefs").click();
+
+        await p.locator("#setTab-usage").click();
         await p.locator("#currencySegs .opt").first().waitFor();
         if (lang === "en") {
           assert.equal(await p.locator("#unitsRow").isHidden(), true, "no Number units row in English");

@@ -1910,6 +1910,15 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .warm-tabs button.on { color: var(--fg); background: var(--pill); }
 .warm-tabs button[hidden] { display: none; }
 .warm-panes { margin-bottom: 8px; }
+/* the page's parts (#471): a tab each at the top in the same look, a line
+   more when they don't fit across (a narrow window, a larger text size),
+   the part picked alone under them */
+#view-settings .set-head { height: auto; min-height: 26px; flex: none; }
+.set-tabs { flex-wrap: wrap; row-gap: 2px; min-width: 0; }
+.set-tabs button { flex: none; white-space: nowrap; }
+.set-page { flex: none; }
+.set-page[hidden] { display: none; }
+.set-page > .list:not(:last-child) { margin-bottom: 8px; }
 .row.pref { min-height: 50px; padding: 8px 12px 8px 14px; gap: 14px; }
 .row.pref .who { flex: 1 1 auto; }
 .row.pref .sub { margin-top: 2px; }

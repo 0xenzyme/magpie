@@ -10712,29 +10712,27 @@ function setWarmTab(tab, remember) {
     b.setAttribute("aria-selected", String(on));
     b.tabIndex = on ? 0 : -1;
     $("#" + list).hidden = !on;
-    // a pill drawn while its card was hidden measured nothing: its thumb is
-    // put under the option picked, still, once the card is shown
-    if (on) for (const th of $("#" + list).querySelectorAll(".segs > .thumb")) {
-      const opt = th.parentElement.querySelector(":scope > .on");
-      if (!opt || parseFloat(th.style.width) === opt.offsetWidth) continue;
-      th.classList.add("still");
-      th.style.transform = `translateX(${opt.offsetLeft}px)`;
-      th.style.width = opt.offsetWidth + "px";
-      void th.offsetWidth;
-      th.classList.remove("still");
-    }
+    if (on) thumbsUnderPicks($("#" + list));
   }
 }
-{
-  const tabs = $("#warmTabs");
-  tabs.onclick = (e) => {
-    const b = e.target.closest("button[data-warm]");
-    if (b) setWarmTab(b.dataset.warm, true);
-  };
-  // the arrows, Home and End move along the tabs, as a tab list's do: the
-  // tab reached is clicked, so the page is held as for a click
+// a pill drawn while its card was hidden measured nothing: its thumb is
+// put under the option picked, still, once the card is shown
+function thumbsUnderPicks(box) {
+  for (const th of box.querySelectorAll(".segs > .thumb")) {
+    const opt = th.parentElement.querySelector(":scope > .on");
+    if (!opt || !opt.offsetParent || parseFloat(th.style.width) === opt.offsetWidth) continue;
+    th.classList.add("still");
+    th.style.transform = `translateX(${opt.offsetLeft}px)`;
+    th.style.width = opt.offsetWidth + "px";
+    void th.offsetWidth;
+    th.classList.remove("still");
+  }
+}
+// A tab list's keys: the arrows, Home and End move along its shown tabs,
+// and the tab reached is clicked, so the page is held as for a click
+function tabKeys(tabs, sel) {
   tabs.onkeydown = (e) => {
-    const shown = [...tabs.querySelectorAll("button[data-warm]:not([hidden])")];
+    const shown = [...tabs.querySelectorAll(sel + ":not([hidden])")];
     const i = shown.indexOf(document.activeElement);
     if (i < 0) return;
     const j = { ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: shown.length - 1 }[e.key];
@@ -10745,6 +10743,69 @@ function setWarmTab(tab, remember) {
     b.focus({ preventScroll: true });
     b.click();
   };
+}
+{
+  const tabs = $("#warmTabs");
+  tabs.onclick = (e) => {
+    const b = e.target.closest("button[data-warm]");
+    if (b) setWarmTab(b.dataset.warm, true);
+  };
+  tabKeys(tabs, "button[data-warm]");
+}
+
+// The Settings page is a page per part (#471: one long scroll of some 45
+// rows): a tab for each over them, in the warm-ups' look, its rows alone
+// under it. The part is kept in the address (?view=settings&tab=privacy) so
+// a reload comes back to it, and remembered for the window opened again.
+// A part with no row to show here (every one hidden on this system) has no
+// tab. A click on a tab, like every click, leaves the page where it is: the
+// tabs at the top stay where they were and the part comes in under them.
+const SET_TABS = ["general", "usage", "network", "models", "privacy", "otel", "sync", "about"];
+let setTab = "general";
+try { const k = localStorage.getItem("magpie.settingsTab"); if (SET_TABS.includes(k)) setTab = k; } catch {}
+let setShown = setTab; // the part shown: the one picked, or the first there
+// A part has a tab while a row of it shows: one not hidden itself nor within
+// it (a service's card under the warm-ups' tabs counts, picked or not). A
+// part not drawn yet, with no rows at all, keeps its tab.
+const partShows = (page) => {
+  const rows = [...page.querySelectorAll(".row")];
+  return !rows.length || rows.some((r) => {
+    for (let n = r; n && n !== page; n = n.parentElement) if (n.hidden && !n.matches('[role="tabpanel"]')) return false;
+    return true;
+  });
+};
+function setSetTab(tab, remember) {
+  if (remember) {
+    setTab = tab;
+    try { localStorage.setItem("magpie.settingsTab", tab); } catch {}
+  }
+  for (const id of SET_TABS) $("#setTab-" + id).hidden = !partShows($("#setPage-" + id));
+  if (!SET_TABS.includes(tab) || $("#setTab-" + tab).hidden) tab = SET_TABS.find((id) => !$("#setTab-" + id).hidden) || "general";
+  for (const id of SET_TABS) {
+    const b = $("#setTab-" + id), on = id === tab;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", String(on));
+    b.tabIndex = on ? 0 : -1;
+    $("#setPage-" + id).hidden = !on;
+    if (on) thumbsUnderPicks($("#setPage-" + id));
+  }
+  setShown = tab;
+  $("#setTabs").setAttribute("aria-label", t("Settings"));
+  if (view === "settings") syncURL();
+}
+{
+  const tabs = $("#setTabs");
+  tabs.onclick = (e) => {
+    const b = e.target.closest("button[data-set]");
+    if (b) setSetTab(b.dataset.set, true);
+  };
+  tabKeys(tabs, "button[data-set]");
+  // opened on a part (a reload, a link): that part, and remembered
+  if (mode === "window" && params.get("view") === "settings" && SET_TABS.includes(params.get("tab"))) {
+    setTab = params.get("tab");
+    try { localStorage.setItem("magpie.settingsTab", setTab); } catch {}
+  }
+  setSetTab(setTab);
 }
 
 function renderSettings() {
@@ -10856,6 +10917,8 @@ function renderSettings() {
   repo.title = "github.com/yetone/magpie";
   repo.onclick = () => api("open", { url: "https://github.com/yetone/magpie" }).catch(() => {});
   row(t("Community"), t("questions, ideas and feedback, on Discord or GitHub"), "", join, repo);
+  // the parts' tabs, one gone whose rows are all hidden here
+  setSetTab(setTab);
 }
 
 function renderSessionTerminal(s, keep) {
@@ -12038,6 +12101,10 @@ addEventListener("click", (e) => {
   purposeUntil = 0; // what came before the click (Space pressed on a button, a tremble) is no scroll
   const v = e.target.closest?.(".view");
   if (!v || v.hidden) { held = null; return; }
+  // a click before a frame has held the one before it (a tab list's keys
+  // pressed in quick turn) holds that one first: the page it shrank is put
+  // back, so this one is taken where the reader left it, not at the top
+  if (held?.v === v) hold(held);
   const chain = [];
   const from = e.target.closest?.("[data-unrolls]")?.parentElement || e.target;
   for (let n = from; n && n !== v; n = n.parentElement) {
@@ -12085,6 +12152,7 @@ function syncURL() {
   const q = new URLSearchParams(location.search);
   if (view === "agents") q.delete("view"); else q.set("view", view);
   if (view === "providers" && typeof editing === "string") q.set("edit", editing); else q.delete("edit");
+  if (view === "settings") q.set("tab", setShown); else q.delete("tab");
   const s = q.size ? "?" + q : location.pathname;
   if (s !== location.search) history.replaceState(null, "", s);
 }
