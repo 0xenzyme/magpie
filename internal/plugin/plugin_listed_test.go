@@ -16,9 +16,10 @@ import (
 // defaults back keeps the list it told last, for the provider and each
 // account, as a built-in whose fetch fails keeps the one it fetched last;
 // the vendor back, its list is told again. So too for a hook that throws
-// (Cursor's, Grok's, Devin's) rather than give its defaults back.
+// (Cursor's, Grok's, Devin's) rather than give its defaults back, and for
+// one handing back a table of its own that it says is a fallback.
 func TestFallenBackListKeepsTheLastOne(t *testing.T) {
-	for _, throws := range []string{"", "1"} {
+	for _, throws := range []string{"", "1", "own"} {
 		t.Run("throws="+throws, func(t *testing.T) { fallenBack(t, throws) })
 	}
 }

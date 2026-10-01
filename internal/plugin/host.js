@@ -555,8 +555,10 @@ async function info(id, key, strict) {
       const next = await listing.run(l, () => inScope(id, k, () => ph.models(given, { auth: all[k] })))
       // a hook that asked its vendor, got no list and gave back the one it
       // was given fell back: magpie keeps the list it had, as a built-in
-      // whose fetch failed keeps the one it fetched last
-      out.fellBack = next === given.models && l.tried && !l.lastOk
+      // whose fetch failed keeps the one it fetched last; so does one that
+      // says so, handing back a list of its own (Symbol.for("magpie.fellBack")
+      // on it: Command Code's Go table, ZCode's models)
+      out.fellBack = (next === given.models && l.tried && !l.lastOk) || next?.[Symbol.for("magpie.fellBack")] === true
       out.models = Object.fromEntries(Object.entries(next ?? {}).map(([k, m]) => [k, { ...m, id: k, providerID: id }]))
     } catch (e) {
       // an error the models hook throws may say what it means for the
