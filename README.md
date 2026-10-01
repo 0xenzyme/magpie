@@ -170,6 +170,39 @@ magpie plugin off opencode-gemini-auth  # on brings it back; rm removes it; upda
 A provider id magpie already has (google, openai, anthropic) is
 `<id>-plugin`. In the app, Settings → Plugins adds and removes them, and
 the providers they sign in to are in Add provider → From plugins.
+
+#### For plugin authors
+
+A plugin is an OpenCode plugin; magpie reads a few more fields, which
+OpenCode ignores:
+
+- **The provider's icon**: `icon` on the `auth` hook, or `"magpie": {
+  "icon": "…" }` in the plugin's `package.json` (for every provider it
+  signs in to that names none). An `https://` URL of a picture on a public
+  host, which magpie fetches once and keeps, or a `data:image/…` URI;
+  PNG, JPEG, GIF, WebP, ICO or SVG, at most 1 MB. Anything else is ignored,
+  and the icon the plugin market lists for the plugin is shown instead.
+- **An API key's field**: a `type: "api"` method's `label` titles the key's
+  field, as OpenCode's dialog does (one that only says "API key" reads
+  "<provider> API key"), and its `placeholder` is the hint inside the field
+  (and after the question in `magpie plugin login`). The method's `prompts`
+  are asked first, as in OpenCode, and reach `authorize(inputs)`.
+
+```js
+export const LemonPlugin = async () => ({
+  auth: {
+    provider: "lemon",
+    icon: "https://lemon.example/icon.png", // or "data:image/svg+xml;base64,…"
+    methods: [
+      { type: "api", label: "Lemon API key (lemon.example/keys)", placeholder: "sk-lemon-…" },
+    ],
+  },
+})
+```
+
+In TypeScript, `icon` and `placeholder` aren't in OpenCode's types: build
+the hook as a variable (or cast it), or put the icon in `package.json`.
+
 ### What a model costs
 
 A call is counted at its **effective price**: what you set for that provider

@@ -20,6 +20,20 @@ import (
 type Method struct {
 	Type  string `json:"type"`
 	Label string `json:"label"`
+	// Placeholder is the hint an "api" method gives in its key's field
+	// (magpie's own field: OpenCode's says "API key")
+	Placeholder string `json:"placeholder,omitempty"`
+}
+
+// KeyTitle is what an "api" method's key is asked as: its label, as
+// OpenCode's dialog titles it, unless that only says "API key" (or
+// nothing), when it is name's API key.
+func (m Method) KeyTitle(name string) string {
+	l := strings.TrimSpace(m.Label)
+	if l == "" || strings.EqualFold(l, "API key") {
+		return name + " API key"
+	}
+	return l
 }
 
 // Model is a model a plugin's provider serves, as OpenCode lists it.
@@ -56,6 +70,9 @@ type Provider struct {
 	NPM     string   `json:"npm"`
 	API     string   `json:"api"`
 	Methods []Method `json:"methods"`
+	// Icon is the picture the plugin gives the provider, as it said it:
+	// an https URL or a data:image URI (internal/provider keeps it)
+	Icon string `json:"icon,omitempty"`
 	// Usage says the plugin tells each account's allowance (auth.usage)
 	Usage     bool    `json:"usage"`
 	SignedIn  bool    `json:"signedIn"`

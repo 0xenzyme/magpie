@@ -5162,9 +5162,14 @@ function renderPluginAsk(sub) {
     return box;
   }
   const key = flow.state === "key";
-  const label = key ? t("{name} API key", { name: sub.name }) : q.message;
+  // the key's field is titled by the way's label, as OpenCode's dialog
+  // is, unless that only says "API key"; the plugin's placeholder hints
+  // at what the key looks like
+  const way = key ? sub.plugin.methods?.[flow.method] || {} : {};
+  const own = (way.label || "").trim();
+  const label = key ? (own && own.toLowerCase() !== "api key" ? own : t("{name} API key", { name: sub.name })) : q.message;
   tt.append(el("span", "n", label));
-  const inp = input(flow.value || "", key ? "" : (q.placeholder || ""), key ? "password" : "text");
+  const inp = input(flow.value || "", key ? (way.placeholder || "") : (q.placeholder || ""), key ? "password" : "text");
   inp.setAttribute("aria-label", label);
   inp.autocomplete = "off";
   inp.disabled = !!flow.busy;
