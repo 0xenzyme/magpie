@@ -93,7 +93,7 @@ type pluginsJSON struct {
 }
 
 func pluginsState(ctx context.Context, w Windows) pluginsJSON {
-	s := pluginsJSON{Plugins: []pluginEntryJSON{}, Bun: plugin.HasBun(), BunVer: plugin.BunVersion, Movable: provider.MoveCandidates(), Picker: w != nil && !isWeb(w)}
+	s := pluginsJSON{Plugins: []pluginEntryJSON{}, Bun: plugin.HasBun(), BunVer: plugin.BunInUse(), Movable: provider.MoveCandidates(), Picker: w != nil && !isWeb(w)}
 	l := plugin.Load()
 	errs := map[string]string{}
 	names := map[string][]string{}
