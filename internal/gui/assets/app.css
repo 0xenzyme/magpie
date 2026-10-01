@@ -445,6 +445,15 @@ body.window #agents.extras .field.solo { grid-column: 1 / 3; }
    up down the list and the model always sits in the same place */
 body.window .field.main, body.window .field.solo { justify-self: stretch; }
 body.window .field.solo { grid-column: auto; }
+/* When a window is narrow (or zoomed in), the fixed-width setting columns
+   leave too little room for the agent names. Put them on the next line. */
+@media (max-width: 600px) {
+  body.window .row.agent { display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 12px; row-gap: 3px; }
+  body.window .row.agent > .ag-handle { grid-column: 1; grid-row: 1; }
+  body.window .row.agent > .who { grid-column: 2; grid-row: 1; width: 100%; }
+  body.window .row.agent > .fields { grid-column: 2; grid-row: 2; width: 100%; min-width: 0; margin-left: 0; }
+  body.window #agents.extras .row.agent > .fields { grid-template-columns: minmax(0, 1fr) 124px var(--extras-w); }
+}
 .field:hover, .field.open { background: var(--pill-hover); }
 .field.open { box-shadow: inset 0 0 0 1px var(--accent); }
 .row .field .ic, body.window .row .field .ic { width: 14px; height: 14px; }
