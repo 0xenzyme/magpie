@@ -219,7 +219,9 @@ function renderAgentsLoading() {
   fit(); // the panel as tall as the rows, not as it was
 }
 
+let agentArranging = false, agentRenderPending = false;
 function renderAgents() {
+  if (agentArranging) { agentRenderPending = true; return; }
   const page = $("#view-agents");
   page.classList.remove("loading");
   page.removeAttribute("aria-busy");
@@ -852,57 +854,108 @@ function agentHandle(a, row, inFold) {
 // dragAgent moves a row in view up and down the list with the pointer; the
 // others make room as it passes, and letting go keeps the new order.
 function dragAgent(e, handle, row) {
-  if (e.button !== 0) return;
+  if (agentArranging) return;
   const list = $("#agents");
-  const rows = [...list.children].filter((r) => r.classList.contains("agent"));
-  if (rows.length < 2) return;
-  const y0 = e.clientY, from = rows.indexOf(row);
-  const tops = rows.map((r) => r.offsetTop), h = row.offsetHeight;
-  let dragging = false, to = from;
-  const move = (ev) => {
-    const dy = ev.clientY - y0;
-    if (!dragging) {
-      if (Math.abs(dy) < 4) return;
-      dragging = true;
-      handle.dataset.dragged = "1";
-      closeAgentMenu();
-      list.classList.add("sorting");
-      row.classList.add("dragging");
-    }
-    // the row follows the pointer, kept within the list
-    const min = tops[0] - tops[from], max = tops[rows.length - 1] + rows[rows.length - 1].offsetHeight - h - tops[from];
-    const d = Math.max(min, Math.min(max, dy));
+  agentArranging = dragRows(e, handle, row, list, [...list.children].filter((r) => r.classList.contains("agent")),
+    (to) => moveAgent(row.dataset.id, to), closeAgentMenu, () => {
+      agentArranging = false;
+      if (agentRenderPending) { agentRenderPending = false; renderAgents(); }
+    });
+}
+
+// Shared pointer sorter. Measure once, move only transforms on animation frames,
+// and commit once on release. No DOM rebuilds or network calls during a drag.
+// The same primitive serves agent handles and handle-free account rows.
+function dragRows(e, handle, row, list, rows, commit, start = () => {}, idle = () => {}) {
+  if (e.button !== 0 || e.isPrimary === false || rows.length < 2) return false;
+  const from = rows.indexOf(row);
+  if (from < 0) return false;
+  const rects = rows.map((r) => r.getBoundingClientRect());
+  const tops = rects.map((r) => r.top), heights = rects.map((r) => r.height), h = heights[from];
+  let scroll = list.parentElement;
+  while (scroll && !/(auto|scroll)/.test(getComputedStyle(scroll).overflowY)) scroll = scroll.parentElement;
+  scroll ||= document.scrollingElement;
+  const bounds = scroll.getBoundingClientRect(), scroll0 = scroll.scrollTop;
+  let dragging = false, ended = false, to = from, y = e.clientY, frame = 0, lastTime = 0;
+  const y0 = y, pointer = e.pointerId;
+  const paint = (time) => {
+    frame = 0;
+    if (!row.isConnected) return finish(false);
+    if (!dragging) return;
+    const dt = Math.min(32, lastTime ? time - lastTime : 16);
+    lastTime = time;
+    const edge = 36;
+    const speed = y < bounds.top + edge ? -Math.min(1, (bounds.top + edge - y) / edge)
+      : y > bounds.bottom - edge ? Math.min(1, (y - bounds.bottom + edge) / edge) : 0;
+    if (speed) scroll.scrollTop += speed * dt * .6;
+    const dy = y - y0 + scroll.scrollTop - scroll0;
+    const d = Math.max(tops[0] - tops[from], Math.min(tops.at(-1) + heights.at(-1) - h - tops[from], dy));
     row.style.transform = `translateY(${d}px)`;
     const mid = tops[from] + d + h / 2;
-    // past the middle of a row below (or above), the dragged one takes its place
-    if (d > 0) to = rows.slice(from + 1).filter((r, k) => mid >= tops[from + 1 + k] + r.offsetHeight / 2).length + from;
-    else to = from - rows.slice(0, from).filter((r, k) => mid <= tops[k] + r.offsetHeight / 2).length;
+    to = from;
+    if (d > 0) { while (to < rows.length - 1 && mid >= tops[to + 1] + heights[to + 1] / 2) to++; }
+    else { while (to > 0 && mid <= tops[to - 1] + heights[to - 1] / 2) to--; }
     rows.forEach((r, i) => {
       if (i === from) return;
       const shift = i > from && i <= to ? -h : i < from && i >= to ? h : 0;
       r.style.transform = shift ? `translateY(${shift}px)` : "";
     });
+    if (speed) frame = requestAnimationFrame(paint);
   };
-  const up = () => {
-    handle.removeEventListener("pointermove", move);
-    handle.removeEventListener("pointerup", up);
-    handle.removeEventListener("pointercancel", up);
-    if (!dragging) return;
-    // the row lands where it was let go, then the list is drawn in the new order
+  const move = (ev) => {
+    if (ev.pointerId !== pointer) return;
+    if (!row.isConnected || !handle.isConnected) return finish(false, ev);
+    y = ev.clientY;
+    if (!dragging) {
+      if (Math.abs(y - y0) < 4) return;
+      dragging = true;
+      handle.dataset.dragged = "1";
+      start();
+      list.classList.add("sorting");
+      row.classList.add("dragging");
+      getSelection()?.removeAllRanges();
+      handle.setPointerCapture(pointer);
+    }
+    ev.preventDefault();
+    if (!frame) frame = requestAnimationFrame(paint);
+  };
+  const finish = (save, ev) => {
+    if (ended || (ev?.pointerId != null && ev.pointerId !== pointer)) return;
+    if (save && dragging && ev) {
+      y = ev.clientY;
+      cancelAnimationFrame(frame);
+      paint(performance.now());
+    }
+    if (ended) return;
+    ended = true;
+    cancelAnimationFrame(frame);
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", up);
+    document.removeEventListener("pointercancel", cancel);
+    document.removeEventListener("keydown", keys, true);
+    handle.removeEventListener("lostpointercapture", cancel);
+    removeEventListener("blur", cancel);
+    removeEventListener("resize", cancel);
+    if (handle.hasPointerCapture(pointer)) handle.releasePointerCapture(pointer);
+    list.classList.remove("sorting");
     row.classList.remove("dragging");
-    row.classList.add("landing");
-    row.style.transform = `translateY(${tops[to] - tops[from] + (to > from ? rows[to].offsetHeight - h : 0)}px)`;
-    setTimeout(() => {
-      list.classList.remove("sorting");
-      moveAgent(row.dataset.id, to);
-      if (to === from) renderAgents();
-      setTimeout(() => delete handle.dataset.dragged, 0);
-    }, 160);
+    rows.forEach((r) => { r.style.transform = ""; });
+    if (save && dragging && to !== from) commit(to);
+    idle();
+    // The click dispatched after pointerup must not rename, toggle or remove.
+    setTimeout(() => delete handle.dataset.dragged, 0);
   };
-  handle.setPointerCapture(e.pointerId);
-  handle.addEventListener("pointermove", move);
-  handle.addEventListener("pointerup", up);
-  handle.addEventListener("pointercancel", up);
+  const up = (ev) => finish(true, ev);
+  const cancel = (ev) => finish(false, ev);
+  const keys = (ev) => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopImmediatePropagation(); finish(false); } };
+  document.addEventListener("pointermove", move, { passive: false });
+  document.addEventListener("pointerup", up);
+  document.addEventListener("pointercancel", cancel);
+  document.addEventListener("keydown", keys, true);
+  handle.addEventListener("lostpointercapture", cancel);
+  addEventListener("blur", cancel);
+  addEventListener("resize", cancel);
+  return true;
 }
 
 // ---------- an agent's model list ----------
@@ -2386,6 +2439,7 @@ $("#foldOff").onclick = () => {
 // One row per provider: logo, name, the agents pointed at it, key status.
 // Everything else lives in the editor, a dialog over the page.
 function renderProviders() {
+  if (accountArranging) { accountRenderPending = true; return; }
   // Rebuilding the list empties the page for a moment, which clamps its
   // scroll to the top; put it back so closing the editor leaves the reader
   // where they were.
@@ -4422,7 +4476,7 @@ function drawEditor(p, presetID) {
     // the sign-in belongs to the agent; magpie only borrows it
     const a = p.account;
     if (subOf(a.agent)) {
-      ed.append(...field(t("Accounts"), renderAccounts(a), p.routing ? t("Tick every account to use; Routing says how requests spread over them.") : subOf(a.agent).single ? t("{agent} keeps one account; the gateway runs it for every request. Signing in to another replaces it.", { agent: a.agentName }) : subOf(a.agent).own && (a.logins || []).some((l) => l.own) ? t("The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota. {agent} itself stays signed in as it is.", { agent: a.agentName && a.agentName !== a.agent ? a.agentName : p.name }) : subOf(a.agent).own || subOf(a.agent).plugin ? t("The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota.") : t("{agent} signs in to the first. Tick more and the gateway moves on to the next when the one before it is out of quota. Sessions already running keep theirs until restarted.", { agent: a.agentName })));
+      ed.append(...field(t("Accounts"), renderAccounts(a, p), p.routing ? t("Tick every account to use; Routing says how requests spread over them.") : subOf(a.agent).single ? t("{agent} keeps one account; the gateway runs it for every request. Signing in to another replaces it.", { agent: a.agentName }) : subOf(a.agent).own && (a.logins || []).some((l) => l.own) ? t("The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota. {agent} itself stays signed in as it is.", { agent: a.agentName && a.agentName !== a.agent ? a.agentName : p.name }) : subOf(a.agent).own || subOf(a.agent).plugin ? t("The gateway uses the first. Tick more and it moves on to the next when the one before it is out of quota.") : t("{agent} signs in to the first. Tick more and the gateway moves on to the next when the one before it is out of quota. Sessions already running keep theirs until restarted.", { agent: a.agentName })));
       if ((a.logins || []).filter((l) => l.active || l.on).length > 1) ed.append(...renderRouting(p));
       if (p.move) ed.append(...renderMove(p));
     } else {
@@ -6108,6 +6162,72 @@ function renderSigning(sub) {
   return box;
 }
 
+// The backend returns the native key/login order and the new First account.
+// Do not keep a second display order that can disagree with routing.
+let accountArranging = false, accountSaving = false, accountRenderPending = false;
+function accountArrangementDone() {
+  accountArranging = false;
+  if (accountRenderPending) { accountRenderPending = false; renderProviders(); }
+}
+function arrangeAccountRows(list, p) {
+  const rows = [...list.children].filter((r) => r.dataset.accountId);
+  if (rows.length < 2) return;
+  list.classList.add("reorderable");
+  const move = async (row, to) => {
+    const current = [...list.children].filter((r) => r.dataset.accountId);
+    const from = current.indexOf(row);
+    if (accountSaving || to < 0 || to >= current.length || to === from) return;
+    accountSaving = accountArranging = true;
+    list.setAttribute("aria-busy", "true");
+    const before = [...list.children];
+    const focus = document.activeElement === row;
+    list.insertBefore(row, to > from ? current[to].nextSibling : current[to]);
+    current.splice(to, 0, ...current.splice(from, 1));
+    if (focus) row.focus({ preventScroll: true });
+    const order = current.map((r) => r.dataset.accountId);
+    try {
+      providers = await api("provider/arrange", { id: p.id, accountOrder: order });
+      accountRenderPending = true;
+      status(t("Account order saved"), "ok");
+    } catch (e) {
+      list.replaceChildren(...before);
+      // A failed account switch can still have refreshed the agent's sign-in.
+      // Reconcile with the backend rather than claiming a local rollback undid it.
+      try { providers = await api("providers"); } catch (_) { /* keep the last known list */ }
+      accountRenderPending = true;
+      status(e.message, "err");
+    } finally {
+      accountSaving = false;
+      list.removeAttribute("aria-busy");
+      accountArrangementDone();
+      if (focus) document.querySelector(`.accts [data-account-id="${CSS.escape(row.dataset.accountId)}"]`)?.focus({ preventScroll: true });
+    }
+  };
+  for (const row of rows) {
+    row.tabIndex = 0;
+    row.setAttribute("role", "group");
+    row.setAttribute("aria-label", row.querySelector(".n").textContent + " · " + t("Drag to reorder · Alt+↑/↓ to move"));
+    row.title = t("Drag to reorder · Alt+↑/↓ to move");
+    row.addEventListener("click", (e) => {
+      if (row.dataset.dragged) { e.preventDefault(); e.stopImmediatePropagation(); }
+    }, true);
+    row.onkeydown = (e) => {
+      if (e.target !== row || !e.altKey || !["ArrowUp", "ArrowDown"].includes(e.key) || accountArranging) return;
+      e.preventDefault(); e.stopPropagation();
+      const current = [...list.children].filter((r) => r.dataset.accountId);
+      move(row, current.indexOf(row) + (e.key === "ArrowUp" ? -1 : 1));
+    };
+    row.onpointerdown = (e) => {
+      if (accountArranging || e.target.closest("input, textarea, select, a, [contenteditable=true], button:not(.rename)")) return;
+      // Text selection is native; drag the row's background/empty space instead.
+      if (e.target.closest(".n:not(button), .plan, .aq")) return;
+      const current = [...list.children].filter((r) => r.dataset.accountId);
+      accountArranging = dragRows(e, row, row, list, current, (to) => move(row, to), () => {},
+        () => { if (!accountSaving) accountArrangementDone(); });
+    };
+  }
+}
+
 // renderAccounts: every account of an agent magpie has, the one the agent
 // is signed in to first, and a way to add another. Like keys, any number
 // can be ticked: the gateway moves to the next ticked account when the
@@ -6119,7 +6239,7 @@ function forgetOwnTitle(a) {
   return t("magpie stops showing and using {agent}'s own sign-in; its files are left as they are, and it shows again when {agent} signs in anew", { agent: a.agentName });
 }
 
-function renderAccounts(a) {
+function renderAccounts(a, p) {
   const sub = subOf(a.agent);
   const list = el("div", "accts");
   let ls = a.logins?.length ? [...a.logins] : [{ user: a.user, plan: a.plan, active: true, on: true }];
@@ -6136,6 +6256,7 @@ function renderAccounts(a) {
   for (const l of ls) {
     const on = !l.paused && (l.active || l.on);
     const row = el("div", "acc" + (on ? " in-use" : " off") + (l.user === justAdded ? " new" : ""));
+    row.dataset.accountId = l.user;
     const dot = el("button", "dot tick");
     if (on) dot.append(svg(CHECK, 10, 2.2));
     if (l.active && (pausable || l.paused)) {
@@ -6196,6 +6317,7 @@ function renderAccounts(a) {
       list.append(imp);
     }
   }
+  arrangeAccountRows(list, p);
   return list;
 }
 
@@ -6583,6 +6705,7 @@ function renderKeyAccounts(p) {
   const several = p.keyList.filter((k) => k.on).length > 1;
   for (const k of p.keyList) {
     const row = el("div", "acc" + (k.on ? " in-use" : " off") + (k.id === justAdded ? " new" : ""));
+    row.dataset.accountId = k.id;
     // the dot is the switch: every key ticked is in use
     const dot = el("button", "dot tick");
     if (k.on) dot.append(svg(CHECK, 10, 2.2));
@@ -6657,6 +6780,7 @@ function renderKeyAccounts(p) {
     add.onclick = () => { addingKey = { id: p.id, name: "", key: "" }; renderProviders(); };
     list.append(add);
   }
+  arrangeAccountRows(list, p);
   return list;
 }
 

@@ -1155,3 +1155,14 @@ with the real assets and an isolated API fixture:
 ```sh
 node --test internal/gui/tests/otel.test.cjs
 ```
+
+`account-arrange.test.cjs` drags a subscription's accounts and a provider's
+keys by their rows (no handle) in every routing mode, and by Alt+↑/↓: the
+first row, its First mark and the order saved for routing agree, one save
+goes out per drop, Escape and a failed save put the rows back, a disabled
+account is not made first, and account text stays selectable. It runs in
+Chromium and WebKit with an isolated API fixture:
+
+```sh
+node --test internal/gui/tests/account-arrange.test.cjs
+```

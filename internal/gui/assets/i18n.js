@@ -81,6 +81,8 @@ const I18N = {
     "Opens {name} to add magpie as a provider — confirm it there": "打开 {name} 添加 magpie 作为提供商——在那里确认即可",
     "Add magpie": "添加 magpie",
     "{agent} hidden · find it under Hidden at the bottom": "已隐藏 {agent} · 可在列表底部「已隐藏」里找回",
+    "Drag to reorder · Alt+↑/↓ to move": "按住拖动调整位置 · Alt+↑/↓ 移动",
+    "Account order saved": "账号位置已保存",
     "Drag to reorder · click to move or hide": "拖动以调整顺序 · 点击可移动或隐藏",
     "Arrange {agent}": "调整 {agent}",
     "Drag to reorder · click for more": "拖动以调整顺序 · 点击查看更多",

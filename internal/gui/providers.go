@@ -552,7 +552,8 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			provider.Provider
 			// Proxy is the proxy its requests go through (#237), "" to
 			// follow the global one; a save that leaves it out keeps it
-			Proxy *string `json:"proxy"`
+			Proxy        *string  `json:"proxy"`
+			AccountOrder []string `json:"accountOrder"`
 			// New is set by the editor's Add: the provider is one more, never
 			// one replacing the provider that has its id or name
 			New bool `json:"new"`
@@ -744,6 +745,16 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				fail(rw, err)
 				return
 			}
+		case "arrange":
+			// Promoting the first row is the same account switch as Make first:
+			// keep the agents' catalogs in sync with the new primary sign-in.
+			var err error
+			moved, err = agent.Reseat(func() error { return provider.SetAccountOrder(in.ID, req.AccountOrder) })
+			if err != nil {
+				fail(rw, err)
+				return
+			}
+			agent.SyncCatalog()
 		case "route":
 			if err := provider.SetRouting(in.ID, in.Routing); err != nil {
 				fail(rw, err)
