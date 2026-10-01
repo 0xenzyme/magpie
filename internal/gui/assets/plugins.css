@@ -108,6 +108,10 @@
 .pm-mlabel { font-size: 12px; color: var(--muted); }
 .pm-minput { flex: 1; min-width: 180px; height: 26px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: 12px var(--code); outline: none; }
 .pm-minput:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+/* the system's folder picker, beside the field it fills */
+.pm-browse { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex: none; padding: 0; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer; transition: color .14s var(--ease), border-color .14s var(--ease); }
+.pm-browse:hover:not(:disabled) { color: var(--fg); border-color: var(--faint); }
+.pm-browse:disabled { opacity: .5; cursor: default; }
 
 /* Installed */
 .pm-list .row { min-height: 54px; padding: 8px 10px 8px 12px; gap: 11px; cursor: default; transition: background .14s var(--ease); }
