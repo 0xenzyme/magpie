@@ -53,7 +53,7 @@ function serve(lang, gate, posts) {
 
 const words = {
   en: { refresh: "Refresh", forget: "Forget", own: "Added by hand" },
-  zh: { refresh: "刷新", forget: "忘掉", own: "手动添加" },
+  zh: { refresh: "刷新", forget: "清除", own: "手动添加" },
 };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {

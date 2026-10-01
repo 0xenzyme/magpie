@@ -10023,7 +10023,7 @@ function sessionDetail(s) {
   };
   line(t("Time"), stamp(s.start) + " – " + stamp(s.last));
   if (s.cwd) line(t("Folder"), s.cwd);
-  line(t("Session"), s.id, copyBtn(s.id, t("Session id")));
+  line(t("Session ID"), s.id, copyBtn(s.id, t("Session id")));
   if (s.resume) {
     const code = el("code", "", s.resume);
     const l = el("div", "sess-line");

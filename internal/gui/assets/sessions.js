@@ -308,7 +308,7 @@
     };
     line(t("Time"), stamp(s.start || s.last) + " – " + stamp(s.last));
     if (s.cwd) line(t("Folder"), s.cwd);
-    line(t("Session"), s.id, copyBtn(s.id, t("Session id")));
+    line(t("Session ID"), s.id, copyBtn(s.id, t("Session id")));
     if (s.resume) line(t("Resume"), el("code", "", s.resume), copyBtn(s.resume, t("Resume command")));
     if (s.path) line(t("File"), s.path + (s.files > 1 ? " " + t("+{n} more", { n: s.files - 1 }) : ""));
     return d;
