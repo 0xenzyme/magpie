@@ -313,7 +313,10 @@ func (p Provider) fixV1(base, at string) string {
 		return base
 	}
 	fixed := base + "/v1"
-	f := load()
+	f, err := read()
+	if err != nil {
+		return base
+	}
 	for i := range f.Providers {
 		q := &f.Providers[i]
 		if q.ID != p.ID {

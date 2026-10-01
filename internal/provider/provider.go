@@ -195,11 +195,25 @@ func Path() string {
 }
 
 func load() file {
-	var f file
-	if b, err := os.ReadFile(Path()); err == nil {
-		json.Unmarshal(b, &f)
-	}
+	f, _ := read()
 	return f
+}
+
+// Reads used for an edit must keep errors: a broken file is not an empty
+// catalog to write over. Only a missing file is a first use.
+func read() (file, error) {
+	var f file
+	b, err := os.ReadFile(Path())
+	if errors.Is(err, os.ErrNotExist) {
+		return f, nil
+	}
+	if err != nil {
+		return f, err
+	}
+	if err := json.Unmarshal(b, &f); err != nil {
+		return file{}, fmt.Errorf("%s: %w", Path(), err)
+	}
+	return f, nil
 }
 
 func store(f file) error {
@@ -360,7 +374,10 @@ func Save(p Provider) error {
 			return fmt.Errorf("%s needs an API key", p.Name)
 		}
 	}
-	f := load()
+	f, err := read()
+	if err != nil {
+		return err
+	}
 	for i := range f.Providers {
 		if f.Providers[i].ID == p.ID {
 			if p.Was == nil {
@@ -521,7 +538,10 @@ func quietAccount(id string) bool {
 // QuietAccount stops reminding the user of an account they removed: its
 // "Add it back" line goes, and it is offered only from the Add sheet.
 func QuietAccount(id string) error {
-	f := load()
+	f, err := read()
+	if err != nil {
+		return err
+	}
 	for i := range f.Providers {
 		if f.Providers[i].ID == id && f.Providers[i].Hidden {
 			f.Providers[i].Quiet = true
@@ -534,7 +554,10 @@ func QuietAccount(id string) error {
 // ShowAccount brings back the signed-in account of an agent the user had
 // removed from magpie.
 func ShowAccount(id string) error {
-	f := load()
+	f, err := read()
+	if err != nil {
+		return err
+	}
 	for i := range f.Providers {
 		if f.Providers[i].ID == id && f.Providers[i].Hidden {
 			f.Providers[i].Hidden, f.Providers[i].Quiet = false, false
@@ -555,8 +578,11 @@ func Delete(id string) error {
 		defer cancel()
 		return plugin.SignOut(ctx, p.Account.plugin.ID, "")
 	}
+	f, err := read()
+	if err != nil {
+		return err
+	}
 	if _, ok := find(Accounts(), id); ok {
-		f := load()
 		for i := range f.Providers {
 			if f.Providers[i].ID == id {
 				f.Providers[i].Hidden = true
@@ -566,7 +592,6 @@ func Delete(id string) error {
 		f.Providers = append(f.Providers, Provider{ID: id, Hidden: true})
 		return store(f)
 	}
-	f := load()
 	keep := f.Providers[:0]
 	found := false
 	for _, p := range f.Providers {
