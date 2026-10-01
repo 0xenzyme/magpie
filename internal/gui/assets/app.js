@@ -4504,7 +4504,7 @@ function drawEditor(p, presetID) {
       balPair.append(res);
       balPair.classList.add("wrap");
     }
-    inner.append(...field(t("Balance field"), balPair, t("Where the amount is in the reply, e.g. data.balance; it can be a sum with + - * / and brackets, e.g. data.total / 500000 or (1 - credits.used / 70) %; \"$\" in front adds the sign, \"%\" after it shows a percent; several, each with a label, go apart by \";\", e.g. 5h: a.used / a.cap %; $credits.left")));
+    inner.append(...field(t("Balance field"), balPair, t("Where the amount is in the reply, e.g. data.balance; it can be a sum with + - * / and brackets, e.g. data.total / 500000 or (1 - credits.used / 70) %; \"$\" in front adds the sign, \"%\" after it shows a percent, with a bar; several, each with a label, go apart by \";\", e.g. 5h: a.used / a.cap %; $credits.left")));
     more.append(inner);
     ed.append(more);
   }
@@ -6984,7 +6984,11 @@ function renderQuotas() {
       } else if (every) head.append(every);
       card.append(meters);
       // what is left besides the windows, under them
-      if (sub.balance && sub.windows?.length && !sub.error) card.append(balanceRow(sub, "What is left on the account besides its windows"));
+      if (sub.balance && sub.windows?.length && !sub.error) card.append(balanceRow(sub, "What is left on the account besides its windows", false));
+      // windows standing in for ones that couldn't be read just now say
+      // when they were read (a balance alone says it in its row)
+      const read = sub.windows?.length && !sub.error && readWhen(sub);
+      if (read) card.append(read);
       if (sub.resets?.count) {
         const r = el("div", "quota-resets");
         r.append(resetsWords(sub.resets));
@@ -7315,7 +7319,29 @@ function renderPanelQuota() {
       // whose balance, at a glance: the provider's logo before its name
       const who = el("span", "pq-sub pq-bn");
       who.append(icon(q.icon || "generic"), el("span", "", q.name));
-      card.append(who, el("b", "pq-amt", q.balance));
+      card.append(who);
+      // a balance field with several amounts: the first as the figure,
+      // the others each a quiet line, a percent a meter (#420)
+      const parts = q.balanceParts?.length ? q.balanceParts : [{ text: q.balance }];
+      for (const [i, p] of parts.entries()) {
+        if (!i && !p.label) card.append(el("b", "pq-amt", p.text));
+        else if (!i) {
+          const lead = el("span", "pq-lead");
+          lead.append(el("b", "pq-amt", p.text), el("span", "", p.label));
+          card.append(lead);
+        } else {
+          const line = el("span", "pq-sub pq-bp");
+          line.append(el("span", "", p.label || ""), el("b", "", p.text));
+          card.append(line);
+        }
+        if (p.percent != null) card.append(balanceMeter(p.percent));
+      }
+      // standing in for a reading that failed just now: as of when
+      if (q.asOf) {
+        card.classList.add("stale");
+        card.title += "\n" + asOfText(q);
+        card.append(el("span", "pq-sub pq-asof", t("As of {when}", { when: stamp(q.asOf) })));
+      }
       grid.append(card);
     }
     g.append(grid);
@@ -7549,13 +7575,55 @@ const quotaFit = new ResizeObserver((es) => {
   }
 });
 
-// balanceRow: what is left on an account, as a figure.
-function balanceRow(sub, why) {
-  const b = el("div", "quota-balance");
+// balanceRow: what is left on an account, as a figure; a balance field
+// with several amounts, each on a line of its own, its label quiet and the
+// first the one that counts, a percent a meter (amber from 90%, as the
+// panel's rings) (#420). Under it, when it was read, unless the card
+// says that under its windows (when false).
+function balanceRow(sub, why, when = true) {
+  const parts = sub.balanceParts;
+  const b = el("div", "quota-balance" + (parts?.length ? " parts" : ""));
   b.title = t(why);
-  b.append(el("span", "", t("Balance")), el("b", "", sub.balance));
+  if (!parts?.length) b.append(el("span", "", t("Balance")), el("b", "", sub.balance));
+  for (const [i, p] of (parts || []).entries()) {
+    const row = el("div", "bal-part" + (i ? "" : " lead"));
+    row.append(el("span", "", p.label || (i ? "" : t("Balance"))), el("b", "", p.text));
+    if (p.percent != null) row.append(balanceMeter(p.percent));
+    b.append(row);
+  }
+  const read = when && readWhen(sub);
+  if (read) b.append(read);
   return b;
 }
+
+// balanceMeter: a balance field's percent, as a meter.
+function balanceMeter(percent) {
+  const share = Math.max(0, Math.min(100, percent));
+  const track = el("div", "quota-track" + (share >= 90 ? " full" : ""));
+  const fill = el("i");
+  fill.style.width = share + "%";
+  track.append(fill);
+  return track;
+}
+
+// readWhen: when a card's figures were read, quietly under them: "As of
+// …" for one standing in for a reading that failed just now, else how
+// long ago, kept current.
+function readWhen(q) {
+  if (q.asOf) {
+    const s = el("div", "quota-read stale", asOfText(q));
+    s.title = asOfText(q);
+    return s;
+  }
+  if (!q.readAt) return null;
+  const s = el("div", "quota-read", t("Updated {when}", { when: ago(q.readAt) }));
+  s.dataset.ago = q.readAt;
+  s.title = new Date(q.readAt).toLocaleString();
+  return s;
+}
+setInterval(() => {
+  for (const s of document.querySelectorAll(".quota-read[data-ago]")) s.textContent = t("Updated {when}", { when: ago(s.dataset.ago) });
+}, 30000);
 
 // familyQuota: an account's windows one a model family where they name
 // one, and "Every model", for above them, turning to each window and back
