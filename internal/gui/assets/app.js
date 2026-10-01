@@ -2225,7 +2225,8 @@ async function loadProviders() {
   providers = await api("providers");
   // a reload's provider may be gone since
   if (typeof editing === "string" && !providers.providers.some((p) => p.id === editing)) editing = null;
-  if (!providers.providers.length && editing === null) adding = true;
+  // a providers.json that can't be read is not a first use: no Add sheet
+  if (!providers.providers.length && editing === null && !providers.fileError) adding = true;
   if (view === "gateway") {
     // the gateway page is looked at and left open: coming back to the window
     // redraws it only when something on it changed, and when only the calls
@@ -2350,6 +2351,7 @@ function renderProviders() {
     if (open) dialog = renderEditor(p);
   }
   renderExcluded();
+  renderFileError();
   renderMovable();
   dialog = renderAdd() || dialog;
   if (importing) dialog = renderImport(importing);
@@ -2388,6 +2390,26 @@ async function switchProvider(p, on, s) {
     s?.classList.toggle("on", !on);
     status(e.message, "err");
   }
+}
+
+// renderFileError: over the list, that providers.json is there but can't
+// be read, so the list is the signed-in accounts alone: magpie left the
+// file as it is, and nothing is saved over it until it is fixed or moved.
+function renderFileError() {
+  const box = $("#fileError");
+  if (!box) return;
+  box.replaceChildren();
+  box.hidden = !providers.fileError;
+  if (box.hidden) return;
+  const r = el("div", "signing file-error");
+  r.setAttribute("role", "alert");
+  r.append(el("span", "mark", "!"));
+  const tt = el("span", "tt");
+  tt.append(el("span", "n", t("Your providers file can't be read")),
+    el("span", "s", t("magpie left it unchanged and lists no providers from it. Fix the file or move it aside, then reopen this page; until then, changes to providers are refused.")),
+    el("span", "s", providers.fileError));
+  r.append(tt);
+  box.append(r);
 }
 
 // renderMovable: one quiet line over the list naming the built-in

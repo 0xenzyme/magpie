@@ -117,7 +117,7 @@ func TestSyncBalanceToken(t *testing.T) {
 			if serverKeys {
 				localKey, localToken = "sk-a", "balance-a"
 			}
-			ps := provider.Stored()
+			ps, _ := provider.Stored()
 			if len(ps) != 1 || ps[0].Key != localKey || ps[0].BalanceToken != localToken {
 				t.Fatalf("b after download: %+v", ps)
 			}
@@ -130,12 +130,12 @@ func TestSyncBalanceToken(t *testing.T) {
 			if got := remote(); got.Keys != serverKeys || len(got.Providers) != 1 || got.Providers[0].Name != "Renamed" || got.Providers[0].Key != wantKey || got.Providers[0].BalanceToken != wantToken {
 				t.Fatalf("after b's keyless upload: %+v", got)
 			}
-			if ps := provider.Stored(); len(ps) != 1 || ps[0].BalanceToken != "balance-b-new" {
+			if ps, _ := provider.Stored(); len(ps) != 1 || ps[0].BalanceToken != "balance-b-new" {
 				t.Fatalf("upload changed b's token: %+v", ps)
 			}
 			use(a)
 			now()
-			if ps := provider.Stored(); len(ps) != 1 || ps[0].Name != "Renamed" || ps[0].Key != "sk-a" || ps[0].BalanceToken != "balance-a" {
+			if ps, _ := provider.Stored(); len(ps) != 1 || ps[0].Name != "Renamed" || ps[0].Key != "sk-a" || ps[0].BalanceToken != "balance-a" {
 				t.Fatalf("a after download: %+v", ps)
 			}
 		})

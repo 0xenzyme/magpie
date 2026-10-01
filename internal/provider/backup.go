@@ -6,8 +6,13 @@ package provider
 import "slices"
 
 // Stored is the providers as providers.json keeps them: keys included,
-// signed-in accounts only as the model picks the user made for them.
-func Stored() []Provider { return load().Providers }
+// signed-in accounts only as the model picks the user made for them. A
+// file that can't be read is an error, never none: a backup or a sync
+// carrying none would take every provider away where it is put back.
+func Stored() ([]Provider, error) {
+	f, err := read()
+	return f.Providers, err
+}
 
 // Restore puts providers from a backup in. Each replaces the one here with
 // its id; one that came without keys keeps the keys already here. It
@@ -50,8 +55,11 @@ func Restore(ps []Provider) (added, replaced int, err error) {
 }
 
 // StoredGroups is the groups as saved: the user's own, and the found ones
-// the user removed.
-func StoredGroups() []Group { return load().Groups }
+// the user removed. As with Stored, a file that can't be read is an error.
+func StoredGroups() ([]Group, error) {
+	f, err := read()
+	return f.Groups, err
+}
 
 // RestoreGroups puts groups from a backup in, each replacing the one here
 // with its id.

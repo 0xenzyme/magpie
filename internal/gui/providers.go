@@ -192,6 +192,10 @@ type providersJSON struct {
 	// Moved is the agents the change moved off models it stopped serving
 	// (agent.Reseat), for the page to say so.
 	Moved []agent.Move `json:"moved,omitempty"`
+	// FileError is why providers.json can't be read (provider.FileError):
+	// the page says so over what is listed, which is then the signed-in
+	// accounts alone, never "add your first provider".
+	FileError string `json:"fileError,omitempty"`
 }
 
 // agentModel is the model an agent is on, as magpie's catalog names it.
@@ -398,6 +402,9 @@ func providersState() providersJSON {
 	agents := agent.Detected()
 	s := providersJSON{Providers: []providerJSON{}, Presets: []presetJSON{}, Excluded: []excludedJSON{}}
 	s.OnPlugins = provider.OnPlugins()
+	if err := provider.FileError(); err != nil {
+		s.FileError = err.Error()
+	}
 	for _, x := range provider.Excluded() {
 		e := excludedJSON{Exclusion: x, Name: x.Agent, Icon: "generic"}
 		if a, err := agent.Find(x.Agent); err == nil {

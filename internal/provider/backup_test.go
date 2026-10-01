@@ -48,7 +48,7 @@ func TestBackupBalanceToken(t *testing.T) {
 					if err := op.put([]Provider{p}); err != nil {
 						t.Fatal(err)
 					}
-					ps := Stored()
+					ps, _ := Stored()
 					if len(ps) != 1 {
 						t.Fatalf("providers: %+v", ps)
 					}

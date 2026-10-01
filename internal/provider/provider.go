@@ -23,6 +23,7 @@ import (
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/settings"
+	"github.com/yetone/magpie/internal/steady"
 )
 
 // Protocol is a wire API magpie can speak to an upstream.
@@ -197,28 +198,57 @@ func Path() string {
 	return filepath.Join(home, ".config", "magpie", "providers.json")
 }
 
+// load is the file for a read that goes on without it: start-up, the
+// gateway, the catalog. One that can't be read is taken as empty there;
+// what lists the providers to the user says so (FileError), and an edit
+// refuses (read).
 func load() file {
 	f, _ := read()
 	return f
 }
 
+// ErrUnreadable is a providers.json that is there but can't be read or
+// decoded: never an empty catalog, to list as none, back up or write over.
+var ErrUnreadable = errors.New("providers.json can't be read")
+
+type unreadableError struct {
+	path string
+	err  error
+}
+
+func (e *unreadableError) Error() string {
+	return fmt.Sprintf("%s can't be read (%v); magpie left it unchanged — fix it or move it aside", e.path, e.err)
+}
+
+func (e *unreadableError) Unwrap() []error { return []error{ErrUnreadable, e.err} }
+
 // Reads used for an edit must keep errors: a broken file is not an empty
 // catalog to write over. Only a missing file is a first use.
 func read() (file, error) {
 	var f file
-	b, err := os.ReadFile(Path())
+	b, err := steady.ReadFile(Path())
 	if errors.Is(err, os.ErrNotExist) {
 		return f, nil
 	}
 	if err != nil {
-		return f, err
+		return f, &unreadableError{Path(), err}
 	}
 	if err := json.Unmarshal(b, &f); err != nil {
-		return file{}, fmt.Errorf("%s: %w", Path(), err)
+		return file{}, &unreadableError{Path(), err}
 	}
 	return f, nil
 }
 
+// FileError is why providers.json can't be read, nil when it can or isn't
+// there: for what lists the providers to say so, not "none yet".
+func FileError() error {
+	_, err := read()
+	return err
+}
+
+// store replaces providers.json whole, through a file renamed over it, so
+// that a read at that moment sees the old catalog or the new one, never a
+// file cut short.
 func store(f file) error {
 	p := Path()
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -228,13 +258,10 @@ func store(f file) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(p, append(b, '\n'), 0o600); err != nil {
+	if err := writePrivate(p, append(b, '\n')); err != nil {
 		return err
 	}
 	pruneIcons(f)
-	if err := os.Chmod(p, 0o600); err != nil {
-		return err
-	}
 	// what agents were handed of the catalog may be out of date now
 	catalog.Touched()
 	return nil

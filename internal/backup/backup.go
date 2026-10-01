@@ -80,7 +80,17 @@ var ErrPassphrase = errors.New("wrong passphrase, or the file was changed")
 // variable or header that looks like one (their names stay).
 func Collect(keys bool, app string) (Bundle, error) {
 	b := Bundle{Version: 1, Created: time.Now().UTC(), App: app, Keys: keys}
-	for _, p := range provider.Stored() {
+	// a providers.json that can't be read stops the backup: carried as no
+	// providers, it would take them all away where it is put back, or where
+	// sync mirrors it
+	stored, err := provider.Stored()
+	if err != nil {
+		return b, err
+	}
+	if b.Groups, err = provider.StoredGroups(); err != nil {
+		return b, err
+	}
+	for _, p := range stored {
 		if !keys {
 			p = withoutKeys(p)
 		}
@@ -96,7 +106,6 @@ func Collect(keys bool, app string) (Bundle, error) {
 			}
 		}
 	}
-	b.Groups = provider.StoredGroups()
 	searches := []provider.SearchAPI{}
 	for _, a := range provider.StoredSearchAPIs() {
 		if !keys {
@@ -266,7 +275,11 @@ func Restore(b Bundle, parts Parts) (Result, error) {
 				}
 			}
 		}
-		for _, p := range provider.Stored() {
+		stored, err := provider.Stored()
+		if err != nil {
+			return r, err
+		}
+		for _, p := range stored {
 			if !p.Ready() && slices.ContainsFunc(b.Providers, func(q provider.Provider) bool { return q.ID == p.ID }) {
 				r.NeedKey = append(r.NeedKey, p.Name)
 			}
