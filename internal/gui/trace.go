@@ -27,6 +27,11 @@ func mainView(q url.Values) string {
 			view += "&req=" + strconv.FormatInt(id, 10)
 		}
 	}
+	// the panel's picker making a routing group of a model kept for groups
+	// and in none: the window opens on a new group of it
+	if m := q.Get("newgroup"); view == "routing" && m != "" {
+		view += "&newgroup=" + url.QueryEscape(m)
+	}
 	return view
 }
 

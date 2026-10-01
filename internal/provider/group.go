@@ -620,6 +620,31 @@ func GroupsWith(id string) []Group {
 	return out
 }
 
+// MemberGroups are the routing groups each model is in, as "group/<id>",
+// by the model's "provider/model" id; a member fixed at an effort counts as
+// its model, and a group removed is none. A provider kept for routing
+// groups (Provider.Unlisted) reaches agents through these alone: a model
+// of it in none of them is used by nothing.
+func MemberGroups() map[string][]string {
+	entries := providerEntries()
+	out := map[string][]string{}
+	for _, g := range groupsIn(entries) {
+		if g.Hidden {
+			continue
+		}
+		for _, id := range g.Members {
+			if strings.HasPrefix(id, GroupPrefix) {
+				continue
+			}
+			m, _ := memberEffortIn(entries, id)
+			if !slices.Contains(out[m], GroupPrefix+g.ID) {
+				out[m] = append(out[m], GroupPrefix+g.ID)
+			}
+		}
+	}
+	return out
+}
+
 // DeleteGroup removes a group of the user's; one magpie found is hidden,
 // to come back with ShowGroup. A group another has in it, or classifies
 // with, stays until it is taken out of that one.

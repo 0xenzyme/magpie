@@ -2470,7 +2470,24 @@
   // loaded when the view is shown, and again when the window comes back
   new MutationObserver(() => { if (!$("#view-routing").hidden) loadGroups(); }).observe($("#view-routing"), { attributes: true, attributeFilter: ["hidden"] });
   window.addEventListener("focus", () => { if (shown()) loadGroups(); });
-  loadGroups();
+  // newGroupWith: a new group's editor, opened with the model in it — a
+  // model of a provider kept for routing groups that no group has, which
+  // agents can reach no other way. The picker and the provider's editor
+  // ask it (and the tray panel, by ?newgroup= on the window it opens).
+  window.newGroupWith = async (id, name, ev) => {
+    // app.js's show, the page's: this one's own show is the stage's caption
+    if (document.body.classList.contains("window") && $("#view-routing").hidden) window.show("routing");
+    if (!groups) await loadGroups();
+    if (!groups) return;
+    gEdit = { id: "", draft: { name: name || modelOf(id)?.name || id.split("/").pop(), members: [id], routing: "", affinity: "", rules: [] } };
+    renderGroups();
+    const ed = gList.querySelector(".rt-gedit");
+    if (ed && window.scrollOnPurpose?.(ev)) ed.scrollIntoView({ block: "center", behavior: "smooth" });
+    ed?.querySelector("input")?.focus({ preventScroll: true });
+  };
+  const askedGroup = document.body.classList.contains("window") && params.get("newgroup");
+  if (askedGroup) loadGroups().then(() => window.newGroupWith(askedGroup, ""));
+  else loadGroups();
 
   // ---------- where the reader is, as requests come ----------
   // Every request redraws what is above the routing groups: the stage gains

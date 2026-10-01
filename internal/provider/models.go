@@ -741,6 +741,19 @@ func Served() []Entry {
 	return append(groupEntries(entries), entries...)
 }
 
+// Unlisted are the models Served has and Catalog doesn't: those of the
+// providers kept for routing groups (Provider.Unlisted), which agents
+// aren't offered.
+func Unlisted() []Entry {
+	var out []Entry
+	for _, e := range providerEntries() {
+		if e.Provider.Unlisted {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // providerEntries is the catalog without its groups.
 func providerEntries() []Entry {
 	var out []Entry
