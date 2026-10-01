@@ -179,9 +179,10 @@ func buildChat(r *Request, model, host string, rejectTemp bool) []byte {
 	if r.System != "" {
 		msgs = append(msgs, map[string]any{"role": "system", "content": r.System})
 	}
-	// DeepSeek takes a turn's reasoning back, as Command Code's plugin does
-	// for a Go key, as the built-in replayed it to /alpha/generate
-	replay := strings.Contains(host, "deepseek") || host == provider.CommandCodePlanID
+	// DeepSeek takes a turn's reasoning back, wherever its models are
+	// served (#388), as Command Code's plugin does for a Go key, as the
+	// built-in replayed it to /alpha/generate
+	replay := strings.Contains(host, "deepseek") || strings.Contains(strings.ToLower(model), "deepseek") || host == provider.CommandCodePlanID
 	// A tool message holds text only, so the images tools returned go to
 	// the model in a user message after the tool messages, as the start of
 	// the user's own message when one comes next: some models' chat

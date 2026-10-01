@@ -206,9 +206,20 @@ func parseResponses(body []byte) (*Request, error) {
 				out, images := toolOutput(it.Output)
 				r.Messages = append(r.Messages, Message{Role: "user", Parts: []Part{{Kind: ToolResult, CallID: it.CallID, Text: out, Images: images}}})
 			case it.Type == "reasoning":
+				// the reasoning itself when the item carries it, else its
+				// summary (all magpie gives a client of a translated reply)
 				var b strings.Builder
-				for _, s := range it.Summary {
-					b.WriteString(s.Text)
+				var content []rText
+				_ = json.Unmarshal(it.Content, &content)
+				for _, c := range content {
+					if c.Type == "reasoning_text" {
+						b.WriteString(c.Text)
+					}
+				}
+				if b.Len() == 0 {
+					for _, s := range it.Summary {
+						b.WriteString(s.Text)
+					}
 				}
 				if b.Len() > 0 {
 					r.Messages = append(r.Messages, Message{Role: "assistant", Parts: []Part{{Kind: Thinking, Text: b.String()}}})
@@ -358,6 +369,14 @@ func responsesParts(raw json.RawMessage) []Part {
 
 // buildResponses renders a request for a Responses upstream.
 func buildResponses(r *Request, model, host string, rejectTemp bool) []byte {
+	// A turn's reasoning goes back as a reasoning item, as a model that
+	// thinks between tool calls wants it (DeepSeek: "The reasoning_text in
+	// the thinking mode must be passed back", #388). Only a DeepSeek model
+	// gets it: OpenAI's and those in front of it read only their own
+	// sealed reasoning, and may refuse an item without it.
+	replay := strings.Contains(strings.ToLower(model), "deepseek") &&
+		!slices.Contains([]string{"chatgpt.com", "api.openai.com", "api.x.ai", "api.githubcopilot.com"}, host) &&
+		!strings.HasSuffix(host, ".openai.azure.com")
 	var input []map[string]any
 	for _, m := range r.Messages {
 		var content []map[string]any
@@ -385,6 +404,12 @@ func buildResponses(r *Request, model, host string, rejectTemp bool) []byte {
 			case Image:
 				if m.Role != "assistant" {
 					content = append(content, map[string]any{"type": "input_image", "image_url": dataURL(p)})
+				}
+			case Thinking:
+				if replay && p.Text != "" {
+					flushMsg()
+					input = append(input, map[string]any{"type": "reasoning", "summary": []any{},
+						"content": []map[string]any{{"type": "reasoning_text", "text": p.Text}}})
 				}
 			case ToolCall:
 				flushMsg()
