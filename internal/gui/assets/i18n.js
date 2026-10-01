@@ -220,6 +220,8 @@ const I18N = {
     "max": "最高",
     "auto": "自动",
     "{label}: {value}": "{label}：{value}",
+    "Not through magpie: {agent} asks {vendor} for it directly, with its own sign-in or key, so {path} has no magpie endpoint — that is expected.": "不经过 magpie：{agent} 用它自己的登录或密钥直接向 {vendor} 请求这个模型，所以 {path} 里没有 magpie 的地址，这是正常的。",
+    "straight to {vendor}, not through magpie": "直连 {vendor}，不经过 magpie",
     "Profiles": "方案",
     "＋ Save current": "＋ 保存当前",
     "none yet · save the setup to switch back in one click": "还没有 · 保存当前设置，之后一键切回",

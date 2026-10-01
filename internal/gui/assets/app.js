@@ -186,6 +186,14 @@ function optionFor(field, value) {
   return field.options.find((o) => o.value === value);
 }
 
+// directSaid: a model the agent asks its own vendor for itself, magpie not
+// in the way (Claude Code on its own sign-in), so its config names no magpie
+// endpoint — which read as magpie having failed to set it up
+function directSaid(a, opt) {
+  if (!opt?.direct) return "";
+  return t("Not through magpie: {agent} asks {vendor} for it directly, with its own sign-in or key, so {path} has no magpie endpoint — that is expected.", { agent: a.name, vendor: opt.direct, path: a.path });
+}
+
 // Rows in the shape of the list while magpie first reads the agents; a
 // reload keeps the rows it has until the new ones are in.
 function renderAgentsLoading() {
@@ -249,6 +257,7 @@ function renderAgents() {
       const b = el("button", "field " + (plain === 1 ? "solo" : wide(f) ? "main" : "side"));
       const opt = optionFor(f, f.value);
       b.title = t("{label}: {value}", { label: t(f.label), value: f.value || t("agent default") }) + (opt?.note ? ` · ${opt.note}` : "");
+      if (f.value && opt?.direct) b.title += "\n" + directSaid(a, opt);
       const effort = f.key === "effort" || f.label === "effort" || f.label === "thinking";
       if (opt?.icon || opt?.icons?.length) b.append(optionIcon(opt));
       // a field with no logo of its own still leads with an icon: how much
@@ -2045,6 +2054,7 @@ async function commit(value) {
     flash();
     const shown = opt?.label || value;
     if (state.notice) status(`${agent.name} → ${shown}. ${state.notice}`, "warn", 9000);
+    else if (opt?.direct) status(`${agent.name} ${t(field.label)} → ${shown} · ${t("straight to {vendor}, not through magpie", { vendor: opt.direct })}`, "ok", 6000);
     else status(`${agent.name} ${t(field.label)} → ${shown}`, "ok");
     if (providers) loadProviders();
   } catch (e) {
