@@ -8,7 +8,11 @@
 // browser computed them, each background laid over the ones under it: the
 // other views and a text button on the page, a card and the inset editor
 // read at 4.5:1 with some margin to spare (4.7), the view shown on its thumb
-// too, and the thumb is told from the track by more than it was. Chromium
+// too, and the thumb is told from the track by more than it was. They are
+// read once the page's transitions are over; and the page is first drawn in
+// its theme, before app.js runs: a window kept dark under a light system was
+// first drawn light, its header's buttons fading to dark as they were read,
+// so they measured mid-way (3.96:1 for the view shown). Chromium
 // and WebKit, English and Chinese; no backend, the API is faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -18,9 +22,10 @@ const { chromium, webkit } = require("playwright");
 
 const assets = path.resolve(__dirname, "../assets");
 
-function server(lang, theme) {
+function server(lang, theme, gate) {
   return async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname === "/app.js") await gate;
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"${theme}",web:false};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return route.fulfill({ json: { agents: [], profiles: [], settings: { lang, theme } } });
@@ -101,10 +106,20 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const ctx = await browser.newContext({ viewport: { width: 1000, height: 640 }, colorScheme: scheme });
         const page = await ctx.newPage();
         page.on("pageerror", (e) => errors.push(e.message));
-        await page.route("**/*", server(lang, theme));
-        await page.goto("http://magpie.test/");
+        let release;
+        const gate = new Promise((r) => { release = r; });
+        await page.route("**/*", server(lang, theme, gate));
+        // the page as first drawn, app.js held back: already in its theme
+        const loaded = page.goto("http://magpie.test/");
+        await page.waitForSelector("#nav", { state: "attached" });
+        const first = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+        release();
+        await loaded;
         await page.waitForSelector("#nav button.on");
         await page.waitForFunction(() => document.querySelector("#nav .thumb")?.getBoundingClientRect().width > 0);
+        assert.equal(first, await page.evaluate(() => getComputedStyle(document.body).backgroundColor), "the page was first drawn in another theme");
+        // what is drawn once it has settled, not a colour on its way
+        await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.transitionProperty).map((a) => a.finished.catch(() => {}))));
         const r = await ratios(page), at = JSON.stringify(r);
         for (const [what, v] of Object.entries(r)) {
           if (what === "thumb against the track") continue;

@@ -12,7 +12,7 @@ async function palette(page, selectors) {
       const hex = root.getPropertyValue(name).trim();
       return `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
     };
-    const colors = Object.fromEntries(["bg", "card", "card-2", "fg", "fg-2", "muted", "pill", "line", "accent", "accent-fg"]
+    const colors = Object.fromEntries(["bg", "card", "card-2", "fg", "fg-2", "muted", "ctl-fg", "pill", "line", "accent", "accent-fg"]
       .map((name) => [name, rgb("--" + name)]));
     const elements = Object.fromEntries(Object.entries(selectors).map(([name, selector]) => {
       const s = getComputedStyle(document.querySelector(selector));
@@ -60,7 +60,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           assert.equal(input.bg, c.card, "key inputs must not use the browser's default background");
           assert.equal(input.color, c.fg);
         }
-        assert.equal(e.rotate.color, c.muted);
+        assert.equal(e.rotate.color, c["ctl-fg"]); // a text button, in a control's quiet text (#477)
         assert.equal(e.keyPick.bg, "rgba(0, 0, 0, 0)");
         assert.equal(e.create.bg, c.accent);
         assert.equal(e.create.color, c["accent-fg"]);
