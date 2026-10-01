@@ -44,6 +44,11 @@ func (p Provider) Available() []catalog.Model {
 		}
 	}
 	if live, _, ok := p.live(); ok {
+		if p.Account != nil && p.Account.unusable != nil {
+			// a model the list offers that the account was refused
+			// (Copilot's, copilot_refused.go)
+			live = slices.DeleteFunc(slices.Clone(live), func(m catalog.Model) bool { return p.Account.unusable(m.ID) })
+		}
 		switch p.ID {
 		case "cursor":
 			live = withoutCursorCapacity(collapseCursorModels(withCursorContexts(live)))
@@ -430,8 +435,16 @@ func (p Provider) Exposed() []catalog.Model {
 		}
 		return out
 	}
-	if len(p.Models) > 0 {
-		return pick(p.Models)
+	picks := p.Models
+	if _, _, ok := p.live(); ok && p.Account != nil && p.Account.unusable != nil {
+		// A Copilot account is served what its list offers it, less what
+		// it was refused: a pick its list doesn't have (#371: gpt-6-luna,
+		// not in a Student plan's) or that it was refused is left out;
+		// with none left, as if none were picked.
+		picks = slices.DeleteFunc(slices.Clone(picks), func(id string) bool { _, ok := byID[id]; return !ok })
+	}
+	if len(picks) > 0 {
+		return pick(picks)
 	}
 	// another magpie's list is already the models its user exposed
 	if len(avail) <= manyModels || p.IsRemoteMagpie() {

@@ -1359,19 +1359,24 @@ func markOpenRouterSharedPool(w http.ResponseWriter) {
 // provider that turns away betas it doesn't know by name (Bedrock's: 400
 // Unexpected value(s) `x` for the `anthropic-beta` header) is asked again
 // once without them, and they're left out for it from then on. An account's
-// 403 it can mend (Provider.Retry) is asked once more.
+// 403 or 400 it can mend (Provider.Retry) is asked again, a few times at most.
 func (s *Server) forward(ctx context.Context, p provider.Provider, to provider.Protocol, path string, body []byte, in http.Header) (*http.Response, error) {
 	res, err := s.forwardOnce(ctx, p, to, path, body, in)
-	if err == nil && res.StatusCode == http.StatusForbidden && p.Retries() {
+	if err == nil && (res.StatusCode == http.StatusForbidden || res.StatusCode == http.StatusBadRequest) && p.Retries() {
 		// an account that can mend what the refusal names (a Factory org
-		// the server won't take) is asked once more
-		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-		res.Body.Close()
-		res.Body = io.NopCloser(bytes.NewReader(b))
-		if p.Retry(ctx, res.StatusCode, b) {
-			return s.forwardOnce(ctx, p, to, path, body, in)
+		// the server won't take; a model Copilot's Auto picked that the
+		// account is refused, for which Auto picks another) is asked again
+		for range 3 {
+			b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+			res.Body.Close()
+			res.Body = io.NopCloser(bytes.NewReader(b))
+			if !p.Retry(ctx, body, res.StatusCode, b) {
+				break
+			}
+			if res, err = s.forwardOnce(ctx, p, to, path, body, in); err != nil || res.StatusCode != http.StatusForbidden && res.StatusCode != http.StatusBadRequest {
+				return res, err
+			}
 		}
-		return res, nil
 	}
 	if err != nil || to != provider.Anthropic || res.StatusCode != http.StatusBadRequest {
 		return res, err
