@@ -376,7 +376,7 @@ func groupEntries(entries []Entry) []Entry {
 		if len(ms) == 0 {
 			continue
 		}
-		e := Entry{ID: GroupPrefix + g.ID, Model: ms[0].Model, Name: g.Name, Provider: ms[0].Provider, Group: g.ID, Images: true}
+		e := Entry{ID: GroupPrefix + g.ID, Model: ms[0].Model, Name: g.Name, Provider: ms[0].Provider, Group: g.ID, Images: true, Reasoning: true}
 		var fixed []string // the efforts members are fixed at
 		levelled := false  // a member that follows the agent's effort was met
 		// Codex's ultra (max, with Codex handing parts of the task to agents
@@ -389,13 +389,14 @@ func groupEntries(entries []Entry) []Entry {
 				e.Icons = append(e.Icons, m.Provider.Icon) // each provider once, "" for one without
 			}
 			var efforts []string
-			images, ctx, output := false, 0, 0
+			images, thinks, ctx, output := false, false, 0, 0
 			var imageInput *bool
 			for _, x := range entries {
 				if x.Provider.ID == m.Provider.ID && x.Model == m.Model {
-					efforts, images, ctx, output, imageInput = x.Efforts, x.Images, x.Context, x.Output, x.ImageInput
+					efforts, images, thinks, ctx, output, imageInput = x.Efforts, x.Images, x.Reasoning, x.Context, x.Output, x.ImageInput
 				}
 			}
+			e.Reasoning = e.Reasoning && thinks
 			if output > 0 && (e.Output == 0 || output < e.Output) {
 				e.Output = output
 			}
@@ -435,6 +436,7 @@ func groupEntries(entries []Entry) []Entry {
 		if ultra && slices.Contains(e.Efforts, "max") && !slices.Contains(e.Efforts, "ultra") {
 			e.Efforts = append(e.Efforts, "ultra")
 		}
+		e.Reasoning = e.Reasoning || len(e.Efforts) > 0
 		if e.ImageInput != nil && !*e.ImageInput {
 			e.Images = false
 		}
