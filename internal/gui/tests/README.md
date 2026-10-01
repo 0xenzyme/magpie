@@ -1307,4 +1307,17 @@ Z→A; each list keeps its own pick through a reload, and a pick leaves its
 control where it was on the screen. It runs in Chromium and WebKit, in
 English and Chinese:
 node --test internal/gui/tests/list-sort.test.cjs
+
+`quota-pools.test.cjs` checks Antigravity's allowance a row a pool of
+models, each with its 5-hour and its weekly window (a user on Discord: the
+three models read the same, show the 5 hours and the week left): windows
+that name a `pool` show as the pool's 5 hours then its 7 days, Gemini
+first, on the Usage page's card (the pool's models in the tooltip), the
+menu bar panel's four rings (Gemini 5h, Gemini 7d, Claude 5h, Claude 7d,
+each label whole) and the provider's account rows (a pool's name, then its
+5h and 7d meters); "Every model" lists the models' own windows, not the
+pools' again, and back, without moving the page. Claude Code's windows are
+as they were. No left-border accent; English and Chinese, Chromium and
+WebKit, with `/api/plugins` faked:
+node --test internal/gui/tests/quota-pools.test.cjs
 ```

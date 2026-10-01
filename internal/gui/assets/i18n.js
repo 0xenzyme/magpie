@@ -1325,6 +1325,10 @@ const I18N = {
     "One figure a model family, its most used model's": "每个模型系列一个数字，取其中用得最多的模型",
     "Each model's allowance, level by level": "每个模型各档位的额度",
     "{family}: the most used of its models": "{family}：取其中用得最多的模型",
+    // a group of models sharing one allowance (Antigravity's Gemini, Claude & GPT)
+    "By group": "按分组",
+    "Each group of models' 5-hour and weekly allowance, shared by its models": "每组模型共用的 5 小时和每周额度",
+    "{pool}: one allowance for these models": "{pool}：以下模型共用这份额度",
     "tomorrow {time}": "明天 {time}",
     "Renews {date}": "{date}续费",
     "Expires {date}": "{date}到期",

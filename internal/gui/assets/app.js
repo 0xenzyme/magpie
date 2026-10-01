@@ -6797,6 +6797,7 @@ function accountQuota(data, user) {
   // the two rolling windows fit a line; the per-model ones go in its
   // tooltip; per-model windows of a family are the family's one
   const ws = familyWindows(q.windows);
+  if (ws.some((w) => w.members)) return poolLine(line, ws, q);
   line.title = ws.slice(2).map((w) => w.tiers ? tiersText(w) : t(w.name) + " " + quotaText(w)).join(ws !== q.windows ? "\n" : " · ");
   if (q.asOf) line.title = [line.title, asOfText(q)].filter(Boolean).join("\n");
   for (const w of ws.slice(0, 2)) {
@@ -6813,6 +6814,36 @@ function accountQuota(data, user) {
       if (used >= 80) m.append(el("span", "aq-r", t("resets {in}", { in: untilText(at) })));
     }
     if (w.tiers) m.title = tiersText(w);
+    line.append(m);
+  }
+  return line;
+}
+
+// poolLine: an account row's pools, each its name then its 5-hour and
+// weekly meters (Gemini 5h ▬ 95% 7d ▬ 75%), two pools on the line and the
+// rest in its tooltip.
+function poolLine(line, ws, q) {
+  const pools = [];
+  for (const w of ws) {
+    const k = w.members ? w.pool : "\0" + pools.length;
+    const p = pools.find((x) => x.k === k);
+    if (p) p.ws.push(w); else pools.push({ k, name: w.members ? w.pool : t(w.name), ws: [w] });
+  }
+  line.title = pools.slice(2).map((p) => p.ws.map((w) => t(w.name) + " " + quotaText(w)).join(" · ")).join("\n");
+  if (q.asOf) line.title = [line.title, asOfText(q)].filter(Boolean).join("\n");
+  for (const p of pools.slice(0, 2)) {
+    const m = el("span", "aq-w aq-pool" + (p.ws.some((w) => w.used >= 90) ? " full" : ""));
+    m.append(el("span", "aq-n", p.name));
+    for (const w of p.ws) {
+      const track = el("span", "aq-track");
+      const fill = el("i");
+      fill.style.width = quotaFill(w) + "%";
+      track.append(fill);
+      m.append(el("span", "aq-k", w.window ? shortWindow(w.window) : ""), track, el("b", "", quotaText(w)));
+    }
+    const w = p.ws[0];
+    m.title = p.ws.map((x) => t(x.name) + " " + quotaText(x) + (x.resetsAt ? " · " + t("Resets {when}", { when: new Date(x.resetsAt).toLocaleString() }) : "")).join("\n")
+      + (w.members ? "\n\n" + poolTip(w) : w.tiers ? "\n\n" + tiersText(w) : "");
     line.append(m);
   }
   return line;
@@ -6843,6 +6874,7 @@ function quotaText(w) {
 // account with a window a family already, are as they were.
 const FAMILY_FIRST = ["Gemini", "Claude"];
 function familyWindows(ws) {
+  if (ws?.some(isPool)) return poolWindows(ws);
   if (!ws?.some((w) => w.family)) return ws;
   const fams = new Map();
   for (const w of ws) {
@@ -6861,6 +6893,47 @@ function familyWindows(ws) {
   const rank = (w) => (w.tiers && FAMILY_FIRST.includes(w.name) ? FAMILY_FIRST.indexOf(w.name) : FAMILY_FIRST.length);
   return out.map((w, i) => [w, i]).sort(([a, i], [b, j]) => rank(a) - rank(b) || i - j).map(([w]) => w);
 }
+// poolWindows: an account's windows one row a pool, where models share one
+// allowance (Antigravity's Gemini, Claude & GPT): the pool's 5-hour window
+// then its weekly one, each named with its pool, its models along as
+// members for its tooltip (a user on Discord: the three models read the
+// same, show the 5 hours and the week left a group). The models' windows
+// in no pool go on as families.
+const isPool = (w) => w.pool && !w.family;
+function poolWindows(ws) {
+  const pools = new Map();
+  for (const w of ws.filter(isPool)) {
+    if (!pools.has(w.pool)) pools.set(w.pool, []);
+    pools.get(w.pool).push(w);
+  }
+  const hours = (w) => {
+    const m = /^(\d+)\s*(hour|day|week)s?$/i.exec(w.name || "");
+    return m ? m[1] * { hour: 1, day: 24, week: 168 }[m[2].toLowerCase()] : Infinity;
+  };
+  const first = (p) => { const i = FAMILY_FIRST.indexOf(p.split(/[ &]/)[0]); return i < 0 ? FAMILY_FIRST.length : i; };
+  const out = [];
+  for (const pool of [...pools.keys()].sort((a, b) => first(a) - first(b))) {
+    const members = ws.filter((w) => w.family && w.pool === pool);
+    for (const w of pools.get(pool).sort((a, b) => hours(a) - hours(b)))
+      out.push({ ...w, name: pool + " · " + t(w.name), window: w.name, members });
+  }
+  const rest = ws.filter((w) => !isPool(w) && !(w.pool && pools.has(w.pool)));
+  const fam = familyWindows(rest);
+  return out.concat(fam);
+}
+// pooledModels: the models a whole account's card lists under "Every model"
+// when its windows are a pool's: the models' own, not the pools' again.
+const pooledModels = (ws) => (ws?.some(isPool) ? ws.filter((w) => !isPool(w)) : ws);
+// poolTip: what a pool's window counts, and its models, for its tooltip.
+function poolTip(w) {
+  return t("{pool}: one allowance for these models", { pool: w.pool }) + "\n" + tiersText({ tiers: w.members });
+}
+// ringName: a window's name short enough for a ring: a pool's first word
+// and its span (Gemini 5h, Claude 7d).
+function ringName(w) {
+  return w.window ? w.pool.split(/[ &]/)[0] + " " + shortWindow(w.window) : shortWindow(w.name);
+}
+
 // tiersText: a family's windows, one a line, for its tooltip.
 function tiersText(w) {
   return (w.tiers || []).map((x) => t(x.name) + " " + quotaText(x)
@@ -8039,11 +8112,13 @@ function panelQuotaCard(q) {
     return card;
   }
   if (q.asOf) card.title += "\n" + asOfText(q);
-  const ws = familyWindows(q.windows).slice(0, 3);
+  // a pool's 5-hour and weekly rings, two pools of them, else three
+  const fam = familyWindows(q.windows);
+  const ws = fam.slice(0, fam.some((w) => w.members) ? 4 : 3);
   // when the windows begun start again: the first bare, the others by name
   const begun = ws.filter((w) => w.resetsAt && w.used > 0);
   card.append(el("span", "pq-sub", begun.length
-    ? begun.map((w, i) => (i ? shortWindow(w.name) + " " : "↻ ") + resetClock(new Date(w.resetsAt))).join(" · ")
+    ? begun.map((w, i) => (i || w.members ? ringName(w) + " " : "↻ ") + resetClock(new Date(w.resetsAt))).join(" · ")
     : t("Not used yet")));
   const rings = el("span", "pq-rings");
   for (const w of ws) {
@@ -8052,9 +8127,16 @@ function panelQuotaCard(q) {
     const dial = el("span", "pq-dial");
     dial.style.setProperty("--p", quotaFill(w));
     dial.append(el("b", "", quotaFill(w) + "%"));
-    r.append(dial, el("span", "pq-rn", shortWindow(w.name)));
+    // a pool's ring: its first word over its span, too long for one line
+    const rn = el("span", "pq-rn", w.window ? undefined : ringName(w));
+    if (w.window) {
+      rn.classList.add("pq-rn2");
+      rn.append(el("span", "", w.pool.split(/[ &]/)[0]), el("span", "", shortWindow(w.window)));
+    }
+    r.append(dial, rn);
     r.title = t(w.name) + " · " + quotaText(w) + (w.resetsAt ? "\n" + t("Resets {when}", { when: new Date(w.resetsAt).toLocaleString() }) + " · " + untilText(new Date(w.resetsAt)) : "")
       + (w.tiers ? "\n\n" + tiersText(w) + "\n" : "")
+      + (w.members ? "\n\n" + poolTip(w) + "\n" : "")
       + "\n" + t(quotaLeft ? "Show how much of each window is used" : "Show how much of each window is left");
     // used or left turns here too, as on the Usage page (#124)
     r.onclick = () => setQuotaLeft(!quotaLeft);
@@ -8298,13 +8380,15 @@ function familyQuota(sub) {
   const fam = sub.error ? sub.windows : familyWindows(sub.windows);
   if (fam === sub.windows) return [quotaWindows(sub), null];
   const key = sub.provider + "|" + (sub.user || "");
-  const shown = () => quotaWindows(everyModel.has(key) ? sub : { ...sub, windows: fam });
+  const models = pooledModels(sub.windows);
+  const pooled = models !== sub.windows;
+  const shown = () => quotaWindows({ ...sub, windows: everyModel.has(key) ? models : fam });
   let box = shown();
   const b = el("button", "text quota-every");
   const label = () => {
     const all = everyModel.has(key);
-    b.textContent = all ? t("By family") : t("Every model ({n})", { n: sub.windows.length });
-    b.title = all ? t("One figure a model family, its most used model's") : t("Each model's allowance, level by level");
+    b.textContent = all ? t(pooled ? "By group" : "By family") : t("Every model ({n})", { n: models.length });
+    b.title = all ? t(pooled ? "Each group of models' 5-hour and weekly allowance, shared by its models" : "One figure a model family, its most used model's") : t("Each model's allowance, level by level");
     b.setAttribute("aria-expanded", String(all));
   };
   label();
@@ -8354,6 +8438,8 @@ function quotaWindows(sub) {
     }
     // a model family's figure: its models, level by level, in its tooltip
     if (w.tiers) quota.title = t("{family}: the most used of its models", { family: w.name }) + "\n" + tiersText(w);
+    // a pool's: when it starts again, and the models it counts
+    if (w.members) quota.title = [quota.title, poolTip(w)].filter(Boolean).join("\n");
     windows.append(quota);
   }
   quotaFit.observe(windows);
