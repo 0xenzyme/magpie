@@ -56,6 +56,9 @@ func lanPublicURL() string {
 	return u
 }
 
+// PublicURL is MAGPIE_PUBLIC_URL, with a scheme; "" when it isn't set.
+func PublicURL() string { return lanPublicURL() }
+
 // PublicHost is MAGPIE_PUBLIC_URL's host, "" when it isn't set.
 func PublicHost() string {
 	u, err := url.Parse(lanPublicURL())

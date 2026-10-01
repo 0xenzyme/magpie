@@ -45,8 +45,8 @@ func webCmd(args []string) error {
 	if ip := net.ParseIP(host); ip != nil && !ip.IsLoopback() {
 		_, port, _ := net.SplitHostPort(w.Addr)
 		key := w.Link[strings.Index(w.Link, "/?k="):]
-		for _, a := range gui.LANAddrs() {
-			fmt.Println(muted.Render("  on the network"), "http://"+net.JoinHostPort(a, port)+key)
+		for _, l := range gui.NetworkLinks(port, key) {
+			fmt.Println(muted.Render("  on the network"), l)
 		}
 		if gateway.ContainerAddrs() {
 			fmt.Println(muted.Render("  " + containerNote))
