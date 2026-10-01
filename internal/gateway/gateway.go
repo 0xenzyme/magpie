@@ -2187,11 +2187,23 @@ func unsupportedOptionalField(fault any, field string) bool {
 		// A proxy can embed the vendor's JSON error in prose. Prefer its
 		// structure to text matching, which could mistake an input echo
 		// or a different parameter's error for a refusal.
-		if i := strings.IndexAny(v, "{["); i >= 0 {
+		rest := v
+		for {
+			i := strings.IndexAny(rest, "{[")
+			if i < 0 {
+				break
+			}
 			var inner any
-			if json.NewDecoder(strings.NewReader(v[i:])).Decode(&inner) == nil {
+			dec := json.NewDecoder(strings.NewReader(rest[i:]))
+			if dec.Decode(&inner) != nil {
+				break
+			}
+			if hasOptionalErrorObject(inner) {
 				return unsupportedOptionalField(inner, field)
 			}
+			// [400] can be a status prefix. Look past it for a JSON
+			// error object before falling back to the original prose.
+			rest = rest[i+int(dec.InputOffset()):]
 		}
 		for _, match := range unknownOptionalField.FindAllStringSubmatchIndex(v, -1) {
 			if v[match[2]:match[3]] != field {
@@ -2238,6 +2250,20 @@ func unsupportedOptionalField(fault any, field string) bool {
 		}
 		for _, key := range []string{"error", "message", "detail", "details", "errors", "description", "metadata", "raw"} {
 			if unsupportedOptionalField(v[key], field) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasOptionalErrorObject(fault any) bool {
+	switch v := fault.(type) {
+	case map[string]any:
+		return true
+	case []any:
+		for _, item := range v {
+			if hasOptionalErrorObject(item) {
 				return true
 			}
 		}
