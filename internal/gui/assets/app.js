@@ -8127,8 +8127,10 @@ function ledContentBox(c) {
 // tab draws the same from the same answer.
 
 // a count as a short number: 1.33 亿, 68.1 万 in Chinese, 133M in English
+// and in Chinese with Settings' K/M/B units (westernUnits)
+let westernUnits = false;
 function ledShort(n) {
-  if (locale !== "zh") return fmtN(n);
+  if (locale !== "zh" || westernUnits) return fmtN(n);
   if (n >= 1e8) return +(n / 1e8).toFixed(2) + " 亿";
   if (n >= 1e4) return +(n / 1e4).toFixed(1) + " 万";
   return String(n);
@@ -10080,6 +10082,10 @@ function applyPrefs(s, rate) {
     currency = s.currency || "usd";
     if (applyPrefs.painted) renderCosts();
   }
+  if (westernUnits !== !!s.westernUnits) {
+    westernUnits = !!s.westernUnits;
+    if (applyPrefs.painted) { renderCosts(); if (mode === "panel" && panelTab === "stats") renderPanelUse(); }
+  }
   applyPrefs.painted = true;
   if (!prefsBusy && (s.textSize || 100) !== textSize) { textSize = s.textSize || 100; applyZoom(textSize); }
   const was = locale;
@@ -10602,6 +10608,10 @@ function renderTrayUsage(s, keep) {
   $("#quotaLeftSegs").replaceChildren(segs([[false, t("Used")], [true, t("Left")]], !!s.quotaLeft,
     (on) => { if (on !== quotaLeft) setQuotaLeft(on); }));
   $("#currencySegs").replaceChildren(segs(CURRENCIES.map(([id, name]) => [id, t(name)]), s.currency || "usd", (v) => savePrefs({ ...keep, currency: v })));
+  // 万 and 亿 are Chinese's alone: in English a count is always K, M and B
+  $("#unitsRow").hidden = locale !== "zh";
+  $("#unitsSegs").replaceChildren(segs([[false, t("万 / 亿")], [true, t("K / M / B")]], !!s.westernUnits,
+    (v) => savePrefs({ ...keep, westernUnits: v })));
   renderAlerts(s, keep);
   // the agents' lists name a model with its provider's after it, or alone
   // (#335): set on its own, so the agents are told
@@ -11188,7 +11198,7 @@ function prefsKeep(s) {
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, noStats: !!s.noStats,
     noUpdatePill: !!s.noUpdatePill,
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, vision: s.vision || "", imageGen: s.imageGen || "", currency: s.currency || "usd",
-    usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };
+    westernUnits: !!s.westernUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };
 }
 
 // savePrefs sends what the page was drawn with (prefsBase) and the choice

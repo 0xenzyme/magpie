@@ -38,6 +38,10 @@ type Settings struct {
 	// rate (see internal/fx). A vendor's own balance, already in its own
 	// currency (a Chinese relay's ¥), is never touched by this.
 	Currency string `json:"currency,omitempty"`
+	// WesternUnits shortens a large count in K, M and B even when magpie
+	// speaks Chinese, which otherwise says it in 万 and 亿 (8000 万
+	// rather than 80M). It means nothing in English.
+	WesternUnits bool `json:"westernUnits,omitempty"`
 	// Dock keeps magpie in the Mac's Dock as well as the menu bar, for a
 	// menu bar too full to show its icon.
 	Dock bool `json:"dock,omitempty"`
