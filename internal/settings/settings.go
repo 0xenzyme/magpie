@@ -53,6 +53,7 @@ type Settings struct {
 	// environment and then the system, "direct" uses none, anything else
 	// is the proxy (http://, https:// or socks5://; host:port means http).
 	Proxy string `json:"proxy,omitempty"`
+	OTel  OTel   `json:"otel,omitempty"`
 	// Redact keeps secrets in what agents send (API keys, private keys,
 	// tokens, passwords) from the vendors behind magpie: they go as
 	// placeholders, and come back as they were. RedactPersonal does the same
@@ -547,6 +548,10 @@ func Save(s Settings) error {
 	if !slices.Contains(TextSizes, s.TextSize) {
 		return fmt.Errorf("text size must be one of %v percent, not %d", TextSizes, s.TextSize)
 	}
+	s.OTel.Endpoint = strings.TrimRight(strings.TrimSpace(s.OTel.Endpoint), "/")
+	if err := s.OTel.Check(); err != nil {
+		return err
+	}
 	s.Proxy = strings.TrimSpace(s.Proxy)
 	if err := CheckProxy(s.Proxy); err != nil {
 		return err
@@ -581,7 +586,13 @@ func Save(s Settings) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(Path(), append(b, '\n'), 0o644)
+	// Restrict existing settings without changing the owner's permissions.
+	if fi, err := os.Stat(Path()); err == nil && fi.Mode().Perm()&0o077 != 0 {
+		if err := os.Chmod(Path(), fi.Mode().Perm()&0o700); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(Path(), append(b, '\n'), 0o600)
 }
 
 func (s Settings) normal() Settings {
