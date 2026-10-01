@@ -82,7 +82,7 @@ func (u *jevUp) turns() []map[string]any {
 // the model prefix, with that prefix taken off the model. /systemone is
 // not served.
 func TestSystemOneRoutesByPrefix(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	type hit struct {

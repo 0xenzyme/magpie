@@ -20,7 +20,7 @@ import (
 // chatgpt stands in for the ChatGPT backend behind CodexBase.
 func chatgpt(t *testing.T, h http.HandlerFunc) *httptest.Server {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir()) // no sign-ins but the test's
+	setHome(t, t.TempDir()) // no sign-ins but the test's
 	up := httptest.NewServer(h)
 	t.Cleanup(up.Close)
 	was := provider.CodexBase

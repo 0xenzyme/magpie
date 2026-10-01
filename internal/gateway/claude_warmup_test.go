@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -15,6 +16,9 @@ import (
 // answers as out says.
 func fakeWarmClaude(t *testing.T, out string, code int) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("a shell script stands in for Claude Code")
+	}
 	dir := t.TempDir()
 	log := filepath.Join(dir, "log")
 	script := "#!/bin/sh\n" +
@@ -90,6 +94,9 @@ func TestClaudeTestRunsClaudeCode(t *testing.T) {
 // Claude's usage is Claude Code's own /usage, run with nothing of the
 // user's settings and nothing kept, as the account it is signed in to.
 func TestClaudeUsageRunsClaudeCode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a shell script stands in for Claude Code")
+	}
 	dir := t.TempDir()
 	log := filepath.Join(dir, "log")
 	out := filepath.Join(dir, "out")
