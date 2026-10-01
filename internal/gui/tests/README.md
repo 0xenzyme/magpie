@@ -1224,3 +1224,16 @@ WebKit, in English and Chinese:
 ```sh
 node --test internal/gui/tests/seg-contrast.test.cjs
 ```
+
+`agent-grip.test.cjs` checks that hiding an agent can be found without a
+right-click (#479): with the pointer away, every row in the Agents list draws
+a faint grip in its left margin, beside its logo; dragging the grip moves the
+row, and clicking it opens the row's menu, whose Hide puts the row in the fold
+at the foot of the list. Opened, the fold's Show button is there without the
+pointer on its row, and brings the row back; no click moves the page. It runs
+in the window and the tray panel, in Chromium and WebKit, in English and
+Chinese:
+
+```sh
+node --test internal/gui/tests/agent-grip.test.cjs
+```

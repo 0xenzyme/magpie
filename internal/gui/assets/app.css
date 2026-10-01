@@ -324,6 +324,14 @@ body.window .ag-handle { width: 28px; height: 28px; }
 #agents > .row .ag-handle:focus-visible > .ic { opacity: 0; transform: scale(.8); }
 #agents > .row .ag-handle:is(:hover, .open) > .grip, #agents > .row.dragging .ag-handle > .grip { opacity: 1; transform: none; }
 #agents > .row .ag-handle:focus-visible > .grip { opacity: 1; transform: none; }
+/* the logo's grip comes up only on hover, so a row in the list also carries a
+   faint one in its left margin, always there, that says the row can be taken
+   hold of (#479): it is the handle's own, so a drag or a click on it does what
+   the logo does, and it takes no room from the row */
+#agents > .row .ag-handle { position: relative; }
+#agents > .row .ag-handle::before { content: ""; position: absolute; left: -6px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--grip-dot) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; --grip-dot: var(--faint); }
+body.panel #agents > .row .ag-handle::before { left: -9px; }
+#agents > .row:is(:hover, .dragging) .ag-handle::before { --grip-dot: var(--muted); }
 /* one hidden by hand reads as put away, with its way back beside its name */
 .agent-fold .row.put-away .ag-handle > .ic, .agent-fold .row.put-away .name { opacity: .6; }
 .agent-fold .row.put-away .who { display: flex; align-items: center; gap: 8px; }
@@ -331,12 +339,8 @@ body.window .ag-handle { width: 28px; height: 28px; }
 .agent-fold .row .ag-show { margin-left: auto; }
 .ag-show { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 22px; padding: 0 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--fg-2); font: inherit; font-size: 11.5px; cursor: pointer; transition: background-color .15s, color .15s, border-color .15s; }
 .ag-show:hover { background: var(--pill); color: var(--fg); }
-/* it comes up with the row under the pointer, or the keyboard on it; the
-   line over the rows already says why they are there */
-@media (hover: hover) {
-  .agent-fold .row .ag-show { opacity: 0; transform: translateX(3px); transition: opacity .15s, transform .2s cubic-bezier(.22, 1, .36, 1), background-color .15s, color .15s; }
-  .agent-fold .row:is(:hover, :focus-within) .ag-show { opacity: 1; transform: none; }
-}
+/* always there, not only under the pointer: it is the way back for a row
+   hidden by hand, and has to be seen to be found (#479) */
 .ag-show:focus-visible { outline: 1.5px solid var(--fg-2); outline-offset: 1px; }
 .ag-show svg { color: var(--muted); }
 /* an agent whose config was rewritten since magpie set it: a line under
