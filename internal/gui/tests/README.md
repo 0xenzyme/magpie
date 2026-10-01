@@ -1291,4 +1291,13 @@ filled star shown always, with its title and aria-pressed to match. In the
 window and the tray panel, light and dark, English and Chinese, Chromium and
 WebKit:
 node --test internal/gui/tests/favorite-star.test.cjs
+
+`list-sort.test.cjs` checks the installed lists' order, the reader's pick
+(#481): the Library's MCP servers and the installed plugins by name A→Z (the
+plugins no longer in the order they were installed) or Z→A, and the
+Library's skills by source, as before, or as one flat list by name A→Z or
+Z→A; each list keeps its own pick through a reload, and a pick leaves its
+control where it was on the screen. It runs in Chromium and WebKit, in
+English and Chinese:
+node --test internal/gui/tests/list-sort.test.cjs
 ```

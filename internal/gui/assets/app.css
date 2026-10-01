@@ -1798,6 +1798,9 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 :where(body:not(.mac)) .segs.regions::-webkit-scrollbar { height: 6px; }
 :where(body:not(.mac)) .segs.regions::-webkit-scrollbar-thumb { border-width: 1px; }
 .segs.regions .opt { flex: none; }
+/* an installed list's order (#481): small, beside the list's heading */
+.segs.sortby { align-self: center; flex: none; }
+.segs.sortby .opt { height: 20px; padding: 0 8px; font-size: 11px; }
 .thumb.still { transition: none; }
 .link { font-size: 12px; color: var(--accent); padding: 3px 4px; white-space: nowrap; }
 .link:hover { text-decoration: underline; text-underline-offset: 2px; }

@@ -392,6 +392,10 @@ input.lib-setname:focus { border-color: var(--accent); box-shadow: 0 0 0 3px col
 .lib-grouphead > .lib-logo, .lib-grouphead > .lib-glyph { align-self: center; margin-top: 0; }
 .lib-grouphead .lib-updall { height: 24px; padding: 0 9px; font-size: 12px; }
 .lib-have .ic.some { opacity: .4; }
+/* the skills' heading has the most on it: in a narrow window it goes on
+   to a second line rather than past the page's side */
+#view-library .row-head.lib-skillshead { flex-wrap: wrap; row-gap: 6px; }
+#view-library .row-head.lib-skillshead .lib-skillq { flex: 1 1 90px; max-width: 190px; }
 #view-library .row-head .lib-skillq { width: 190px; height: 24px; margin: 0; flex: 0 1 auto; min-width: 90px; }
 .lib-skillq::-webkit-search-cancel-button { -webkit-appearance: none; }
 /* a project's skills out of view are neither laid out nor painted until they near it */

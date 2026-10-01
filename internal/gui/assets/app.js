@@ -3147,6 +3147,31 @@ function segs(items, current, onPick) {
   return box;
 }
 
+// An installed list's order, the reader's pick, remembered for each list
+// (#481): its names A→Z or Z→A, and for a list that has one, a view of its
+// own first (the skills by where they came from). sortOf(list) is the pick,
+// sortBy(list, …) the control; a list missing or unreadable in storage
+// takes the first.
+const NAME_SORTS = [["az", "A→Z"], ["za", "Z→A"]];
+function sortOf(list, items = NAME_SORTS) {
+  let v = "";
+  try { v = localStorage.getItem("magpie.sort." + list) || ""; } catch {}
+  return items.some(([id]) => id === v) ? v : items[0][0];
+}
+function sortBy(list, items, onPick) {
+  const box = segs(items, sortOf(list, items), (id) => {
+    try { localStorage.setItem("magpie.sort." + list, id); } catch {}
+    onPick(id);
+  });
+  box.classList.add("sortby");
+  box.dataset.sort = list;
+  const tips = { az: t("Names from A to Z"), za: t("Names from Z to A") };
+  for (const [i, b] of [...box.querySelectorAll(".opt")].entries()) if (tips[items[i][0]]) b.title = tips[items[i][0]];
+  return box;
+}
+// a comparer of names for a pick: A→Z, or Z→A
+const byName = (pick, nameOf = (x) => x.name) => (a, b) => (pick === "za" ? -1 : 1) * nameOf(a).localeCompare(nameOf(b));
+
 // Connect is set up once and seldom looked at again, so it folds away under
 // its heading, the base URL left beside it; the fold is remembered
 // (connectFolded, with the tab's other choices at the top).

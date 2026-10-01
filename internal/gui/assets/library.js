@@ -1119,7 +1119,14 @@
         body.append(rh);
       }
       const list = el("div", "list lib-list");
-      for (const s of lib.servers) list.append(serverRow(s, all));
+      // in the order the reader picked (#481), A→Z till then
+      const fill = () => list.replaceChildren(...[...lib.servers].sort(byName(sortOf("libServers"))).map((s) => serverRow(s, all)));
+      if (lib.servers.length > 1) {
+        const rh = el("div", "row-head");
+        rh.append(el("span", "label", t("In the library")), el("span", "grow"), sortBy("libServers", NAME_SORTS, fill));
+        body.append(rh);
+      }
+      fill();
       body.append(list);
       const after = el("div", "after-list");
       after.append(button(t("＋ Add server"), "", () => editServer(null)));
@@ -1412,12 +1419,13 @@
     body.append(installCard());
     const all = skillAgents();
     if (lib.skills.length) {
-      const rh = el("div", "row-head");
+      const rh = el("div", "row-head lib-skillshead");
       rh.append(el("span", "label", t("In the library")));
       const box = el("div", "lib-groups");
       if (lib.skills.length > 8) rh.append(skillFilter(box, all));
       const fresh = lib.skills.filter((s) => s.kind === "github" || s.origin);
       rh.append(el("span", "grow"));
+      if (lib.skills.length > 1) rh.append(sortBy("libSkills", SKILL_SORTS(), () => { if (box.isConnected) drawSkills(box, all); }));
       if (lib.skills.length > 1 && all.length) rh.append(...everySkillButtons(all));
       if (byAgentRows("skills").length) rh.append(byAgentButton("skills"));
       if (lib.skills.length > 1) rh.append(removeEverySkillButton());
@@ -1505,11 +1513,23 @@
   // without drawing it.
   const ROW_H = 51, ROW_SRC_H = 67, SUB_H = 36;
 
+  // By source (the groups, as they always were) or one flat list of every
+  // skill by name, A→Z or Z→A (#481)
+  const SKILL_SORTS = () => [["source", t("By source")], ...NAME_SORTS];
   // the groups, and each skill's text to filter by, worked out once for
-  // each answer from magpie
+  // each answer from magpie and each pick
   let grouped = null;
   function skillGroups() {
-    if (grouped?.lib === lib) return grouped.groups;
+    const pick = sortOf("libSkills", SKILL_SORTS());
+    if (grouped?.lib === lib && grouped.pick === pick) return grouped.groups;
+    if (pick !== "source") {
+      const skills = [...lib.skills].sort(byName(pick));
+      const repo = (s) => (s.kind === "github" ? repoOf(s.source) : s.origin ? repoOf(s.origin) : "");
+      const g = { key: "flat", repo: "", skills, parts: null,
+        text: new Map(skills.map((s) => [s, (s.name + " " + (s.description || "") + " " + repo(s)).toLowerCase()])) };
+      grouped = { lib, pick, groups: [g] };
+      return grouped.groups;
+    }
     const by = new Map();
     for (const s of lib.skills) {
       const repo = s.kind === "github" ? repoOf(s.source) : s.origin ? repoOf(s.origin) : "";
@@ -1524,7 +1544,7 @@
       g.text = new Map(g.skills.map((s) => [s, (s.name + " " + (s.description || "") + " " + g.repo).toLowerCase()]));
       g.parts = partsOf(g);
     }
-    grouped = { lib, groups };
+    grouped = { lib, pick, groups };
     return groups;
   }
 
