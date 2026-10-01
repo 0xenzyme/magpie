@@ -401,6 +401,10 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	})
 	omarchyRoutes(mux, w)
 	mux.HandleFunc("GET /api/state", func(rw http.ResponseWriter, r *http.Request) {
+		// the panel and its model picker load from here: an account still
+		// without its vendor's list (one whose try at start-up failed) is
+		// asked again in the background, not only from the Providers page
+		provider.FetchNewSoon(8 * time.Second)
 		writeJSON(rw, state())
 	})
 	mux.HandleFunc("POST /api/set", func(rw http.ResponseWriter, r *http.Request) {
