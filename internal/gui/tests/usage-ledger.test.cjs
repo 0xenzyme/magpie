@@ -284,7 +284,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await lastAsked(page, asked, (q) => q.get("route") === "123" && q.get("period") === "all");
         await page.waitForFunction(() => document.querySelectorAll(".led tbody tr").length === 2);
         assert(await page.locator("#ledRoute").isVisible());
-        assert.match(await page.locator("#ledRouteLabel").textContent(), /gpt-6-sol/);
+        assert.match(await page.locator("#ledRouteLabel").textContent(), /^(Request: |请求：).*gpt-6-sol/);
         assert(!await page.locator("#ledRouteLabel").textContent().then(text=>text.includes("#123")));
         assert.equal(await scrolled(page), 0, "return keeps the Usage view position");
         await page.locator("#ledExport").click();

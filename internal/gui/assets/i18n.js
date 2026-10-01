@@ -921,6 +921,7 @@ const I18N = {
     "View routing": "查看路由",
     "View usage": "查看用量",
     "Clear filter": "清除筛选",
+    "Request: {what}": "请求：{what}",
     "Routing history for this request is no longer available.": "此请求的路由历史已不可用。",
     "No requests match these filters.": "没有符合这些筛选条件的请求。",
     "Time": "时间",

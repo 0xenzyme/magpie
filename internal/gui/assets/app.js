@@ -7598,7 +7598,7 @@ function renderLedger() {
   $("#ledSum").textContent = sum.join(" · ");
   const routeFilter = $("#ledRoute");
   routeFilter.hidden = !ledRoute;
-  $("#ledRouteLabel").textContent = ledRouteInfo ? new Date(ledRouteInfo.time).toLocaleString(locale === "zh" ? "zh-CN" : "en") + " · " + ledRouteInfo.model : "";
+  $("#ledRouteLabel").textContent = ledRouteInfo ? t("Request: {what}", { what: new Date(ledRouteInfo.time).toLocaleString(locale === "zh" ? "zh-CN" : "en") + " · " + ledRouteInfo.model }) : "";
   $("#ledRouteClear").title = t("Clear filter");
   $("#ledRouteClear").setAttribute("aria-label", t("Clear filter"));
   $("#ledRouteClear").onclick = () => {
