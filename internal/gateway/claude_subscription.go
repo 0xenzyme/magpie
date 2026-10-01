@@ -57,9 +57,19 @@ type subscriptionBridge struct {
 // A run left for its conversation's next turn waits idleLongest at most,
 // and idleMost of them are kept, the longest waiting let go first: each is
 // a Claude Code process.
+//
+// It waits as long as the prompt cache it wrote lasts: on a subscription
+// within its limits Claude Code writes Anthropic's cache for an hour
+// (claudeCacheTTL, with its CLAUDE_CODE_PROMPT_CACHE_TTL unset), and a run
+// let go sooner has its conversation told to a new one in one message, a
+// prefix the cache has never seen, so the whole of it is written again
+// while what the old run wrote is still there to read (#463: a turn
+// after 39 minutes idle wrote the conversation again). Past the hour the cache is gone
+// either way, and the run would only hold a process.
 const (
-	idleLongest = 20 * time.Minute
-	idleMost    = 6
+	claudeCacheTTL = time.Hour
+	idleLongest    = claudeCacheTTL
+	idleMost       = 6
 )
 
 // parkLongest is how long a run started anew for each turn (Cursor)
