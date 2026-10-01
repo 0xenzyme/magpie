@@ -57,6 +57,9 @@ type Bundle struct {
 	Profiles  map[string]profile.Profile `json:"profiles,omitempty"`
 	Agents    map[string]string          `json:"agents,omitempty"`  // every agent's fields as they are now
 	Library   *library.Bundle            `json:"library,omitempty"` // nil from a magpie before it, or with none
+	// Searches are the web search APIs (#419), their keys with the
+	// providers'; nil from a magpie before them.
+	Searches *[]provider.SearchAPI `json:"searches,omitempty"`
 }
 
 type envelope struct {
@@ -94,6 +97,14 @@ func Collect(keys bool, app string) (Bundle, error) {
 		}
 	}
 	b.Groups = provider.StoredGroups()
+	searches := []provider.SearchAPI{}
+	for _, a := range provider.StoredSearchAPIs() {
+		if !keys {
+			a.Key = ""
+		}
+		searches = append(searches, a)
+	}
+	b.Searches = &searches
 	if _, err := os.Stat(settings.Path()); err == nil {
 		s := settings.Load()
 		b.Settings = &s
@@ -244,6 +255,16 @@ func Restore(b Bundle, parts Parts) (Result, error) {
 		}
 		if err := provider.RestoreGroups(b.Groups); err != nil {
 			return r, err
+		}
+		if b.Searches != nil {
+			if err := provider.RestoreSearchAPIs(*b.Searches); err != nil {
+				return r, err
+			}
+			for _, a := range provider.StoredSearchAPIs() {
+				if !a.Ready() && slices.ContainsFunc(*b.Searches, func(x provider.SearchAPI) bool { return x.Vendor == a.Vendor }) {
+					r.NeedKey = append(r.NeedKey, a.Name())
+				}
+			}
 		}
 		for _, p := range provider.Stored() {
 			if !p.Ready() && slices.ContainsFunc(b.Providers, func(q provider.Provider) bool { return q.ID == p.ID }) {

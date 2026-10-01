@@ -210,6 +210,12 @@ type settingsJSON struct {
 	// names none, and those that can be named
 	ImageGenAuto   string     `json:"imageGenAuto,omitempty"`
 	ImageGenModels []modelRef `json:"imageGenModels"`
+	// the web search APIs a model's search goes to when no provider can
+	// search (#419), their keys masked; the ones that can be added; and
+	// the provider that searches first, if one does
+	SearchAPIs     []searchAPIJSON    `json:"searchAPIs"`
+	SearchVendors  []searchVendorJSON `json:"searchVendors"`
+	SearchProvider string             `json:"searchProvider,omitempty"`
 	// where other machines reach the gateway while it is shared
 	LANURLs []string `json:"lanURLs,omitempty"`
 	// LANURLs are a container's own addresses, not the host's: the page
@@ -228,6 +234,37 @@ type settingsJSON struct {
 	// NotifyProblem is why a usage alert set wouldn't be seen: "denied"
 	// (notifications turned off for magpie) or "unavailable"
 	NotifyProblem string `json:"notifyProblem,omitempty"`
+}
+
+// searchAPIJSON is a search API as the Settings page shows it.
+type searchAPIJSON struct {
+	Vendor string `json:"vendor"`
+	Name   string `json:"name"`
+	Key    string `json:"key,omitempty"` // masked
+	URL    string `json:"url,omitempty"`
+	Ready  bool   `json:"ready"`
+}
+
+type searchVendorJSON struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	KeysURL string `json:"keysURL,omitempty"`
+	NeedURL bool   `json:"needURL,omitempty"` // one the user runs
+}
+
+func searchState(s *settingsJSON) {
+	s.SearchAPIs, s.SearchVendors = []searchAPIJSON{}, []searchVendorJSON{}
+	for _, a := range provider.StoredSearchAPIs() {
+		j := searchAPIJSON{Vendor: a.Vendor, Name: a.Name(), URL: a.URL, Ready: a.Ready()}
+		if a.Key != "" {
+			j.Key = provider.Mask(a.Key)
+		}
+		s.SearchAPIs = append(s.SearchAPIs, j)
+	}
+	for _, v := range provider.SearchVendors {
+		s.SearchVendors = append(s.SearchVendors, searchVendorJSON{ID: v.ID, Name: v.Name, KeysURL: v.KeysURL, NeedURL: v.Base == ""})
+	}
+	s.SearchProvider = gateway.Searcher()
 }
 
 func settingsState() settingsJSON {
@@ -259,6 +296,7 @@ func settingsState() settingsJSON {
 			s.VisionModels = append(s.VisionModels, m)
 		}
 	}
+	searchState(&s)
 	s.ImageGenAuto, s.ImageGenModels = gateway.AutoDrawer(), []modelRef{}
 	for _, p := range provider.All() {
 		if !p.On() || p.Decides() {
@@ -748,6 +786,28 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		s := settings.Load()
 		s.RedactRules = in.Rules
 		if err := settings.Save(s); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, settingsState())
+	})
+	// a web search API added, given a new key or address, or taken away
+	mux.HandleFunc("POST /api/settings/search-api", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Vendor, Key, URL string
+			Remove           bool
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		var err error
+		if in.Remove {
+			err = provider.RemoveSearchAPI(in.Vendor)
+		} else {
+			err = provider.SetSearchAPI(provider.SearchAPI{Vendor: in.Vendor, Key: in.Key, URL: in.URL})
+		}
+		if err != nil {
 			fail(rw, err)
 			return
 		}

@@ -478,8 +478,12 @@ func hashes(b backup.Bundle) map[string]string {
 		s = *b.Settings
 	}
 	s.Window, s.Proxy, s.Dock, s.DockWindow = nil, "", false, false // this computer's own: never synced
+	providers := []any{b.Providers, b.Icons, b.Groups}
+	if b.Searches != nil && len(*b.Searches) > 0 { // as before them, without one
+		providers = append(providers, *b.Searches)
+	}
 	return map[string]string{
-		"providers": h([]any{b.Providers, b.Icons, b.Groups}),
+		"providers": h(providers),
 		"settings":  h(s),
 		"profiles":  h(orEmpty(b.Profiles)),
 		"agents":    h(orEmpty(b.Agents)),
@@ -514,7 +518,21 @@ func take(to *backup.Bundle, from backup.Bundle, part string) {
 				}
 			}
 		}
-		to.Providers, to.Icons, to.Groups = ps, from.Icons, from.Groups
+		searches := from.Searches
+		if searches != nil && !from.Keys && to.Keys && to.Searches != nil { // the same for the search APIs
+			keys := map[string]string{}
+			for _, a := range *to.Searches {
+				keys[a.Vendor] = a.Key
+			}
+			ss := slices.Clone(*searches)
+			for i, a := range ss {
+				if a.Key == "" {
+					ss[i].Key = keys[a.Vendor]
+				}
+			}
+			searches = &ss
+		}
+		to.Providers, to.Icons, to.Groups, to.Searches = ps, from.Icons, from.Groups, searches
 		to.Keys = to.Keys || from.Keys
 	case "settings":
 		to.Settings = from.Settings
@@ -571,7 +589,13 @@ func bring(b backup.Bundle, part string) error {
 				}
 			}
 		}
-		return provider.Mirror(b.Providers, b.Groups)
+		if err := provider.Mirror(b.Providers, b.Groups); err != nil {
+			return err
+		}
+		if b.Searches == nil { // from a magpie before them: the ones here stay
+			return nil
+		}
+		return provider.MirrorSearchAPIs(*b.Searches)
 	case "settings":
 		_, err := backup.Restore(b, backup.Parts{Settings: true})
 		return err

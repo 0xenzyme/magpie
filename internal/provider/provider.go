@@ -183,6 +183,9 @@ type Provider struct {
 type file struct {
 	Providers []Provider `json:"providers"`
 	Groups    []Group    `json:"groups,omitempty"`
+	// Searches are the web search APIs a model's search goes to when no
+	// provider can search (see search_api.go).
+	Searches []SearchAPI `json:"searches,omitempty"`
 }
 
 // Path is the file the user's providers live in.

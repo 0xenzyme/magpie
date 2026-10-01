@@ -2247,7 +2247,7 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 				break
 			}
 		}
-		if _, _, ok := searcher(); ok && !searchesItself(p, to) {
+		if canSearch() && !searchesItself(p, to) {
 			return s.searchReply(w, r, from, p.Name, request, u, s.askTranslated(p, to, model, r.Header, w.Header()))
 		}
 	}

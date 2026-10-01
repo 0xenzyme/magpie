@@ -10128,6 +10128,7 @@ function renderSettings() {
   renderTrayUsage(s, keep);
   renderProxy(s, keep);
   renderImages(s, keep);
+  renderSearch(s);
   renderRedact(s, keep);
   renderLAN(s);
   renderSync();
@@ -10726,6 +10727,83 @@ function renderImageGen(s, keep, box) {
   val.append(b);
   r.append(who, val);
   box.append(r);
+}
+
+// renderSearch: the web search APIs a model's search goes to when no
+// provider can search (#419) — one row each, in the order they are tried,
+// and a row to add one: which API, its key, and the address of one the user
+// runs (SearXNG). They are set on their own; one magpie refuses is said in
+// the row, what was typed kept.
+let searchDraft = { vendor: "tavily", key: "", url: "", err: "" };
+function renderSearch(s) {
+  const box = $("#searchList");
+  box.replaceChildren();
+  const row = (name, sub, ...tools) => {
+    const r = el("div", "row pref");
+    const who = el("div", "who");
+    who.append(el("div", "name", name), el("div", "sub", sub));
+    const val = el("div", "val");
+    val.append(...tools);
+    r.append(who, val);
+    box.append(r);
+    return r;
+  };
+  const set = (body, done) => writingPrefs(api("settings/search-api", body))
+    .then((ns) => { prefs = ns; searchDraft.err = ""; done?.(); renderSettings(); status(t("Saved"), "ok", 1500); })
+    .catch((e) => { searchDraft.err = e.message; status(e.message, "err"); renderSettings(); });
+  const vendors = s.searchVendors || [];
+  const d = searchDraft;
+  if (!vendors.some((v) => v.id === d.vendor)) d.vendor = vendors[0]?.id || "";
+  const vendor = () => vendors.find((v) => v.id === d.vendor) || {};
+  const pick = el("button", "proto pick search-vendor");
+  pick.type = "button";
+  pick.setAttribute("aria-label", t("Search API"));
+  const key = input(d.key, t("API key"), "password");
+  const url = input(d.url, "https://searx.example.com");
+  key.className = "words search-key";
+  url.className = "words search-url";
+  key.setAttribute("aria-label", t("API key"));
+  url.setAttribute("aria-label", t("Address"));
+  const get = el("button", "link", t("Get a key ↗"));
+  get.onclick = () => vendor().keysURL && api("open", { url: vendor().keysURL });
+  const draw = () => {
+    const v = vendor();
+    pick.replaceChildren(el("span", "", v.name || ""), svg(CHEV, 11, 1.6));
+    url.hidden = !v.needURL;
+    key.placeholder = v.needURL ? t("API key, if it needs one") : t("API key");
+    get.hidden = !v.keysURL;
+  };
+  pick.onclick = (e) => {
+    e.stopPropagation();
+    if (pick.classList.contains("open")) return closeProtoMenu();
+    openProtoMenu(pick, vendors.map((v) => ({ v: v.id, name: v.name, note: v.needURL ? t("your own") : "" })), d.vendor,
+      (id) => { d.vendor = id; draw(); }, "Search API");
+  };
+  const add = el("button", "text", t("Add"));
+  add.onclick = () => {
+    d.key = key.value.trim(); d.url = url.value.trim();
+    if (vendor().needURL ? !d.url : !d.key) return (vendor().needURL ? url : key).focus();
+    set({ vendor: d.vendor, key: d.key, url: vendor().needURL ? d.url : "" },
+      () => { searchDraft = { vendor: d.vendor, key: "", url: "", err: "" }; });
+  };
+  for (const i of [key, url]) {
+    i.oninput = () => { d.key = key.value; d.url = url.value; };
+    i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") add.onclick(); };
+  }
+  draw();
+  const by = s.searchProvider ? t("Now done by {who}; these come after it", { who: s.searchProvider })
+    : t("No provider can search, so these are asked");
+  const head = row(t("Search APIs"), d.err || t("When a model can't search the web, magpie searches for it with these, in this order, and gives it what they found") + " · " + by,
+    pick, key, url, get, add);
+  head.classList.add("rule-row", "search-add");
+  head.querySelector(".val").classList.add("rule-add");
+  if (d.err) head.querySelector(".sub").classList.add("err");
+  (s.searchAPIs || []).forEach((a, n) => {
+    const x = el("button", "text", t("Remove"));
+    x.onclick = () => set({ vendor: a.vendor, remove: true });
+    const what = [a.key || (a.ready ? "" : t("needs its key")), a.url].filter(Boolean).join(" · ");
+    row(`${n + 1}. ${a.name}`, what, x).classList.add("search-api");
+  });
 }
 
 // renderRedact: what the gateway masks before a request goes to a vendor —
