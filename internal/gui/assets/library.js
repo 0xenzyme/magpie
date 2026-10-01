@@ -1410,6 +1410,7 @@
       if (lib.skills.length > 8) rh.append(skillFilter(box, all));
       const fresh = lib.skills.filter((s) => s.kind === "github" || s.origin);
       rh.append(el("span", "grow"));
+      if (lib.skills.length > 1 && all.length) rh.append(...everySkillButtons(all));
       if (lib.skills.some((s) => s.kind === "github")) {
         const c = button(checking ? t("Checking…") : t("Check for updates"), "lib-updall", () => checkSkills());
         c.title = t("Ask GitHub which skills changed since they were installed");
@@ -2054,6 +2055,48 @@
       render();
     } catch (e) {
       status(e.message, "err", 6000);
+    }
+  }
+
+  // Every skill on, or off, for every agent shown that can take skills, in
+  // one write rather than a row's All for each (#443); an agent not shown
+  // keeps what it has. Off asks first, in the page.
+  function everySkillButtons(all) {
+    const ids = all.map((a) => a.id), n = all.length;
+    const on = button(t("Turn all on"), "action lib-updall lib-everyon", () => everySkill(ids, true));
+    on.title = t("Give every skill to all {n} agents that can take skills", { n });
+    on.disabled = lib.skills.every((s) => ids.every((id) => s.agents?.includes(id)));
+    const off = button(t("Turn all off"), "action lib-updall lib-everyoff", () => confirmEveryOff(ids));
+    off.title = t("Take every skill from all {n} agents", { n });
+    off.disabled = !lib.skills.some((s) => ids.some((id) => s.agents?.includes(id)));
+    return [on, off];
+  }
+
+  function confirmEveryOff(ids) {
+    const ed = el("div", "editor lib-editor");
+    const head = el("div", "ehead");
+    head.append(glyph(GLYPH.skill), el("b", "", t("Turn off all {n} skills?", { n: lib.skills.length })));
+    ed.append(head);
+    ed.append(el("p", "lib-confirm", t("Every skill is taken out of {agents}. They stay in the library, to turn on again.", { agents: ids.map(nameOf).join(", ") })));
+    const bar = el("div", "bar");
+    const go = button(t("Turn all off"), "primary danger-fill", async () => { go.disabled = true; if (await everySkill(ids, false)) closeLibModal(); else go.disabled = false; });
+    bar.append(el("span", "grow"), button(t("Cancel"), "", closeLibModal), go);
+    ed.append(bar);
+    modal = { save: () => go.click() };
+    openLib(ed);
+  }
+
+  async function everySkill(ids, on) {
+    try {
+      const v = await api("library/skills/agents-all", { agents: ids, on });
+      take(v);
+      const n = lib.skills.length, m = ids.length;
+      report(v.result, on ? t("{n} skills are on for all {m} agents", { n, m }) : t("{n} skills are off for all {m} agents", { n, m }));
+      render();
+      return true;
+    } catch (e) {
+      status(e.message, "err", 6000);
+      return false;
     }
   }
 

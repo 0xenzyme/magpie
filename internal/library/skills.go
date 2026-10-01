@@ -940,6 +940,25 @@ func SkillAgents(name string, agents []string) (*Result, error) {
 	})
 }
 
+// EverySkillAgents gives every skill in the library to the agents named, or
+// takes every one from them, in one write rather than one for each skill
+// (#443). An agent not named keeps what it has, as with a skill's All chip.
+func EverySkillAgents(agents []string, on bool) (*Result, error) {
+	if len(agents) == 0 {
+		return nil, fmt.Errorf("no agents to give the skills to")
+	}
+	return change(func(l *Library) error {
+		for _, s := range l.Skills {
+			kept := slices.DeleteFunc(slices.Clone(s.Agents), func(a string) bool { return slices.Contains(agents, a) })
+			if on {
+				kept = append(kept, agents...)
+			}
+			s.Agents = slices.Sorted(slices.Values(kept))
+		}
+		return nil
+	})
+}
+
 // RemoveSkill takes a skill out of the library and every agent; its folder
 // is kept aside with the backups, never just deleted.
 func RemoveSkill(name string) (*Result, error) {
