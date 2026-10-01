@@ -427,6 +427,7 @@ func TestCallsResumed(t *testing.T) {
 
 func TestDesktopDataDirs(t *testing.T) {
 	t.Setenv("HOME", "/home/u")
+	t.Setenv("USERPROFILE", "/home/u")
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("LOCALAPPDATA", filepath.Join(t.TempDir(), "Local"))
 	ds := desktopDataDirs()

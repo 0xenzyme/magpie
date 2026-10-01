@@ -19,6 +19,7 @@ import (
 func TestSettingsSaveKeepsModelChoices(t *testing.T) {
 	h := t.TempDir()
 	t.Setenv("HOME", h)
+	t.Setenv("USERPROFILE", h)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(h, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(h, ".cache"))
 	if err := settings.Save(settings.Settings{
@@ -47,6 +48,7 @@ func TestSettingsSaveKeepsModelChoices(t *testing.T) {
 func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 	h := t.TempDir()
 	t.Setenv("HOME", h)
+	t.Setenv("USERPROFILE", h)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(h, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(h, ".cache"))
 	js, err := os.ReadFile("assets/app.js")
@@ -121,6 +123,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 func TestUpdateSkip(t *testing.T) {
 	h := t.TempDir()
 	t.Setenv("HOME", h)
+	t.Setenv("USERPROFILE", h)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(h, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(h, ".cache"))
 	post := func(path, body string) {

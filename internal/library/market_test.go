@@ -199,6 +199,8 @@ func skillsSh(t *testing.T) *atomic.Int64 {
 
 func TestSkillsShPages(t *testing.T) {
 	sandbox(t)
+	// the cache kept on disk, in what Windows keeps caches in (blank in a sandbox)
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	hits := skillsSh(t)
 	list, err := fetchPopular()
 	if err != nil || len(list) != 1 || list[0].Source != "o/r" || list[0].SkillID != "pdf" || list[0].Installs != 9 {

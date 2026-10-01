@@ -20,6 +20,7 @@ func sessionsHome(t *testing.T) time.Time {
 	t.Helper()
 	h := t.TempDir()
 	t.Setenv("HOME", h)
+	t.Setenv("USERPROFILE", h)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(h, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(h, ".cache"))
 	// OpenCode's and Pi's folders in the sandbox too (HOME isn't the home

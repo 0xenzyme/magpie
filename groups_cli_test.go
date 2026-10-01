@@ -14,6 +14,7 @@ import (
 func groupsHome(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir()) // no agent signed in
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	for _, p := range []provider.Provider{
