@@ -881,6 +881,13 @@ const I18N = {
     "Response Body": "响应体",
     "No body captured": "未捕获到内容",
     "first 256 KB": "前 256 KB",
+    "Reply": "回复",
+    "Events": "事件",
+    "Raw": "原文",
+    "1 event": "1 个事件",
+    "{n} events": "{n} 个事件",
+    "{n} of {total} events shown": "已显示 {n} / {total} 个事件",
+    "Show {n} more events": "再显示 {n} 个事件",
 
     // usage
     "Today": "今天",
