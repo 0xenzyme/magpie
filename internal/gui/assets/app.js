@@ -2243,8 +2243,22 @@ function renderProvidersLoading() {
     row.append(el("span", "skeleton pv-sk-icon"), who, el("span", "skeleton pv-sk-key"));
     list.append(row);
   }
+  $("#offHead").hidden = $("#offProviders").hidden = true;
   $("#excluded").replaceChildren();
 }
+
+// Providers switched off are kept apart, below the ones on, under a
+// "Turned off (N)" fold that starts folded: among the rest they took the
+// room of the ones in use (01huadalang on Discord). The fold is
+// remembered, per viewer.
+let offFolded = true;
+try { offFolded = localStorage.getItem("magpie.offProvidersOpen") !== "1"; } catch {}
+$("#foldOff").prepend(svg(CHEV_R, 11, 1.6));
+$("#foldOff").onclick = () => {
+  offFolded = !offFolded;
+  try { localStorage.setItem("magpie.offProvidersOpen", offFolded ? "0" : "1"); } catch {}
+  renderProviders();
+};
 
 // One row per provider: logo, name, the agents pointed at it, key status.
 // Everything else lives in the editor, a dialog over the page.
@@ -2253,16 +2267,25 @@ function renderProviders() {
   // scroll to the top; put it back so closing the editor leaves the reader
   // where they were.
   const view = $("#view-providers"), top = view.scrollTop;
-  keepIcons($("#providers"), $("#addSheet"), $("#excluded"));
+  keepIcons($("#providers"), $("#offProviders"), $("#addSheet"), $("#excluded"));
   view.classList.remove("loading");
   view.removeAttribute("aria-busy");
   closeProtoMenu();
   syncURL();
-  const list = $("#providers");
-  list.replaceChildren();
-  list.hidden = !providers.providers.length;
+  const onList = $("#providers"), offList = $("#offProviders");
+  onList.replaceChildren();
+  offList.replaceChildren();
+  const offs = providers.providers.filter((p) => p.off).length;
+  onList.hidden = offs === providers.providers.length;
+  $("#offHead").hidden = !offs;
+  offList.hidden = !offs || offFolded;
+  const fold = $("#foldOff");
+  fold.setAttribute("aria-expanded", String(!offFolded));
+  fold.title = t(offFolded ? "Show the providers turned off" : "Fold the providers turned off away");
+  $("#offCount").textContent = offs ? String(offs) : "";
   let dialog = null; // the editor, if one is open
   for (const p of providers.providers) {
+    const list = p.off ? offList : onList;
     const open = editing === p.id;
     const row = el("div", "row provider" + (open ? " selected" : "") + (p.off ? " off" : ""));
     row.dataset.id = p.id;
