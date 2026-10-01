@@ -1912,7 +1912,7 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		var failed string
 		switch {
 		case rerr != nil && rerr != io.EOF:
-			failed = p.Name + ": " + rerr.Error()
+			failed = cutMidReply(p.Name, rerr)
 		case proto == provider.Anthropic || proto == provider.Responses:
 			failed = p.Name + ": the reply ended before it was complete"
 		}
@@ -1925,6 +1925,14 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		}
 	}
 	return res.StatusCode, "", true
+}
+
+// cutMidReply is what a stream whose read failed mid-reply is ended with:
+// the connection lost, said in so many words. Go's own "unexpected EOF"
+// (every stream on an HTTP/2 connection that dropped ends so) was taken by
+// dsh's pi-ai for an error it doesn't retry, and the turn failed (#470).
+func cutMidReply(name string, err error) string {
+	return name + ": connection lost mid-reply (" + err.Error() + ")"
 }
 
 // streamFailure is an error event ending a stream in proto, as each
@@ -2419,7 +2427,7 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 		if serr != nil && failed == "" {
 			// the upstream died mid-reply: say so in the client's own
 			// protocol instead of finishing as if all went well
-			failed = p.Name + ": " + serr.Error()
+			failed = cutMidReply(p.Name, serr)
 			enc.event(Event{Kind: KError, Text: failed})
 		}
 		if failed == "" {
