@@ -6,12 +6,16 @@ package gui
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"mime"
 	"net/http"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -298,6 +302,28 @@ func init() {
 	}
 }
 
+// revalidated serves the page's own files to be asked for again each time,
+// by their content's hash: an embedded file has no date, so they went out
+// with nothing to check them by, and a cache in front of `magpie web` (a
+// proxy, a CDN, a tunnel's) could keep an older version's app.js under the
+// new index.html after an update: a page without what that version added,
+// such as the request archive switch (Jorben on Discord). An unchanged
+// file is a 304.
+func revalidated(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if name == "" {
+			name = "index.html"
+		}
+		if b, err := fs.ReadFile(staticFS(), name); err == nil {
+			sum := sha256.Sum256(b)
+			rw.Header().Set("ETag", `"`+hex.EncodeToString(sum[:12])+`"`)
+			rw.Header().Set("Cache-Control", "no-cache")
+		}
+		next.ServeHTTP(rw, r)
+	})
+}
+
 // Handler serves the embedded UI and the JSON API.
 // gw is the gateway this process serves, or nil when another magpie has it
 // (for now: see startBackend).
@@ -306,7 +332,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		served.Store(gw)
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/", devPage(http.FileServer(http.FS(staticFS()))))
+	mux.Handle("/", devPage(revalidated(http.FileServer(http.FS(staticFS())))))
 	devRoutes(mux)
 	// boot.js hands the page the saved language and theme before it paints:
 	// they came only with the settings, so the tabs showed English first

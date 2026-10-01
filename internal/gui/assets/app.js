@@ -18,8 +18,10 @@ if (!web && /^Linux/.test(navigator.platform)) document.body.classList.add("linu
 if (/^Win/.test(navigator.platform)) document.documentElement.classList.add("win");
 // The window is dragged by its header, and only where the header says so
 // (--wails-draggable), so the tabs and buttons in it stay plain clicks.
-// Outside the app — a browser on the gateway's page — there is no runtime.
-const winRuntime = mode === "window" ? import("/wails/runtime.js").catch(() => null) : Promise.resolve(null);
+// Outside the app — a browser on the gateway's page, or on `magpie web` —
+// there is no runtime, and it isn't asked for (a 404 in the browser's
+// console, Jorben on Discord).
+const winRuntime = mode === "window" && !web ? import("/wails/runtime.js").catch(() => null) : Promise.resolve(null);
 if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
 // the saved language and theme from boot.js, so the first paint is in them
 if (window.bootPrefs) {
