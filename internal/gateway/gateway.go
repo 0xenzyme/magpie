@@ -210,6 +210,10 @@ type Call struct {
 	ResponseBody      string `json:"responseBody,omitempty"`
 	RequestTruncated  bool   `json:"requestTruncated,omitempty"`
 	ResponseTruncated bool   `json:"responseTruncated,omitempty"`
+	// Archive: "<date>/<id>", where the request archive keeps the call,
+	// when it was on (archive.go); wire what it keeps besides
+	Archive string `json:"archive,omitempty"`
+	wire    *wire
 }
 
 // Server is the gateway.
@@ -264,6 +268,11 @@ func (s *Server) Recent() []Call {
 }
 
 func (s *Server) record(c Call) {
+	if c.wire != nil {
+		c.Archive = c.wire.name
+		archive(c)
+		c.wire = nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.recent = append(s.recent, c)
@@ -788,7 +797,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	// which what is done with it goes by
 	who, agent := callerOf(r), agentOf(r)
 	call := Call{Time: start, From: from, Model: unprefixed(modelOf(body)), Agent: who.agent, Via: who.via, Kind: callKind(r.Header),
-		RequestBody: requestBody, RequestTruncated: requestTruncated}
+		RequestBody: requestBody, RequestTruncated: requestTruncated, wire: archiving(r, capture, start)}
 	if call.Kind == "web_search" {
 		call.For = searchFor(r.Context())
 	}

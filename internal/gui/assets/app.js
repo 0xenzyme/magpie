@@ -2571,6 +2571,7 @@ function renderGatewayView() {
   renderGateway();
   renderConnect();
   renderGatewayModels();
+  renderArchive();
   renderActivity();
 }
 
@@ -3142,6 +3143,79 @@ function callBodyPanel(label, raw, truncated, id) {
   return panel;
 }
 
+// The request archive: with it on, each call's headers and bodies, secrets
+// taken out, go to the S3 bucket sync keeps its backup in, and a call's row
+// reads its own back from there (gateway/archive.go).
+function renderArchive() {
+  const a = providers.gateway.archive || {};
+  const box = $("#archiveList");
+  box.replaceChildren();
+  const r = el("div", "row pref");
+  const who = el("div", "who");
+  who.append(el("div", "name", t("Request archive")));
+  const failed = a.on && a.error;
+  const sub = el("div", "sub" + (failed ? " err" : ""), failed ? t("Last upload failed: {e}", { e: a.error })
+    : a.bucket ? t("Keeps each call’s headers and bodies, secrets taken out, in {where}", { where: a.bucket })
+    : t("Keeps each call’s headers and bodies, secrets taken out, in your S3 bucket. Set up Sync and backup in Settings with an s3:// address first"));
+  who.append(sub);
+  const val = el("div", "val");
+  val.append(segs([["off", t("Off")], ["on", t("On")]], a.on ? "on" : "off", (v) =>
+    api("settings/archive", { on: v === "on" }).then((na) => { providers.gateway.archive = na; renderArchive(); })
+      .catch((e) => { status(t(e.message), "err"); renderArchive(); })));
+  r.append(who, val);
+  box.append(r);
+}
+
+// What was read back from the archive, by "<date>/<id>": the archive's
+// copy, or {busy} while it is read, or {error}.
+const archivedCalls = new Map();
+
+function headersPanel(label, first, headers) {
+  const panel = el("section", "call-body");
+  const head = el("div", "call-body-head");
+  const lines = [first, ...Object.keys(headers || {}).sort().flatMap((k) => headers[k].map((v) => `${k}: ${v}`))].filter(Boolean);
+  head.append(el("span", "call-body-label", label), el("span", "grow"), copyBtn(lines.join("\n"), label));
+  const pre = el("pre");
+  pre.append(el("code", "", lines.join("\n")));
+  panel.append(head, pre);
+  return panel;
+}
+
+function archivePanel(c, id) {
+  const box = el("section", "call-archive");
+  const [date, aid] = c.archive.split("/");
+  const got = archivedCalls.get(c.archive);
+  const head = el("div", "call-body-head");
+  head.append(el("span", "call-body-label", t("Request archive")), el("code", "call-archive-id", c.archive), el("span", "grow"));
+  box.append(head);
+  if (!got || got.busy || got.error) {
+    const b = el("button", "text", t(got?.busy ? "Fetching…" : "Fetch from archive"));
+    b.disabled = !!got?.busy;
+    b.onclick = (ev) => {
+      ev.stopPropagation();
+      archivedCalls.set(c.archive, { busy: true });
+      renderActivity();
+      api(`archive?date=${encodeURIComponent(date)}&id=${encodeURIComponent(aid)}`)
+        .then((a) => archivedCalls.set(c.archive, a))
+        .catch((e) => archivedCalls.set(c.archive, { error: t(e.message) }))
+        .finally(renderActivity);
+    };
+    head.append(b);
+    if (got?.error) box.append(el("div", "call-archive-err", got.error));
+    return box;
+  }
+  head.append(el("span", "call-body-truncated call-archive-note", t("Secrets taken out")));
+  const grid = el("div", "call-details");
+  grid.append(
+    headersPanel(t("Request Headers"), `${got.request.method || ""} ${got.request.path || ""}`.trim(), got.request.headers),
+    headersPanel(t("Response Headers"), got.response.status ? `HTTP ${got.response.status}` : "", got.response.headers),
+    callBodyPanel("Request Body", got.request.body, got.request.truncated),
+    callBodyPanel("Response Body", got.response.body, got.response.truncated, id + "|archive"),
+  );
+  box.append(grid);
+  return box;
+}
+
 function renderActivity() {
   const g = providers.gateway;
   const box = $("#activity");
@@ -3185,6 +3259,7 @@ function renderActivity() {
         callBodyPanel("Request Body", c.requestBody, c.requestTruncated),
         callBodyPanel("Response Body", c.responseBody, c.responseTruncated, id),
       );
+      if (c.archive) details.append(archivePanel(c, id));
       item.dataset.id = id;
       item.append(details);
     }
