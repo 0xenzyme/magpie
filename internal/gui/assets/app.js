@@ -5871,12 +5871,23 @@ function renderSigning(sub) {
     acts.append(open);
     tt.append(acts);
   }
-  if (signing.pasteCallback || signing.pasteCode) {
+  if (signing.pasteCallback || signing.pasteCode || signing.pasteKey) {
     const flow = signing;
-    const what = flow.pasteCode ? t("Code") : t("Callback URL");
-    if (!flow.pasteCode) tt.append(el("span", "s", t("If the page the browser ends on won't load (magpie runs on a server or in Docker), copy its whole address and paste it here.")));
+    const what = flow.pasteCode ? t("Code") : flow.pasteKey ? t("API key") : t("Callback URL");
+    if (flow.pasteKey) {
+      // Command Code's page posts its key to magpie unseen: a browser that
+      // can't reach magpie (Docker) has no address to paste, so a key made
+      // on the keys page finishes it, as Command Code's CLI takes one
+      const s = el("span", "s", t("If the page can't reach magpie (it runs on a server or in Docker), make an API key on {name}'s keys page and paste it here.", { name: sub.name }) + " ");
+      if (flow.keysURL) {
+        const keys = el("button", "link", t("Open the keys page"));
+        keys.onclick = () => api("open", { url: flow.keysURL }).catch(() => {});
+        s.append(keys);
+      }
+      tt.append(s);
+    } else if (!flow.pasteCode) tt.append(el("span", "s", t("If the page the browser ends on won't load (magpie runs on a server or in Docker), copy its whole address and paste it here.")));
     const form = el("form", "callback-form");
-    const url = input(flow.callbackURL || "", what);
+    const url = input(flow.callbackURL || "", what, flow.pasteKey ? "password" : "text");
     url.setAttribute("aria-label", what);
     url.autocomplete = "off";
     url.disabled = !!flow.callbackSubmitted || !!flow.callbackSubmitting;
@@ -5909,6 +5920,21 @@ function renderSigning(sub) {
     submit.onclick = finish;
     form.append(url, submit);
     tt.append(form, why);
+  }
+  // a plugin's browser sign-in whose page can't reach magpie (Docker: the
+  // Command Code plugin's Studio posts its key to 127.0.0.1) can be left
+  // for the plugin's own API key way, without starting over
+  const keyWay = sub.plugin && signing.method != null && !signing.pasteCode && signing.state === "waiting"
+    ? (sub.plugin.methods || []).findIndex((m) => m.type === "api") : -1;
+  if (keyWay >= 0 && keyWay !== signing.method) {
+    const acts = tt.querySelector(".acts") || tt.appendChild(el("span", "acts"));
+    const k = el("button", "link", t("Use an API key instead"));
+    k.title = t("If the page can't reach magpie (it runs on a server or in Docker)");
+    k.onclick = () => {
+      if (signing?.id) api("signin/" + signing.id + "/cancel", {}).catch(() => {});
+      startPluginSignIn(sub, keyWay);
+    };
+    acts.append(k);
   }
   if (sub.importable) {
     // an account another tool is signed in to comes in from its file
