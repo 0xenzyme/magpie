@@ -1727,8 +1727,18 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .mbulk { display: flex; align-items: center; gap: 6px; }
 .mbulk > input { max-width: 260px; flex: 1; }
 /* a long list scrolls on its own, not the editor with it past its ends */
-.mchips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 132px; overflow-y: auto; overscroll-behavior: contain; padding: 1px; }
+.mchips { display: flex; flex-wrap: wrap; gap: 4px; max-height: min(132px, 28vh); overflow-y: auto; overscroll-behavior: contain; padding: 1px; }
 .mchips::-webkit-scrollbar { width: 0; }
+/* In a short window the editor's body shows little more than the list, so
+   the pointer is nearly always over it; held at its ends, the wheel could
+   never take the body on to what lies below (悠悠哥 on Discord: a small
+   window's WorkBuddy editor stopped part way down its models). There a
+   list's ends pass the wheel on to the body, and the names' list is held
+   to a part of the window as the chips are. */
+@media (max-height: 640px) {
+  .mchips { overscroll-behavior: auto; }
+  .mnames { max-height: min(240px, 40vh); }
+}
 .mchip {
   display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px;
   font-size: 11.5px; color: var(--muted); background: var(--card); border: 1px solid var(--line);

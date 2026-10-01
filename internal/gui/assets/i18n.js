@@ -1341,6 +1341,7 @@ const I18N = {
     "Session": "整个会话",
     "Within a turn": "一轮之内",
     "A group needs a model in it": "组里至少要有一个模型",
+    "Couldn't save the group: {error}": "分组没能保存：{error}",
     "Rules": "规则",
     "Add a rule": "添加规则",
     "When": "当",
