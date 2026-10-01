@@ -9242,8 +9242,10 @@ function renderSessChart(chart, st, used, ov, acts) {
       c.title = tip(days[i], sessDay(days[i].day));
     });
     chart.querySelector(".sess-cal-side").replaceWith(sessCalSide(days, value, show));
+    chart.fitCal = () => sessCalFit(chart, days, value, tip);
     return;
   }
+  chart.fitCal = null;
   if (shape === "calendar") {
     chart.replaceChildren();
     chart.classList.add("cal");
@@ -9252,6 +9254,9 @@ function renderSessChart(chart, st, used, ov, acts) {
     wrap.append(sessCalendar(days, value, tip), sessCalSide(days, value, show));
     chart.append(wrap);
     chart.querySelector(".sess-chart-head").append(sessLegend());
+    chart.fitCal = () => sessCalFit(chart, days, value, tip);
+    chart.fitCal();
+    sessCalWidth.observe(chart);
     return;
   }
 
@@ -9312,15 +9317,37 @@ function renderSessChart(chart, st, used, ov, acts) {
   }
 }
 
+// a week's column in the calendar, cell and gap: as wide as weeks are counted
+// by, and as wide as one may grow to take what is left over
+const SESS_WEEK = 20, SESS_WEEK_MAX = 24;
+
+// sessCalFit lays the calendar across its card (John on Discord: 这个活跃度怎么
+// 没有铺满全部宽度呢？): a range of a few months took a few hundred pixels of a
+// wide card and left the rest empty. The weeks before the range come in as
+// empty cells, GitHub's way, up to a year in all, and the cells grow a little
+// to take what is left; a narrow card gets none and its cells shrink.
+const sessCalWidth = new ResizeObserver((es) => { for (const e of es) e.target.fitCal?.(); });
+function sessCalFit(chart, days, value, tip) {
+  const wrap = chart.querySelector(".sess-cal-wrap"), cal = wrap?.querySelector(".sess-cal");
+  if (!cal || !wrap.clientWidth) return;
+  const ws = getComputedStyle(wrap), side = wrap.querySelector(".sess-cal-side");
+  const wd = Math.max(0, ...[...cal.querySelectorAll(".wd")].map((l) => l.getBoundingClientRect().width));
+  const room = wrap.clientWidth - wd - (ws.flexDirection === "row" ? side.getBoundingClientRect().width + (parseFloat(ws.columnGap) || 0) : 0);
+  const weeks = Math.ceil(((days[0].day.getDay() + 6) % 7 + days.length) / 7);
+  const pad = Math.max(0, Math.min(53, Math.floor(room / SESS_WEEK)) - weeks);
+  if (String(pad) !== cal.dataset.pad) cal.replaceWith(sessCalendar(days, value, tip, pad));
+}
+
 // sessCalendar is the range as weeks of days, Monday on top, each day as
-// dark as it is busy among the others
-function sessCalendar(days, value, tip) {
+// dark as it is busy among the others, after pad empty weeks before it
+function sessCalendar(days, value, tip, pad = 0) {
   const lv = sessLevels(days.map(value));
-  const lead = (days[0].day.getDay() + 6) % 7;
+  const lead = (days[0].day.getDay() + 6) % 7 + 7 * pad;
   const weeks = Math.ceil((lead + days.length) / 7);
   const cal = el("div", "sess-cal");
+  cal.dataset.pad = pad;
   cal.style.gridTemplateColumns = `auto repeat(${weeks}, minmax(0, 1fr))`;
-  cal.style.maxWidth = `calc(2.6em + ${weeks * 20}px)`;
+  cal.style.maxWidth = `calc(2.6em + ${weeks * (pad ? SESS_WEEK_MAX : SESS_WEEK)}px)`;
   const names = sessWeekdays();
   for (const i of [0, 2, 4]) {
     const l = el("span", "wd", names[i]);
@@ -9329,20 +9356,29 @@ function sessCalendar(days, value, tip) {
   }
   const loc = locale === "zh" ? "zh-CN" : "en";
   let month = -1, labelAt = -9;
-  days.forEach((x, i) => {
-    const k = lead + i, w = Math.floor(k / 7), wd = k % 7;
+  // the days before the range, from the Monday it is laid out from: their
+  // months named as the range's are, the days themselves left blank
+  const before = Array.from({ length: pad ? lead : 0 }, (_, i) => {
+    const d = new Date(days[0].day);
+    d.setDate(d.getDate() - lead + i);
+    return { day: d, before: true };
+  });
+  [...before, ...days].forEach((x, i) => {
+    const k = (pad ? 0 : lead) + i, w = Math.floor(k / 7), wd = k % 7;
     if ((wd === 0 || i === 0) && x.day.getMonth() !== month) {
       month = x.day.getMonth();
-      if (w - labelAt >= 3) {
+      // a month mostly gone when the weeks before begin is left unnamed, so
+      // as not to crowd out the next one's name
+      if (w - labelAt >= 3 && !(x.before && x.day.getDate() > 14)) {
         const m = el("span", "mo", x.day.toLocaleDateString(loc, month === 0 && weeks > 20 ? { month: "short", year: "numeric" } : { month: "short" }));
         m.style.gridArea = `1 / ${w + 2}`;
         cal.append(m);
         labelAt = w;
       }
     }
-    const c = el("i", "l" + lv(value(x)));
+    const c = x.before ? el("s") : el("i", "l" + lv(value(x)));
     c.style.gridArea = `${wd + 2} / ${w + 2}`;
-    c.title = tip(x, sessDay(x.day));
+    if (!x.before) c.title = tip(x, sessDay(x.day));
     cal.append(c);
   });
   return cal;
