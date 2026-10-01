@@ -125,6 +125,18 @@ why one didn't load, updates one and removes one. The add sheet's
 "look for a plugin" link lead there. English and Chinese, Chromium and WebKit,
 with the API faked.
 
+`plugin-git.test.cjs` checks a plugin installed from a git repository: the
+market's field says it takes a GitHub repo, and Install sends
+`github:owner/repo` as typed; Installed names it by the package its
+repository holds, its Update fetches the repository again, and its page shows
+the README it came with, no npm link and a Source link to the repository.
+No click scrolls. English and Chinese, Chromium and WebKit, with the API
+faked:
+
+```sh
+node --test --test-concurrency=1 internal/gui/tests/plugin-git.test.cjs
+```
+
 `panel-fold.test.cjs` expands and collapses on the Agents page with the list
 scrolled to its end, in the tray panel (one agent open) and in the window:
 "Show {n} more" unrolls the rest under the button, the view going down with
