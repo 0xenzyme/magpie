@@ -1684,6 +1684,12 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	if proto != provider.Anthropic {
 		body = s.withoutRefused(p.ID, proto, body)
 	}
+	// a Grok subscription is given Codex's namespaced functions flat
+	// (grokBody); a call to one goes back under its namespace (#404)
+	var named map[string]nsTool
+	if proto == provider.Responses && p.Account != nil && p.Account.Agent == "grok" {
+		named = namespacedIn(body)
+	}
 	res, err := s.forward(r.Context(), p, proto, path, p.Prepare(body), r.Header)
 	if err != nil {
 		return writeError(w, proto, 502, p.Name+": "+err.Error()), err.Error(), true
@@ -1792,6 +1798,10 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	if searchFn && sse {
 		search = &searchTidy{}
 	}
+	var spaces *nsTidy
+	if named != nil {
+		spaces = &nsTidy{named: named, sse: sse}
+	}
 	buf := make([]byte, 32<<10)
 	var rerr error
 	for {
@@ -1804,6 +1814,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			}
 			if search != nil {
 				out = search.write(out)
+			}
+			if spaces != nil {
+				out = spaces.write(out)
 			}
 			if _, werr := w.Write(out); werr != nil {
 				return res.StatusCode, "", true
@@ -1821,7 +1834,14 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		w.Write(tidy.flush())
 	}
 	if search != nil {
-		w.Write(search.flush())
+		out := search.flush()
+		if spaces != nil {
+			out = spaces.write(out)
+		}
+		w.Write(out)
+	}
+	if spaces != nil {
+		w.Write(spaces.flush())
 	}
 	if sse && r.Context().Err() == nil && !sniff.whole() {
 		// the upstream died mid-reply, or ended it short of its last
