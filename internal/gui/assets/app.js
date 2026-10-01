@@ -483,17 +483,22 @@ function renderAgents() {
 }
 
 // renderProfiles draws the saved profiles as chips, a chip whose save,
-// update or use is on its way dimmed until the answer is in.
+// update or use is on its way dimmed until the answer is in. A click on a
+// chip shows what the profile holds, and its Apply applies it (#467): it was
+// applied at once, so what it held could be seen only by applying it over
+// the setup in use.
 function renderProfiles() {
   const chips = $("#profiles");
+  if (!state.profiles.some((p) => p.name === profileOpen)) profileOpen = null;
   chips.replaceChildren();
   $(".profiles > .chip-input")?.remove(); // a name field open goes with the list it was for
-  $(".profiles").classList.remove("naming");
+  $(".profiles").classList.remove("naming", "detailed");
   $("#save").textContent = t("＋ Save current");
   $("#profN").textContent = state.profiles.length || "";
   if (!state.profiles.length) chips.append(el("span", "hint", t("none yet · save the setup to switch back in one click")));
   for (const p of state.profiles) {
     const c = el("button", "chip");
+    c._profile = p.name;
     if (profilePending.has(p.name)) c.classList.add("pending");
     const lib = profileLibrary(p.library);
     c.title = [p.summary, lib].filter(Boolean).join("\n");
@@ -507,9 +512,93 @@ function renderProfiles() {
     x.title = t("Delete profile");
     x.onclick = (ev) => { ev.stopPropagation(); profileAction("delete", p.name); };
     c.append(u, x);
-    c.onclick = () => profileAction("use", p.name);
+    c.setAttribute("aria-expanded", "false");
+    c.onclick = () => toggleProfile(c, p);
     chips.append(c);
   }
+  const open = state.profiles.find((p) => p.name === profileOpen);
+  if (open) showProfile([...chips.children].find((c) => c._profile === open.name), open);
+}
+
+// profileOpen is the profile whose details are shown, by name.
+let profileOpen = null;
+
+function toggleProfile(chip, p) {
+  if (profileOpen === p.name) {
+    profileOpen = null;
+    $("#profiles > .prof-detail")?.remove();
+    $(".profiles").classList.remove("detailed");
+    chip.classList.remove("on");
+    chip.setAttribute("aria-expanded", "false");
+  } else {
+    profileOpen = p.name;
+    showProfile(chip, p);
+  }
+  fit();
+}
+
+// showProfile draws what a profile holds, by agent, under its chip's line;
+// in the panel, where the list opens upward from its foot, over it, its
+// Apply at its foot by the chip, so the chip clicked stays where it is as the
+// details come in.
+function showProfile(chip, p) {
+  const chips = $("#profiles"), box = $(".profiles");
+  chips.querySelector(":scope > .prof-detail")?.remove();
+  box.classList.remove("detailed");
+  for (const c of chips.querySelectorAll(".chip.on")) { c.classList.remove("on"); c.setAttribute("aria-expanded", "false"); }
+  if (!chip) return;
+  chip.classList.add("on");
+  chip.setAttribute("aria-expanded", "true");
+  const panel = mode === "panel";
+  const was = chip.getBoundingClientRect().top;
+  const line = [...chips.querySelectorAll(":scope > .chip")].filter((c) => c.offsetTop === chip.offsetTop);
+  const d = profileDetail(p, panel);
+  box.classList.add("detailed"); // the window's label and Save at the chips' first line
+  if (panel) line[0].before(d);
+  else line[line.length - 1].after(d);
+  // grown past its height, the panel's list scrolls the details in above
+  // the chip rather than the chip down
+  if (panel) box.scrollTop += chip.getBoundingClientRect().top - was;
+}
+
+function profileDetail(p, footed) {
+  const d = el("div", "prof-detail");
+  d.setAttribute("role", "group");
+  d.setAttribute("aria-label", p.name);
+  const head = el("div", "pd-head");
+  const apply = el("button", "text primary pd-apply", t("Apply"));
+  apply.type = "button";
+  apply.title = t("Apply {name} to the agents", { name: p.name });
+  apply.onclick = () => profileAction("use", p.name);
+  head.append(el("span", "pd-name", p.name), apply);
+  if (!footed) d.append(head);
+  const groups = p.agents || [];
+  if (!groups.length) d.append(el("div", "pd-none", t("No agent settings saved")));
+  for (const g of groups) {
+    const sec = el("div", "pd-agent");
+    const gh = el("div", "pd-gh");
+    gh.append(icon(g.icon || "generic"), el("span", "pd-gn", g.name));
+    const rows = el("dl", "pd-fields");
+    const row = (label, value, cls) => {
+      const v = el("dd", cls || "", value);
+      v.title = value;
+      rows.append(el("dt", "", label), v);
+    };
+    for (const f of g.fields || []) {
+      const effort = f.key === "effort" || f.label === "effort" || f.label === "thinking";
+      if (f.hidden) row(t(f.label), "••••••", "pd-hidden");
+      else if (!f.value) row(t(f.label), t("agent default"), "pd-default");
+      else row(t(f.label), effort ? effortName({ value: f.value }) : f.value);
+    }
+    if (g.servers?.length) row(t("MCP servers"), g.servers.join(t(", ")));
+    if (g.skills?.length) row(t("Skills"), g.skills.join(t(", ")));
+    if (g.instructions) row(t("Instructions"), t("on"));
+    sec.append(gh, rows);
+    d.append(sec);
+  }
+  if (groups.some((g) => g.fields?.some((f) => f.hidden))) d.append(el("div", "pd-none", t("•••••• looks like a key or a token, and is not shown")));
+  if (footed) { head.classList.add("pd-foot"); d.append(head); }
+  return d;
 }
 
 // driftNote: under the name of an agent whose config something else
@@ -2157,6 +2246,7 @@ async function profileAction(action, name, update) {
     state = data;
     renderAgents();
     if (action === "use") {
+      profileOpen = null;
       closeProfiles(); // the agents, as they are now, in sight
       let msg = t(data.changed === 1 ? "{name} applied · {n} setting changed" : "{name} applied · {n} settings changed", { name, n: data.changed });
       const lib = data.library;

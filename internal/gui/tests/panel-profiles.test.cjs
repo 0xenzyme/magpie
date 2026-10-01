@@ -183,6 +183,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // a profile applied closes them, the agents in sight
         await page.locator("#profBtn").click();
         await page.locator('#profiles .chip:has-text("profile-1")').first().click();
+        await page.locator(".prof-detail .pd-apply").click();
         await page.waitForFunction(() => !document.querySelector(".profiles.open"));
       });
 

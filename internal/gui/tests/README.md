@@ -334,6 +334,18 @@ list not moving, field and button in sight, one focus ring; the button then
 reads Save and a click on it saves, as Enter does; an empty name keeps the
 field; Escape closes it; in English and Chinese.
 
+`profile-details.test.cjs` (#467) clicks a saved profile's chip, in the
+window and in the tray panel with its list scrolled to its end: the details
+open, applying nothing and leaving the chip where it was on the screen; they
+list each agent by name, its fields under their labels (an empty one as the
+agent's default, one that reads as a key as dots) and what the Library gives
+it; a second click closes them; their Apply applies the profile, once; ↻ and
+× stay on the chip. In Chromium and WebKit, English and Chinese:
+
+```sh
+node --test --test-concurrency=1 internal/gui/tests/profile-details.test.cjs internal/gui/tests/panel-profiles.test.cjs
+```
+
 `panel-routing.test.cjs` opens the tray panel's Routing tab: the gateway's
 latest requests from a faked trace, newest first, each with its agent, the
 model asked for, the provider and account it went to, the model that
