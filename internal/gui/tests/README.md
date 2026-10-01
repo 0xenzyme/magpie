@@ -338,8 +338,10 @@ login/forget once per account and the line goes; in English and Chinese.
 `nokey-editor.test.cjs` opens two local Ollama providers saved with no key,
 one from the preset and one custom, as /api/providers gives them: a click
 on each row opens its editor (the key box saying one is optional) and
-nothing throws, where the row only toggled; in Chromium and WebKit, English
-and Chinese.
+nothing throws, where the row only toggled. A plugin's provider (base
+plugin://codearts) has no link in its editor's head, where it said
+"codearts ↗" and opened https://codearts (Lemon on Discord), while the
+Ollamas keep theirs; in Chromium and WebKit, English and Chinese.
 
 `old-webkit.test.cjs` holds the page to Safari 15.0, the WebKit macOS 12 can
 have (#220: a regex lookbehind in app.js, a syntax error before Safari 16.4,

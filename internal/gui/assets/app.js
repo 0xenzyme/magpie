@@ -4055,7 +4055,9 @@ function drawEditor(p, presetID) {
     h.append(icon(p?.icon || (copyOf && draft.icon) || pr?.icon || "generic"), el("b", "", p ? p.name : copyOf ? t("Copy of {name}", { name: copyOf.name }) : pr ? pr.name : t("Custom provider")));
     if (pr?.note) h.append(el("span", "note", t(pr.note)));
     h.append(el("span", "grow"));
-    const site = pr?.website || p?.website || (p?.host ? "https://" + p.host : "");
+    // a plugin's provider has plugin://<id> for its base, and its id is no
+    // address to open: only a host with a dot or a port makes a link
+    const site = pr?.website || p?.website || (/[.:]/.test(p?.host || "") ? "https://" + p.host : "");
     if (site) { const b = el("button", "link", hostOf(site) + " ↗"); b.onclick = () => api("open", { url: site }); h.append(b); }
     if (p) h.append(providerSwitch(p));
     ed.append(h);
