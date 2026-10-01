@@ -189,6 +189,8 @@ third picker; unset, its label says what that means (the session's effort, or
 the subagent model's own default; 「跟随当前会话的推理强度…」), a click opens
 the effort slider without scrolling the page, Default its first stop, and a
 level picked is posted for `subagent_effort` alone and lights the square.
+Claude Code's subagents (#468) get no square until it runs through magpie
+(nothing to pick), and one that says "same as model" once it does.
 
 `gateway-fold.test.cjs` folds Connect on the Gateway page with the view
 scrolled: its fields hide, the head keeps the base URL and a copy button, the

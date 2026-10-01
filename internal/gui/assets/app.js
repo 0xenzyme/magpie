@@ -244,8 +244,9 @@ function renderAgents() {
     const fields = el("div", "fields");
     const wide = (f) => f.label === "model" || f.label === "large";
     // an effort or ultracode the model has none of (Claude Code on Haiku
-    // 4.5, ultracode short of xhigh) isn't drawn at all
-    const none = (f) => (f.key === "effort" || f.key === "ultracode") && !f.options.length && !f.value;
+    // 4.5, ultracode short of xhigh) isn't drawn at all, nor are subagents
+    // with no model to go on (Claude Code's, until it runs through magpie)
+    const none = (f) => (f.key === "effort" || f.key === "ultracode" || f.label === "subagents") && !f.options.length && !f.value;
     const shownFields = a.fields.filter((f) => !TIERS.includes(f.label) && !none(f));
     const tiers = tierMenu(a);
     if (tiers) shownFields.push(tiers);

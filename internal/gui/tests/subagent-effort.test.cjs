@@ -4,7 +4,8 @@
 // one, not a third picker: unset it says what that means (the session's
 // effort, or the subagent model's own default), it opens the effort slider
 // with Default as its first stop, and a level picked is posted and lights
-// the square. In English and Chinese. No backend: the API is faked here.
+// the square. Claude Code's subagents (#468) have no square
+// while there is no model to pick. In English and Chinese. No backend: the API is faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -23,7 +24,13 @@ const fresh = () => ({
       { key: "subagent", label: "subagents", value: "", options: models },
       { key: "subagent_effort", label: "subagent effort", value: "", options: levels },
     ],
-  }],
+  },
+  // Claude Code's subagents (#468): a model of magpie's, offered once it runs
+  // through magpie; before, there is nothing to pick and no square
+  ...[["cc-own", "opus", []], ["cc-magpie", "magpie/deepseek/pro", [{ value: "magpie/deepseek/flash", label: "DeepSeek Flash" }]]].map(([id, model, options]) => ({
+    id, name: "Claude Code", path: "/test/settings.json", icon: "claudecode-color",
+    fields: [{ key: "model", label: "model", value: model, options: [{ value: model }] }, { key: "subagent", label: "subagents", value: "", options }],
+  }))],
   profiles: [],
 });
 
@@ -57,11 +64,11 @@ function server(lang, sets) {
 const W = {
   en: {
     unset: "subagent effort: default\nthe session's effort, or the subagent model's own default",
-    title: "subagent effort", def: "default", high: "high", set: "subagent effort: high",
+    title: "subagent effort", def: "default", high: "high", set: "subagent effort: high", follows: "subagents: same as model",
   },
   zh: {
     unset: "子 agent 推理强度：默认\n跟随当前会话的推理强度；子 agent 指定了模型时，用该模型的默认强度",
-    title: "子 agent 推理强度", def: "默认", high: "高", set: "子 agent 推理强度：高",
+    title: "子 agent 推理强度", def: "默认", high: "高", set: "子 agent 推理强度：高", follows: "子 agent：同主模型",
   },
 };
 
@@ -94,6 +101,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.deepEqual(await page.locator(`${codex} .field:not(.extra)`).evaluateAll((es) => es.map((e) => e.dataset.key)), ["model", "effort"]);
       assert.equal(await square.getAttribute("aria-label"), w.unset);
       assert.equal(await square.evaluate((e) => e.classList.contains("set")), false);
+      assert.equal(await page.locator('.row.agent[data-id="cc-own"] .field.extra[data-key="subagent"]').count(), 0, "a subagents square with nothing to pick");
+      assert.equal(await page.locator('.row.agent[data-id="cc-magpie"] .field.extra[data-key="subagent"]').getAttribute("aria-label"), w.follows);
 
       // the effort slider, Default its first stop and the square's value on it
       const y = await page.evaluate(() => scrollY);
