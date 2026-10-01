@@ -1026,11 +1026,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	}
 	tr := s.trace.begin(Route{Pinned: pin, Time: start, Agent: call.Agent, Kind: call.Kind, For: call.For, Model: call.Model, Effort: requestEffort(from, body), Provider: p.ID, Group: group, Rule: hit, Nested: nested, Affinity: shown, Order: pl.order, Left: pl.left})
 	var skipped []string
-	sent := ""         // the reasoning the last try's model was asked for
-	where := ""        // the last try's provider.Where, for the usage
-	again := 0         // times the last one left has been tried again
-	resealed := 0      // what of the conversation another account sealed was taken out: its reasoning, then its compaction
-	floored := false   // the reply's length raised to what the provider takes
+	sent := ""       // the reasoning the last try's model was asked for
+	where := ""      // the last try's provider.Where, for the usage
+	again := 0       // times the last one left has been tried again
+	resealed := 0    // what of the conversation another account sealed was taken out: its reasoning, then its compaction
+	floored := false // the reply's length raised to what the provider takes
+	providerKeyID, providerKeyName := "", ""
 	var other *Try     // the first failure that wasn't an allowance run out
 	autoReset := false // a Codex or Claude reset looked at, once a request
 	for i := 0; i < len(cands); i++ {
@@ -1041,6 +1042,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		hw := newHoldWriter(w, !last || again < lastRetries || other != nil)
 		call.Provider, call.To, call.Usage = c.p.ID, "", Usage{}
 		where = c.p.Where()
+		providerKeyID, providerKeyName = "", ""
+		if c.p.Account == nil && c.p.Key != "" {
+			providerKeyID, providerKeyName = provider.KeyID(c.p.Key), c.p.KeyName
+		}
 		began := time.Now()
 		hw.first.start = began
 		attemptBody := body
@@ -1174,6 +1179,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			matesFirst(cands[i+1:], c)
 			if call.To != "" {
 				usage.Append(usage.Record{Time: began, Agent: call.Agent, Via: call.Via, Provider: call.Provider, Host: where, Model: c.model,
+					ProviderKeyID: providerKeyID, ProviderKeyName: providerKeyName,
 					Requested: call.Model, Served: call.Usage.Served,
 					Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
 					CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: time.Since(began).Milliseconds(), Status: call.Status,
@@ -1325,6 +1331,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	s.record(call)
 	if call.To != "" {
 		usage.Append(usage.Record{Time: start, Agent: call.Agent, Via: call.Via, Provider: call.Provider, Host: where, Model: model,
+			ProviderKeyID: providerKeyID, ProviderKeyName: providerKeyName,
 			Requested: call.Model, Served: call.Usage.Served,
 			Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
 			CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: call.Millis, Status: call.Status,

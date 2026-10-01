@@ -132,6 +132,17 @@ separate Responses endpoint, `catalog=` to borrow a models.dev list, and
 `models=` to name the models to expose. Anything a preset does not know can
 be overridden the same way.
 
+`magpie usage` also lists **upstream provider keys** to help check upstream bills.
+Each request records the fingerprint and saved name of the key that actually
+served it, including image calls and account/key failover. The CSV adds
+`provider_key_id` and `provider_key_name`. JSON uses `providerKeyId` and `providerKeyName`, distinct from gateway caller
+keys. System One calls use the same attribution. No raw credential is stored
+in usage records.
+Rotating the provider's first key does not move old usage to its replacement;
+deleted keys keep their historical identity. Older records appear as
+**key not recorded**, never inferred from today's configured key.
+These are upstream credentials, not keys clients use to call Magpie.
+
 One magpie can serve several computers (an office one, a personal one):
 share it on the network (Settings → Share on local network), and on each
 other computer add it as a **Remote magpie** — in the app's Add sheet, or
@@ -244,9 +255,9 @@ reports read the effective price.
 Two things worth knowing. The ledger and the session totals re-price when they
 are read, so adding or changing a price restates earlier figures: they are
 estimates at the effective price, not settled charges. And a price is per
-provider and model — usage records do not retain which key or account served
-a call, so a provider charging different tariffs per account cannot be costed
-exactly from a single provider-wide price.
+provider and model. Records now identify upstream API keys, but a provider
+charging different tariffs per key still cannot be costed exactly from a
+single provider-wide price.
 
 ### What a model takes
 
