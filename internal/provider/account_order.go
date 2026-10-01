@@ -10,6 +10,11 @@ func SetAccountOrder(id string, order []string) error {
 	if err != nil {
 		return err
 	}
+	if p.IsPlugin() {
+		// a plugin's accounts are listed and switched by the provider's id,
+		// and kept in logins.json as plugin:<its id>
+		return arrangeLoginsAs(p.ID, pluginAgent(*p.Account.plugin), order)
+	}
 	if p.Account != nil {
 		return arrangeLogins(p.Account.Agent, order)
 	}
@@ -39,6 +44,12 @@ func SetAccountOrder(id string, order []string) error {
 }
 
 func arrangeLogins(agent string, order []string) error {
+	return arrangeLoginsAs(agent, agent, order)
+}
+
+// arrangeLoginsAs arranges the accounts agent lists and switches, saved in
+// logins.json under stored.
+func arrangeLoginsAs(agent, stored string, order []string) error {
 	var available []string
 	var first Login
 	for _, l := range Logins(agent) {
@@ -64,7 +75,7 @@ func arrangeLogins(agent string, order []string) error {
 		rank[user] = i + 1
 	}
 	for i := range ls {
-		if ls[i].Agent == agent {
+		if ls[i].Agent == stored {
 			before[ls[i].User] = ls[i].Order
 			ls[i].Order = rank[ls[i].User]
 		}
@@ -86,7 +97,7 @@ func arrangeLogins(agent string, order []string) error {
 	loginsMu.Lock()
 	ls = readLogins()
 	for i := range ls {
-		if ls[i].Agent == agent {
+		if ls[i].Agent == stored {
 			ls[i].Order = before[ls[i].User]
 		}
 	}
