@@ -1048,6 +1048,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		// the last one's failure is held too when an earlier one failed,
 		// for its allowance running out to be told as that one's error
 		hw := newHoldWriter(w, !last || again < lastRetries || other != nil)
+		hw.thinkingShown = !refusesAfterThinking(c.model)
 		call.Provider, call.To, call.Usage = c.p.ID, "", Usage{}
 		where = c.p.Where()
 		providerKeyID, providerKeyName = "", ""
