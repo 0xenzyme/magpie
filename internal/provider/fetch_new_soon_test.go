@@ -30,6 +30,17 @@ func TestFetchNewRetriedSoon(t *testing.T) {
 	newFetches.m = map[string]time.Time{}
 	newFetches.Unlock()
 	newSoonAt.Store(0)
+	t.Cleanup(func() {
+		waitNewSoon()
+		newFetches.Lock()
+		newFetches.m = map[string]time.Time{}
+		newFetches.Unlock()
+		newSoonAt.Store(0)
+		wbTokens.Lock()
+		wbTokens.m = map[string]wbCreds{}
+		wbTokens.Unlock()
+		forgetAccountCaches()
+	})
 
 	var asked atomic.Int32
 	var down atomic.Bool
