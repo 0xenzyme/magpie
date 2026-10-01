@@ -40,6 +40,9 @@ type candidate struct {
 	// fast is set on a member the group sends in its vendor's fast mode
 	// (Group.Fast)
 	fast bool
+	// rank is its place in its provider's own list of accounts or keys,
+	// the order the provider's page shows and a drag sets (#217)
+	rank int
 }
 
 // label names a candidate in a call's record: the provider, and the key
@@ -125,8 +128,8 @@ func perKeyOf(p provider.Provider, model string, from provider.Protocol) (out, a
 		if len(also) == 0 || !p.OwnPaused() {
 			all = append(all, candidate{p: p, model: model, rest: p.ID})
 		}
-		for _, q := range also {
-			all = append(all, candidate{p: q, model: model, rest: p.ID + "@" + q.Account.User})
+		for i, q := range also {
+			all = append(all, candidate{p: q, model: model, rest: p.ID + "@" + q.Account.User, rank: i + 1})
 		}
 		// an account whose plan lacks the model (a Free one behind a Plus)
 		// would only answer 400; it is tried only when none lists it
@@ -144,7 +147,7 @@ func perKeyOf(p provider.Provider, model string, from provider.Protocol) (out, a
 	}
 	keys := p.KeysOn()
 	var unlisted []candidate
-	for _, k := range keys {
+	for i, k := range keys {
 		q := p.WithKey(k)
 		if len(q.Speaks()) == 0 {
 			continue // made for a protocol this provider has no endpoint for
@@ -155,10 +158,10 @@ func perKeyOf(p provider.Provider, model string, from provider.Protocol) (out, a
 		}
 		if !p.Serves(k, model) {
 			// the vendor lists the model to another key only
-			unlisted = append(unlisted, candidate{p: q, model: model, rest: rest})
+			unlisted = append(unlisted, candidate{p: q, model: model, rest: rest, rank: i})
 			continue
 		}
-		out = append(out, candidate{p: q, model: model, rest: rest})
+		out = append(out, candidate{p: q, model: model, rest: rest, rank: i})
 	}
 	if len(out) == 0 {
 		out, unlisted = unlisted, nil // no key lists it: try them all the same

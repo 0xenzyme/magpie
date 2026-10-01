@@ -1194,3 +1194,17 @@ Chromium and WebKit with an isolated API fixture:
 ```sh
 node --test internal/gui/tests/account-arrange.test.cjs
 ```
+
+`routing-account-order.test.cjs` checks that Routing's live stage seats each
+provider's accounts and keys in the order its page lists them and a drag sets
+— the order the gateway tries them — not by name nor as one request weighed
+them (#217): one request through a group of a subscription, a provider's keys
+and a plugin's accounts, weighed least used first, reads in each list's order;
+after the subscription's accounts are moved with Alt+↓ in its editor and the
+plugin's rearranged, the stage, shown again without a reload or a new request,
+reads in the new orders. It runs in Chromium and WebKit, in English and
+Chinese:
+
+```sh
+node --test internal/gui/tests/routing-account-order.test.cjs
+```

@@ -6351,11 +6351,17 @@ function forgetOwnTitle(a) {
   return t("magpie stops showing and using {agent}'s own sign-in; its files are left as they are, and it shows again when {agent} signs in anew", { agent: a.agentName });
 }
 
+// loginsInOrder: an agent's accounts as its provider lists them and the
+// gateway tries them, the one it is signed in to first
+function loginsInOrder(a) {
+  const ls = a.logins?.length ? [...a.logins] : [{ user: a.user, plan: a.plan, active: true, on: true }];
+  return ls.sort((x, y) => (y.active ? 1 : 0) - (x.active ? 1 : 0));
+}
+
 function renderAccounts(a, p) {
   const sub = subOf(a.agent);
   const list = el("div", "accts");
-  let ls = a.logins?.length ? [...a.logins] : [{ user: a.user, plan: a.plan, active: true, on: true }];
-  ls.sort((x, y) => (y.active ? 1 : 0) - (x.active ? 1 : 0));
+  const ls = loginsInOrder(a);
   const several = ls.filter((l) => (l.active && !l.paused) || l.on).length > 1;
   // the account Claude Code or Codex is signed in to can be paused while
   // another is on: the gateway passes over it, the agent staying signed in
