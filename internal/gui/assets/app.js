@@ -1265,8 +1265,10 @@ const FOLLOWS_MODEL = [...TIERS, "subagents", "smol", "slow"];
 // A field that follows the model unless set — Codex's subagents, Claude
 // Code's tiers, omp's roles — is a small square after the pickers rather
 // than a third picker, which a row has no room for: it wrapped onto a line
-// of its own. So is Codex's sign-in, ChatGPT or magpie as its provider.
-const extra = (f) => f.key === "tiers" || FOLLOWS_MODEL.includes(f.label) || f.label === "sign-in" || f.key === "ultracode";
+// of its own. So is Codex's sign-in, ChatGPT or magpie as its provider,
+// and the effort its subagents start at (#469).
+const SUB_EFFORT = "subagent effort";
+const extra = (f) => f.key === "tiers" || FOLLOWS_MODEL.includes(f.label) || f.label === "sign-in" || f.key === "ultracode" || f.label === SUB_EFFORT;
 const EXTRA_GLYPH = {
   subagents: "M4.5 2.75v10.5M4.5 9.25c0-2.2 1.6-3.75 3.9-3.75h3.35M9.9 3.6l1.9 1.9-1.9 1.9",
   // a feather for omp's smol role, an hourglass for its slow one
@@ -1275,6 +1277,8 @@ const EXTRA_GLYPH = {
   tiers: "M8 2.6 2.75 5.4 8 8.2l5.25-2.8zM2.75 8.1 8 10.9l5.25-2.8M2.75 10.8 8 13.6l5.25-2.8",
   "sign-in": "M8 2.5a2.75 2.75 0 1 1 0 5.5 2.75 2.75 0 0 1 0-5.5zM3 13.5c.4-2.4 2.4-3.9 5-3.9s4.6 1.5 5 3.9",
   ultracode: "M3 4.25h4M3 8h2.5M3 11.75h4M9.5 4.25l3.5 3.75-3.5 3.75",
+  // the subagents' branch, with effort's rising bars after it
+  [SUB_EFFORT]: "M3.25 2.75v10.5M3.25 9.25c0-2.2 1.6-3.75 3.9-3.75h.6M9.25 13.25v-2M11.5 13.25v-4M13.75 13.25v-6",
 };
 function extraField(a, f) {
   if (f.key === "ultracode") return ultracodeToggle(a, f);
@@ -1282,13 +1286,21 @@ function extraField(a, f) {
   const b = el("button", "field extra" + (set ? " set" : ""));
   b.append(svg(EXTRA_GLYPH[f.label] || EXTRA_GLYPH.tiers, 13, 1.5));
   const opt = optionFor(f, f.value);
-  b.title = f.menu
+  b.title = f.label === SUB_EFFORT ? subEffortTitle(f, opt) : f.menu
     ? t("{label}: {value}", { label: t(f.label), value: f.summary }) + "\n" + f.options.map((o) => `${o.label}: ${o.note}`).join("\n")
     : t("{label}: {value}", { label: t(f.label), value: t(opt?.label || f.value || "same as model") }) + (opt?.note && !FOLLOWS_MODEL.includes(f.label) ? "\n" + t(opt.note) : "");
   b.setAttribute("aria-label", b.title);
   b.dataset.key = f.key;
   b.onclick = (ev) => openPicker(a, f, b, ev);
   return b;
+}
+
+// subEffortTitle: the effort subagents start at, and unset, what that means:
+// Codex runs one at the session's effort, or, given a model of its own, at
+// that model's default
+function subEffortTitle(f, opt) {
+  return t("{label}: {value}", { label: t(f.label), value: effortName(opt || { value: f.value }) }) +
+    (f.value ? "" : "\n" + t("the session's effort, or the subagent model's own default"));
 }
 
 // launchButton copies the command that starts an agent on magpie, for one
@@ -1639,7 +1651,7 @@ function openPicker(agent, field, anchor, ev, only) {
   // routing groups come first, before the agent's own models and each
   // provider's; only the picker's own choices (Automatic, Off) above them
   options = [...options.filter((o) => o.reset), ...options.filter((o) => !o.reset && o.group === ROUTING_GROUPS), ...options.filter((o) => !o.reset && o.group !== ROUTING_GROUPS)];
-  const effortPicker = !only && (field.key === "effort" || field.label === "effort" || field.label === "thinking");
+  const effortPicker = !only && (field.key === "effort" || field.label === "effort" || field.label === "thinking" || field.label === SUB_EFFORT);
   // Current model first, then the rest in catalog order. Effort levels keep
   // their natural low → high order because their position is meaningful.
   const i = options.findIndex((o) => o.value === cur);
@@ -1853,6 +1865,12 @@ function renderEffortPicker() {
       value.classList.toggle("empty", !option.value);
     }
     opened.anchor.querySelector(".effort-ic")?.replaceWith(effortIcon(opened.field));
+    // a square (the subagents' effort) says it in its title, lit while set
+    if (opened.field.label === SUB_EFFORT) {
+      opened.anchor.classList.toggle("set", !!option.value);
+      opened.anchor.title = subEffortTitle(opened.field, option);
+      opened.anchor.setAttribute("aria-label", opened.anchor.title);
+    }
     // Persist every settled slider value, but keep the compact control open so
     // the user can compare adjacent levels. Queue writes to preserve ordering
     // when keyboard input changes several stops quickly.

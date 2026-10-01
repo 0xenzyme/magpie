@@ -109,6 +109,8 @@ const I18N = {
     "large": "大模型",
     "tiers": "分档",
     "subagents": "子 agent",
+    "subagent effort": "子 agent 推理强度",
+    "the session's effort, or the subagent model's own default": "跟随当前会话的推理强度；子 agent 指定了模型时，用该模型的默认强度",
     "slow": "慢模型",
     "smol": "小模型",
     "sign-in": "登录方式",
