@@ -125,10 +125,20 @@ type rRequest struct {
 	ServiceTier       string          `json:"service_tier,omitempty"`
 	PromptCacheKey    string          `json:"prompt_cache_key,omitempty"`
 	Include           []string        `json:"include,omitempty"`
+	ClientMetadata    json.RawMessage `json:"client_metadata,omitempty"`
+	Text              json.RawMessage `json:"text,omitempty"`
 	Reasoning         *struct {
 		Effort  string `json:"effort,omitempty"`
 		Summary string `json:"summary,omitempty"`
 	} `json:"reasoning,omitempty"`
+}
+
+// sentRaw is a raw field the client sent, unless it sent null.
+func sentRaw(v json.RawMessage) json.RawMessage {
+	if t := strings.TrimSpace(string(v)); t == "" || t == "null" {
+		return nil
+	}
+	return v
 }
 
 func parseResponses(body []byte) (*Request, error) {
@@ -139,7 +149,8 @@ func parseResponses(body []byte) (*Request, error) {
 		return nil, fmt.Errorf("invalid request: %v", err)
 	}
 	r := &Request{Model: q.Model, System: q.Instructions, MaxTokens: q.MaxOutputTokens, Temp: q.Temperature,
-		TopP: q.TopP, Stream: q.Stream, Parallel: q.ParallelToolCalls, Fast: q.ServiceTier == "priority", CacheKey: q.PromptCacheKey, Include: q.Include}
+		TopP: q.TopP, Stream: q.Stream, Parallel: q.ParallelToolCalls, Fast: q.ServiceTier == "priority", CacheKey: q.PromptCacheKey, Include: q.Include,
+		ClientMetadata: sentRaw(q.ClientMetadata), Text: sentRaw(q.Text)}
 	if q.Reasoning != nil {
 		r.Effort = effortOf(q.Reasoning.Effort)
 		r.Thinking = true
@@ -404,6 +415,12 @@ func buildResponses(r *Request, model, host string, rejectTemp bool) []byte {
 		input = []map[string]any{}
 	}
 	out := map[string]any{"model": model, "input": input, "stream": r.Stream, "store": false}
+	if len(r.ClientMetadata) > 0 {
+		out["client_metadata"] = r.ClientMetadata
+	}
+	if len(r.Text) > 0 {
+		out["text"] = r.Text
+	}
 	if r.CacheKey != "" {
 		out["prompt_cache_key"] = r.CacheKey
 	}

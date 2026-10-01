@@ -1522,6 +1522,15 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			body, searchFn = searchAsFunction(body)
 		}
 		body = forVendor(p, body)
+		// xAI's API turns away a tool_choice with no tools beside it ("A
+		// tool_choice was set on the request but no tools were specified"),
+		// and Copilot's /responses, in front of it for Grok, with a bare
+		// 400: Codex's compaction summary goes without its tools (#378).
+		// Anywhere else it goes as asked, which a relay checking Codex's
+		// shape wants (#292).
+		if p.Host() == "api.x.ai" || p.Account != nil && p.Account.Agent == "copilot" {
+			body = withoutLoneToolChoice(body)
+		}
 	case provider.Chat:
 		body = developerAsSystem(body)
 		if strings.HasSuffix(p.Host(), "openai.com") || p.IsAzure() {
@@ -2530,6 +2539,21 @@ func withoutFields(body []byte, fields ...string) []byte {
 		return body
 	}
 	return out
+}
+
+// withoutLoneToolChoice leaves out a tool_choice sent with no tools; with
+// none to choose from it says nothing.
+func withoutLoneToolChoice(body []byte) []byte {
+	if !bytes.Contains(body, []byte(`"tool_choice"`)) {
+		return body
+	}
+	var q struct {
+		Tools []json.RawMessage `json:"tools"`
+	}
+	if json.Unmarshal(body, &q) != nil || len(q.Tools) > 0 {
+		return body
+	}
+	return withoutFields(body, "tool_choice")
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
