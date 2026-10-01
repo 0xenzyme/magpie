@@ -63,6 +63,7 @@ type rTool struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
 	Parameters  json.RawMessage `json:"parameters,omitempty"`
+	Strict      *bool           `json:"strict,omitempty"`
 	Tools       []rTool         `json:"tools,omitempty"` // a namespace's
 	Execution   string          `json:"execution,omitempty"`
 }
@@ -238,7 +239,7 @@ func parseResponses(body []byte) (*Request, error) {
 		}
 		switch t.Type {
 		case "function":
-			offer(i, Tool{Name: t.Name, Description: t.Description, Schema: t.Parameters}, nsTool{})
+			offer(i, Tool{Name: t.Name, Description: t.Description, Schema: t.Parameters, Strict: t.Strict != nil && *t.Strict}, nsTool{})
 		case "namespace":
 			// offered flat, as few models know namespaces; a call is given
 			// its namespace back on the way out
@@ -247,7 +248,7 @@ func parseResponses(body []byte) (*Request, error) {
 					continue
 				}
 				flat := flatName(t.Name, nt.Name)
-				offer(i, Tool{Name: flat, Description: nt.Description, Schema: nt.Parameters}, nsTool{Namespace: t.Name, Name: nt.Name})
+				offer(i, Tool{Name: flat, Description: nt.Description, Schema: nt.Parameters, Strict: nt.Strict != nil && *nt.Strict}, nsTool{Namespace: t.Name, Name: nt.Name})
 			}
 		case toolSearch:
 			if t.Execution == "client" {
@@ -463,7 +464,10 @@ func buildResponses(r *Request, model, host string, rejectTemp bool) []byte {
 	if len(r.Tools) > 0 || r.WebSearch {
 		var tools []map[string]any
 		for _, t := range r.Tools {
-			tool := map[string]any{"type": "function", "name": t.Name, "description": t.Description}
+			// strict is said, as Codex says it: left out, the ChatGPT
+			// backend holds the schema to strict mode's rules and refuses a
+			// pattern with a lookaround (MiniMax Code's path, #383)
+			tool := map[string]any{"type": "function", "name": t.Name, "description": t.Description, "strict": t.Strict}
 			if len(t.Schema) > 0 {
 				tool["parameters"] = t.Schema
 			}

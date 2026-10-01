@@ -80,6 +80,7 @@ type Tool struct {
 	Name        string
 	Description string
 	Schema      json.RawMessage // JSON schema of the arguments
+	Strict      bool            // the client asked for its arguments held to the schema
 }
 
 // Request is a call to a model, whichever API it arrived in.
