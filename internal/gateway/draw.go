@@ -455,6 +455,10 @@ func isGoogle(p provider.Provider) bool {
 // viaFor is where model is best asked to draw at p.
 func viaFor(p provider.Provider, model string) drawVia {
 	switch {
+	case p.IsRemoteMagpie():
+		// another magpie's images API asks the model's vendor the way
+		// that model draws there
+		return viaImages
 	case isGoogle(p) && strings.Contains(strings.ToLower(model), "gemini"):
 		return viaGemini
 	case provider.HostOf(p.Base(provider.Chat)) == "openrouter.ai":

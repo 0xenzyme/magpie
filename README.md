@@ -140,6 +140,9 @@ routing groups (`office/group/…`) and usage are the shared one's. A request
 goes on in the API the agent spoke — Anthropic Messages, Responses, Chat
 Completions, token counting — and a model the shared magpie's provider serves
 on another API only is turned into that API once, never on both computers.
+Its list is the models the shared magpie's agents are shown, each named with
+its provider there (`Claude Sonnet 5 · Relay A · office`), and its image
+models are listed under Settings → Images and draw through it.
 
 Baidu Qianfan's [Token Plans](https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6)
 are available as `baidu-qianfan`: a personal (个人版) and an enterprise (企业版)

@@ -195,7 +195,7 @@ func (p Provider) fetchOne(ctx context.Context) ([]catalog.Model, string, error)
 	if u := strings.TrimSpace(p.ModelsURL); u != "" {
 		// asked where the user said, and nowhere else: the base URLs
 		// list nothing, or the wrong thing
-		ms, err := catalog.FetchURL(ctx, u, p.Key, p.Chat == "" && p.Responses == "", p.Headers)
+		ms, err := catalog.FetchURL(ctx, u, p.Key, p.Chat == "" && p.Responses == "", p.listHeaders())
 		if err != nil {
 			return nil, u, err
 		}
@@ -208,7 +208,7 @@ func (p Provider) fetchOne(ctx context.Context) ([]catalog.Model, string, error)
 	var errs []string
 	for _, proto := range p.Speaks() {
 		base := p.Base(proto)
-		ms, at, err := catalog.FetchAt(ctx, base, p.Key, proto == Anthropic, p.Headers)
+		ms, at, err := catalog.FetchAt(ctx, base, p.Key, proto == Anthropic, p.listHeaders())
 		if err == nil {
 			if proto != Anthropic {
 				base = p.fixV1(base, at)

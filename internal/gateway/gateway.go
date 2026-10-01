@@ -3,6 +3,7 @@ package gateway
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -425,6 +426,30 @@ func nativeEndpoints(e provider.Entry) []string {
 	return out
 }
 
+// drawerObjects are the image models magpie draws with, as another magpie
+// asks for them in its list (provider.DrawersHeader): "kind": "image",
+// which an agent's list never has, so it takes none for a model to chat
+// with.
+func drawerObjects() []map[string]any {
+	var out []map[string]any
+	for _, p := range provider.All() {
+		if !p.On() || p.Decides() {
+			continue
+		}
+		for _, m := range Drawers(p) {
+			name := cmp.Or(m.Name, m.ID)
+			o := map[string]any{"id": p.ID + "/" + m.ID, "object": "model", "type": "model", "kind": "image", "created": 0,
+				"owned_by": p.ID, "display_name": name, "magpie_label": name + " · " + p.Name,
+				"modalities": map[string]any{"input": []string{"text"}, "output": []string{"image"}}}
+			if m.Images {
+				o["modalities"] = map[string]any{"input": []string{"text", "image"}, "output": []string{"image"}}
+			}
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
 // catalogFor is the catalog as the agent asking is shown it.
 func catalogFor(r *http.Request) []provider.Entry {
 	shown, _ := provider.CatalogFor(agentOf(r))
@@ -438,8 +463,16 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 		data = desktopModels(shown)
 	} else {
 		for _, e := range shown {
-			data = append(data, modelObject(e))
+			m := modelObject(e)
+			// for another magpie: its name with its provider here after
+			// it, so two providers' models of one name are told apart
+			// there as they are here
+			m["magpie_label"] = e.Label()
+			data = append(data, m)
 		}
+	}
+	if r.Header.Get(provider.DrawersHeader) != "" {
+		data = append(data, drawerObjects()...)
 	}
 	out := map[string]any{"object": "list", "data": data, "has_more": false}
 	if len(data) > 0 {
