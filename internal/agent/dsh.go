@@ -30,7 +30,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -129,10 +128,15 @@ func dsh(home string) *Agent {
 // dshProfiles are the profiles' patch lists (dsh 0.1.5 on), web's first.
 func dshProfiles(dir string) []string {
 	files, _ := filepath.Glob(filepath.Join(dir, "profiles", "*", "cordis.patch.yml"))
-	sort.SliceStable(files, func(i, j int) bool {
-		return filepath.Base(filepath.Dir(files[i])) == "web" && filepath.Base(filepath.Dir(files[j])) != "web"
-	})
-	return files
+	var web, rest []string
+	for _, f := range files {
+		if filepath.Base(filepath.Dir(f)) == "web" {
+			web = append(web, f)
+		} else {
+			rest = append(rest, f)
+		}
+	}
+	return append(web, rest...)
 }
 
 // dshItem is one entry of the patch list, as its lines.
@@ -144,9 +148,14 @@ type dshItem struct {
 
 var dshIDLine = regexp.MustCompile(`^(?:- |  )id:\s*['"]?([^'"#\s]+)['"]?\s*(#.*)?$`)
 
-// dshParse splits the patch list into what comes before its first entry and
-// the entries. A file that is not a plain block list is left alone.
-func dshParse(raw string) (head []string, items []dshItem, err error) {
+// dshParse splits the patch list at path into what comes before its first
+// entry and the entries. A list written in flow style ([ {id: a} ], which
+// dsh's own writers keep a profile's [] in) is read as the same list in block
+// style, and written back so; a file that is no list is left alone.
+func dshParse(path, raw string) (head []string, items []dshItem, err error) {
+	if b, ok := edit.BlockList(raw); ok {
+		raw = b
+	}
 	for _, l := range splitLinesKeep(raw) {
 		t := strings.TrimSpace(l)
 		switch {
@@ -154,14 +163,14 @@ func dshParse(raw string) (head []string, items []dshItem, err error) {
 			items = append(items, dshItem{lines: []string{l}})
 		case len(items) == 0:
 			if t != "" && !strings.HasPrefix(t, "#") && t != "[]" {
-				return nil, nil, fmt.Errorf("%s is not a list of entries magpie can edit", "config.yaml")
+				return nil, nil, fmt.Errorf("%s is not a list of entries magpie can edit", path)
 			}
 			if t != "[]" {
 				head = append(head, l)
 			}
 			continue
 		case t != "" && !strings.HasPrefix(t, "#") && !strings.HasPrefix(l, " "):
-			return nil, nil, fmt.Errorf("%s is not a list of entries magpie can edit", "config.yaml")
+			return nil, nil, fmt.Errorf("%s is not a list of entries magpie can edit", path)
 		default:
 			items[len(items)-1].lines = append(items[len(items)-1].lines, l)
 		}
@@ -188,7 +197,7 @@ func dshRead(path string) ([]string, []dshItem, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return dshParse(string(b))
+	return dshParse(path, string(b))
 }
 
 // dshWrite puts a patch list back together.
