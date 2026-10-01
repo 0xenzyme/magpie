@@ -2263,8 +2263,6 @@ async function switchProvider(p, on, s) {
   }
 }
 
-// Sign-ins magpie found but leaves alone, so nobody wonders why an agent that
-// is clearly logged in is not in the list: the ones the user removed.
 // renderMovable: one quiet line over the list naming the built-in
 // subscriptions a community plugin can run, and Review, which opens the
 // first one's editor at its Runs on. Hidden, it stays hidden until another
@@ -2292,6 +2290,8 @@ function renderMovable() {
   box.append(line);
 }
 
+// Sign-ins magpie found but leaves alone, so nobody wonders why an agent that
+// is clearly logged in is not in the list: the ones the user removed.
 function renderExcluded() {
   const box = $("#excluded");
   box.replaceChildren();
