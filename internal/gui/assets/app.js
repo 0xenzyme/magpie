@@ -5271,11 +5271,10 @@ function renderModels(p) {
     try {
       const r = await api("provider/models", { ...asTyped(), id: p.id });
       status(t("{p}: {n} models", { p: p.name, n: r.count }), "ok");
-      const chosen = draft.chosen;
+      // the redraw keeps the editor's draft, the picks in it with it: none
+      // are put back by hand, which put them in whichever editor was open
+      // by then, another provider's too (#464)
       await loadProviders();
-      draft = draft || {};
-      draft.chosen = chosen;
-      renderProviders();
     } catch (e) { status(e.message, "err"); refresh.classList.remove("busy"); }
   };
   // each model the agents see gets a tiny request of its own: a vendor
@@ -5326,7 +5325,7 @@ function renderModels(p) {
     forget.title = t("Drop the list fetched from the vendor; the models.dev one is used until Refresh");
     forget.onclick = async () => {
       forget.classList.add("busy");
-      try { await api("provider/unfetch", { id: p.id }); const chosen = draft.chosen; await loadProviders(); draft.chosen = chosen; renderProviders(); }
+      try { await api("provider/unfetch", { id: p.id }); await loadProviders(); } // the picks stay in the draft, as on a Refresh
       catch (e) { status(e.message, "err"); forget.classList.remove("busy"); }
     };
     foot.append(forget);
