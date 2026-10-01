@@ -125,6 +125,7 @@ func Secret(name string) bool { return secretHeader.MatchString(name) }
 
 func withoutKeys(p provider.Provider) provider.Provider {
 	p.Key, p.KeyName, p.Keys, p.KeyProtocol = "", "", nil, ""
+	p.BalanceToken = ""
 	if len(p.Headers) > 0 {
 		h := map[string]string{}
 		for k, v := range p.Headers {

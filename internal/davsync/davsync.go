@@ -450,6 +450,9 @@ func take(to *backup.Bundle, from backup.Bundle, part string) {
 			for i, p := range ps {
 				if k, ok := keys[p.ID]; ok && p.Key == "" && len(p.Keys) == 0 {
 					ps[i].Key, ps[i].KeyName, ps[i].Keys, ps[i].KeyProtocol = k.Key, k.KeyName, k.Keys, k.KeyProtocol
+					if p.BalanceToken == "" {
+						ps[i].BalanceToken = k.BalanceToken
+					}
 				}
 			}
 		}

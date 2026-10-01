@@ -36,6 +36,9 @@ func Restore(ps []Provider) (added, replaced int, err error) {
 		}
 		if p.Key == "" && len(p.Keys) == 0 {
 			p.Key, p.KeyName, p.Keys, p.KeyProtocol = f.Providers[i].Key, f.Providers[i].KeyName, f.Providers[i].Keys, f.Providers[i].KeyProtocol
+			if p.BalanceToken == "" {
+				p.BalanceToken = f.Providers[i].BalanceToken
+			}
 		}
 		f.Providers[i] = p
 		replaced++
@@ -94,6 +97,9 @@ func Mirror(ps []Provider, gs []Group) error {
 		}
 		if h, ok := here[p.ID]; ok && p.Key == "" && len(p.Keys) == 0 {
 			p.Key, p.KeyName, p.Keys, p.KeyProtocol = h.Key, h.KeyName, h.Keys, h.KeyProtocol
+			if p.BalanceToken == "" {
+				p.BalanceToken = h.BalanceToken
+			}
 		}
 		out = append(out, p)
 	}
