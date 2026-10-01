@@ -1941,6 +1941,10 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 			r := *req
 			r.CacheKey, req = "", &r
 		}
+		if offEffort(req.Effort) && !s.fits(p.ID, offRefused(model), to) {
+			r := *req
+			r.Effort, req = fitFor(p, model, "low"), &r
+		}
 		if to == provider.Anthropic && p.IsBedrock() && req.Metadata != nil {
 			// not the plain id Bedrock checks metadata.user_id against (#176)
 			r := *req
@@ -1984,8 +1988,18 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 			s.markUnfit(p.ID, thinkingConfigField, to)
 			continue
 		}
+		if offEffort(req.Effort) && res.StatusCode == http.StatusBadRequest && effortLevelsNamed.Match(b) {
+			// reasoning turned off, which the model refuses naming the
+			// levels it takes (Command Code's `expected one of "low"|…`
+			// for Claude Code's auto mode classifier, #394): asked again
+			// at its lowest, and so from then on
+			s.markUnfit(p.ID, offRefused(model), to)
+			r := *req
+			r.Effort, req = fitFor(p, model, "low"), &r
+			continue
+		}
 		if to == provider.Chat && res.StatusCode == http.StatusBadRequest && req.Effort != "none" &&
-			toolsWithoutEffort.Match(b) && !s.servesElsewhere(p, model, to) {
+			toolsWithoutEffort.Match(b) && !s.servesElsewhere(p, model, to) && s.fits(p.ID, offRefused(model), to) {
 			// tools with reasoning refused on chat, and no Responses API
 			// to take them to: asked again without reasoning (#176)
 			r := *req
@@ -2541,6 +2555,13 @@ func conversationID(in http.Header, body []byte) string {
 	sum := sha256.Sum256(first)
 	return "magpie-" + hex.EncodeToString(sum[:12])
 }
+
+// offEffort is an effort turning reasoning off, or as near off as asked.
+func offEffort(e string) bool { return e == "none" || e == "minimal" }
+
+// offRefused is how unfit remembers a provider refusing reasoning turned
+// off for model.
+func offRefused(model string) string { return "reasoning off\x00" + model }
 
 // effortLevelsNamed is an error that lists the reasoning levels a model
 // takes, as one refusing "none" does: Command Code's `expected one of
