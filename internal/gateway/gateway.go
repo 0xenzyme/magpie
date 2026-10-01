@@ -1865,6 +1865,10 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	if proto == provider.Chat && sse {
 		tidy = &chatTidy{}
 	}
+	var whole *chatWhole
+	if proto == provider.Chat && !sse && strings.Contains(res.Header.Get("Content-Type"), "json") {
+		whole = &chatWhole{}
+	}
 	var search *searchTidy
 	if searchFn && sse {
 		search = &searchTidy{}
@@ -1882,6 +1886,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			out := buf[:n]
 			if tidy != nil {
 				out = tidy.write(out)
+			}
+			if whole != nil {
+				out = whole.write(out)
 			}
 			if search != nil {
 				out = search.write(out)
@@ -1903,6 +1910,13 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	}
 	if tidy != nil {
 		w.Write(tidy.flush())
+	}
+	if whole != nil {
+		out := whole.flush()
+		if spaces != nil {
+			out = spaces.write(out)
+		}
+		w.Write(out)
 	}
 	if search != nil {
 		out := search.flush()
