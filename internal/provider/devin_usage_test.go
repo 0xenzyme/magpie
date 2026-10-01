@@ -15,7 +15,8 @@ import (
 
 // TestDevinUsage: magpie's built-in Devin account showed no usage while the
 // Devin plugin showed its day, week and ACU windows; both read
-// GetUserStatus now, and a key Devin refuses says to sign in again.
+// GetUserStatus now, and a key Devin refuses says to sign in again. The
+// CLI's own account had no plan either, where the plugin's said its tier.
 func TestDevinUsage(t *testing.T) {
 	home := claudeHome(t)
 	data := filepath.Join(home, "data")
@@ -28,6 +29,9 @@ printf 'Logged in (via Devin).\n\nUser:\n  Email:             dev@example.com\n\
 `), 0o755)
 	fakeDevin(t, exe)
 	forgetDevinStatus()
+	old := firstAsk
+	firstAsk = time.Minute // a loaded machine's shell takes longer than a look's first wait
+	t.Cleanup(func() { firstAsk = old })
 
 	var asked map[string]any
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +55,8 @@ printf 'Logged in (via Devin).\n\nUser:\n  Email:             dev@example.com\n\
 	t.Setenv("WINDSURF_API_SERVER_URL", fake.URL)
 
 	ls, ok := builtinLogins("devin")
-	if !ok || len(ls) != 1 || ls[0].User != "dev@example.com" {
+	// the CLI's own account is named by its tier, as the plugin names it
+	if !ok || len(ls) != 1 || ls[0].User != "dev@example.com" || ls[0].Plan != "Devin Pro" {
 		t.Fatalf("logins %+v %v", ls, ok)
 	}
 	q := loginQuota(context.Background(), ls[0])
