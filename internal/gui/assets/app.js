@@ -10473,6 +10473,22 @@ setInterval(async () => {
 }, 5000);
 window.addEventListener("focus", load);
 setInterval(renderUpdateBadge, 15 * 60 * 1000); // a window left open still hears of a new version
+// renderPluginDot puts a dot on Plugins while a plugin's update waits for
+// the reader (someone else's plugin, or one pinned; the community's update
+// by themselves)
+async function renderPluginDot() {
+  const b = mode === "window" && document.querySelector('#nav button[data-view="plugins"]');
+  if (!b) return;
+  const u = await api("plugins/updates").catch(() => null);
+  const n = u?.waiting?.length || 0;
+  b.classList.toggle("has-dot", n > 0);
+  if (n) b.title = t(n === 1 ? "An update for {name} is out" : "Updates for {n} plugins are out", { n, name: u.waiting[0].package });
+  else b.removeAttribute("title");
+}
+window.renderPluginDot = renderPluginDot;
+renderPluginDot();
+window.addEventListener("focus", renderPluginDot);
+setInterval(renderPluginDot, 15 * 60 * 1000);
 // ---------- hiding emails, for a screenshot to share ----------
 // Routing and Usage each have a Hide emails button, one setting for both.
 // Each email address on the page — an account's, in a row, a sentence,

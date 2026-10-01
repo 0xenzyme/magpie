@@ -26,6 +26,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"github.com/yetone/magpie/internal/netproxy"
+	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/redact"
 	"github.com/yetone/magpie/internal/settings"
@@ -306,6 +307,8 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	go provider.KeepWorkBuddyCheckedIn(ctx)
 	// and moves the built-in subscriptions being retired onto their plugins
 	go provider.KeepRetiringMoved(ctx)
+	// and keeps the community's plugins up to date, noting others' updates
+	go plugin.KeepUpdated(ctx)
 	for _, f := range WhileServing {
 		go f(ctx)
 	}
