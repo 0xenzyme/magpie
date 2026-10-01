@@ -177,6 +177,9 @@ type settingsJSON struct {
 	ImageGenModels []modelRef `json:"imageGenModels"`
 	// where other machines reach the gateway while it is shared
 	LANURLs []string `json:"lanURLs,omitempty"`
+	// LANURLs are a container's own addresses, not the host's: the page
+	// offers the one it was opened at instead, or says how to set it
+	LANContainer bool `json:"lanContainer,omitempty"`
 	// when the Codex warm-up last started an account's window
 	CodexWarmed *time.Time `json:"codexWarmed,omitempty"`
 	// and the Claude warm-up
@@ -207,7 +210,7 @@ func settingsState() settingsJSON {
 	s.ProxyNow, s.ProxySource = netproxy.Describe()
 	s.Login = autostart.Enabled()
 	if s.LAN {
-		s.LANURLs = gateway.LANURLs()
+		s.LANURLs, s.LANContainer = gateway.LANURLs(), gateway.ContainerAddrs()
 	}
 	s.CodexWarmed, s.ClaudeWarmed = latest(provider.CodexWarmed()), latest(provider.ClaudeWarmed())
 	s.WorkBuddy, s.WorkBuddyCheckins = provider.HasWorkBuddy(), provider.WorkBuddyCheckins()

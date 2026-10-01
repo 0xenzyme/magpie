@@ -481,7 +481,11 @@ on every interface of the host, past its firewall. To reach it from other
 machines, turn on Settings → Share on local network in the browser UI (or
 put `"lan": true, "lanKey": "sk-magpie-…"` in `/config/magpie/settings.json`):
 from then on a request from outside the container must carry that key as its
-API key, and only then publish the port beyond 127.0.0.1.
+API key, and only then publish the port beyond 127.0.0.1. Inside the container
+magpie only sees the container's own address (Docker's 172.17.x), so set
+`-e MAGPIE_PUBLIC_URL=http://<the host's or NAS's address>:3425` (the port
+published on the host) for the address it shows and prints to be the one
+other machines use.
 
 For the browser UI run the image with `magpie web --addr 0.0.0.0:3430 --no-open`
 in place of the default `serve`, and open

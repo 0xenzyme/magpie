@@ -9498,7 +9498,17 @@ function renderLAN(s) {
   row(t("Share on local network"), t("Agents on other computers on this network can use magpie’s models, with the API key below"), "",
     segs([["off", t("Off")], ["on", t("On")]], s.lan ? "on" : "off", (v) => set({ on: v === "on" })));
   if (!s.lan) return;
-  const urls = s.lanURLs || [];
+  let urls = s.lanURLs || [], sub = "";
+  // in a container magpie finds only the container's own addresses; the
+  // page opened over the network was reached at the host's, so the
+  // gateway is offered there, on its port
+  if (s.lanContainer) {
+    const host = location.hostname, port = urls.length ? new URL(urls[0]).port : "";
+    if (web && host && port && !/^(localhost|127\.|\[::1\]$)/.test(host)) {
+      urls = ["http://" + host + ":" + port]; // an IPv6 hostname comes bracketed
+      sub = t("Where this page was opened, on the gateway’s port; MAGPIE_PUBLIC_URL sets another");
+    } else sub = t("The container’s own addresses, which other devices can’t reach: set MAGPIE_PUBLIC_URL to the host’s");
+  }
   if (!urls.length) row(t("Address"), t("This computer has no local network address right now"), "");
   else {
     if (!urls.includes(lanSelectedURL)) lanSelectedURL = urls[0];
@@ -9532,6 +9542,7 @@ function renderLAN(s) {
     row(t("Address"), "", "", controls).classList.add("lan-address-row");
     update();
   }
+  if (sub) row(t("In a container"), sub, "").classList.add("lan-container");
   const again = el("button", "text", t("New key"));
   again.onclick = () => set({ on: true, newKey: true });
   row(t("API key"), t("Other computers send it as their API key; a new one stops the old from working"),
