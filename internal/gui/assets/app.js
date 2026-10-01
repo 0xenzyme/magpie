@@ -8695,6 +8695,12 @@ async function loadSettings() {
   const s = await api("settings");
   if (!prefsSettled(since) && prefs) return; // the save draws the page when it's in
   prefs = s;
+  // the WebDAV setup can have been changed from outside the window (magpie
+  // webdav at the terminal): the page's copy of it is dropped, so the page
+  // is drawn from a fresh read. Coming back to the window is safe with a
+  // form open: load() keeps off this path while one is, so it is never
+  // rebuilt under whoever is typing in it
+  syncView = null;
   renderSettings();
 }
 
@@ -8916,7 +8922,15 @@ async function renderSync(v) {
   const parts = (ps) => ps.map((p) => t({ providers: "providers", settings: "settings", profiles: "profiles", agents: "agents' models", library: "library" }[p])).join(t(", "));
 
   // WebDAV or S3
-  let status = t("Keeps providers, settings, profiles, agents' models and the library the same on every computer");
+  // off: what it would keep the same, named from the view's toggles as the
+  // CLI names them, so the page can't promise a part the setup leaves out.
+  // A view that says nothing of the toggles (a read that failed) reads as
+  // all on, as Status' off view is.
+  const goes = ["settings", "profiles"];
+  if (v.agents !== false) goes.push("agents");
+  if (v.library !== false) goes.push("library");
+  let status = t("Keeps {parts} the same on every computer", {
+    parts: t(v.keys === false ? "providers without their API keys" : "providers with their API keys") + t(", ") + parts(goes) });
   const s3 = v.on && v.kind === "s3";
   if (v.on) {
     const hostOf = (u) => { try { return new URL(u).host; } catch { return u; } };
