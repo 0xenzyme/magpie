@@ -685,6 +685,18 @@ Trash lists what went and Restore posts its key; an agent whose sessions
 magpie can't delete (OpenCode) shows no delete. No left-border accent, every
 string in Chinese. Chromium and WebKit, English and Chinese, API faked.
 
+`sessions-toolbar.test.cjs` uses ten agents to check that fitting tabs stay
+visible at 1800px, while 900, 660 and 320px windows use a compact agent menu.
+Resizing keeps the current agent; search and Trash fit, the menu fits the
+narrow window, arrow keys choose, Escape returns focus, and an outside click
+closes it. Choosing an agent leaves Trash and keeps keyboard focus through
+loading; 150% CSS zoom switches to the menu and back. Light and dark themes,
+English and Chinese, Chromium and WebKit, API faked. Run it with:
+
+```sh
+node --test internal/gui/tests/sessions-toolbar.test.cjs
+```
+
 `routing-wb-refused.test.cjs` opens a request WorkBuddy refused "from an
 unapproved channel" (Codex's system prompt, #182) on the Routing page: the
 vendor's words are given without the hint the gateway adds, and the hint is
