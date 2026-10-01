@@ -486,7 +486,10 @@
   const WB_REFUSED = "WorkBuddy refuses chats from Codex and Claude Code (their system prompt); use it from Hermes, OpenCode or Pi, or add another provider to this group";
   // what it adds to a vendor's edge firewall's block page (provider.BlockedHint)
   const BLOCKED = "the provider's network firewall blocked requests from this IP; wait a while, or switch to another network or proxy";
-  const HINTS = [WB_REFUSED, BLOCKED];
+  // what it says of ZCode's Start Plan turning a request away (#425,
+  // provider.ZCodeStartBlockedHint), in place of BLOCKED
+  const ZCODE_BLOCKED = "ZCode's Start Plan turns away requests that don't come from the ZCode app itself, and magpie doesn't pretend to be it; it can also be a network block of this IP. Use an account with a GLM Coding Plan, or add another provider to this group";
+  const HINTS = [WB_REFUSED, BLOCKED, ZCODE_BLOCKED];
 
   function trySaid(r, i) {
     const tr = r.tries[i], w = tried(r, tr), agent = agentName(r.agent);

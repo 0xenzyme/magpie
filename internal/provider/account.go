@@ -194,6 +194,11 @@ func (p Provider) Explain(msg string, status int, body []byte) string {
 		return msg
 	}
 	if more := p.Account.explain(status, body); more != "" {
+		// an account's reading of a block page that names the network
+		// block itself (ZCodeStartBlockedHint) takes the generic one's place
+		if more == ZCodeStartBlockedHint {
+			msg = strings.TrimSuffix(msg, " — "+BlockedHint)
+		}
 		return msg + " — " + more
 	}
 	return msg
