@@ -113,7 +113,11 @@ export const FakePlugin = async ({ client }) => ({
       if (auth?.key === "few") return { "fake-1": p.models["fake-1"] }
       // $FAKE_MODELS: the vendor's list, whose answer names one more model
       if (process.env.FAKE_MODELS && auth) {
-        const r = await fetch(process.env.FAKE_MODELS).then((r) => r.text()).catch(() => "")
+        const r = await fetch(process.env.FAKE_MODELS).then((r) => r.text()).catch((e) => {
+          // $FAKE_MODELS_THROW: the hook throws, as Cursor's, Grok's and Devin's do
+          if (process.env.FAKE_MODELS_THROW) throw e
+          return ""
+        })
         if (r) p.models["fake-" + r] = { ...p.models["fake-1"], id: "fake-" + r, name: r }
       }
       return p.models

@@ -15,9 +15,17 @@ import (
 // A plugin whose models hook can't reach its vendor and gives its
 // defaults back keeps the list it told last, for the provider and each
 // account, as a built-in whose fetch fails keeps the one it fetched last;
-// the vendor back, its list is told again.
+// the vendor back, its list is told again. So too for a hook that throws
+// (Cursor's, Grok's, Devin's) rather than give its defaults back.
 func TestFallenBackListKeepsTheLastOne(t *testing.T) {
+	for _, throws := range []string{"", "1"} {
+		t.Run("throws="+throws, func(t *testing.T) { fallenBack(t, throws) })
+	}
+}
+
+func fallenBack(t *testing.T, throws string) {
 	sandbox(t)
+	t.Setenv("FAKE_MODELS_THROW", throws)
 	var down atomic.Bool
 	var name atomic.Value
 	name.Store("extra")
