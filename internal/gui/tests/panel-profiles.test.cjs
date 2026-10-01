@@ -14,8 +14,8 @@
 // button back. With magpie slow to answer (reading every agent again took it
 // seconds) and no profiles yet, the chip saved is there at once, dimmed till
 // the answer, under the tabs' line and not scrolled up behind them (the
-// click held the button, which the chip came in above); × takes a chip away
-// at once; a save refused puts the list back and says why. No backend: the
+// click held the button, which the chip came in above); ×, clicked twice,
+// takes a chip away at once; a save refused puts the list back and says why. No backend: the
 // API is faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -214,9 +214,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.match(w.status, /hi/);
         assert.deepEqual(saved, ["hi"]);
 
-        // × takes it away at once
+        // × (clicked twice, #478) takes it away at once
         await chip("hi").hover();
         await chip("hi").locator(".x").nth(1).click();
+        await chip("hi").locator(".x.arm").click();
         await page.waitForTimeout(200);
         assert.equal(await chip("hi").count(), 0, "the chip deleted goes before magpie answers");
         await page.locator("#profiles .hint").waitFor({ state: "attached" });

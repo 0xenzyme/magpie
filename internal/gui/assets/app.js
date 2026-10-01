@@ -507,14 +507,16 @@ function renderProfiles() {
     c.title = [p.summary, lib].filter(Boolean).join("\n");
     c.append(el("span", "", p.name));
     if (lib) c.append(el("span", "lib"));
-    // the setup as it is now, saved over this profile
-    const u = el("span", "x", "↻");
-    u.title = t("Update to the current setup");
-    u.onclick = (ev) => { ev.stopPropagation(); profileAction("save", p.name, true); };
-    const x = el("span", "x", "×");
-    x.title = t("Delete profile");
-    x.onclick = (ev) => { ev.stopPropagation(); profileAction("delete", p.name); };
+    // the setup as it is now, saved over this profile; it, and ×, on a
+    // second click (#478)
+    const u = el("span", "x");
+    u._arm = "save";
+    u.onclick = (ev) => { ev.stopPropagation(); armOrDo(p.name, "save"); };
+    const x = el("span", "x");
+    x._arm = "delete";
+    x.onclick = (ev) => { ev.stopPropagation(); armOrDo(p.name, "delete"); };
     c.append(u, x);
+    paintArm(c);
     c.setAttribute("aria-expanded", "false");
     c.onclick = () => toggleProfile(c, p);
     chips.append(c);
@@ -523,21 +525,81 @@ function renderProfiles() {
   if (open) showProfile([...chips.children].find((c) => c._profile === open.name), open);
 }
 
-// profileOpen is the profile whose details are shown, by name.
+// profileArm is a chip's ↻ or × clicked once: it then reads "Overwrite?"
+// or "Delete?", and a second click does it (#478: either acted on the first
+// click, so a slip overwrote or deleted a profile). It goes after a few
+// seconds, on Escape, or when the other one is clicked.
+let profileArm = null;
+const ARM = {
+  save: { glyph: "↻", title: "Update to the current setup", armed: "Overwrite?", armedTitle: "Click again to update {name} to the current setup" },
+  delete: { glyph: "×", title: "Delete profile", armed: "Delete?", armedTitle: "Click again to delete {name}" },
+};
+
+function armOrDo(name, action) {
+  if (profileArm?.name === name && profileArm.action === action) {
+    disarmProfile();
+    profileAction(action, name, action === "save");
+    return;
+  }
+  clearTimeout(profileArm?.timer);
+  profileArm = { name, action, timer: setTimeout(disarmProfile, 3500) };
+  for (const c of $("#profiles").children) paintArm(c);
+}
+
+function disarmProfile() {
+  if (!profileArm) return false;
+  clearTimeout(profileArm.timer);
+  profileArm = null;
+  for (const c of $("#profiles").children) paintArm(c);
+  return true;
+}
+
+// paintArm draws a chip's ↻ and × as profileArm has them.
+function paintArm(c) {
+  for (const s of c.querySelectorAll?.(":scope > .x") || []) {
+    const a = ARM[s._arm], on = profileArm?.name === c._profile && profileArm.action === s._arm;
+    s.classList.toggle("arm", on);
+    s.textContent = on ? t(a.armed) : a.glyph;
+    s.title = on ? t(a.armedTitle, { name: c._profile }) : t(a.title);
+  }
+}
+
+// profileOpen is the profile whose details are shown, by name. However they
+// close — a second click on the chip, their ×, Escape, Apply, the panel's
+// list closed — they stay closed, the list opening again on the chips alone
+// (#478: closed by hand they came back with the list).
 let profileOpen = null;
 
 function toggleProfile(chip, p) {
-  if (profileOpen === p.name) {
-    profileOpen = null;
-    $("#profiles > .prof-detail")?.remove();
-    $(".profiles").classList.remove("detailed");
-    chip.classList.remove("on");
-    chip.setAttribute("aria-expanded", "false");
-  } else {
+  if (profileOpen === p.name) closeProfileDetail();
+  else {
     profileOpen = p.name;
     showProfile(chip, p);
+    fit();
   }
+}
+
+// closeProfileDetail closes the details shown, if any: false if none were.
+function closeProfileDetail() {
+  if (!profileOpen) return false;
+  profileOpen = null;
+  $("#profiles > .prof-detail")?.remove();
+  $(".profiles").classList.remove("detailed");
+  for (const c of $("#profiles").querySelectorAll(".chip.on")) { c.classList.remove("on"); c.setAttribute("aria-expanded", "false"); }
   fit();
+  return true;
+}
+
+// profileEscape is Escape for the profiles: it takes back a ↻ or × waiting
+// for its second click, else closes the details, else the panel's list —
+// one at a time, and never the tray panel with them (#478: Escape on the
+// details hid the whole panel). False if there was nothing to close.
+function profileEscape() {
+  if (disarmProfile()) return true;
+  const chip = $("#profiles .chip.on");
+  if (closeProfileDetail()) { chip?.focus({ preventScroll: true }); return true; }
+  if (mode === "panel" && profBox.classList.contains("open")) { closeProfiles(); profBtn.focus({ preventScroll: true }); return true; }
+  return false;
 }
 
 // showProfile draws what a profile holds, by agent, under its chip's line;
@@ -573,7 +635,16 @@ function profileDetail(p, footed) {
   apply.type = "button";
   apply.title = t("Apply {name} to the agents", { name: p.name });
   apply.onclick = () => profileAction("use", p.name);
-  head.append(el("span", "pd-name", p.name), apply);
+  const close = el("button", "pd-close", "×");
+  close.type = "button";
+  close.title = t("Close");
+  close.setAttribute("aria-label", t("Close"));
+  close.onclick = () => {
+    const chip = $("#profiles .chip.on");
+    closeProfileDetail();
+    chip?.focus({ preventScroll: true });
+  };
+  head.append(el("span", "pd-name", p.name), apply, close);
   if (!footed) d.append(head);
   const groups = p.agents || [];
   if (!groups.length) d.append(el("div", "pd-none", t("No agent settings saved")));
@@ -2394,6 +2465,7 @@ document.addEventListener("mousedown", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || pick) return;
   if (editing !== null || importingApps) cancelEdit();
+  else if (profileEscape()) e.preventDefault();
   else if (mode === "panel") api("window/hide", {});
 });
 
@@ -7606,6 +7678,8 @@ function openProfiles() {
 }
 function closeProfiles() {
   if (!profBox.classList.contains("open")) return;
+  disarmProfile();
+  closeProfileDetail(); // closed as by hand or by Apply, they open on the chips
   profBox.classList.remove("open");
   profBtn.setAttribute("aria-expanded", "false");
   const f = $(".profiles > .chip-input");
@@ -7618,8 +7692,7 @@ if (mode === "panel") {
   document.addEventListener("mousedown", (e) => {
     if (profBox.classList.contains("open") && !profBox.contains(e.target) && !profBtn.contains(e.target)) closeProfiles();
   }, true);
-  // the name field's Escape is its own (it stops there)
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && profBox.classList.contains("open")) { closeProfiles(); profBtn.focus({ preventScroll: true }); } });
+  // Escape closes them in profileEscape, and the name field's is its own
   addEventListener("resize", placeProfiles);
 }
 let panelTab = "agents";

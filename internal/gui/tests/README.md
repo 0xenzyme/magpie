@@ -352,8 +352,16 @@ tiers, one left empty as following the main model and which that is, #480)
 and what the Library gives it; a second click closes them; their Apply applies the profile, once; ↻ and
 × stay on the chip. In Chromium and WebKit, English and Chinese:
 
+`profile-confirm.test.cjs` (#478), in the window and in the tray panel: a
+chip's ↻ and × change nothing on a first click, reading "Overwrite?" and
+"Delete?" instead, and act on a second; the question goes on Escape or when
+left alone. The details' × closes them, the chip staying where it is; Escape
+closes the details, then the panel's list, and only then hides the panel;
+the list closed with the details open opens again on the chips alone, as
+after Apply. In Chromium and WebKit, English and Chinese:
+
 ```sh
-node --test --test-concurrency=1 internal/gui/tests/profile-details.test.cjs internal/gui/tests/panel-profiles.test.cjs
+node --test --test-concurrency=1 internal/gui/tests/profile-details.test.cjs internal/gui/tests/panel-profiles.test.cjs internal/gui/tests/profile-confirm.test.cjs
 ```
 
 `panel-routing.test.cjs` opens the tray panel's Routing tab: the gateway's
