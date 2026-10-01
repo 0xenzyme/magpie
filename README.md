@@ -467,7 +467,14 @@ Windows uses the WebView2 runtime that ships with the OS.
 ### Docker
 
 `docker build` makes a server image: the terminal-only binary on
-distroless, run as nonroot, with magpie's files in a volume at `/config`.
+distroless (`cc`, for the glibc the plugins' Bun needs), run as nonroot,
+with everything it keeps in a volume at `/config`: magpie's own files
+(`/config/magpie`), the sign-ins kept where their agent keeps them (HOME is
+`/config/home`, so `~/.codex`, `~/.claude`… are in it) and the cache with the
+Bun plugins run on (`/config/cache`, downloaded once). A volume made by an
+older image keeps working: magpie adds these folders to it on start, and only
+sign-ins made with that older image, which lived outside the volume, have to
+be made again.
 
 ```sh
 docker build -t magpie .
@@ -497,8 +504,14 @@ which is your own machine, not the container, so that page won't load: copy
 its whole address from the address bar and paste it into the sign-in's
 *Callback URL* field. `docker exec -it magpie /magpie accounts add codex`
 does the same in a terminal: open the link it prints, then paste the address
-the browser ended on. Keys and sign-ins live in the volume, so a restart
-keeps them.
+the browser ended on. Keys, sign-ins and plugins live in the volume, so a
+restart, or a new container on the same volume, keeps them.
+
+The image has a `HEALTHCHECK`: `magpie healthcheck` exits 0 while the gateway
+answers on `MAGPIE_ADDR`, under `serve` and `web` alike, so `docker ps` shows
+the container as healthy (Compose: `depends_on: condition: service_healthy`)
+with no curl in the image. Bind-mounting a folder at `/config` in place of a
+named volume works too; it has to be writable by uid 65532.
 
 ### Developing
 
