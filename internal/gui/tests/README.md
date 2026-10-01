@@ -592,7 +592,10 @@ Chinese the Requests tab says a large count in 万 and 亿 ("15.4 亿", an axis'
 "8000 万") by default; picking K / M / B saves westernUnits, moves nothing on
 the settings page, and the totals and chart axis then say "1.54B" and "80M"
 while the page stays Chinese, after a reload and in the tray panel too, each
-label still ending before the plot. In English the row is hidden and counts are
+label still ending before the plot. Every other count follows (#476): the
+Overview's tiles and chart peak, the Requests summary line, the Sessions tab's
+figures, and the panel's Routing "today", which turns back to 万/亿 when the
+setting does. In English the row is hidden and counts are
 K / M / B anyway; Chromium and WebKit.
 
 `panel-usage.test.cjs` opens the tray panel's Usage tab: the totals, a small

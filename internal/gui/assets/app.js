@@ -7380,7 +7380,16 @@ function renderUsageLoading() {
   $("#usageNote").textContent = "";
 }
 
+// a count as a short number: 1.33 亿, 68.1 万 in Chinese, 133M in English
+// and in Chinese with Settings' K/M/B units (westernUnits) — every count on
+// the Usage page and in the panel, tokens or requests, says it this one way
+let westernUnits = false;
 function fmtN(n) {
+  if (locale === "zh" && !westernUnits) {
+    if (n >= 1e8) return +(n / 1e8).toFixed(2) + " 亿";
+    if (n >= 1e4) return +(n / 1e4).toFixed(1) + " 万";
+    return String(n);
+  }
   if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
   if (n >= 1e7) return Math.round(n / 1e6) + "M";
   if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
@@ -7688,7 +7697,7 @@ function renderPanelUse() {
       if (sub) b.append(el("span", "sub" + (subCls ? " " + subCls : ""), sub));
       tot.append(b);
     };
-    blk("Tokens", ledShort(allTokens(l)), t("{a} in · {b} out", { a: ledShort(l.input), b: ledShort(l.output) }));
+    blk("Tokens", fmtN(allTokens(l)), t("{a} in · {b} out", { a: fmtN(l.input), b: fmtN(l.output) }));
     blk("Requests", ledNum(l.calls), l.errors ? t("{n} failed", { n: ledNum(l.errors) }) : t("none failed"), "", l.errors ? "bad" : "");
     const c = fmtCost(l);
     blk("Cost", c ? "≈" + c : "—", l.unpriced ? t("{n} unpriced", { n: l.unpriced }) : t("effective prices"), c ? "cost" : "");
@@ -8538,15 +8547,6 @@ function ledContentBox(c) {
 // server sums it all (the ledger's "series" and "by"); the tray panel's Usage
 // tab draws the same from the same answer.
 
-// a count as a short number: 1.33 亿, 68.1 万 in Chinese, 133M in English
-// and in Chinese with Settings' K/M/B units (westernUnits)
-let westernUnits = false;
-function ledShort(n) {
-  if (locale !== "zh" || westernUnits) return fmtN(n);
-  if (n >= 1e8) return +(n / 1e8).toFixed(2) + " 亿";
-  if (n >= 1e4) return +(n / 1e4).toFixed(1) + " 万";
-  return String(n);
-}
 // a cost as an axis says it: the currency Settings picks, no more digits than it takes
 function ledMoney(v) {
   let sign = "$";
@@ -8563,7 +8563,7 @@ const ledValue = (m, x) => m === "cost" ? +x.cost || 0 : m === "calls" ? +x.call
 // of a point's part, which has only its calls, tokens and cost
 const ledPart = (m, x) => m === "cost" ? +x.cost || 0 : m === "calls" ? +x.calls || 0 : +x.tokens || 0;
 // a metric as its axis and its values say it
-const ledFormat = (m, v) => m === "cost" ? ledMoney(v) : m === "calls" ? ledNum(Math.round(v)) : ledShort(Math.round(v));
+const ledFormat = (m, v) => m === "cost" ? ledMoney(v) : m === "calls" ? ledNum(Math.round(v)) : fmtN(Math.round(v));
 const ledFormatLong = (m, v) => m === "cost" ? (fmtCost({ cost: v, unpriced: 0 }) || "—") : ledNum(Math.round(v));
 
 // an axis's top with four steps under it: round numbers, the top at least the largest value
@@ -8737,7 +8737,7 @@ function drawLedRank(box, l, split, metric, picked, choose, compact) {
     bar.append(fill);
     const more = [];
     if (metric !== "calls") more.push(t(x.calls === 1 ? "{n} request" : "{n} requests", { n: ledNum(x.calls) }));
-    if (metric !== "tokens") more.push(t("{n} tokens", { n: ledShort(allTokens(x)) }));
+    if (metric !== "tokens") more.push(t("{n} tokens", { n: fmtN(allTokens(x)) }));
     if (metric !== "cost" && x.cost) more.push("≈" + fmtCost(x));
     const prompt = x.input + x.cache_write + x.cache_read;
     if (prompt && !compact) more.push(t("hit rate {p}", { p: Math.round((100 * x.cache_read) / prompt) + "%" }));
@@ -8823,7 +8823,7 @@ function renderLedgerDash(l) {
     return b;
   };
   const line = (...parts) => { const s = el("span", "sub"); s.append(...parts); return s; };
-  block("Tokens", ledShort(total), line(t("{a} in · {b} out", { a: ledShort(l.input), b: ledShort(l.output) }), " · ", t("{a} cache", { a: ledShort(l.cache_read + l.cache_write) })), "", ledNum(total));
+  block("Tokens", fmtN(total), line(t("{a} in · {b} out", { a: fmtN(l.input), b: fmtN(l.output) }), " · ", t("{a} cache", { a: fmtN(l.cache_read + l.cache_write) })), "", ledNum(total));
   block("Requests", ledNum(l.calls), line(l.errors ? t("{n} failed", { n: ledNum(l.errors) }) + " · " + t("{p} succeeded", { p: (100 * (1 - l.errors / l.calls)).toFixed(l.errors ? 1 : 0) + "%" }) : t("none failed")));
   const c = fmtCost(l);
   block("Cost", c ? "≈" + c : "—", line(l.unpriced ? t(l.unpriced === 1 ? "{n} call had no known price and is not counted" : "{n} calls had no known price and are not counted", { n: l.unpriced }) : t("effective prices")), c ? "cost" : "");

@@ -2022,7 +2022,8 @@
     renderPanel();
   }
   new MutationObserver(words).observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
-  document.addEventListener("magpie-costs-changed", () => steady(renderHist));
+  // a count follows Settings' number units, the panel's "today" with it
+  document.addEventListener("magpie-costs-changed", () => { steady(renderHist); renderPanel(); });
 
   // ---------- routing groups ----------
   // The groups agents can pick as one model (group/<id>): the user's, and
