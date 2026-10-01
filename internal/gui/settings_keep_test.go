@@ -82,6 +82,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		CodexAutoReset:  []string{"me@example.com"},
 		ClaudeAutoReset: []string{"me@example.com"},
 		TextSize:        125,
+		UpdateSkip:      "0.1.500",
 		Window:          []int{900, 700},
 	}
 	if err := settings.Save(was); err != nil {
@@ -110,5 +111,34 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		if !reflect.DeepEqual(wv.Field(i).Interface(), nv.Field(i).Interface()) {
 			t.Errorf("%s: %v after a save of the Settings page, was %v", typ.Field(i).Name, nv.Field(i).Interface(), wv.Field(i).Interface())
 		}
+	}
+}
+
+// The Update pill hidden for one version stays hidden for it through a save
+// of the Settings page, which doesn't send it, and comes back once cleared.
+func TestUpdateSkip(t *testing.T) {
+	h := t.TempDir()
+	t.Setenv("HOME", h)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(h, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(h, ".cache"))
+	post := func(path, body string) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		Handler(nil, nil).ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
+		}
+	}
+	post("/api/settings/update-skip", `{"version":"0.1.501"}`)
+	if s := settings.Load(); s.UpdateSkip != "0.1.501" {
+		t.Fatalf("skip %q", s.UpdateSkip)
+	}
+	post("/api/settings", `{"theme":"dark","noUpdatePill":true}`)
+	if s := settings.Load(); s.UpdateSkip != "0.1.501" || !s.NoUpdatePill || s.Theme != "dark" {
+		t.Fatalf("after a save: skip %q pill off %v theme %q", s.UpdateSkip, s.NoUpdatePill, s.Theme)
+	}
+	post("/api/settings/update-skip", `{"version":""}`)
+	if s := settings.Load(); s.UpdateSkip != "" || !s.NoUpdatePill {
+		t.Fatalf("cleared: skip %q pill off %v", s.UpdateSkip, s.NoUpdatePill)
 	}
 }

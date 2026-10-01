@@ -224,6 +224,19 @@ body.panel .seg { display: none; }
 .update:hover { background: var(--accent); color: var(--accent-fg); }
 .update:active { transform: scale(.96); }
 .update.busy { pointer-events: none; opacity: .6; }
+/* its × on the pill's corner, shown while the pointer is over it: hides
+   the pill until a newer version is out */
+.update-wrap { position: relative; align-self: center; display: inline-flex; }
+.update-hide {
+  position: absolute; top: -5px; right: 3px; width: 14px; height: 14px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); background: var(--card); box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.12);
+  opacity: 0; pointer-events: none; transition: opacity .12s, color .12s;
+}
+.update-wrap:hover .update-hide { opacity: 1; pointer-events: auto; }
+.update-hide:focus-visible { opacity: 1; pointer-events: auto; } /* its own rule: Safari before 15.4 drops a list holding it */
+.update-hide:hover { color: var(--fg); }
+.update[hidden] + .update-hide, .update.busy + .update-hide { display: none; }
 /* a narrow header (fitTop): the magpie without its name, Update as its arrow,
    and at the narrowest the tabs in the row rather than over it */
 .top.tight .brand > span:not(.logo), .top.tight .update span { display: none; }

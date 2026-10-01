@@ -489,6 +489,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		in.CodexAutoReset, in.ClaudeAutoReset = cur.CodexAutoReset, cur.ClaudeAutoReset
 		// and the text size, which the keyboard changes too (text-size below)
 		in.TextSize = cur.TextSize
+		// the version the Update pill was hidden for, set from the pill
+		in.UpdateSkip = cur.UpdateSkip
 		if v := strings.TrimSpace(in.Vision); v != "" && v != "off" && v != cur.Vision {
 			if _, _, ok := provider.Resolve(v); !ok {
 				fail(rw, fmt.Errorf("no model %s to describe images", v))
@@ -546,6 +548,24 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		}
 		if changed && onTrayUsage != nil {
 			onTrayUsage()
+		}
+		writeJSON(rw, settingsState())
+	})
+	// the version the header's Update pill is hidden for, until a newer one
+	// is out: set from the pill, cleared ("") from Settings
+	mux.HandleFunc("POST /api/settings/update-skip", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Version string `json:"version"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		s := settings.Load()
+		s.UpdateSkip = strings.TrimSpace(in.Version)
+		if err := settings.Save(s); err != nil {
+			fail(rw, err)
+			return
 		}
 		writeJSON(rw, settingsState())
 	})

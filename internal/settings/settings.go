@@ -97,6 +97,12 @@ type Settings struct {
 	// NoStats stops the one event a day that counts magpie's users (see
 	// internal/stats).
 	NoStats bool `json:"noStats,omitempty"`
+	// NoUpdatePill keeps the header's Update pill away when a newer magpie
+	// is out; UpdateSkip is the one version it was hidden for, and a newer
+	// one brings it back. Either way magpie still downloads the version and
+	// puts it in as it quits, and Settings' version row still offers it.
+	NoUpdatePill bool   `json:"noUpdatePill,omitempty"`
+	UpdateSkip   string `json:"updateSkip,omitempty"`
 	// Vision is the model that describes an image to a model that can't see
 	// it: a model's id (provider/model, group/<id>), "off" to turn such an
 	// image away, or empty for one magpie picks (see gateway.seer).

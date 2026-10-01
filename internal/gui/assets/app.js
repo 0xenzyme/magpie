@@ -1354,7 +1354,9 @@ function installFrom() {
 
 // renderUpdateBadge shows the header's Update pill once a newer magpie is
 // downloaded (a click restarts into it) or, where magpie can't replace
-// itself, out (a click opens the release page).
+// itself, out (a click opens the release page). The user may keep it away:
+// for good (Settings), or for this version (its ×, or a right-click), until
+// a newer one is out. magpie still downloads it and puts it in on quitting.
 async function renderUpdateBadge() {
   const b = $("#update"), label = b.querySelector("span");
   const u = await api("update").catch(() => null);
@@ -1364,9 +1366,15 @@ async function renderUpdateBadge() {
     delete b.dataset.pulling;
     b.classList.remove("busy");
   }
-  const on = pulling || (!!u && (u.state === "ready" || u.state === "available" || (u.state === "error" && u.retry)));
+  const on = pulling || (!!u && !updatePillOff(u.latest) && (u.state === "ready" || u.state === "available" || (u.state === "error" && u.retry)));
   if (b.hidden !== !on) b.hidden = !on;
   if (!on) return;
+  const hide = $("#updateHide");
+  hide.setAttribute("aria-label", t("Hide until the next version"));
+  hide.onclick = b.oncontextmenu = (e) => {
+    e.preventDefault();
+    skipUpdate(u.latest);
+  };
   const restart = async () => {
     b.classList.add("busy");
     label.textContent = t("Restarting…");
@@ -1408,6 +1416,28 @@ async function renderUpdateBadge() {
     if (web && u.url) return window.open(u.url, "_blank", "noopener");
     api("update/install", {}).catch(() => {});
   };
+}
+
+// updatePillOff is whether the user keeps the Update pill away for v.
+function updatePillOff(v) {
+  const s = state?.settings || {};
+  return !!s.noUpdatePill || (!!v && s.updateSkip === v);
+}
+
+// skipUpdate hides the Update pill until a version newer than v is out
+// ("" shows it again), and says where it can be brought back.
+async function skipUpdate(v) {
+  $("#update").hidden = true;
+  try {
+    const ns = await writingPrefs(api("settings/update-skip", { version: v }));
+    prefs = ns;
+    if (state) state.settings = ns;
+    if (v) status(t("Update hidden until the next version; Settings still has it"), "ok", 3000);
+  } catch (e) {
+    status(e.message, "err");
+  }
+  renderUpdateBadge();
+  if (view === "settings" && prefs) renderSettings();
 }
 
 // backAsNew waits, in magpie web, for the version the page restarted into
@@ -8854,6 +8884,20 @@ function renderSettings() {
     return r;
   };
   renderUpdate(row(t("Version"), "", s.version));
+  // the header's Update pill, kept away for good or for one version; the
+  // version row above still says what is out and offers it
+  const pill = row(t("Update button"), t("Shows in the header when a newer magpie is out"),
+    "", segs([["off", t("Off")], ["on", t("On")]], s.noUpdatePill ? "off" : "on", (v) => savePrefs({ ...keep, noUpdatePill: v === "off" }).then(renderUpdateBadge)));
+  pill.classList.add("update-pill-row");
+  if (s.updateSkip && !s.noUpdatePill) {
+    api("update").then((u) => {
+      if (!pill.isConnected || !u || u.latest !== s.updateSkip) return;
+      pill.querySelector(".sub").textContent = t("Hidden for {v} until a newer version is out", { v: u.latest });
+      const back = el("button", "text", t("Show again"));
+      back.onclick = () => skipUpdate("");
+      pill.querySelector(".val").prepend(back);
+    }, () => {});
+  }
   const open = el("button", "text", t("Open"));
   open.onclick = () => api("settings/reveal", {}).catch((e) => status(e.message, "err"));
   row(t("Config folder"), t("providers, profiles and these settings"), s.dir, copyBtn(s.dir, t("Path")), open);
@@ -9676,6 +9720,7 @@ function prefsKeep(s) {
     trayUsages: s.trayUsages || [],
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, noStats: !!s.noStats,
+    noUpdatePill: !!s.noUpdatePill,
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, vision: s.vision || "", imageGen: s.imageGen || "", currency: s.currency || "usd",
     usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };
 }
