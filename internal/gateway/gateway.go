@@ -156,7 +156,8 @@ func Serving() (running, window bool) {
 // Call is one request the gateway handled, for the status views.
 type Call struct {
 	Time  time.Time `json:"time"`
-	Agent string    `json:"agent"` // who called, from the client's User-Agent
+	Agent string    `json:"agent"`         // who called, from the client's User-Agent
+	Via   string    `json:"via,omitempty"` // the computer a remote magpie's request came from (AgentHeader)
 	// Kind: what the agent made the call for, when it isn't its turn —
 	// a Codex subagent's (callKind) — "" for a turn
 	Kind string `json:"kind,omitempty"`
@@ -348,7 +349,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, provider.Chat, http.StatusNotFound, "magpie serves /v1/chat/completions, /v1/responses, /v1/messages, /v1/systemone, /v1/images/generations, /v1/images/edits, /v1/videos and /v1beta/models/*")
 	})
-	return mux
+	return withCaller(mux)
 }
 
 func (s *Server) info(w http.ResponseWriter, r *http.Request) {
@@ -704,12 +705,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	requestBody, requestTruncated := captureRequestBody(body)
 	capture := &captureResponseWriter{ResponseWriter: w}
 	w = capture
-	call := Call{Time: start, From: from, Model: unprefixed(modelOf(body)), Agent: agentOf(r), Kind: callKind(r.Header),
+	// the agent it is recorded as, the one on the computer it was passed
+	// on from for a remote magpie's request; agent the one that sent it,
+	// which what is done with it goes by
+	who, agent := callerOf(r), agentOf(r)
+	call := Call{Time: start, From: from, Model: unprefixed(modelOf(body)), Agent: who.agent, Via: who.via, Kind: callKind(r.Header),
 		RequestBody: requestBody, RequestTruncated: requestTruncated}
 	if call.Kind == "web_search" {
 		call.For = searchFor(r.Context())
 	}
-	usage.Saw(call.Agent)
+	usage.Saw(agent)
 	finishCapture := func() {
 		call.ResponseBody = capture.body.text()
 		call.ResponseTruncated = capture.body.truncated
@@ -718,12 +723,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	// the group's, as "group/<id>" is, rather than one provider's that
 	// serves it: the Routing view shows the group it went to
 	asked := call.Model
-	if call.Agent == "claude-desktop" {
+	if agent == "claude-desktop" {
 		asked = desktopTurn(asked, body)
 	}
 	if id, ok := provider.GroupFor(asked); ok {
 		asked = id
-	} else if m := standIn(call.Agent, asked); m != "" {
+	} else if m := standIn(agent, asked); m != "" {
 		asked = m
 	}
 	p, model, ok := provider.Resolve(asked)
@@ -778,7 +783,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		}
 	}
 	if ruleReq != nil && g.Ruled() {
-		hit = ruleFor(ruleAt, g, ms, ruleReq, call.Agent, ask)
+		hit = ruleFor(ruleAt, g, ms, ruleReq, agent, ask)
 		ruled = ruleMembers(hit, ms)
 	}
 	// Some clients send images even when the selected model is known to
@@ -886,7 +891,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	var nested []NestedRule
 	var nestedAt []string
 	if ruleReq != nil {
-		nested, nestedAt, cands, pl = s.nestedRules(ruleAt, ruleReq, call.Agent, ask, ms, cands, pl, aff)
+		nested, nestedAt, cands, pl = s.nestedRules(ruleAt, ruleReq, agent, ask, ms, cands, pl, aff)
 	}
 	// the effort a group's decision model picked for the turn: the
 	// outermost group's that did
@@ -1099,7 +1104,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			skipped = append(skipped, c.label()+": "+call.Error)
 			matesFirst(cands[i+1:], c)
 			if call.To != "" {
-				usage.Append(usage.Record{Time: began, Agent: call.Agent, Provider: call.Provider, Host: where, Model: c.model,
+				usage.Append(usage.Record{Time: began, Agent: call.Agent, Via: call.Via, Provider: call.Provider, Host: where, Model: c.model,
 					Requested: call.Model, Served: call.Usage.Served,
 					Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
 					CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: time.Since(began).Milliseconds(), Status: call.Status,
@@ -1238,7 +1243,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	})
 	s.record(call)
 	if call.To != "" {
-		usage.Append(usage.Record{Time: start, Agent: call.Agent, Provider: call.Provider, Host: where, Model: model,
+		usage.Append(usage.Record{Time: start, Agent: call.Agent, Via: call.Via, Provider: call.Provider, Host: where, Model: model,
 			Requested: call.Model, Served: call.Usage.Served,
 			Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
 			CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: call.Millis, Status: call.Status,
@@ -1453,6 +1458,9 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	}
 	if p.IsPlugin() {
 		req.Header.Set(provider.ConversationHeader, conversationID(in, body))
+	}
+	if p.IsRemoteMagpie() {
+		passOnCaller(ctx, req)
 	}
 	if err := p.Sign(ctx, req, to, body); err != nil {
 		return nil, err

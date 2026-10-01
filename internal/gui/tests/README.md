@@ -314,7 +314,8 @@ them afresh; in English and Chinese.
 from a faked `/api/usage/requests`: the columns, the model asked for, the
 provider and account, the model sent, "gpt-6-luna" amber by the one a vendor
 answered with another model and plain on a dated name, a failure's red dot
-and 429, the totals over them. Older and Newer page through 130 requests
+and 429 and its agent, on another computer whose magpie passed it on, as
+"Codex · via office-mac", the totals over them. Older and Newer page through 130 requests
 with the pager held where it was; the agent, Failed and search filters and
 the period ask the server again from the first page; Export CSV posts the
 filters shown with no page and says where the file went. At the window's

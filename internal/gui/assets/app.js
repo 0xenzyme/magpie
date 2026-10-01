@@ -7250,7 +7250,9 @@ function renderLedger() {
     };
     td(ledTime(r.t), "when", new Date(r.t).toLocaleString(locale === "zh" ? "zh-CN" : "en"));
     const who = el("span", "who");
-    who.append(icon(r.icon || "generic"), el("span", "", r.agentName || r.agent));
+    // an agent on another computer, whose magpie passed the request on
+    const name = r.agentName || r.agent;
+    who.append(icon(r.icon || "generic"), el("span", "", r.via ? t("{agent} · via {host}", { agent: name, host: r.via }) : name));
     td(who, "", [r.kind, r.session && t("session {id}", { id: r.session })].filter(Boolean).join(" · "));
     td(r.req || "—", "model" + (r.req ? "" : " faint"), r.req || t("Not kept for requests before this version"));
     const where = r.providerName + (r.host ? " · " + r.host : "");

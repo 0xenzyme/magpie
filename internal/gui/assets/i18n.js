@@ -925,6 +925,7 @@ const I18N = {
     "Duration": "耗时",
     "Status": "状态",
     "session {id}": "会话 {id}",
+    "{agent} · via {host}": "{agent} · 来自 {host}",
     "Not kept for requests before this version": "此版本之前的请求没有记下",
     "{n} reasoning, inside output": "其中推理 {n}（已计入输出）",
     "No known price for this model": "此模型没有已知价格",

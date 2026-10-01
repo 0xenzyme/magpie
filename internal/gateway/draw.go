@@ -203,8 +203,9 @@ func (s *Server) images(edit bool) http.HandlerFunc {
 			writeError(w, provider.Chat, 400, "an edit needs the image to edit")
 			return
 		}
-		call := Call{Time: start, From: provider.Chat, Agent: agentOf(r), Model: d.Model}
-		usage.Saw(call.Agent)
+		who := callerOf(r)
+		call := Call{Time: start, From: provider.Chat, Agent: who.agent, Via: who.via, Model: d.Model}
+		usage.Saw(agentOf(r))
 		fail := func(code int, msg string) {
 			call.Status, call.Error, call.Millis = code, msg, time.Since(start).Milliseconds()
 			writeError(w, provider.Chat, code, msg)
@@ -237,7 +238,7 @@ func (s *Server) images(edit bool) http.HandlerFunc {
 			code, err = 502, errors.New(model+" drew nothing"+vendorSaid(out.Text))
 			call.Status = code
 		}
-		usage.Append(usage.Record{Time: start, Agent: call.Agent, Provider: p.ID, Host: p.Where(), Model: model, Requested: call.Model,
+		usage.Append(usage.Record{Time: start, Agent: call.Agent, Via: call.Via, Provider: p.ID, Host: p.Where(), Model: model, Requested: call.Model,
 			Input: out.Input, Output: out.Output, Millis: call.Millis, Status: call.Status, Session: sessionOf(r.Header)})
 		if err != nil {
 			call.Error = err.Error()
@@ -512,6 +513,9 @@ func (s *Server) sendAs(ctx context.Context, p provider.Provider, method, url, c
 	}
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
+	}
+	if p.IsRemoteMagpie() {
+		passOnCaller(ctx, req)
 	}
 	if sign {
 		if err := p.Sign(ctx, req, provider.Chat, body); err != nil {
