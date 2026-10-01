@@ -807,6 +807,10 @@ func (e *chatEncoder) event(ev Event) {
 	e.col.add(ev)
 }
 
+// keepalive is an SSE comment, as OpenAI-compatible servers keep a Chat
+// Completions stream alive; its readers skip one.
+func (e *chatEncoder) keepalive() { e.w.comment("keepalive") }
+
 func (e *chatEncoder) finish() {
 	if !e.started {
 		e.start(Event{})

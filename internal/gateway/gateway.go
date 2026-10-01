@@ -2288,9 +2288,10 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 		return writeError(w, from, 502, msg), msg
 	}
 	if stream {
-		enc := encoder(from, newSSEWriter(w), request)
+		sw := newSSEWriter(w)
+		enc := encoder(from, sw, request)
 		var failed string
-		serr := readSSE(rd, func(_, data string) error {
+		serr := readSSEAlive(rd, func(_, data string) error {
 			return dec(data, func(ev Event) {
 				switch ev.Kind {
 				case KError:
@@ -2301,6 +2302,12 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 				}
 				enc.event(ev)
 			})
+		}, func() {
+			// the provider's keepalives aren't events to translate: while
+			// it is heard from, the client hears from magpie (#436)
+			if failed == "" && sw.quiet() >= keepaliveGap {
+				enc.keepalive()
+			}
 		})
 		if serr != nil && failed == "" {
 			// the upstream died mid-reply: say so in the client's own
@@ -2429,6 +2436,44 @@ func decoder(proto provider.Protocol) func(data string, emit func(Event)) error 
 type streamEncoder interface {
 	event(Event)
 	finish()
+	// keepalive tells the client the reply goes on, as its protocol does
+	// with no answer to give: one its idle timeout counts (#436)
+	keepalive()
+}
+
+// keepaliveGap is how long a translated reply's client may hear nothing
+// while its provider is heard from (a keepalive, an event that has nothing
+// for the client) before it is sent a keepalive of its own.
+var keepaliveGap = time.Second
+
+// keepaliveEvery is how often a relayed reply that has gone quiet is kept
+// alive, and keepaliveLongest how long it is kept so with no event: a
+// reply stuck longer is left for the client's own idle timeout to end.
+var keepaliveEvery, keepaliveLongest = 15 * time.Second, 5 * time.Minute
+
+// relayEvents hands see each of events until they end or see says stop,
+// keeping the client of sw alive while none comes (keepaliveEvery, for up
+// to keepaliveLongest since the last).
+func relayEvents(events <-chan Event, sw *sseWriter, enc streamEncoder, see func(Event) bool) {
+	tick := time.NewTicker(keepaliveEvery)
+	defer tick.Stop()
+	last := time.Now()
+	for {
+		select {
+		case ev, ok := <-events:
+			if !ok {
+				return
+			}
+			last = time.Now()
+			if !see(ev) {
+				return
+			}
+		case <-tick.C:
+			if time.Since(last) < keepaliveLongest && sw.quiet() >= keepaliveEvery/2 {
+				enc.keepalive()
+			}
+		}
+	}
 }
 
 func encoder(proto provider.Protocol, w *sseWriter, r *Request) streamEncoder {
