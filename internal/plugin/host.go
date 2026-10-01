@@ -489,14 +489,17 @@ type FetchRequest struct {
 }
 
 // proxyOf is the proxy ctx names for the host: "" when it names none,
-// "direct", or the proxy's URL.
-func proxyOf(ctx context.Context) string {
-	switch c := strings.TrimSpace(netproxy.Choice(ctx)); c {
+// "direct", or the proxy's URL (a SOCKS5 one bridged, as Bun can't use it).
+func proxyOf(ctx context.Context) string { return forHost(netproxy.Choice(ctx)) }
+
+// forHost is a proxy choice (netproxy.With's) as the host takes it.
+func forHost(choice string) string {
+	switch c := strings.TrimSpace(choice); c {
 	case "", "direct":
 		return c
 	default:
 		if u, err := netproxy.Parse(c); err == nil {
-			return u.String()
+			return netproxy.ForBun(u.String())
 		}
 		return c
 	}
@@ -505,13 +508,15 @@ func proxyOf(ctx context.Context) string {
 // hostEnv is env for the host, its *_PROXY named MAGPIE_*_PROXY: Bun
 // reads *_PROXY once and puts every fetch through them, so a provider set
 // to "direct" couldn't go around them. host.js gives each fetch the proxy
-// they name instead.
+// they name instead. A SOCKS5 one, which Bun can't use, is bridged.
 func hostEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, e := range env {
 		k, v, _ := strings.Cut(e, "=")
 		switch strings.ToUpper(k) {
-		case "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY":
+		case "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY":
+			out = append(out, "MAGPIE_"+k+"="+netproxy.ForBun(v))
+		case "NO_PROXY":
 			out = append(out, "MAGPIE_"+k+"="+v)
 		default:
 			out = append(out, e)

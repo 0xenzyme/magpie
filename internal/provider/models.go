@@ -175,7 +175,8 @@ func FetchNew(timeout time.Duration) {
 		if p.Account == nil || !p.Ready() {
 			continue
 		}
-		if _, ok := p.Fetched(); ok {
+		// a plugin's accounts were listed with the plugin's providers
+		if _, ok := p.Listed(); ok {
 			continue
 		}
 		if t, ok := newFetches.m[p.ID]; ok && time.Since(t) < newFetchRetry {
