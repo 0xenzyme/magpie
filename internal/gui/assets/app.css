@@ -561,6 +561,12 @@ body.window .field.solo { grid-column: auto; }
 .led .faint { color: var(--faint); }
 .led .muted { color: var(--muted); }
 .led .when { color: var(--muted); }
+.led .when .text { padding: 0; font: inherit; }
+.led .when .led-route-link { text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+.led .when .led-route-link:hover { text-decoration-style: solid; }
+#ledRoute { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+#ledRoute[hidden] { display: none; }
+#ledRouteClear { font-size: 18px; padding: 2px 6px; }
 .led .model, .led .where { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 .led .where { color: var(--fg-2); }
 .led .cost { color: var(--green); }
