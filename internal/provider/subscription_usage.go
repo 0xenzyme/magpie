@@ -283,6 +283,9 @@ func fetchSubscriptionUsage() []SubscriptionQuota {
 	if !moved("zed") && !hidden["zed"] {
 		fetches = append(fetches, perLogin(via("zed"), zedLoginList(), "Zed", "zed")...)
 	}
+	if !moved("devin") && !hidden["devin"] {
+		fetches = append(fetches, perLogin(via("devin"), devinLoginList(), "Devin", "devin")...)
+	}
 	if !moved("factory") && !hidden["factory"] {
 		fetches = append(fetches, perLogin(via("factory"), factoryLoginList(), "Factory", "factory")...)
 	}

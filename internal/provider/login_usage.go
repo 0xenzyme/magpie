@@ -92,6 +92,8 @@ func builtinLogins(agent string) (logins []Login, ok bool) {
 		logins = loginsOf(qoderLoginsOf(agent))
 	case "zed":
 		logins = zedLoginList()
+	case "devin":
+		logins = devinLoginList()
 	case "factory":
 		logins = factoryLoginList()
 	case MiMoID:
@@ -128,6 +130,9 @@ func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
 	}
 	if l.Agent == "zed" {
 		return zedLoginQuota(ctx, l)
+	}
+	if l.Agent == "devin" {
+		return devinLoginQuota(ctx, l)
 	}
 	if l.Agent == "factory" {
 		return factoryLoginQuota(ctx, l)
