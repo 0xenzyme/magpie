@@ -222,6 +222,8 @@ func claudeHome(t *testing.T) string {
 	isolate(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// Windows finds the home in USERPROFILE
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 	forgetClaudeCredential()

@@ -174,6 +174,9 @@ func TestDevinCredentials(t *testing.T) {
 }
 
 func TestDevinSignIn(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake devin is a shell script")
+	}
 	home := claudeHome(t)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 
@@ -242,6 +245,9 @@ func TestDevinSignIn(t *testing.T) {
 // own: it gets a home of magpie's, the CLI's file is left alone, and the
 // gateway can use either.
 func TestDevinSeveralAccounts(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake devin is a shell script")
+	}
 	home := claudeHome(t)
 	data := filepath.Join(home, "data")
 	t.Setenv("XDG_DATA_HOME", data)
@@ -362,6 +368,9 @@ const devinUnreachable = `printf '%s\n' 'Logged in (via Devin).' '' 'User / team
 // either.
 func fakeDevin(t *testing.T, exe string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake devin is a shell script")
+	}
 	old := DevinExecutable
 	DevinExecutable = func() string { return exe }
 	t.Cleanup(func() {
