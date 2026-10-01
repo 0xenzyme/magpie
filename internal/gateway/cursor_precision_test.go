@@ -20,3 +20,13 @@ func TestCursorResultLargeInteger(t *testing.T) {
 		t.Fatalf("result changed: %s", b)
 	}
 }
+
+// A call whose streamed arguments were cut short stays in the history, with
+// empty arguments, rather than making the whole message fail to marshal.
+func TestCursorTruncatedArgsKeepCall(t *testing.T) {
+	r := &Request{Messages: []Message{{Role: "assistant", Parts: []Part{{Kind: ToolCall, ID: "c1", Name: "lookup", Args: json.RawMessage(`{"query":"x`)}}}}}
+	b := bytes.Join(cursorMessages(r, nil), []byte("\n"))
+	if !bytes.Contains(b, []byte(`"toolName":"lookup"`)) {
+		t.Fatalf("call lost: %s", b)
+	}
+}

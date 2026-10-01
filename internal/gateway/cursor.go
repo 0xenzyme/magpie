@@ -436,7 +436,7 @@ func cursorMessages(r *Request, tools []bridgeTool) [][]byte {
 					}
 				case ToolCall:
 					var args any = map[string]any{}
-					if len(p.Args) > 0 {
+					if json.Valid(p.Args) {
 						args = json.RawMessage(p.Args)
 					}
 					content = append(content, map[string]any{"type": "tool-call", "toolCallId": cursorCallID(p.ID), "toolName": cursorCall,
