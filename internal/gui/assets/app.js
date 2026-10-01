@@ -9818,11 +9818,26 @@ function setRoom(v, px) {
   r.style.height = px + "px";
   room.set(v, px);
 }
+// Where what's in the view ends, its padding at the foot included, the room
+// aside. Not scrollHeight less the room: scrollHeight is never less than the
+// view is tall, so under a list shorter than the view (the agents rolled up
+// in a tall window) it counted the empty foot as content, the room made was
+// too short to hold the list, and each frame's hold and fit took turns
+// adding and taking it away, the list swinging between two places (#355).
+function contentEnd(v) {
+  const top = v.getBoundingClientRect().top - v.scrollTop;
+  let end = 0;
+  for (const c of v.children) {
+    if (c.classList.contains("view-room") || !c.getClientRects().length) continue;
+    end = Math.max(end, c.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(c).marginBottom) || 0) - top);
+  }
+  return end + (parseFloat(getComputedStyle(v).paddingBottom) || 0);
+}
 // only as much room as keeps the view where it is: none once the content
-// reaches the view's foot again
+// reaches the view's foot again, or the view is back at its top
 function fitRoom(v) {
   const r = roomOf(v);
-  if (r) setRoom(v, Math.min(r, v.scrollTop + v.clientHeight - (v.scrollHeight - r)));
+  if (r) setRoom(v, v.scrollTop < 1 ? 0 : Math.min(r, v.scrollTop + v.clientHeight - contentEnd(v)));
 }
 function hold(h) {
   const a = h.chain.find(([n]) => atRest(n));
@@ -9836,7 +9851,7 @@ function hold(h) {
     // button held, and room made for the button slid the chip up under the
     // tabs, out of sight
     if (want > max && h.top) want = max;
-    if (want > max) setRoom(v, roomOf(v) + want - max);
+    if (want > max) setRoom(v, want + v.clientHeight - contentEnd(v));
     v.scrollTop = want;
   }
   fitRoom(v);
