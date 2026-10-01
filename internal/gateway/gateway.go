@@ -1664,9 +1664,35 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	if proto == provider.Anthropic && p.Account == nil && fromClaudeCode(r.Header) && r.URL.Query().Get("beta") == "true" {
 		path += "?beta=true" // as Claude Code asks it
 	}
+	if proto != provider.Anthropic {
+		body = s.withoutRefused(p.ID, proto, body)
+	}
 	res, err := s.forward(r.Context(), p, proto, path, p.Prepare(body), r.Header)
 	if err != nil {
 		return writeError(w, proto, 502, p.Name+": "+err.Error()), err.Error(), true
+	}
+	// a vendor that turns away the fields it doesn't know (Mistral's
+	// extra_forbidden for OpenCode's store, #393) is asked again without
+	// the optional ones it named, and not sent them again once that works
+	var refused []string
+	for proto != provider.Anthropic && badRequest(res.StatusCode) {
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		res.Body.Close()
+		res.Body = io.NopCloser(bytes.NewReader(b))
+		fs := refusedOptional(res.StatusCode, b, body)
+		if len(fs) == 0 {
+			break
+		}
+		refused = append(refused, fs...)
+		body = withoutFields(body, fs...)
+		if res, err = s.forward(r.Context(), p, proto, path, p.Prepare(body), r.Header); err != nil {
+			return writeError(w, proto, 502, p.Name+": "+err.Error()), err.Error(), true
+		}
+	}
+	if res.StatusCode < 400 {
+		for _, f := range refused {
+			s.markUnfit(p.ID, f, proto)
+		}
 	}
 	if e := bodyEffort(proto, body); res.StatusCode == http.StatusBadRequest && (e == "none" || e == "minimal" || proto == provider.Chat && hasReasoningDisabled(body)) {
 		// A model can refuse reasoning turned off. If it names its levels,
@@ -2018,6 +2044,55 @@ const cacheKeyField = "prompt_cache_key"
 // Groq's "unsupported" — by the field's name in the error.
 func refusesField(status int, body []byte, field string) bool {
 	return badRequest(status) && bytes.Contains(body, []byte(field))
+}
+
+// optionalFields are request fields OpenAI's APIs (or an agent's own
+// vendor, Kimi's and Qwen's thinking switches) take that a request does
+// without: an upstream that refuses one by name is asked again without it.
+var optionalFields = []string{"store", "metadata", "service_tier", cacheKeyField, "prompt_cache_retention",
+	"safety_identifier", "stream_options", "parallel_tool_calls", "verbosity", "thinking", "enable_thinking"}
+
+// refusedOptional lists the optional fields of body an upstream's error
+// names as what it turned the request away for: named quoted, as Mistral's
+// extra_forbidden (loc ["body","store"], each field it refused in one
+// reply), Gemini's Unknown name "store" and Groq's 'store' is unsupported
+// do.
+func refusedOptional(status int, msg, body []byte) []string {
+	if !badRequest(status) {
+		return nil
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(body, &m) != nil {
+		return nil
+	}
+	var out []string
+	for _, f := range optionalFields {
+		if _, ok := m[f]; !ok {
+			continue
+		}
+		for _, q := range []string{`"` + f + `"`, `"` + f + `\"`, `'` + f + `'`, "`" + f + "`"} {
+			if bytes.Contains(msg, []byte(q)) {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// withoutRefused leaves out of body the optional fields the provider has
+// refused on proto before.
+func (s *Server) withoutRefused(providerID string, proto provider.Protocol, body []byte) []byte {
+	var drop []string
+	for _, f := range optionalFields {
+		if !s.fits(providerID, f, proto) {
+			drop = append(drop, f)
+		}
+	}
+	if len(drop) == 0 {
+		return body
+	}
+	return withoutFields(body, drop...)
 }
 
 // badRequest is a status an upstream refuses a request's contents with.
