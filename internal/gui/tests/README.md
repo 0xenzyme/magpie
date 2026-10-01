@@ -1,5 +1,19 @@
 # Dropdown browser regression
 
+`routing-sessions.test.cjs` checks the Routing request list in Chromium and
+WebKit, English and Chinese: the list defaults to By request and remembers
+the grouping choice across reloads; sessions are separated by agent and ID across
+model changes, known and partial costs are summed, zero partial estimates
+retain their amount and +, single-request headings use the singular, zero prices stay known,
+title helpers merge only into their explicit parent (even arriving first),
+late chat names and renames update while preserving folds and ID tooltips,
+missing IDs and old unpriced requests remain visible, folded sessions stay
+folded through live updates, costs follow the currency choice, and the original
+time-ordered list, history selection and routing story still work. It also
+checks the request list at 1440 and 560 pixels. Run with
+`node --test internal/gui/tests/routing-sessions.test.cjs` and the same
+Playwright environment described below. APIs are isolated fixtures.
+
 `session-terminal.test.cjs` checks the macOS Settings choice for installed
 `.command` handlers in English and Chinese. The system default appears once
 and is selected at first. It selects Ghostty, changes the theme, then returns
