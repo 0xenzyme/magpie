@@ -449,6 +449,9 @@
   // (provider.WBRefusedHint, #182): the agent gets it in English, the page
   // says it apart from the vendor's words, in its own language
   const WB_REFUSED = "WorkBuddy refuses chats from Codex and Claude Code (their system prompt); use it from Hermes, OpenCode or Pi, or add another provider to this group";
+  // what it adds to a vendor's edge firewall's block page (provider.BlockedHint)
+  const BLOCKED = "the provider's network firewall blocked requests from this IP; wait a while, or switch to another network or proxy";
+  const HINTS = [WB_REFUSED, BLOCKED];
 
   function trySaid(r, i) {
     const tr = r.tries[i], w = tried(r, tr), agent = agentName(r.agent);
@@ -959,10 +962,10 @@
       items.push([tryWhy(r, i), tr.done ? (tr.status < 400 ? "ok" : "bad") : "wait"]);
       // what the vendor said, word for word: the why above is magpie's reading of it
       if (tr.done && tr.status >= 400 && tr.error) {
-        const hinted = tr.error.endsWith(" — " + WB_REFUSED);
-        const said = hinted ? tr.error.slice(0, -(WB_REFUSED.length + 3)) : tr.error;
+        const hint = HINTS.find((h) => tr.error.endsWith(" — " + h));
+        const said = hint ? tr.error.slice(0, -(hint.length + 3)) : tr.error;
         items.push([t("It said: {error}", { error: said.length > 600 ? said.slice(0, 600) + "…" : said }), "aside said"]);
-        if (hinted) items.push([t(WB_REFUSED), "aside"]);
+        if (hint) items.push([t(hint), "aside"]);
       }
       // the reply said another model answered it
       if (tr.done && tr.status < 400 && tr.swapped) items.push([swapWhy(tr), "swap", tr]);

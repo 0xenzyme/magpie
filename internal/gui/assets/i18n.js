@@ -1367,6 +1367,7 @@ const I18N = {
     "errors your agent saw": "Agent 收到的错误",
     "It said: {error}": "原话：{error}",
     "WorkBuddy refuses chats from Codex and Claude Code (their system prompt); use it from Hermes, OpenCode or Pi, or add another provider to this group": "WorkBuddy 会拒绝来自 Codex 和 Claude Code 的对话（因为它们的系统提示词）；请在 Hermes、OpenCode 或 Pi 里使用它，或在这个分组里再加一个供应商",
+    "the provider's network firewall blocked requests from this IP; wait a while, or switch to another network or proxy": "供应商的网络防火墙拦截了来自这个 IP 的请求；请稍等一会儿，或换个网络或代理",
     "Show the latest request that failed": "查看最近一个失败的请求",
     "rate limited": "限流",
     "out of credit": "余额不足",
