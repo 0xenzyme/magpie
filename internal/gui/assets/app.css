@@ -251,6 +251,10 @@ body.window .top.cramped .seg { position: relative; left: auto; top: auto; trans
 .top.cramped .seg button { padding: 0 8px; }
 .top.crowded .seg button { padding: 0 6px; font-size: 12px; }
 .top.crowded .brand { display: none; }
+.top.packed .seg button { padding: 0 3px; font-size: 11.5px; }
+/* and when even that doesn't fit, the tabs scroll sideways rather than push the page wider */
+.top.packed .seg { min-width: 0; flex: 0 1 auto; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.top.packed .seg::-webkit-scrollbar { display: none; }
 @keyframes update-in { from { opacity: 0; transform: translateY(-3px) scale(.94); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 

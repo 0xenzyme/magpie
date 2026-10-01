@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="routing.css">
 <link rel="stylesheet" href="library.css">
 <link rel="stylesheet" href="plugins.css">
+<link rel="stylesheet" href="sessions.css">
 <link rel="stylesheet" href="omarchy.css">
 </head>
 <body>
@@ -25,6 +26,7 @@
     <button data-view="gateway" data-t>Gateway</button>
     <button data-view="routing" data-t>Routing</button>
     <button data-view="usage" data-t>Usage</button>
+    <button data-view="sessions" data-t>Sessions</button>
     <button data-view="library" data-t>Library</button>
     <button data-view="plugins" data-t>Plugins</button>
   </nav>
@@ -202,6 +204,8 @@
   </div>
 </main>
 
+<main class="view" id="view-sessions" hidden></main>
+
 <main class="view" id="view-library" hidden></main>
 
 <main class="view" id="view-plugins" hidden></main>
@@ -362,5 +366,6 @@
 <script src="routing.js"></script>
 <script src="library.js"></script>
 <script src="plugins.js"></script>
+<script src="sessions.js"></script>
 </body>
 </html>

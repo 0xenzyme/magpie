@@ -1344,6 +1344,7 @@ async function load() {
     if (applyPrefs(state.settings, state.fx)) {
       if (view === "library") window.loadLibrary?.();
       if (view === "plugins") window.loadPlugins?.();
+      if (view === "sessions") window.loadSessionsPage?.();
     }
     tintPanel();
     tintTitleBar();
@@ -11400,7 +11401,7 @@ function show(v) {
   view = v;
   if (mode === "window") { for (const b of $("#nav").querySelectorAll("button")) b.classList.toggle("on", b.dataset.view === v); slide($("#nav"), "nav"); }
   $("#prefs").classList.toggle("on", v === "settings");
-  for (const id of ["agents", "providers", "gateway", "routing", "usage", "library", "plugins", "settings"]) $("#view-" + id).hidden = v !== id;
+  for (const id of ["agents", "providers", "gateway", "routing", "usage", "sessions", "library", "plugins", "settings"]) $("#view-" + id).hidden = v !== id;
   // back to where the reader was in it, and again once it has what it loads
   const back = () => backToReader($("#view-" + v));
   requestAnimationFrame(back);
@@ -11413,6 +11414,7 @@ function show(v) {
   if (v === "settings") loadSettings().then(back, (e) => status(e.message, "err"));
   if (v === "library") window.loadLibrary?.()?.then(back);
   if (v === "plugins") window.loadPlugins?.()?.then(back);
+  if (v === "sessions") window.loadSessionsPage?.()?.then(back);
   syncURL();
 }
 
@@ -11476,7 +11478,8 @@ setTimeout(wag, 250);
 
 // A narrow window has no room for the whole header: the name goes, leaving
 // the magpie, and Update becomes its arrow; narrower still, the tabs stop
-// centring and take the room between, and at the narrowest they draw in.
+// centring and take the room between, and at the narrowest they draw in,
+// further still when they don't fit (the 560px window at 150%).
 function fitTop() {
   const top = $(".top"), nav = $("#nav"), brand = $(".brand"), actions = $(".actions");
   const fits = () => {
@@ -11488,12 +11491,14 @@ function fitTop() {
     const n = nav.getBoundingClientRect();
     return left + 8 <= n.left && n.right + 8 <= a.left;
   };
-  top.classList.remove("tight", "cramped", "crowded");
+  top.classList.remove("tight", "cramped", "crowded", "packed");
   if (fits()) return;
   top.classList.add("tight");
   if (fits()) return;
   top.classList.add("cramped");
-  if (!fits()) top.classList.add("crowded");
+  if (fits()) return;
+  top.classList.add("crowded");
+  if (!fits()) top.classList.add("packed");
 }
 const topFit = new ResizeObserver(fitTop);
 for (const e of [".top", ".brand", ".actions"]) topFit.observe($(e));
@@ -11714,6 +11719,6 @@ if (mode === "window" && params.get("view") === "usage") {
   for (const k of ["tab", "provider", "agent"]) u.searchParams.delete(k);
   history.replaceState(null, "", u);
 }
-if (mode === "window" && ["providers", "gateway", "routing", "usage", "library", "plugins", "settings"].includes(params.get("view"))) show(params.get("view"));
+if (mode === "window" && ["providers", "gateway", "routing", "usage", "sessions", "library", "plugins", "settings"].includes(params.get("view"))) show(params.get("view"));
 else if (mode === "window") slide($("#nav"), "nav");
 load();
