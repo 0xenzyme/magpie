@@ -462,6 +462,7 @@ func TestCopilotSignAndModels(t *testing.T) {
 // Logging out of Claude Code can leave its credentials behind; what the CLI
 // says wins, so a signed-out account is not a provider.
 func TestClaudeSignedOut(t *testing.T) {
+	shellFakes(t)
 	home := claudeHome(t)
 	claudeSignIn(t, home, time.Now().Add(time.Hour))
 	status := `{"loggedIn": true, "email": "me@example.com", "subscriptionType": "max"}`
