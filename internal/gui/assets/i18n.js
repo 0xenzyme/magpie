@@ -1552,6 +1552,7 @@ const I18N = {
     "{n} tok/s": "{n} token/秒",
     "requested {sent} · served {served}": "请求 {sent} · 实际 {served}",
     "served {served}": "实际 {served}",
+    "{sent} is a routing group of the remote magpie, and it routed the request to {served}: the group picking one of its models, not the vendor swapping the model.": "{sent} 是远程 magpie 的路由组，它把请求路由给了 {served}：这是路由组在挑选组内模型，并不是服务商换了模型。",
     "Open Routing": "打开路由",
     "The vendor was asked for {sent}, and its reply says {served} answered it: another model, not just {sent} under a dated name.": "向服务商请求的是 {sent}，但它的回复写明由 {served} 作答：这是另一个模型，而不只是 {sent} 带日期的版本名。",
     "{n} min": "{n} 分钟",
