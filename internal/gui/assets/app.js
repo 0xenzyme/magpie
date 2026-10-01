@@ -11724,8 +11724,19 @@ function fitRoom(v) {
   const r = roomOf(v);
   if (r) setRoom(v, v.scrollTop < 1 ? 0 : Math.min(r, v.scrollTop + v.clientHeight - contentEnd(v)));
 }
+// A view drawn again whole (the Library's page) has none of what was clicked
+// left, nor its parents: what's held is then what is now where it was, of
+// the same kind (#458)
+const pathIn = (v, n) => { const p = []; for (; n !== v; n = n.parentElement) p.unshift(Array.prototype.indexOf.call(n.parentElement.children, n)); return p; };
+const atPath = (v, p) => p.reduce((n, i) => n?.children[i], v);
+function standIn(h) {
+  for (const c of h.chain) {
+    const s = atPath(h.v, c[2]);
+    if (s && s !== c[0] && s.tagName === c[0].tagName && s.classList[0] === c[0].classList[0] && atRest(s)) { c[0] = s; return c; }
+  }
+}
 function hold(h) {
-  const a = h.chain.find(([n]) => atRest(n));
+  const a = h.chain.find(([n]) => atRest(n)) || (h.chain.some(([n]) => n.isConnected) ? null : standIn(h));
   if (!a) return;
   const v = h.v, d = onScreen(a[0], v) - a[1];
   if (Math.abs(d) >= 1) {
@@ -11763,7 +11774,7 @@ addEventListener("click", (e) => {
   const chain = [];
   const from = e.target.closest?.("[data-unrolls]")?.parentElement || e.target;
   for (let n = from; n && n !== v; n = n.parentElement) {
-    for (const m of [n, n.previousElementSibling, n.nextElementSibling]) if (m instanceof HTMLElement && m.offsetParent) chain.push([m, onScreen(m, v)]);
+    for (const m of [n, n.previousElementSibling, n.nextElementSibling]) if (m instanceof HTMLElement && m.offsetParent) chain.push([m, onScreen(m, v), pathIn(v, m)]);
   }
   held = chain.length ? { v, chain, until: performance.now() + 4000, top: v.scrollTop < 1 } : null;
   heldSizes.disconnect();
