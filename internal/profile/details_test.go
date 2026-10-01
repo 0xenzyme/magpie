@@ -11,7 +11,9 @@ import (
 
 // A profile's details are its fields by agent, in the order magpie lists the
 // agents and their fields, under the agents' names and the fields' labels,
-// with what the library gives each; an empty quiet field is left out, an
+// with what the library gives each; an empty quiet field is left out, but
+// Claude Code's four tiers are all there, an empty one following the main
+// model (#480: opus and fable, following it, were missing); an
 // agent magpie no longer knows comes last by id, and nothing that reads as a
 // key or a token is in them (#467).
 func TestDetails(t *testing.T) {
@@ -23,6 +25,9 @@ func TestDetails(t *testing.T) {
 			"codex.login":   "", // quiet: follows the model
 			"claude.model":  "opus",
 			"claude.haiku":  "",
+			"claude.opus":   "",
+			"claude.sonnet": "magpie/a/s",
+			"claude.fable":  "",
 			"gone.model":    "m",
 			"gone.apiKey":   "plain-looking",
 			"codex.extra":   "sk-live-abcdef",
@@ -67,8 +72,22 @@ func TestDetails(t *testing.T) {
 	if _, ok := item(codex, "login"); ok {
 		t.Error("an empty quiet field is left out")
 	}
-	if _, ok := item(claude, "haiku"); ok {
-		t.Error("an empty tier is left out")
+	var tiers []string
+	for _, it := range claude.Fields {
+		switch it.Key {
+		case "opus", "sonnet", "haiku", "fable":
+			tiers = append(tiers, it.Key)
+			want := Item{Key: it.Key, Label: it.Key, Follows: "model"}
+			if it.Key == "sonnet" {
+				want = Item{Key: "sonnet", Label: "sonnet", Value: "magpie/a/s"}
+			}
+			if it != want {
+				t.Errorf("tier %+v, want %+v", it, want)
+			}
+		}
+	}
+	if !slices.Equal(tiers, []string{"opus", "sonnet", "haiku", "fable"}) {
+		t.Errorf("tiers %v, want all four in Claude Code's order, an empty one following the model", tiers)
 	}
 	for _, c := range []struct {
 		g   Group

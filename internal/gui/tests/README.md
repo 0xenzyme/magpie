@@ -347,8 +347,9 @@ field; Escape closes it; in English and Chinese.
 window and in the tray panel with its list scrolled to its end: the details
 open, applying nothing and leaving the chip where it was on the screen; they
 list each agent by name, its fields under their labels (an empty one as the
-agent's default, one that reads as a key as dots) and what the Library gives
-it; a second click closes them; their Apply applies the profile, once; ↻ and
+agent's default, one that reads as a key as dots, all four of Claude Code's
+tiers, one left empty as following the main model and which that is, #480)
+and what the Library gives it; a second click closes them; their Apply applies the profile, once; ↻ and
 × stay on the chip. In Chromium and WebKit, English and Chinese:
 
 ```sh

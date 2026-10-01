@@ -295,6 +295,8 @@ const I18N = {
     "Apply": "应用",
     "Apply {name} to the agents": "将 {name} 应用到各 Agent",
     "No agent settings saved": "没有保存任何 Agent 的设置",
+    "follows the main model": "跟随主模型",
+    "follows the main model ({model})": "跟随主模型（{model}）",
     "•••••• looks like a key or a token, and is not shown": "•••••• 看起来是密钥或令牌，不予显示",
     "Updated {name} to the current setup": "已用当前配置更新 {name}",
     "Profile name": "方案名称",

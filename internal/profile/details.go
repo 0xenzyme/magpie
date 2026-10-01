@@ -24,13 +24,16 @@ type Group struct {
 	Instructions bool     `json:"instructions,omitempty"`
 }
 
-// Item is one saved field. Value "" is the agent's own default. Hidden is a
-// value that looked like a key or a token: it is left out, never shown.
+// Item is one saved field. Value "" is the agent's own default, or, with
+// Follows, the key of the field it takes after (a Claude Code tier that
+// follows the main model, #480). Hidden is a value that looked like a key or
+// a token: it is left out, never shown.
 type Item struct {
-	Key    string `json:"key"`
-	Label  string `json:"label"`
-	Value  string `json:"value"`
-	Hidden bool   `json:"hidden,omitempty"`
+	Key     string `json:"key"`
+	Label   string `json:"label"`
+	Value   string `json:"value"`
+	Follows string `json:"follows,omitempty"`
+	Hidden  bool   `json:"hidden,omitempty"`
 }
 
 // secretName is a field named for a credential; secretValue a value that
@@ -47,8 +50,11 @@ func secret(key, label, value string) bool {
 }
 
 // Details is what p holds, by agent: the agents magpie knows in the order it
-// lists them, then any it no longer does by id. A quiet field left empty (it
-// follows another one) is left out, as the agent's row leaves it out.
+// lists them, then any it no longer does by id. A quiet field left empty is
+// left out, as the agent's row leaves it out, unless it says which field it
+// follows: Claude Code's four tiers are all there, one that follows the main
+// model saying so (#480: opus and fable, following it, were missing, and
+// read as not set). What applying the profile writes is unchanged.
 func Details(p Profile) []Group {
 	known := map[string]*agent.Agent{}
 	var order []string
@@ -117,6 +123,9 @@ func Details(p Profile) []Group {
 				}
 				seen[f.Key] = true
 				if f.Quiet && v == "" {
+					if f.Follows != "" {
+						g.Fields = append(g.Fields, Item{Key: f.Key, Label: f.Label, Follows: f.Follows})
+					}
 					continue
 				}
 				add(f.Key, f.Label, v)

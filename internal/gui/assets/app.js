@@ -589,7 +589,10 @@ function profileDetail(p, footed) {
     };
     for (const f of g.fields || []) {
       const effort = f.key === "effort" || f.label === "effort" || f.label === "thinking";
+      // a Claude Code tier left to follow the main model (#480), and to what
+      const main = f.follows && g.fields.find((x) => x.key === f.follows && !x.hidden)?.value;
       if (f.hidden) row(t(f.label), "••••••", "pd-hidden");
+      else if (f.follows) row(t(f.label), main ? t("follows the main model ({model})", { model: main }) : t("follows the main model"), "pd-default");
       else if (!f.value) row(t(f.label), t("agent default"), "pd-default");
       else row(t(f.label), effort ? effortName({ value: f.value }) : f.value);
     }

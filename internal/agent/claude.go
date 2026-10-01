@@ -573,7 +573,7 @@ func claudeIn(at place) *Agent {
 	}}
 	for _, tier := range claudeTiers {
 		fields = append(fields, Field{
-			Key: tier, Label: tier, Quiet: true,
+			Key: tier, Label: tier, Quiet: true, Follows: "model",
 			// empty while the tier follows the main model
 			Get: func() string {
 				if w := env(tierEnv(tier)); routed() && w != env("ANTHROPIC_MODEL") {
