@@ -2149,11 +2149,9 @@ func refusesField(status int, body []byte, field string) bool {
 var optionalFields = []string{"store", "metadata", "service_tier", cacheKeyField, "prompt_cache_retention",
 	"safety_identifier", "stream_options", "parallel_tool_calls", "verbosity", "thinking", "enable_thinking"}
 
-// refusedOptional lists the optional fields of body an upstream's error
-// names as what it turned the request away for: named quoted, as Mistral's
-// extra_forbidden (loc ["body","store"], each field it refused in one
-// reply), Gemini's Unknown name "store" and Groq's 'store' is unsupported
-// do.
+// refusedOptional lists optional fields an upstream explicitly rejects as
+// unsupported. An invalid value must reach the client without dropping the
+// field or caching it as unsupported for later requests.
 func refusedOptional(status int, msg, body []byte) []string {
 	if !badRequest(status) {
 		return nil
@@ -2162,19 +2160,87 @@ func refusedOptional(status int, msg, body []byte) []string {
 	if json.Unmarshal(body, &m) != nil {
 		return nil
 	}
+	var fault any
+	if json.Unmarshal(msg, &fault) != nil {
+		fault = string(msg)
+	}
 	var out []string
 	for _, f := range optionalFields {
 		if _, ok := m[f]; !ok {
 			continue
 		}
-		for _, q := range []string{`"` + f + `"`, `"` + f + `\"`, `'` + f + `'`, "`" + f + "`"} {
-			if bytes.Contains(msg, []byte(q)) {
-				out = append(out, f)
-				break
-			}
+		if unsupportedOptionalField(fault, f) {
+			out = append(out, f)
 		}
 	}
 	return out
+}
+
+var unknownOptionalField = regexp.MustCompile("(?i)\\b(?:unknown (?:name|field|parameter)|unsupported (?:parameter|field|property|argument)|unrecognized (?:request )?(?:argument|parameter)(?: supplied)?):?\\s*['\"\\x60]([a-z_]+)['\"\\x60]")
+var rejectedOptionalField = regexp.MustCompile("(?i)(?:^|\\b(?:parameter|field|property|argument)\\s+)['\"\\x60]([a-z_]+)['\"\\x60]\\s+(?:is\\s+)?(?:unsupported|not supported)\\b")
+
+func unsupportedOptionalField(fault any, field string) bool {
+	switch v := fault.(type) {
+	case string:
+		// A proxy can embed the vendor's JSON error in prose. Prefer its
+		// structure to text matching, which could mistake an input echo
+		// or a different parameter's error for a refusal.
+		if i := strings.IndexAny(v, "{["); i >= 0 {
+			var inner any
+			if json.NewDecoder(strings.NewReader(v[i:])).Decode(&inner) == nil {
+				return unsupportedOptionalField(inner, field)
+			}
+		}
+		for _, match := range unknownOptionalField.FindAllStringSubmatchIndex(v, -1) {
+			if v[match[2]:match[3]] != field {
+				continue
+			}
+			// Gemini names a nested field with "at 'path'"; only an
+			// absent or empty path identifies a top-level request field.
+			tail := strings.ToLower(strings.TrimSpace(v[match[1]:]))
+			if strings.HasPrefix(tail, "at ") && !strings.HasPrefix(tail, "at '':") && !strings.HasPrefix(tail, "at \"\":") {
+				continue
+			}
+			return true
+		}
+		for _, match := range rejectedOptionalField.FindAllStringSubmatch(v, -1) {
+			if match[1] == field {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range v {
+			if unsupportedOptionalField(item, field) {
+				return true
+			}
+		}
+	case map[string]any:
+		if v["type"] == "extra_forbidden" {
+			loc, _ := v["loc"].([]any)
+			return len(loc) == 1 && loc[0] == field || len(loc) == 2 && loc[0] == "body" && loc[1] == field
+		}
+		// A located validation error concerns the value, not support for
+		// the top-level field. Never inspect its input echo.
+		if _, located := v["loc"]; located {
+			return false
+		}
+		if v["code"] == "unsupported_value" || v["type"] == "unsupported_value" {
+			return false
+		}
+		param, _ := v["param"].(string)
+		if param != "" && param != field {
+			return false
+		}
+		if v["code"] == "unsupported_parameter" && param == field {
+			return true
+		}
+		for _, key := range []string{"error", "message", "detail", "details", "errors", "description", "metadata", "raw"} {
+			if unsupportedOptionalField(v[key], field) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // withoutRefused leaves out of body the optional fields the provider has
