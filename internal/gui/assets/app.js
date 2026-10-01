@@ -8179,18 +8179,28 @@ function drawLedColumns(box, l, split, metric, compact) {
     return;
   }
   const topV = ledAxis(max);
-  const M = { l: compact ? 34 : 44, r: 6, t: 8, b: 22 };
-  const pw = W - M.l - M.r, ph = H - M.t - M.b, slot = pw / n, bw = Math.max(2, Math.min(compact ? 14 : 30, slot * 0.68));
-  const Y = (v) => M.t + ph - (ph * v) / topV;
   const g = sv("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" });
   g.setAttribute("aria-label", t("Usage trend"));
-  for (let i = 0; i <= 4; i++) {
-    const y = M.t + (ph * i) / 4;
-    g.append(sv("line", { x1: M.l, x2: W - M.r, y1: y, y2: y, class: "grid" }));
-    const lab = sv("text", { x: M.l - 6, y: y + 3.5, "text-anchor": "end", class: "axis" });
+  // the side's labels, measured as drawn: the plot starts where the widest
+  // ends ("8000 万", "¥1250" are wider than "80M"), so none reaches past the
+  // card's padding
+  plot.append(g);
+  const labs = [0, 1, 2, 3, 4].map((i) => {
+    const lab = sv("text", { "text-anchor": "end", class: "axis" });
     lab.textContent = ledFormat(metric, topV * (1 - i / 4));
     g.append(lab);
-  }
+    return lab;
+  });
+  const widest = Math.max(0, ...labs.map((lab) => { try { return lab.getComputedTextLength(); } catch { return 0; } }));
+  const M = { l: widest > 0 ? Math.ceil(widest) + 6 : compact ? 34 : 44, r: 6, t: 8, b: 22 };
+  const pw = W - M.l - M.r, ph = H - M.t - M.b, slot = pw / n, bw = Math.max(2, Math.min(compact ? 14 : 30, slot * 0.68));
+  const Y = (v) => M.t + ph - (ph * v) / topV;
+  labs.forEach((lab, i) => {
+    const y = M.t + (ph * i) / 4;
+    lab.setAttribute("x", M.l - 6);
+    lab.setAttribute("y", y + 3.5);
+    g.insertBefore(sv("line", { x1: M.l, x2: W - M.r, y1: y, y2: y, class: "grid" }), lab);
+  });
   const room = Math.max(2, Math.floor(pw / (compact ? 46 : 62))), every = Math.ceil(n / room);
   pts.forEach((p, i) => {
     if (i % every) return;
