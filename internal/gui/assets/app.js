@@ -1517,6 +1517,7 @@ async function load() {
     status(e.message, "err");
   }
   renderUpdateBadge();
+  whatsNewOnce();
 }
 
 // installFrom is what a restart to update tells the app: the window's tab,
@@ -1629,6 +1630,117 @@ function updateStuck(u) {
   return u.stuck === "translocated"
     ? t("macOS is running magpie from a temporary copy, so it can't update itself; move magpie to Applications and open it from there.")
     : t("magpie is running from its disk image, so it can't update itself; drag it to Applications and open it from there.");
+}
+
+// ---------- what's new ----------
+// After an update the window (or magpie web's page) shows what changed in
+// every release since the one last run, once (a Discord user: to see if
+// their issue was fixed). Not in the tray's panel, where a dialog has no
+// room; Settings' version row opens it again, and with an update waiting,
+// that one's notes first.
+const ISSUES = "https://github.com/yetone/magpie/issues/";
+let whatsNewAsked = false;
+async function whatsNewOnce() {
+  if (whatsNewAsked || mode === "panel" || document.hidden || !$("#modal").hidden) return;
+  whatsNewAsked = true;
+  const w = await api("whatsnew").catch(() => null);
+  // something else opened meanwhile: the notes wait for the next load
+  if (!w?.show || !w.releases?.length || !$("#modal").hidden) { if (w?.show) whatsNewAsked = false; return; }
+  api("whatsnew/seen", {}).catch(() => {});
+  showWhatsNew(w.releases);
+}
+
+// openWhatsNew is Settings' way back to the notes: the current version's (or
+// those since the last update), after the waiting update's when u has one.
+async function openWhatsNew(u, b) {
+  if (b) { b.disabled = true; b.classList.add("busy"); }
+  const w = await api("whatsnew?all=1").catch(() => null);
+  if (b) { b.disabled = false; b.classList.remove("busy"); }
+  const list = [...(w?.releases || [])];
+  if (u?.notes && u.latest && ["ready", "available", "downloading"].includes(u.state) && !list.some((r) => r.version === u.latest)) {
+    list.unshift({ version: u.latest, notes: u.notes, url: u.url, pending: true });
+  }
+  if (!list.length) return status(t("Couldn't load the release notes"), "err");
+  showWhatsNew(list);
+}
+
+function showWhatsNew(releases) {
+  const ed = el("div", "editor whatsnew");
+  const head = el("div", "ehead");
+  head.append(el("b", "", t("What's new in {v}", { v: "v" + releases[0].version })));
+  ed.append(head);
+  for (const r of releases) {
+    const sec = el("section", "wn-rel");
+    const h = el("div", "wn-ver");
+    h.append(el("b", "", "v" + r.version));
+    if (r.pending) h.append(el("span", "badge", t("Not installed yet")));
+    sec.append(h, noteBlocks(r.notes));
+    ed.append(sec);
+  }
+  const bar = el("div", "bar");
+  const ok = el("button", "text primary", t("Close"));
+  ok.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); };
+  bar.append(el("span", "grow"), ok);
+  ed.append(bar);
+  confirmAsk = ed;
+  openModal(ed);
+  $("#modal").classList.add("lib");
+  ok.focus({ preventScroll: true });
+}
+
+// noteBlocks draws a release's markdown as text: headings, bullets,
+// paragraphs, and inline bold, code and links. Nothing in it is taken as
+// HTML; #123 links the issue.
+function noteBlocks(md) {
+  const box = el("div", "wn-notes");
+  let list = null;
+  for (const line of String(md || "").split(/\r?\n/)) {
+    const h = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    const li = /^\s*[-*+]\s+(.*)$/.exec(line);
+    if (h) {
+      list = null;
+      box.append(inlineMD(el("div", "wn-h wn-h" + Math.min(h[1].length, 4)), h[2]));
+    } else if (li) {
+      if (!list) box.append(list = el("ul"));
+      list.append(inlineMD(el("li"), li[1]));
+    } else if (!line.trim()) {
+      list = null;
+    } else if (list && /^\s{2,}\S/.test(line)) {
+      inlineMD(list.lastElementChild, " " + line.trim());
+    } else {
+      list = null;
+      box.append(inlineMD(el("p"), line.trim()));
+    }
+  }
+  return box;
+}
+
+// inlineMD appends text to e with **bold**, `code`, [links](https://…),
+// bare https:// links and #123 issue links; only http(s) addresses link.
+function inlineMD(e, s) {
+  const re = /\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>)]+)|(^|[\s(\[])#(\d+)\b/g;
+  let at = 0, m;
+  while ((m = re.exec(s))) {
+    if (m.index > at) e.append(s.slice(at, m.index));
+    if (m[1] !== undefined) e.append(inlineMD(el("b"), m[1]));
+    else if (m[2] !== undefined) e.append(el("code", "", m[2]));
+    else if (m[3] !== undefined) e.append(noteLink(m[3], m[4]));
+    else if (m[5] !== undefined) e.append(noteLink(m[5], m[5]));
+    else e.append(m[6], noteLink("#" + m[7], ISSUES + m[7]));
+    at = re.lastIndex;
+  }
+  if (at < s.length) e.append(s.slice(at));
+  return e;
+}
+
+// a link in the notes opens in the browser, as the app's other links do
+function noteLink(text, url) {
+  const a = el("a", "wn-link", text);
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.onclick = (e) => { e.preventDefault(); e.stopPropagation(); api("open", { url }).catch(() => {}); };
+  return a;
 }
 
 // ---------- picker ----------
@@ -10559,6 +10671,13 @@ function renderSettings() {
     return r;
   };
   renderUpdate(row(t("Version"), "", s.version));
+  // what changed in this version, and in one waiting; a build from source
+  // has no notes
+  if (/^v?\d+\.\d+\.\d+$/.test(s.version || "")) {
+    const notes = el("button", "text", t("Open"));
+    notes.onclick = async () => openWhatsNew(await api("update").catch(() => null), notes);
+    row(t("What's new"), t("The release notes since the last update"), "", notes).classList.add("whatsnew-row");
+  }
   // the header's Update pill, kept away for good or for one version; the
   // version row above still says what is out and offers it
   const pill = row(t("Update button"), t("Shows in the header when a newer magpie is out"),
