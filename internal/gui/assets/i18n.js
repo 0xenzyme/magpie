@@ -2074,9 +2074,6 @@ const I18N = {
     "Subscriptions magpie doesn't sign in to itself: install a plugin for one in the Plugins tab": "magpie 未内置的订阅：在「插件」页安装对应插件即可",
     "look for a plugin": "找找插件",
     ", or ": "，或",
-    "More subscriptions": "更多订阅",
-    "in Plugins": "在插件中",
-    "Cursor, Copilot, Gemini and others, each signed in to by a plugin you install from the Plugins tab": "Cursor、Copilot、Gemini 等订阅，在「插件」页安装对应插件后即可登录",
   },
 };
 

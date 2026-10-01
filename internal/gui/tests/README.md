@@ -54,9 +54,9 @@ suggested plugins in their two sections, a card installs its plugin and
 then offers its sign-in, which opens in the Providers add sheet; a search
 filters the list at once and adds what npm has; a card opens the plugin's
 page with its README (no pictures, links opened outside); Installed shows
-why one didn't load, updates one and removes one. The providers list's
-"More subscriptions in Plugins" button and the add sheet's row and "look
-for a plugin" link lead there. English and Chinese, Chromium and WebKit,
+why one didn't load, updates one and removes one. The add sheet's
+"More in Plugins" row (the providers list has no button of its own) and
+"look for a plugin" link lead there. English and Chinese, Chromium and WebKit,
 with the API faked.
 
 `panel-fold.test.cjs` expands and collapses on the Agents page with the list

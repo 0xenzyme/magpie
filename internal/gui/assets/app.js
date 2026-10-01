@@ -6692,15 +6692,6 @@ function hostOf(u) { try { return new URL(u.includes("://") ? u : "https://" + u
 // view goes down with it. The button stays at the view's foot however long
 // the list is; with the sheet already open it takes the view down to it,
 // and it steps aside while the sheet's head is in sight.
-// moreSubs: beside Add provider, the reminder that more subscriptions are
-// a plugin away — three of them in a stack, and where to find them
-{
-  const b = $("#moreSubs");
-  for (const ic of ["cursor", "githubcopilot", "gemini-color"]) b.firstElementChild.append(icon(ic));
-  b.append(svg(CHEV_R, 10, 1.7));
-  b.onclick = () => { openPlugins(); b.blur(); };
-}
-
 $("#addProvider").onclick = (e) => {
   const view = $("#view-providers"), sheet = $("#addSheet");
   if (!adding) {
