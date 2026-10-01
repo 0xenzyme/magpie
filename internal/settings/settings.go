@@ -86,10 +86,6 @@ type Settings struct {
 	// used up and no other account can take the request: at most one a
 	// week each (see provider.AutoUseCodexReset).
 	CodexAutoReset []string `json:"codexAutoReset,omitempty"`
-	// ClaudeAutoReset are the Claude accounts (lower-case) that spend one
-	// of their usage-limit resets by themselves the same way (see
-	// provider.AutoUseClaudeReset).
-	ClaudeAutoReset []string `json:"claudeAutoReset,omitempty"`
 	// WorkBuddyCheckin presses WorkBuddy's daily check-in (签到) for each
 	// signed-in WorkBuddy (China) account once a Beijing day, claiming the
 	// credits it gives while its event runs.
@@ -527,10 +523,6 @@ func Save(s Settings) error {
 		s.CodexAutoReset[i] = strings.ToLower(u)
 	}
 	s.CodexAutoReset = ids(s.CodexAutoReset)
-	for i, u := range s.ClaudeAutoReset {
-		s.ClaudeAutoReset[i] = strings.ToLower(u)
-	}
-	s.ClaudeAutoReset = ids(s.ClaudeAutoReset)
 	s.TrayUsage = ""
 	if len(s.TrayUsages) > 0 {
 		s.TrayUsage = s.TrayUsages[0]

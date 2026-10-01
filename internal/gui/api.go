@@ -485,8 +485,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		in.QuotaLeft = cur.QuotaLeft
 		// how agents' lists name models, set on its own for the agents to be told
 		in.PlainNames = cur.PlainNames
-		// which Codex and Claude accounts spend a reset by themselves, set on the Usage card
-		in.CodexAutoReset, in.ClaudeAutoReset = cur.CodexAutoReset, cur.ClaudeAutoReset
+		// which Codex accounts spend a reset by themselves, set on the Usage card
+		in.CodexAutoReset = cur.CodexAutoReset
 		// and the text size, which the keyboard changes too (text-size below)
 		in.TextSize = cur.TextSize
 		// the version the Update pill was hidden for, set from the pill
@@ -601,26 +601,6 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			return
 		}
 		if err := provider.SetCodexAutoReset(in.User, in.On); err != nil {
-			fail(rw, err)
-			return
-		}
-		writeJSON(rw, settingsState())
-	})
-	// and a Claude account its usage-limit resets, the same toggle
-	mux.HandleFunc("POST /api/settings/claude-auto-reset", func(rw http.ResponseWriter, r *http.Request) {
-		var in struct {
-			User string
-			On   bool
-		}
-		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			fail(rw, err)
-			return
-		}
-		if strings.TrimSpace(in.User) == "" {
-			fail(rw, fmt.Errorf("which Claude account?"))
-			return
-		}
-		if err := provider.SetClaudeAutoReset(in.User, in.On); err != nil {
 			fail(rw, err)
 			return
 		}

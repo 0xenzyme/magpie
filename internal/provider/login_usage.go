@@ -167,11 +167,19 @@ func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
 		return SubscriptionQuota{Provider: l.Agent, Plan: l.Plan, Windows: []QuotaWindow{}, Error: "not signed in"}
 	}
 	q := SubscriptionQuota{Provider: l.Agent, Plan: l.Plan, Windows: []QuotaWindow{}}
+	if l.Agent == "claude" && !l.Active {
+		// a saved account is never asked: what Claude Code told of it
+		ws, err := claudeWindows(ctx, l.User, false)
+		q.Windows = ws
+		if err != nil {
+			q.Error = err.Error()
+		}
+		return q
+	}
 	var tok, accountID string
 	var err error
 	switch {
-	case l.Active && l.Agent == "claude":
-		tok, err = claudeToken(ctx)
+	case l.Agent == "claude": // Claude Code reads its own (claudeWindows)
 	case l.Active:
 		tok, accountID, err = codexToken(ctx, codexAuthPath())
 	default:
@@ -179,8 +187,7 @@ func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
 	}
 	if err == nil {
 		if l.Agent == "claude" {
-			q.Windows, err = claudeWindows(ctx, l.User, tok)
-			q.Resets = claudeResetsOf(l.User)
+			q.Windows, err = claudeWindows(ctx, l.User, true)
 		} else {
 			var plan string
 			if plan, q.Windows, q.Resets, err = codexWindows(ctx, tok, accountID); plan != "" {

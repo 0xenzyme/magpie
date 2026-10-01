@@ -4906,7 +4906,9 @@ function fallbackHint(p) {
 
 const SUBS = [
   // both can also come from CLIProxyAPI's auth files or the agent's own (importing below)
-  { agent: "claude", name: "Claude", icon: "claude-color", plans: "Pro · Max · Team", importable: true },
+  // Anthropic has banned accounts it saw used from other tools: said before one is added
+  { agent: "claude", name: "Claude", icon: "claude-color", plans: "Pro · Max · Team", importable: true, risk: true,
+    riskNote: "Anthropic may suspend or ban a Claude account it sees used outside its own apps. magpie sends requests through Claude Code, but Anthropic may still act on them; you use it at your own risk. Use an account you can afford to lose." },
   { agent: "codex", name: "ChatGPT", icon: "openai", plans: "Plus · Pro · Business", importable: true },
   // cursor-agent keeps one account; signing in again replaces it
   { agent: "cursor", name: "Cursor", icon: "cursor", plans: "Pro · Ultra · Teams", single: true },
@@ -6386,24 +6388,38 @@ const PERIODS = [["today", "Today"], ["7d", "7 days"], ["30d", "30 days"], ["all
 // never waits for them. They don't depend on the period either.
 let quotas = null;
 let quotasAt = 0; // when they came in
-async function loadUsage() {
+// asked: the reader opened the page, the one time a Claude account's
+// usage is read, by running Claude Code's own /usage (never on a timer).
+async function loadUsage(asked) {
   renderUsageTab();
+  if (asked) loadQuotas(true);
   if (usageTab === "sessions") return loadSessions();
   if (usageTab === "requests") return loadLedger();
   renderUsageLoading();
-  loadQuotas();
+  if (!asked) loadQuotas();
   usage = await api("usage?period=" + period);
   renderUsage();
 }
 
+// An asked load is never swallowed by one already on its way that wasn't:
+// it goes after it.
 let quotasLoading = null;
-function loadQuotas() {
-  if (quotasLoading) return quotasLoading;
-  quotasLoading = api("usage/quotas")
+function loadQuotas(asked) {
+  if (quotasLoading && (!asked || quotasLoading.asked)) return quotasLoading;
+  const p = Promise.resolve(quotasLoading).catch(() => {})
+    .then(() => api("usage/quotas" + (asked ? "?asked=1" : "")))
     .then((q) => { quotas = q || []; quotasAt = Date.now(); }, () => { quotas = quotas || []; })
-    .finally(() => { quotasLoading = null; renderQuotas(); });
-  return quotasLoading;
+    .finally(() => { if (quotasLoading === p) quotasLoading = null; renderQuotas(); });
+  p.asked = !!asked;
+  quotasLoading = p;
+  return p;
 }
+$("#quotaRefresh").onclick = async (e) => {
+  const b = e.currentTarget;
+  b.disabled = true;
+  b.classList.add("busy");
+  try { await loadQuotas(true); } finally { b.disabled = false; b.classList.remove("busy"); }
+};
 
 // the period picker, in the page's head, for the Overview and Requests
 function renderPeriod(loading) {
@@ -6785,9 +6801,8 @@ function panelQuotaCard(q) {
   return card;
 }
 
-// resetsWords: a Codex account's rate-limit resets, or a Claude account's
-// usage-limit resets, "↺ 2 resets · until Sat 22:30", the date only when
-// one of them runs out. A GLM Coding team
+// resetsWords: a Codex account's rate-limit resets, "↺ 2 resets · until
+// Sat 22:30", the date only when one of them runs out. A GLM Coding team
 // plan's are counted by window, "↺ 2 five-hour resets · 1 weekly reset",
 // and spent on the vendor's page, not here.
 function resetsWords(r) {
@@ -6815,24 +6830,21 @@ function resetsWords(r) {
 }
 
 // resetUseTitle says which reset a use spends: the one that runs out
-// first, so no one hesitates for fear of losing one that lasts longer; a
-// Claude account's, the one Anthropic names next.
+// first, so no one hesitates for fear of losing one that lasts longer.
 function resetUseTitle(q) {
   const r = q.resets;
-  return (r.until && q.provider === "claude"
-    ? t("Uses the reset Anthropic names next, good until {when}.", { when: new Date(r.until).toLocaleString() })
-    : r.until
+  return (r.until
     ? t("Uses the reset that runs out first ({when}), never one that lasts longer.", { when: new Date(r.until).toLocaleString() })
     : t("Uses one of its resets; none of them runs out."))
     + "\n" + t("This account's windows start again at once, as if none had been used. You're asked before anything is spent.");
 }
 
-// autoResetButton turns on or off a Codex or Claude account spending a
+// autoResetButton turns on or off a Codex account spending a
 // reset by itself: once its week is used up and no other account can
 // answer, one a week at most. Off unless the user turns it on; nothing for
 // an account with no name to keep it by.
 function autoResetButton(q, cls) {
-  const kept = { codex: "codexAutoReset", claude: "claudeAutoReset" }[q.provider];
+  const kept = { codex: "codexAutoReset" }[q.provider];
   if (!q.user || !kept) return null;
   const who = q.user.toLowerCase();
   const on = !!(state.settings?.[kept] || []).includes(who);
@@ -6856,21 +6868,20 @@ function autoResetButton(q, cls) {
   return b;
 }
 
-// askReset: spending a Codex or Claude account's reset can't be taken
+// askReset: spending a Codex account's reset can't be taken
 // back, so it asks first; then it says what came of it and reads the
 // usage again.
 let resetAsk = null;
 function askReset(q) {
-  const claude = q.provider === "claude";
   const ed = el("div", "editor reset-ask");
   const head = el("div", "ehead");
-  head.append(icon(q.icon || (claude ? "claude-color" : "codex")), el("b", "", t(claude ? "Use a Claude reset?" : "Use a Codex reset?")));
+  head.append(icon(q.icon || "codex"), el("b", "", t("Use a Codex reset?")));
   ed.append(head);
   const who = q.user || q.name;
   ed.append(el("p", "lib-confirm", t(q.resets.count === 1
     ? "{who} has 1 reset. Using it starts its windows again at once, as if none of them had been used. It can't be undone."
     : "{who} has {n} resets. Using one starts its windows again at once, as if none of them had been used. It can't be undone.", { who, n: q.resets.count })));
-  if (q.resets.until) ed.append(el("p", "lib-confirm", t(claude ? "The one used is the one Anthropic names next, good until {when}." : "The one used is the one that runs out first, {when}.", { when: new Date(q.resets.until).toLocaleString() })));
+  if (q.resets.until) ed.append(el("p", "lib-confirm", t("The one used is the one that runs out first, {when}.", { when: new Date(q.resets.until).toLocaleString() })));
   // nothing used yet: a reset would start nothing again
   if (!q.windows?.some((w) => w.used > 0)) ed.append(el("p", "lib-confirm reset-idle", t("None of its windows has been used yet, so there is nothing to start again.")));
   const bar = el("div", "bar");
@@ -6880,7 +6891,7 @@ function askReset(q) {
     go.disabled = true;
     go.classList.add("busy");
     try {
-      const out = await api(claude ? "usage/claude-reset" : "usage/codex-reset", { user: q.user || "" });
+      const out = await api("usage/codex-reset", { user: q.user || "" });
       closeResetAsk();
       status(who + ": " + resetOutcome(out), out.code === "reset" ? "ok" : "err");
       loadQuotas();
@@ -9973,7 +9984,7 @@ function show(v) {
   closeAgentModels();
   if (v !== "providers" && editing !== null) cancelEdit();
   if (v === "providers" || v === "gateway" || v === "routing") loadProviders().then(back, (e) => status(e.message, "err"));
-  if (v === "usage") loadUsage().then(back, (e) => status(e.message, "err"));
+  if (v === "usage") loadUsage(true).then(back, (e) => status(e.message, "err"));
   if (v === "settings") loadSettings().then(back, (e) => status(e.message, "err"));
   if (v === "library") window.loadLibrary?.()?.then(back);
   if (v === "plugins") window.loadPlugins?.()?.then(back);
