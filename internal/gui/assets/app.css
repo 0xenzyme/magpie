@@ -5,9 +5,14 @@
   --card-2: #f9f9fb;      /* expanded editor */
   --pill: #f1f1f4;
   --pill-hover: #e9e9ee;
-  --seg-track: var(--pill);   /* the header's view switch: its track and the thumb on the view shown */
+  /* the header's view switch: its track and the thumb on the view shown, the
+     track a shade deeper than a pill so the white thumb stands off it (#477) */
+  --seg-track: #e6e6eb;
   --seg-thumb: var(--card);
-  --seg-edge: 0 1px 2px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .06);
+  --seg-edge: 0 1px 2px rgba(0, 0, 0, .14), 0 0 0 .5px rgba(0, 0, 0, .08);
+  /* a control's quiet text (the switch's other views, a text button): darker
+     than --muted, so it reads at 4.5:1 or better on every surface it sits on */
+  --ctl-fg: #63636b;
   --line: #e3e3e8;
   --line-2: #ececf0;
   --fg: #1c1c21;
@@ -43,8 +48,8 @@
     --card-2: #1f1f23;
     --pill: #2d2d33;
     --pill-hover: #36363d;
-    --seg-track: rgba(255, 255, 255, .045);
-    --seg-thumb: rgba(255, 255, 255, .1);
+    --seg-track: rgba(255, 255, 255, .035);
+    --seg-thumb: rgba(255, 255, 255, .15);
     --seg-edge: inset 0 .5px 0 rgba(255, 255, 255, .08), 0 1px 2px rgba(0, 0, 0, .3);
     --line: #333339;
     --line-2: #2c2c32;
@@ -52,6 +57,7 @@
     --fg-2: #b9b9c1;
     --muted: #8b8b94;
     --faint: #56565f;
+    --ctl-fg: #a1a1aa;
     --accent: #a5b4fc;
     --accent-soft: #2b2c47;
     --accent-fg: #14142a;
@@ -73,8 +79,8 @@
 }
 :root[data-theme="dark"] {
   --bg: #1a1a1e; --card: #232327; --card-2: #1f1f23; --pill: #2d2d33; --pill-hover: #36363d;
-  --seg-track: rgba(255, 255, 255, .045); --seg-thumb: rgba(255, 255, 255, .1); --seg-edge: inset 0 .5px 0 rgba(255, 255, 255, .08), 0 1px 2px rgba(0, 0, 0, .3);
-  --line: #333339; --line-2: #2c2c32; --fg: #ededf1; --fg-2: #b9b9c1; --muted: #8b8b94; --faint: #56565f;
+  --seg-track: rgba(255, 255, 255, .035); --seg-thumb: rgba(255, 255, 255, .15); --seg-edge: inset 0 .5px 0 rgba(255, 255, 255, .08), 0 1px 2px rgba(0, 0, 0, .3);
+  --line: #333339; --line-2: #2c2c32; --fg: #ededf1; --fg-2: #b9b9c1; --muted: #8b8b94; --faint: #56565f; --ctl-fg: #a1a1aa;
   --accent: #a5b4fc; --accent-soft: #2b2c47; --accent-fg: #14142a; --sel: #33345a;
   --green: #6fd99b; --green-soft: #1e3a2b; --red: #f28b82; --red-soft: #45272a; --amber: #f2b544; --amber-soft: #3f3220;
   --drift: #ff9592; --drift-soft: #3b1219;
@@ -199,7 +205,7 @@ body.window:not(.mac):not(.linux):not(.web) .brand { display: none; } /* Windows
 }
 .seg > .thumb { border-radius: 6px; background: var(--seg-thumb); box-shadow: var(--seg-edge); }
 body.panel .seg { display: none; }
-.seg button { position: relative; z-index: 1; white-space: nowrap; height: 24px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; color: var(--muted); transition: color .18s var(--ease), transform .14s var(--ease); }
+.seg button { position: relative; z-index: 1; white-space: nowrap; height: 24px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; color: var(--ctl-fg); transition: color .18s var(--ease), transform .14s var(--ease); }
 .seg button.on { color: var(--fg); }
 /* a plugin update waiting for the reader: a dot on Plugins */
 .seg button.has-dot::after { content: ""; position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
@@ -1130,7 +1136,7 @@ body.panel .foot { min-height: 0; padding: 5px 8px 7px 14px; border-top: 1px sol
 .profiles .chips .hint { line-height: 30px; }
 .row-head { display: flex; align-items: center; height: 26px; }
 .label { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
-.text { font-size: 12px; color: var(--muted); padding: 3px 7px; border-radius: 6px; transition: background .12s, color .12s; white-space: nowrap; }
+.text { font-size: 12px; color: var(--ctl-fg); padding: 3px 7px; border-radius: 6px; transition: background .12s, color .12s; white-space: nowrap; }
 .text:hover { color: var(--fg); background: var(--pill); }
 .text.action { height: 27px; padding: 0 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg-2); box-shadow: 0 1px 1px rgba(0, 0, 0, .04); display: inline-flex; align-items: center; justify-content: center; }
 .text.action:hover { border-color: var(--muted); background: var(--card-2); color: var(--fg); }
@@ -1516,7 +1522,7 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .acc .dot { width: 16px; height: 16px; flex: none; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 1.5px var(--faint); color: var(--muted); }
 .acc.in-use .dot { background: var(--fg); box-shadow: none; color: var(--card); }
 .acc .using { font-size: 11px; color: var(--fg-2); padding: 2px 8px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); }
-.acc .text.quiet { color: var(--muted); opacity: 0; transition: opacity .15s; }
+.acc .text.quiet { opacity: 0; transition: opacity .15s; }
 .acc:hover .text.quiet { opacity: 1; }
 .acc .text.quiet:focus-visible { opacity: 1; }
 .acc.new { animation: sub-in .5s cubic-bezier(.2, .8, .2, 1); }
@@ -2234,7 +2240,7 @@ body.window .row.agent .who.with-models { flex-wrap: wrap; row-gap: 0; }
 .pop.am-pop .am-search input { flex: 1; min-width: 0; height: 28px; border: 0; outline: none; background: none; color: var(--fg); font: inherit; font-size: 12.5px; }
 .am-search:focus-within { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent); }
 .am-seg { display: inline-flex; flex: none; padding: 2px; border-radius: 8px; background: var(--seg-track); }
-.am-seg button { height: 24px; padding: 0 9px; border: 0; border-radius: 6px; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; transition: background-color .15s, color .15s; }
+.am-seg button { height: 24px; padding: 0 9px; border: 0; border-radius: 6px; background: none; color: var(--ctl-fg); font: inherit; font-size: 12px; cursor: pointer; transition: background-color .15s, color .15s; }
 .am-seg button.on { background: var(--seg-thumb); color: var(--fg); box-shadow: var(--seg-edge); }
 .am-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 2px; }
 .am-gh { display: flex; align-items: center; margin: 6px 2px 0; }

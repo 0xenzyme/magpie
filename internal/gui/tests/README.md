@@ -1211,3 +1211,16 @@ Chinese:
 ```sh
 node --test internal/gui/tests/routing-account-order.test.cjs
 ```
+
+`seg-contrast.test.cjs` checks the header's view switch and the text buttons
+against WCAG AA (#477): with the window light, dark, and dark by the system's
+choice, it reads the colours the browser computed, each background laid over
+the ones under it, and asserts that the switch's other views on its track, the
+view shown on its thumb, and a text button on the page, a card and the inset
+editor read at 4.5:1 with margin (4.7), and that the thumb stands off the
+track by more than it did (1.2:1 light, 1.5:1 dark). It runs in Chromium and
+WebKit, in English and Chinese:
+
+```sh
+node --test internal/gui/tests/seg-contrast.test.cjs
+```
