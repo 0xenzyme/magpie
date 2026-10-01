@@ -387,12 +387,12 @@ func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 
 // quotas is what is left of every subscription, plan and key magpie has,
 // for an agent choosing where to send its work (magpie quota --json is the
-// same). It names the accounts and their balances, so it answers only on
-// this machine, when the gateway listens beyond it too.
+// same). It names the accounts and their balances, so it answers this
+// machine, and another only with the key of the gateway shared on the
+// local network — never a gateway MAGPIE_ADDR opens without one.
 func (s *Server) quotas(w http.ResponseWriter, r *http.Request) {
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
-		writeError(w, provider.Chat, http.StatusForbidden, "magpie's quotas are only told to this machine")
+	if !local(r) && !sharedWith(r) {
+		writeError(w, provider.Chat, http.StatusForbidden, "magpie's quotas are told to another machine only when magpie is shared on the local network (Settings → Share on local network) and the request carries its API key (Authorization: Bearer <key> or x-api-key: <key>)")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)

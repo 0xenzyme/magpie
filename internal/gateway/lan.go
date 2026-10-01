@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
@@ -185,6 +186,7 @@ func lanGuard(next http.Handler) http.Handler {
 			w.Write([]byte(`{"error":{"type":"authentication_error","message":"use the API key shown in magpie's Settings, under Share on local network"}}`))
 			return
 		}
+		r = r.WithContext(context.WithValue(r.Context(), lanKeyed{}, true))
 		r.Header.Set("Authorization", "Bearer "+Token)
 		if r.Header.Get("x-api-key") != "" {
 			r.Header.Set("x-api-key", Token)
@@ -198,6 +200,16 @@ func lanGuard(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// lanKeyed marks a request from another machine that carried the key.
+type lanKeyed struct{}
+
+// sharedWith: the request came from another machine with the key, the
+// gateway shared from the Settings page.
+func sharedWith(r *http.Request) bool {
+	ok, _ := r.Context().Value(lanKeyed{}).(bool)
+	return ok
 }
 
 // callerKey is the API key a request carries, however its client sends one.
