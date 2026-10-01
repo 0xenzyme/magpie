@@ -10927,6 +10927,16 @@ function renderSettings() {
       pill.querySelector(".val").prepend(back);
     }, () => {});
   }
+  // whether magpie asks for a newer version (and downloads it) by itself,
+  // and how often; off, only the version row's Check asks (#472)
+  row(t("Automatic updates"), t("Checks for a newer magpie and downloads it"),
+    "", segs([["off", t("Off")], ["on", t("On")]], s.noAutoUpdate ? "off" : "on", (v) => savePrefs({ ...keep, noAutoUpdate: v === "off" }))).classList.add("update-auto-row");
+  // kept in place while off, dimmed, its height the same (a row or a line
+  // taken away would shorten the page under the click), for when they are
+  // turned on again
+  row(t("Check every"), s.noAutoUpdate ? t("While automatic updates are on") : t("How often magpie looks for a newer version"), "",
+    segs(UPDATE_EVERY.map((m) => [m, m < 60 ? t("{n} min", { n: m }) : t("{n} h", { n: m / 60 })]), s.updateEvery || 360,
+      (updateEvery) => savePrefs({ ...keep, updateEvery }))).classList.add("update-every-row", ...(s.noAutoUpdate ? ["off"] : []));
   const open = el("button", "text", t("Open"));
   open.onclick = () => api("settings/reveal", {}).catch((e) => status(e.message, "err"));
   row(t("Config folder"), t("providers, profiles and these settings"), s.dir, copyBtn(s.dir, t("Path")), open);
@@ -11320,6 +11330,8 @@ function renderTrayUsage(s, keep) {
     (v) => savePrefs({ ...keep, trayNoLogos: v === "off" })));
 }
 const TRAY_EVERY = [1, 3, 5, 10, 30];
+// how often magpie checks for updates by itself, in minutes (settings.UpdateEveries)
+const UPDATE_EVERY = [30, 60, 360, 1440];
 
 // renderProxy: magpie's own requests to vendors, and its update checks, follow the system proxy on
 // their own; this row says which one, and lets it be turned off or set.
@@ -11864,7 +11876,11 @@ async function renderUpdate(r, u) {
       sub.title = u.error || "";
       btn(t("Check"), check);
       break;
-    default: // built from source, or not asked yet
+    case "": // not asked yet: with automatic updates off, only this asks
+      sub.textContent = prefs && prefs.noAutoUpdate ? t("Automatic updates are off") : "";
+      btn(t("Check"), check);
+      break;
+    default: // built from source
       sub.textContent = "";
   }
 }
@@ -11898,7 +11914,7 @@ function prefsKeep(s) {
     trayUsages: s.trayUsages || [],
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, noStats: !!s.noStats,
-    noUpdatePill: !!s.noUpdatePill,
+    noUpdatePill: !!s.noUpdatePill, noAutoUpdate: !!s.noAutoUpdate, updateEvery: s.updateEvery || 360,
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, vision: s.vision || "", imageGen: s.imageGen || "", currency: s.currency || "usd",
     westernUnits: !!s.westernUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };
 }

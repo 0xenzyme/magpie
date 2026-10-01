@@ -465,6 +465,13 @@ the same. Settings → Update button says which version it is hidden for, with
 Show again, and turns it off for good; the version row still offers the
 restart. No click moves the page. Panel and window, English and Chinese.
 
+`update-auto.test.cjs` checks Settings → Automatic updates (#472): on, every
+6 h, with nothing set; Check every saves 30 min, 1 h, 6 h or 24 h; Off is
+saved and kept through a reload, the interval staying in place, dimmed, for
+when it is on again; the version row, not asked yet, says automatic updates
+are off and its Check asks the backend. No click moves the page. English and
+Chinese, Chromium and WebKit.
+
 `add-sheet.test.cjs` opens the Providers page's add sheet as quiet rows:
 Subscriptions, Vendors, Relays and On this machine, each with its word on
 what it is; rows with no border, no second line and no overflow, three to a
@@ -1246,7 +1253,7 @@ reads in the new orders. It runs in Chromium and WebKit, in English and
 Chinese:
 
 ```sh
-node --test internal/gui/tests/routing-account-order.test.cjs
+node --test internal/gui/tests/routing-account-order.test.cjs internal/gui/tests/update-auto.test.cjs
 ```
 
 `seg-contrast.test.cjs` checks the header's view switch and the text buttons
