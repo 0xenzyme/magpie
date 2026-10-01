@@ -162,6 +162,8 @@ func TestRefusedOptionalNamesOnlyUnsupportedFields(t *testing.T) {
 		{"mixed-array-input-echo", `[400,{"type":"dict_type","loc":["body","metadata"],"msg":"Input should be a valid dictionary","input":"Unknown name 'metadata': Cannot find field."}]`, 422, nil},
 		{"status-prefixed-extra", `[400] {"detail":[{"type":"extra_forbidden","loc":["body","store"],"msg":"Extra inputs are not permitted"}]}`, 400, []string{"store"}},
 		{"status-prefixed-input-echo", `[400] {"detail":[{"type":"dict_type","loc":["body","metadata"],"msg":"Input should be a valid dictionary","input":"Unknown name 'metadata': Cannot find field."}]}`, 400, nil},
+		{"text-prefixed-extra", `[HTTP 400] {"detail":[{"type":"extra_forbidden","loc":["body","store"],"msg":"Extra inputs are not permitted"}]}`, 400, []string{"store"}},
+		{"text-prefixed-input-echo", `[HTTP 400] {"detail":[{"type":"dict_type","loc":["body","metadata"],"msg":"Input should be a valid dictionary","input":"Unknown name 'metadata': Cannot find field."}]}`, 400, nil},
 		{"nested-extra", `{"detail":[{"type":"extra_forbidden","loc":["body","metadata","store"],"msg":"Extra inputs are not permitted"}]}`, 422, nil},
 		{"nested-unknown", `{"error":{"message":"Invalid JSON payload received. Unknown name \"store\" at 'metadata': Cannot find field."}}`, 400, nil},
 		{"other-parameter", `{"error":{"message":"'metadata' is unsupported","param":"model","code":"unsupported_value"}}`, 400, nil},

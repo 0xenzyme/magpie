@@ -2197,7 +2197,9 @@ func unsupportedOptionalField(fault any, field string) bool {
 			var inner any
 			dec := json.NewDecoder(strings.NewReader(rest[i:]))
 			if dec.Decode(&inner) != nil {
-				break
+				// not JSON there ([HTTP 400]): look on past the bracket
+				rest = rest[i+1:]
+				continue
 			}
 			if hasOptionalErrorObject(inner) {
 				return unsupportedOptionalField(inner, field)
