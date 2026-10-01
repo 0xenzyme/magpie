@@ -6800,11 +6800,11 @@ async function providerAction(action, body, okMsg, base = "provider/") {
 // saidMoved says what was done, and which agents it moved off models it
 // took away (a provider switched off or removed, the last account signed
 // out: #200), each to the same model elsewhere or back to its default.
-function saidMoved(okMsg) {
+function saidMoved(okMsg, list = providers?.moved) {
   // one magpie couldn't move (its file unwritable) is still on the model
   // gone, and the change made all the same
   let stuck = false;
-  const moved = (providers.moved || []).map((m) => {
+  const moved = (list || []).map((m) => {
     const who = m.field === "model" ? m.agent : m.agent + " " + m.field;
     if (m.error) { stuck = true; return t("{agent} is still on {model}, which magpie no longer serves: {error}", { agent: who, model: m.from, error: m.error }); }
     return m.to ? t("{agent} moved to {model}", { agent: who, model: m.to })
