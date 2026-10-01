@@ -1113,10 +1113,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				attemptBody, picked = b, true
 			}
 		}
+		// a member sent fast is, in its vendor's words, where its model
+		// has a fast mode; else it goes as the agent asked
+		fast := c.fast && provider.CanFast(c.p, c.model)
+		if fast {
+			attemptBody = withFast(from, attemptBody)
+		}
 		// the reasoning the model is asked for, whoever chose it
 		sent = sentEffort(from, attemptBody, c.p, c.model)
 		s.trace.update(tr, func(t *Route) {
-			t.Tries = append(t.Tries, Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Start: began})
+			t.Tries = append(t.Tries, Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Fast: fast, Start: began})
 		})
 		held := false // answered as its vendor did a moment ago, without asking
 		if said, ok := verifyHeld(c.restKey()); ok && last {
@@ -1136,7 +1142,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// the vendor's safety filter, with nothing said (#248)
 			call.Error = refusedError(c.p, c.model, hw.failMsg)
 		}
-		try := Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Start: began, Done: true, Status: call.Status, Millis: time.Since(began).Milliseconds(), Error: call.Error,
+		try := Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Fast: fast, Start: began, Done: true, Status: call.Status, Millis: time.Since(began).Milliseconds(), Error: call.Error,
 			Served: call.Usage.Served}
 		asName := provider.SentNameOnIn(wiresOf(r.Context()), c.p.ID, accountAgent(c.p), c.model, sent)
 		try.Swapped, try.Routed = swapped(asName, call.Usage.Served), usage.GroupRouted(asName, call.Usage.Served)
@@ -1534,7 +1540,11 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 				}
 			}
 		}
-		if bs := s.betas(p, in.Values("anthropic-beta")); len(bs) > 0 {
+		asked := in.Values("anthropic-beta")
+		if gjson.GetBytes(body, "speed").String() == "fast" && provider.HostOf(p.Base(to)) == "api.anthropic.com" {
+			asked = append(slices.Clone(asked), claudeFastBeta) // a group's member sent fast
+		}
+		if bs := s.betas(p, asked); len(bs) > 0 {
 			req.Header.Set("anthropic-beta", strings.Join(bs, ","))
 		} else {
 			req.Header.Del("anthropic-beta")
@@ -2365,7 +2375,13 @@ func build(proto provider.Protocol, r *Request, model, host string, rejectTemp b
 	case provider.Responses:
 		return buildResponses(r, model, host, rejectTemp)
 	}
-	return buildAnthropic(r, model)
+	out := buildAnthropic(r, model)
+	if r.Fast && host == "api.anthropic.com" && provider.ClaudeFast(model) {
+		// Claude's fast mode, on the models that have it (its beta header
+		// goes with it: forwardOnce)
+		out = withFields(out, map[string]any{"speed": "fast"})
+	}
+	return out
 }
 
 func decoder(proto provider.Protocol) func(data string, emit func(Event)) error {
