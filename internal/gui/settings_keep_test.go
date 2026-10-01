@@ -84,6 +84,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		RequestArchive: true,
 		QuotaLeft:      true,
 		PlainNames:     true,
+		PlainOwnNames:  true,
 		CodexAutoReset: []string{"me@example.com"},
 		TextSize:       125,
 		UpdateSkip:     "0.1.500",

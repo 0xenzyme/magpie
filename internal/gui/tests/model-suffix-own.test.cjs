@@ -1,9 +1,10 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
-// The "Provider in model names" setting (#335: 希望 Codex 模型列表里的显示名可以
-// 不带 · routing group / · 提供商 后缀): on by default; Off posts
-// settings/plain-names on its own (so the agents' lists are written again)
-// with mode off and lights Off, On posts it back, and neither click scrolls
-// the Settings page. English and Chinese, Chromium and WebKit; no backend, the API is faked here.
+// The "Provider in model names" setting's third way (#92: 自定义名称后面又带上了
+// · 供应商): "Not on names I set" between Off and On, lit when settings say
+// plainOwnNames; On and then it post settings/plain-names with mode on and
+// own on their own, neither click scrolls the Settings page, and the three
+// fit the row, wide and narrow. English and Chinese, Chromium and WebKit; no
+// backend, the API is faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -27,7 +28,7 @@ function settingsPayload(over) {
 }
 
 function server(lang, posted) {
-  let cur = settingsPayload({ lang });
+  let cur = settingsPayload({ lang, plainOwnNames: true });
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
     const json = (data) => route.fulfill({ json: data });
@@ -36,18 +37,11 @@ function server(lang, posted) {
     if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings: { lang, theme: "light" }, fx: cur.fx });
     if (url.pathname === "/api/settings/plain-names") {
       const body = req.postDataJSON();
-      posted.push(["plain-names", body]);
+      posted.push(body);
       cur = { ...cur, plainNames: body.mode === "off", plainOwnNames: body.mode === "own" };
       return json(cur);
     }
-    if (url.pathname === "/api/settings") {
-      if (req.method() === "POST") {
-        const body = req.postDataJSON();
-        posted.push(["settings", body]);
-        cur = { ...cur, ...body };
-      }
-      return json(cur);
-    }
+    if (url.pathname === "/api/settings") return json(cur);
     if (url.pathname === "/api/plugins") return json({ plugins: [] });
     if (url.pathname === "/api/usage/quotas") return json([]);
     if (url.pathname === "/api/groups") return json({ groups: [], models: [] });
@@ -59,14 +53,14 @@ function server(lang, posted) {
 }
 
 const want = {
-  en: { name: "Provider in model names", sub: /provider after its name/, off: "Off", own: "Not on names I set", on: "On" },
-  zh: { name: "模型名带供应商", sub: /自定义的名称不带/, off: "关闭", own: "自定义名称不带供应商", on: "开启" },
+  en: { labels: ["Off", "Not on names I set", "On"], sub: /^Agents’ lists put each model’s provider after its name, or not after names you set$/ },
+  zh: { labels: ["关闭", "自定义名称不带供应商", "开启"], sub: /^写给 agent 的模型列表在模型名后带上供应商，或自定义的名称不带$/ },
 };
 const view = (page) => page.locator("#view-settings").evaluate((v) => v.scrollTop);
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   for (const lang of ["en", "zh"]) {
-    test(`${engine} ${lang}: the agents' lists name models with their providers, or not`, async (t) => {
+    test(`${engine} ${lang}: a name the user gave can go without its provider`, async (t) => {
       const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
       const context = await browser.newContext({ viewport: { width: 900, height: 480 }, reducedMotion: "reduce" });
       const page = await context.newPage();
@@ -77,7 +71,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       t.after(async () => {
         if (process.env.ARTIFACT_DIR) {
           await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
-          await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `${engine}-${lang}-plain-names.png`) });
+          await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `${engine}-${lang}-model-suffix-own.png`) });
         }
         await browser.close();
       });
@@ -85,31 +79,37 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const segs = page.locator("#plainNamesSegs .opt");
       await segs.first().waitFor();
       const row = page.locator(".row.pref", { has: page.locator("#plainNamesSegs") });
-      assert.equal((await row.locator(".name").textContent()).trim(), want[lang].name);
       assert.match(await row.locator(".sub").textContent(), want[lang].sub);
-      assert.deepEqual((await segs.allTextContents()).map((s) => s.trim()), [want[lang].off, want[lang].own, want[lang].on]);
-      assert.equal(await segs.nth(2).evaluate((b) => b.classList.contains("on")), true, "on by default");
+      assert.equal(await row.locator(".sub").evaluate((e) => e.scrollWidth <= e.clientWidth), true, "the hint is cut short");
+      assert.deepEqual((await segs.allTextContents()).map((s) => s.trim()), want[lang].labels);
+      const own = segs.nth(1);
+      assert.equal(await own.evaluate((b) => b.classList.contains("on")), true, "plainOwnNames lights the middle one");
 
-      // scrolled by a wheel till the row is mid-view (a real wheel, so the
-      // reader's-scroll guard lets it stick), Off moves nothing and is
-      // posted on its own
+      // the three stay inside the row, wide and narrow
+      for (const width of [900, 560]) {
+        await page.setViewportSize({ width, height: 480 });
+        const r = await row.boundingBox(), s = await page.locator("#plainNamesSegs .segs").boundingBox();
+        assert(s.x >= r.x - 0.5 && s.x + s.width <= r.x + r.width + 0.5, `${width}px: the options overflow the row`);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${width}px: the page scrolls sideways`);
+      }
+      await page.setViewportSize({ width: 900, height: 480 });
+
+      // scrolled by a wheel till the row is mid-view, On and then the
+      // middle one move nothing and are posted on their own
       const box = await page.locator("#view-settings").boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       const top = () => page.locator("#plainNamesSegs").evaluate((e) => e.getBoundingClientRect().top);
       for (let i = 0; i < 40 && (await top()) > 240; i++) { await page.mouse.wheel(0, 100); await page.waitForTimeout(30); }
       const before = await view(page);
       assert(before > 0, "the settings list must scroll to the row");
-      await segs.nth(0).click();
-      await page.locator("#plainNamesSegs .opt.on", { hasText: want[lang].off }).waitFor();
-      await page.waitForTimeout(400);
-      assert.equal(await view(page), before, "the click scrolled the page");
-      assert.deepEqual(posted, [["plain-names", { mode: "off" }]]);
-
-      // back on
       await segs.nth(2).click();
-      await page.locator("#plainNamesSegs .opt.on", { hasText: want[lang].on }).waitFor();
-      assert.deepEqual(posted.at(-1), ["plain-names", { mode: "on" }]);
-      assert.equal(await view(page), before, "the click scrolled the page");
+      await page.locator("#plainNamesSegs .opt.on", { hasText: want[lang].labels[2] }).waitFor();
+      assert.deepEqual(posted, [{ mode: "on" }]);
+      await page.locator("#plainNamesSegs .opt", { hasText: want[lang].labels[1] }).click();
+      await page.locator("#plainNamesSegs .opt.on", { hasText: want[lang].labels[1] }).waitFor();
+      await page.waitForTimeout(400);
+      assert.deepEqual(posted, [{ mode: "on" }, { mode: "own" }]);
+      assert.equal(await view(page), before, "a click scrolled the page");
       assert.deepEqual(errors, []);
     });
   }

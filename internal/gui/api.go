@@ -591,7 +591,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// used or left is the Usage page's toggle as much as Settings', set on its own
 		in.QuotaLeft = cur.QuotaLeft
 		// how agents' lists name models, set on its own for the agents to be told
-		in.PlainNames = cur.PlainNames
+		in.PlainNames, in.PlainOwnNames = cur.PlainNames, cur.PlainOwnNames
 		// which Codex accounts spend a reset by themselves, set on the Usage card
 		in.CodexAutoReset = cur.CodexAutoReset
 		// and the text size, which the keyboard changes too (text-size below)
@@ -681,12 +681,21 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	// whether the agents' lists name a model with its provider's after it or
 	// alone (#335): their files are written again, and Codex asks again
 	mux.HandleFunc("POST /api/settings/plain-names", func(rw http.ResponseWriter, r *http.Request) {
-		var in struct{ On bool }
+		// Mode is on, own (#92: not on the names the user gave) or off; a
+		// body of On alone is the two-way switch's, On meaning plain
+		var in struct {
+			On   bool
+			Mode string
+		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			fail(rw, err)
 			return
 		}
-		if err := provider.SetPlainNames(in.On); err != nil {
+		set := func() error { return provider.SetPlainNames(in.On) }
+		if in.Mode != "" {
+			set = func() error { return provider.SetSuffixMode(in.Mode) }
+		}
+		if err := set(); err != nil {
 			fail(rw, err)
 			return
 		}

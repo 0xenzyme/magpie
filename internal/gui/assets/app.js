@@ -10613,10 +10613,12 @@ function renderTrayUsage(s, keep) {
   $("#unitsSegs").replaceChildren(segs([[false, t("万 / 亿")], [true, t("K / M / B")]], !!s.westernUnits,
     (v) => savePrefs({ ...keep, westernUnits: v })));
   renderAlerts(s, keep);
-  // the agents' lists name a model with its provider's after it, or alone
-  // (#335): set on its own, so the agents are told
-  $("#plainNamesSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.plainNames ? "off" : "on", (v) =>
-    writingPrefs(api("settings/plain-names", { on: v === "off" })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
+  // the agents' lists name a model with its provider's after it, all but
+  // the names the user gave (#92), or none (#335): set on its own, so the
+  // agents are told
+  const suffix = s.plainNames ? "off" : s.plainOwnNames ? "own" : "on";
+  $("#plainNamesSegs").replaceChildren(segs([["off", t("Off")], ["own", t("Not on names I set")], ["on", t("On")]], suffix, (v) =>
+    writingPrefs(api("settings/plain-names", { mode: v })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
   const rate = s.fx?.rate;
   const currencySub = $("#currencySub");
   currencySub.textContent = t("What a cost — the Usage page's, the tray panel's, the TUI's and the CLI's — is shown as; a vendor's own balance, already in its own currency, is never converted");

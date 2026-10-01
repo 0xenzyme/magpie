@@ -504,12 +504,14 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	if agentOf(r) == "claude-desktop" {
 		data = desktopModels(shown)
 	} else {
-		for _, e := range shown {
+		labels := provider.Labels(shown)
+		for i, e := range shown {
 			m := modelObject(e)
-			// for another magpie: its name with its provider here after
-			// it, so two providers' models of one name are told apart
+			// for another magpie: its name as the agents' lists here call
+			// it, with its provider's after it unless the user wants it
+			// plain, so two providers' models of one name are told apart
 			// there as they are here
-			m["magpie_label"] = e.Label()
+			m["magpie_label"] = labels[i]
 			data = append(data, m)
 		}
 	}
