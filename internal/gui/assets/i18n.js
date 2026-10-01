@@ -916,6 +916,7 @@ const I18N = {
     "which endpoint {p} is reached through": "通过哪个入口访问 {p}",
     "{what} copied": "已复制{what}",
     "Connect": "接入",
+    "Open to the network · anyone who reaches it can use any key": "已开放到网络 · 任何能连上的人用任意密钥都能访问",
     "Loopback only · the key can be anything": "仅限本机回环 · 密钥可以随意填",
     "Chat Completions, the API most tools speak. Anything with an OpenAI base-URL setting works.": "Chat Completions，多数工具使用的 API。任何可设置 OpenAI base URL 的工具都能用。",
     "OpenAI's newer API: reasoning, built-in tool items, encrypted reasoning. Codex speaks this.": "OpenAI 较新的 API：推理、内置工具项、加密推理。Codex 使用它。",
