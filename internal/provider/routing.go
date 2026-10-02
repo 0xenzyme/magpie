@@ -84,6 +84,7 @@ type Limit struct {
 	Span    time.Duration // how long the window runs; zero when not known
 	Model   string        // the only models it counts, by a word in their ids
 	matches func(string) bool
+	partial bool // of a reading that may leave windows out (QuotaWindow.partial)
 }
 
 func (l Limit) applies(model string) bool {
@@ -117,6 +118,38 @@ func (a Allowance) For(model string, now time.Time) (used float64, renews []time
 		renews = append(renews, l.Resets)
 	}
 	return used, renews
+}
+
+// Renewal is For's renews as routing ranks them: a window not started,
+// or whose reset has passed, that says how long it runs is taken to
+// renew that long from now — a five hours not started renews within five
+// hours, the soonest of an account that has nothing longer (#576).
+func (a Allowance) Renewal(model string, now time.Time) []time.Time {
+	model = strings.ToLower(model)
+	var ls []Limit
+	for _, l := range a {
+		if !l.applies(model) {
+			continue
+		}
+		if !l.Resets.After(now) {
+			l.Resets = time.Time{}
+			if l.Span > 0 {
+				l.Resets = now.Add(l.Span)
+			}
+		}
+		ls = append(ls, l)
+	}
+	sort.SliceStable(ls, func(i, j int) bool {
+		if ls[i].Span != ls[j].Span {
+			return ls[i].Span > ls[j].Span
+		}
+		return ls[i].Resets.After(ls[j].Resets)
+	})
+	out := make([]time.Time, len(ls))
+	for i, l := range ls {
+		out[i] = l.Resets
+	}
+	return out
 }
 
 // Full is when an account used up for model can take it again: the last
@@ -156,23 +189,37 @@ const FreshPace = 100 / (7 * 24.0)
 // say how long it runs (a plugin may not) is a budget, for as long as its
 // reset says, else a week. The hours until a reset are never taken as
 // fewer than one, or a window a minute from renewing would outweigh all
-// the rest. An account whose vendor tells no budget window (Claude's own
-// usage command gives the five hours alone) is taken to have a week not
-// started with the share its fullest window has used: those go by what
-// they have used, among the rest as the fresh are.
+// the rest. An account whose vendor tells no budget window, only a short
+// one (Claude Enterprise's five hours), has nothing longer to keep for:
+// what its five hours have left is lost at their reset, so it goes by
+// that, per hour until then — the whole span when not started (#576):
+// ahead of nearly every week, behind only one with more of it to lose
+// sooner. Where the reading may leave a week out (a Claude account only
+// heard of as Claude Code answered, partial) it is instead taken to have
+// a week not started with the share its fullest window has used: those
+// go by what they have used, among the rest as the fresh are.
 func (a Allowance) Pace(model string, now time.Time) (pace float64, due time.Time) {
 	model = strings.ToLower(model)
 	any, used := false, 0.0
+	short, partial, shortPace, shortDue := false, false, 0.0, time.Time{}
 	for _, l := range a {
 		if !l.applies(model) {
 			continue
 		}
+		partial = partial || l.partial
 		u := min(100, max(0, l.Used))
 		if !l.Resets.IsZero() && !l.Resets.After(now) {
 			u = 0 // its reset has passed: empty again
 		}
 		if l.Span != 0 && l.Span < budgetSpan {
 			used = max(used, u)
+			until, renews := l.Span, time.Time{}
+			if l.Resets.After(now) {
+				until, renews = l.Resets.Sub(now), l.Resets
+			}
+			if p := (100 - u) / max(until, time.Hour).Hours(); !short || p < shortPace {
+				shortPace, shortDue, short = p, renews, true
+			}
 			continue
 		}
 		until, renews := l.Span, time.Time{}
@@ -187,6 +234,9 @@ func (a Allowance) Pace(model string, now time.Time) (pace float64, due time.Tim
 		}
 	}
 	if !any {
+		if short && !partial {
+			return shortPace, shortDue
+		}
 		return (100 - used) / weekSpan.Hours(), time.Time{}
 	}
 	return pace, due
@@ -318,7 +368,7 @@ func allowanceOf(ws []QuotaWindow, now time.Time) Allowance {
 		if w.Aside {
 			continue
 		}
-		l := Limit{Used: w.Used, Span: w.Span, Model: w.Model, matches: w.matches}
+		l := Limit{Used: w.Used, Span: w.Span, Model: w.Model, matches: w.matches, partial: w.partial}
 		if ids := families[w.Model]; ids != nil && w.Family != "" && w.matches == nil {
 			l.Model = ""
 			l.matches = func(model string) bool { return ids[model] }

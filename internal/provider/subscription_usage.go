@@ -51,6 +51,11 @@ type QuotaWindow struct {
 	Aside bool          `json:"-"`
 	// matches further scopes pools whose membership isn't one model word.
 	matches func(string) bool
+	// partial is set on the windows of a reading that may leave some out:
+	// a Claude account only heard of as Claude Code answered (its
+	// rate_limit_event names one window at a time), never read whole by
+	// /usage — five hours alone there needn't mean no week.
+	partial bool
 }
 
 // SubscriptionQuota is provider-reported allowance usage. This is separate
@@ -438,6 +443,16 @@ type claudeUsageEntry struct {
 	tried time.Time     // when /usage was last run, answered or not
 	wait  time.Duration // how long after tried it runs again unasked
 	err   error         // what the last run said, when it failed
+	whole bool          // /usage was read: ws has every window the account has
+}
+
+// windows is what e keeps as of now, partial where /usage never read it.
+func (e claudeUsageEntry) windows(now time.Time) []QuotaWindow {
+	ws := elapsed(e.ws, now)
+	for i := range ws {
+		ws[i].partial = !e.whole
+	}
+	return ws
 }
 
 // claudeAskFloor is the least time between two readings, however often the
@@ -544,7 +559,7 @@ func claudeWindows(ctx context.Context, user string, active bool) ([]QuotaWindow
 		case ok && e.err != nil && !(heard && !claudeUsageDenied.MatchString(e.err.Error())):
 			return []QuotaWindow{}, e.err
 		case ok && e.ws != nil:
-			return elapsed(e.ws, now), nil
+			return e.windows(now), nil
 		case active:
 			return []QuotaWindow{}, errClaudeNotAsked
 		default:
@@ -557,7 +572,7 @@ func claudeWindows(ctx context.Context, user string, active bool) ([]QuotaWindow
 	// spent as the one it was moved to (nil_1024)
 	kept := func() ([]QuotaWindow, error) {
 		if e.ws != nil {
-			return elapsed(e.ws, now), nil
+			return e.windows(now), nil
 		}
 		return []QuotaWindow{}, errClaudeNotAsked
 	}
@@ -584,7 +599,7 @@ func claudeWindows(ctx context.Context, user string, active bool) ([]QuotaWindow
 		}
 		c.Unlock()
 		if e.ws != nil && time.Since(e.heard) < claudeHeard && !claudeUsageDenied.MatchString(err.Error()) {
-			return elapsed(e.ws, time.Now()), nil // a fresh header stands unless the account was refused
+			return e.windows(time.Now()), nil // a fresh header stands unless the account was refused
 		}
 		return ws, err
 	}
@@ -592,7 +607,7 @@ func claudeWindows(ctx context.Context, user string, active bool) ([]QuotaWindow
 	if c.m == nil {
 		c.m = map[string]claudeUsageEntry{}
 	}
-	c.m[key] = claudeUsageEntry{at: now, ws: ws, heard: e.heard, tried: now, wait: e.wait}
+	c.m[key] = claudeUsageEntry{at: now, ws: ws, heard: e.heard, tried: now, wait: e.wait, whole: true}
 	c.Unlock()
 	return ws, nil
 }

@@ -14,8 +14,9 @@ import (
 // and five days. Alike within a tenth go by the tokens sent lately, then
 // keep their order; one at 90% or more of any window waits behind the
 // rest, one all but used up behind those, each by how far; one not known
-// counts as a fresh week, as does one whose vendor tells the five hours
-// alone, with their share used; one that tells as it answers goes first.
+// counts as a fresh week; one with the five hours alone goes by what
+// they have left per hour until they renew (#576); one that tells as it
+// answers goes first.
 //
 // PIN (2026-10-01): weekly pace is its own option, "pace"; Least used
 // keeps its most-left-first meaning and Smart is left as it is (yetone,
@@ -151,14 +152,28 @@ func TestWeeklyPace(t *testing.T) {
 	if got := order(acct("b@x.com"), acct("a@x.com")); got != "ab" {
 		t.Fatalf("spent by how far: %s", got)
 	}
-	// the vendor tells the five hours alone (Claude's own usage command):
-	// by what they have used, a fresh one as one not known
-	share["a@x.com"] = provider.Allowance{{Used: 80, Resets: now.Add(time.Hour), Span: 5 * time.Hour}}
-	share["b@x.com"] = provider.Allowance{{Used: 5, Resets: now.Add(time.Hour), Span: 5 * time.Hour}}
-	share["c@x.com"] = provider.Allowance{{Used: 0, Resets: now.Add(time.Hour), Span: 5 * time.Hour}}
+	// the account has the five hours alone (Claude Enterprise): what they
+	// have left is lost within the hour, so it goes by that per hour,
+	// ahead of the one not known (a fresh week); alike within a tenth
+	// keep their order (#576)
+	share["a@x.com"] = provider.Allowance{{Used: 80, Resets: now.Add(time.Hour), Span: 5 * time.Hour}} // 20 / 1 h
+	share["b@x.com"] = provider.Allowance{{Used: 5, Resets: now.Add(time.Hour), Span: 5 * time.Hour}}  // 95 / 1 h
+	share["c@x.com"] = provider.Allowance{{Used: 0, Resets: now.Add(time.Hour), Span: 5 * time.Hour}}  // 100 / 1 h
 	delete(share, "d@x.com")
-	if got := order(acct("a@x.com"), acct("d@x.com"), acct("c@x.com"), acct("b@x.com")); got != "dcba" {
-		t.Fatalf("five hours alone go by their share used, the fresh with the unknown: %s", got)
+	if got := order(acct("a@x.com"), acct("d@x.com"), acct("c@x.com"), acct("b@x.com")); got != "cbad" {
+		t.Fatalf("five hours alone go by what they lose at their reset: %s", got)
+	}
+	// five hours alone, not started, against a week with 80% left and
+	// five days to go: the five hours first (100 / 5 h beats 80 / 120 h);
+	// a week with 40% left renewing in an hour beats them (40 / 1 h)
+	share["a@x.com"] = provider.Allowance{{Used: 0, Span: 5 * time.Hour}}
+	share["b@x.com"] = week(20, 5*24*time.Hour)
+	if got := order(acct("b@x.com"), acct("a@x.com")); got != "ab" {
+		t.Fatalf("five hours alone ahead of a far week: %s", got)
+	}
+	share["b@x.com"] = week(60, time.Hour)
+	if got := order(acct("a@x.com"), acct("b@x.com")); got != "ba" {
+		t.Fatalf("a week renewing sooner with more to lose first: %s", got)
 	}
 	// three paces a twelfth apart: alike pairwise all round, yet an order
 	// — bands drawn from the top, so the first two are alike and the

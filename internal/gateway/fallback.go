@@ -290,9 +290,11 @@ func (s *Server) plan(p provider.Provider, model string, from provider.Protocol)
 // weighed together as the group's routing says — in order, member by
 // member, each as its own provider's routing orders it; else all as one,
 // so a subscription whose allowance renews soonest goes first whichever
-// provider it is of. A group in the group is planned the same way by its
-// own routing, in its place when the group's is in order. A member's
-// fallbacks are not the group's.
+// provider it is of. A group in the group is planned by its own routing
+// alone, whatever the group's (#576): in order, in its place; else as
+// one, weighed with the rest by the one it would try first, and tried
+// whole where that one goes — the group's routing picks between its
+// groups, never within them. A member's fallbacks are not the group's.
 func (s *Server) planGroup(g provider.Group, ms []provider.Member, from provider.Protocol) ([]candidate, planned) {
 	var pl planned
 	var asides []candidate
@@ -332,28 +334,74 @@ func planLevel(g provider.Group, ms []provider.Member, depth int, from provider.
 		return cs
 	}
 	if g.Routing != provider.Ordered {
-		of := map[string]provider.Member{} // candidate → its model
-		var all []candidate
-		for _, m := range ms {
-			cs := keys(m)
-			for _, c := range cs {
-				of[c.seat()] = m
+		// what the group weighs: each of its models' keys or accounts,
+		// and each group in it as one — planned by its own routing, put
+		// where the one it would try first is, the rest of it after
+		type unit struct {
+			m     provider.Member // the model, for one of its keys
+			cs    []candidate     // a group in g: its own order
+			order []Weighed
+		}
+		var units []unit
+		var heads []candidate
+		at := map[string][]int{} // a head's seat → its units, in turn
+		add := func(u unit, head candidate) {
+			at[head.seat()] = append(at[head.seat()], len(units))
+			units, heads = append(units, u), append(heads, head)
+		}
+		for i := 0; i < len(ms); {
+			m := ms[i]
+			if len(m.Path) > depth+1 {
+				j := i + 1
+				for j < len(ms) && len(ms[j].Path) > depth+1 && ms[j].Path[depth] == m.Path[depth] {
+					j++
+				}
+				var sub planned
+				cs := planLevel(m.Via[depth], ms[i:j], depth+1, from, &sub, asides, wAsides)
+				pl.left = append(pl.left, sub.left...)
+				if len(cs) > 0 {
+					// weighed by the first it would try that isn't resting
+					head := cs[0]
+					for _, c := range cs {
+						if _, resting := restOf(c.restKey()); !resting {
+							if _, resting = restOf(c.restID()); !resting {
+								head = c
+								break
+							}
+						}
+					}
+					add(unit{cs: cs, order: sub.order}, head)
+				}
+				i = j
+				continue
 			}
-			all = append(all, cs...)
+			for _, c := range keys(m) {
+				add(unit{m: m}, c)
+			}
+			i++
 		}
 		routing := g.Routing
 		if routing == provider.Manual {
 			routing = "" // the member picked, its keys or accounts weighed smartly
 		}
-		cs, wg := weigh(provider.Provider{ID: provider.GroupPrefix + g.ID, Routing: routing}, all, "", from)
-		for i, c := range cs {
-			m := of[c.seat()]
-			w := weighed(c, m.Provider, wg, false, from)
-			w.Routing, w.Via = g.Routing, m.Groups()
-			w.Turn = i == 0 && g.Routing == provider.Rotate && len(cs) > 1
+		weighedHeads, wg := weigh(provider.Provider{ID: provider.GroupPrefix + g.ID, Routing: routing}, heads, "", from)
+		var out []candidate
+		for i, c := range weighedHeads {
+			k := at[c.seat()][0]
+			at[c.seat()] = at[c.seat()][1:]
+			u := units[k]
+			if u.cs != nil {
+				out = append(out, u.cs...)
+				pl.order = append(pl.order, u.order...)
+				continue
+			}
+			w := weighed(c, u.m.Provider, wg, false, from)
+			w.Routing, w.Via = g.Routing, u.m.Groups()
+			w.Turn = i == 0 && g.Routing == provider.Rotate && len(weighedHeads) > 1
 			pl.order = append(pl.order, w)
+			out = append(out, c)
 		}
-		return cs
+		return out
 	}
 	var out []candidate
 	for i := 0; i < len(ms); {

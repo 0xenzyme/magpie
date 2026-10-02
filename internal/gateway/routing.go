@@ -490,8 +490,9 @@ func (c candidate) allowanceKey() allowanceKey {
 type left struct {
 	used   float64
 	renews []time.Time
-	pace   float64   // weekly pace: share of its week left per hour until it renews
-	due    time.Time // when the window that pace went by renews; zero when not known
+	soon   []time.Time // renews as Smart ranks them (Allowance.Renewal)
+	pace   float64     // weekly pace: share of its week left per hour until it renews
+	due    time.Time   // when the window that pace went by renews; zero when not known
 }
 
 // learns: c is a subscription whose allowance isn't known yet, of an agent
@@ -523,7 +524,7 @@ func weigh(p provider.Provider, cs []candidate, model string, from provider.Prot
 		if a, ok := known[ag][c.p.Account.User]; ok {
 			u, r := a.For(c.model, now)
 			pc, due := a.Pace(c.model, now)
-			wg.lefts[c.allowanceKey()] = left{u, r, pc, due} // one not known counts as unused
+			wg.lefts[c.allowanceKey()] = left{u, r, a.Renewal(c.model, now), pc, due} // one not known counts as unused
 		}
 	}
 	lefts := wg.lefts
@@ -534,7 +535,10 @@ func weigh(p provider.Provider, cs []candidate, model string, from provider.Prot
 		// soonest, since what it has left is lost then, while one renewing
 		// later keeps: the biggest window decides — the week, not the five
 		// hours in it — and the next one only when that renews in the
-		// same hour. Those alike stay in their order, keeping the vendor's
+		// same hour. An account with no week (Claude Enterprise's five
+		// hours alone) goes by its five hours, so ahead of every week
+		// but one renewing sooner; a window not started renews its whole
+		// span from now (#576). Those alike stay in their order, keeping the vendor's
 		// prompt cache warm. Past that, whichever has the most left, and
 		// one all but used up only when nothing else can take it. Only the
 		// windows that count the model do: Opus's own weekly allowance
@@ -558,7 +562,7 @@ func weigh(p provider.Provider, cs []candidate, model string, from provider.Prot
 			if li, lj := learns(fine[i], lefts), learns(fine[j], lefts); li != lj {
 				return li
 			}
-			ri, rj := lefts[fine[i].allowanceKey()].renews, lefts[fine[j].allowanceKey()].renews
+			ri, rj := lefts[fine[i].allowanceKey()].soon, lefts[fine[j].allowanceKey()].soon
 			for k := 0; k < len(ri) || k < len(rj); k++ {
 				var a, b time.Time // to the hour, so a few minutes don't reorder
 				if k < len(ri) {

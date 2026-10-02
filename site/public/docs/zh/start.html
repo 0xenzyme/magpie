@@ -155,11 +155,11 @@
     <div class="callout"><b>不用手动建的组。</b>再加一个供应商，只要它提供的模型和已有的同名（比如 Claude 订阅和 Copilot 都有 Claude Opus，DeepSeek 官方 API 和 OpenRouter 都有 DeepSeek），magpie 就会自动把它们组成一个路由组：<code>group/auto-&lt;模型&gt;</code>，包含所有提供这个模型的供应商。名字按各家不同的写法匹配（<code>deepseek/deepseek-chat</code> 和 <code>deepseek-chat</code> 算同一个）。给 Agent 选这个组，请求就会分摊到这些供应商上；不想要的可以用 <code>magpie group rm</code> 隐藏。</div>
     <div class="table-wrap"><table>
       <tr><th>路由</th><th>谁排在前面</th></tr>
-      <tr><td>智能 <code>smart</code></td><td>默认。把所有成员的账号和 Key 放在一起排：还有余量的订阅里，额度最先重置的排第一；失败后在休息的排最后。</td></tr>
+      <tr><td>智能 <code>smart</code></td><td>默认。把成员的账号和 Key 放在一起排（组里的路由组算一个，见下文）：还有余量的订阅里，额度最先重置的排第一。看周额度的重置时间；只有 5 小时额度、没有周额度的账号（如 Claude Enterprise）看它的 5 小时重置，所以排在所有更晚重置的周额度前面。失败后在休息的排最后。</td></tr>
       <tr><td>按顺序 <code>order</code></td><td>先用第一个模型，它答不了再换下一个。</td></tr>
       <tr><td>轮流 <code>rotate</code></td><td>会话的每一轮交给下一个成员的账号或 Key，均摊负载。</td></tr>
       <tr><td>最少使用 <code>usage</code></td><td>剩余额度最多的账号或 Key 排第一。</td></tr>
-      <tr><td>重置前用完 <code>pace</code></td><td>每周剩余额度除以距重置的小时数，最高的账号排第一——重置时损失最多的那个——少让成员的周额度到重置时作废；用到 90% 以上的等其他账号都答不了时才用。Key 按最近发给它的 token 数排。</td></tr>
+      <tr><td>重置前用完 <code>pace</code></td><td>每周剩余额度除以距重置的小时数，最高的账号排第一——重置时损失最多的那个——少让成员的周额度到重置时作废；只有 5 小时额度、没有周额度的账号（如 Claude Enterprise）按 5 小时窗口的剩余额度除以距它重置的小时数算，所以几乎总排第一。用到 90% 以上的等其他账号都答不了时才用。Key 按最近发给它的 token 数排。</td></tr>
     </table></div>
     <div class="table-wrap"><table>
       <tr><th>会话保持</th><th>会话在回答过它的账号或 Key 上留多久</th></tr>
@@ -182,6 +182,7 @@
     <p>路由组的成员也可以是另一个路由组：在 <span class="ui">添加模型</span> 的 <em>路由组</em> 分类里选它，或者在终端里用 <code>models+=group/&lt;id&gt;</code>。子组占据它在顺序里的位置，在自己的模型之间按自己的路由方式和规则分配。比如 Coder 可以是 <code>deepseek-v4-pro</code>，然后是 <em>Fast</em>，而 Fast 是几个便宜模型的顺序。Coder 的规则可以把一轮对话交给 <code>group/fast</code>，再由 Fast 自己的规则决定它里面哪个模型排第一。</p>
     <ul>
       <li><b>不会无限递归。</b>一个组不能包含它自己，无论是直接包含，还是经由它里面的组间接包含。Coder 已经包含 Fast 时，再把 Coder 放进 Fast 会被拒绝，选择器里也不会列出这样的组。最多嵌套 8 层。一个组被别的组包含时不能删除，要先从那个组里移除它。</li>
+      <li><b>每一层按自己的路由。</b>外层组不管用什么路由，都不会伸进它里面的组：智能、轮流、最少使用、重置前用完都把子组当作一个成员，拿子组自己会先用的那个账号或 Key 来比；排到它时，子组按自己的顺序整体尝试。Coder 设为智能、里面放 Claude（按顺序）和 GPT（按顺序）两个组时，比较的是 Claude 组的第一个和 GPT 组的第一个，不会把两组的账号混在一起排。</li>
       <li><b>故障转移照常。</b>子组里的模型全部失败时，由外层组的下一个成员接手，和其他成员一样。</li>
       <li>同一个模型出现两次（单独一次，子组里一次）时只问一次，按它第一次出现的位置。</li>
     </ul>

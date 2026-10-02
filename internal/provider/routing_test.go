@@ -34,7 +34,9 @@ func TestAllowanceOf(t *testing.T) {
 // first, and when that one renews; the five hours don't count, a week not
 // started or not known runs from now, a reset passed is a full week again,
 // a window of no span is a budget, the hours are never fewer than one, and
-// the five hours alone are a week not started with their share used.
+// the five hours alone go by what they have left per hour until they
+// renew — a week not started with their share used where the reading may
+// leave the week out (#576).
 func TestAllowancePace(t *testing.T) {
 	now := time.Now()
 	a := Allowance{
@@ -63,8 +65,11 @@ func TestAllowancePace(t *testing.T) {
 	if p, _ := (Allowance{{Used: 50, Resets: now.Add(10 * 24 * time.Hour), Span: 30 * 24 * time.Hour}}).Pace("m", now); !near(p, 50.0/240) {
 		t.Fatalf("a month is a budget too: %v", p)
 	}
-	if p, _ := (Allowance{{Used: 20, Resets: now.Add(time.Hour), Span: 5 * time.Hour}}).Pace("m", now); !near(p, 80.0/168) {
-		t.Fatalf("five hours alone: a week not started with their share used: %v", p)
+	if p, _ := (Allowance{{Used: 20, Resets: now.Add(time.Hour), Span: 5 * time.Hour}}).Pace("m", now); !near(p, 80.0/1) {
+		t.Fatalf("five hours alone: what they lose at their reset, per hour: %v", p)
+	}
+	if p, _ := (Allowance{{Used: 20, Resets: now.Add(time.Hour), Span: 5 * time.Hour, partial: true}}).Pace("m", now); !near(p, 80.0/168) {
+		t.Fatalf("five hours alone, the reading partial: a week not started with their share used: %v", p)
 	}
 	// a plugin may tell no span: the window is a budget for as long as its
 	// reset says, else a week
