@@ -154,6 +154,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // Labels in the 440px panel must be readable, not clipped by ellipsis.
       assert(await p.locator("#panelUsage .pu-tot .blk").first().locator(".sub").evaluate(e =>
         e.scrollWidth <= e.clientWidth + 1 && e.scrollHeight <= e.clientHeight + 1 && getComputedStyle(e).textOverflow !== "ellipsis"), "token input/output is fully visible");
+      // the total counts the cache, so the line under it names the cache too, or in + out doesn't add up to it
+      assert((await p.locator("#panelUsage .pu-tot .blk").first().locator(".sub").textContent()).includes(lang === "zh" ? "缓存" : "cached"), "the cache under the token total");
       // nothing runs out of the panel
       const over = await p.evaluate(() => [...document.querySelectorAll("#panelUsage *")].filter((e) => e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflow === "visible" && e.children.length === 0 && e.tagName !== "text").length);
       assert.equal(over, 0, "an element wider than itself");
@@ -196,6 +198,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await p.locator("#panelUsage .pu-bar .segs .opt").nth(0).click();
       await settled(asked, (q) => q.get("period") === "today");
       await p.locator("#panelUsage:not(.pu-loading)").waitFor();
+      // half under the footer's edge, WebKit takes it as in view and clicks the footer: scroll it in whole, as a reader would
+      await p.locator("#panelUsage .pu-tot").hover();
+      await p.mouse.wheel(0, 400);
+      await p.waitForFunction(() => document.querySelector("#panelUsage .led-rank .rk").getBoundingClientRect().bottom <= document.querySelector("footer.foot").getBoundingClientRect().top);
       await p.locator("#panelUsage .led-rank .rk").first().click();
       await settled(asked, (q) => q.get("provider") === "anthropic");
       await p.locator("#panelUsage .sess-pick", { hasText: "Claude" }).waitFor();
@@ -204,6 +210,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await p.locator("#panelUsage rect.col").evaluateAll((r) => [...new Set(r.map((x) => x.dataset.k))].sort().join()), "claude-opus-5,claude-sonnet-5");
 
       // Open Usage takes the window to that provider's requests
+      await p.mouse.wheel(0, -400);
       await p.locator("#panelUsage .pu-bar .text").click();
       for (let i = 0; i < 50 && !opened.length; i++) await p.waitForTimeout(40);
       assert.equal(opened.at(-1), "?view=usage&tab=requests&provider=anthropic");
