@@ -421,7 +421,9 @@ body.window .agent-fold-cap { padding: 10px 14px 3px; }
    the grip in its margin drawn only with the pointer on the row */
 #providers > .row .pv-handle { position: relative; }
 #providers > .row .pv-handle::before { content: ""; position: absolute; left: -6px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; opacity: 0; transition: opacity .15s; }
-#providers > .row:is(:hover, .dragging) .pv-handle::before, #providers > .row .pv-handle:focus-visible::before { opacity: 1; }
+#providers > .row:is(:hover, .dragging) .pv-handle::before { opacity: 1; }
+/* apart: Safari before 15.4 drops a whole selector list with :focus-visible in it */
+#providers > .row .pv-handle:focus-visible::before { opacity: 1; }
 #providers.sorting { user-select: none; -webkit-user-select: none; }
 #providers.sorting > .row { transition: transform .22s cubic-bezier(.22, 1, .36, 1); }
 #providers.sorting .pv-handle { cursor: grabbing; }
@@ -1738,17 +1740,17 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
    word, apart from the filled "sponsored" */
 .badge.deprecated { background: transparent; color: var(--amber); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
 /* over the list: what is deprecated, why, and the way on */
-.deprecation { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px 12px 12px; border: 1px solid color-mix(in srgb, var(--amber) 20%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--amber-soft) 45%, var(--card)); animation: fade-in .2s; }
-.deprecation .dep-ic { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--amber-soft); color: var(--amber); }
-.deprecation .dep-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.deprecation .dep-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 7px; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: var(--fg); }
-.deprecation .dep-head .badge { vertical-align: 0; }
-.deprecation p { margin: 0; font-size: 11.5px; line-height: 1.55; overflow-wrap: anywhere; }
-.deprecation .dep-why { color: var(--fg-2); }
-.deprecation .dep-keep { color: var(--muted); }
-.deprecation .dep-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
-.deprecation .dep-acts .link { font-size: 11.5px; color: var(--muted); }
-/* the same, said in a provider's editor over its Move */
+.deprecation { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); animation: fade-in .2s; }
+.deprecation .dep-dot { flex: none; align-self: flex-start; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--amber); }
+.deprecation .dep-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.deprecation .dep-head { font-size: 12.5px; font-weight: 500; line-height: 1.45; color: var(--fg); overflow-wrap: anywhere; }
+.deprecation .dep-why { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
+.deprecation .dep-acts { flex: none; display: flex; align-items: center; gap: 4px; }
+.deprecation .dep-acts .text:not(.action) { color: var(--muted); }
+@media (max-width: 560px) {
+  .deprecation { flex-wrap: wrap; }
+  .deprecation .dep-acts { flex-basis: 100%; justify-content: flex-end; }
+}
 .move .dep-note { display: flex; align-items: flex-start; gap: 7px; padding: 7px 10px; border-radius: 8px; background: color-mix(in srgb, var(--amber-soft) 55%, transparent); font-size: 11.5px; line-height: 1.5; color: var(--fg-2); }
 .move .dep-note .badge { flex: none; margin-top: 2px; }
 /* and in the add sheet, under the subscriptions */

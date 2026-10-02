@@ -3071,27 +3071,26 @@ function renderMovable() {
   box.hidden = !ps.length || hid === ids;
   if (box.hidden) return;
   const names = ps.map((p) => p.name).join(t(", "));
+  // one quiet line over the list, as calm as its rows: an amber dot, what
+  // happened and why, and the two answers on the right (the owner: 这个太丑了 —
+  // it was a tinted box with a tile, a badge, three lines and a purple button)
   const card = el("div", "deprecation");
   card.setAttribute("role", "note");
-  const ic = el("span", "dep-ic");
-  ic.append(svg(PUZZLE, 15, 1.4));
   const body = el("div", "dep-body");
-  const head = el("div", "dep-head");
-  head.append(el("span", "badge deprecated", t("Deprecated")),
-    el("span", "", ps.length > 1 ? t("These built-in subscriptions are deprecated: {names}", { names }) : t("{name}'s built-in subscription is deprecated", { name: names })));
+  body.append(el("div", "dep-head", ps.length > 1 ? t("These built-in subscriptions are deprecated: {names}", { names }) : t("{name}'s built-in subscription is deprecated", { name: names })),
+    el("p", "dep-why", [t(DEPRECATED_WHY), t("Moving keeps your accounts, models and agents as they are.")].join(locale === "zh" ? "" : " ")));
   const acts = el("div", "dep-acts");
-  const review = el("button", "text primary", ps.length > 1 ? t("Review in Plugins") : t("Review the move"));
+  const hide = el("button", "text", t("Not now"));
+  hide.title = t("Hide this until another deprecated subscription is signed in");
+  hide.onclick = () => { try { localStorage.setItem("magpie.deprecatedHidden", ids); } catch {} renderMovable(); };
+  const review = el("button", "text action", ps.length > 1 ? t("Review in Plugins") : t("Review the move"));
   // the editor opens over the list: the page itself doesn't move
   review.onclick = () => {
     if (ps.length > 1) { openPlugins(); return; }
     editing = ps[0].id; draft = null; renderProviders();
   };
-  const hide = el("button", "link", t("Not now"));
-  hide.title = t("Hide this until another deprecated subscription is signed in");
-  hide.onclick = () => { try { localStorage.setItem("magpie.deprecatedHidden", ids); } catch {} renderMovable(); };
-  acts.append(review, hide);
-  body.append(head, el("p", "dep-why", t(DEPRECATED_WHY)), el("p", "dep-keep", t("Moving keeps your accounts, models and agents as they are.")), acts);
-  card.append(ic, body);
+  acts.append(hide, review);
+  card.append(el("span", "dep-dot"), body, acts);
   box.append(card);
 }
 
