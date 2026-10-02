@@ -608,8 +608,9 @@ func Logins(agent string) []Login {
 }
 
 // InUseLogin is the account of an agent's the gateway goes to first: the
-// one the agent is signed in to, unless it is paused, else the first other
-// one on; "" when the agent has none.
+// one the agent is signed in to, unless it is paused or has used its
+// allowance up — then the next one on that still has room — else the first
+// other one on; "" when the agent has none.
 // Kept signed in to one of the user's choosing, it is the first in the
 // order that is in use.
 func InUseLogin(agent string) string {
@@ -621,12 +622,29 @@ func InUseLogin(agent string) string {
 			}
 		}
 	}
-	return inUseOf(ls)
+	return inUseOf(ls, loginRoom(agent))
 }
 
-func inUseOf(ls []Login) string {
+func inUseOf(ls []Login, room func(user string) (known, spent bool)) string {
 	for _, l := range ls {
 		if (l.Active || l.first) && !l.Paused {
+			// The account the agent is signed in to leads, but magpie moves
+			// the sign-in only every few minutes (SwitchWhenSpent, and for
+			// the agents it signs in at all), while the gateway moves its
+			// requests as soon as an account is spent. So the one in use can
+			// still be spent here; the menu bar watching it would show an
+			// allowance already gone. When the account the agent is on has
+			// used up, and another is on with room, the gateway goes to that
+			// one, so report it. An allowance not known is never taken for
+			// spent, so a single account or a read that failed is left as it
+			// was. room is nil where the caller has no allowances to weigh.
+			if room != nil {
+				if known, spent := room(l.User); known && spent {
+					if next, ok := nextWithRoom(ls, l.User, room); ok {
+						return next
+					}
+				}
+			}
 			return l.User
 		}
 	}
@@ -636,6 +654,45 @@ func inUseOf(ls []Login) string {
 		}
 	}
 	return ""
+}
+
+// nextWithRoom is the account inUseOf moves to when the one in use is spent:
+// the first other one the gateway could take a request to — on, not paused,
+// not lapsed — whose allowance is known and not spent, the spares NextLogin
+// picks among. ok is false when none has room, and the account in use is
+// kept.
+func nextWithRoom(ls []Login, spent string, room func(user string) (known, spent bool)) (string, bool) {
+	for _, l := range ls {
+		if !l.On || l.Paused || l.Lapsed != "" || strings.EqualFold(l.User, spent) {
+			continue
+		}
+		if known, used := room(l.User); known && !used {
+			return l.User, true
+		}
+	}
+	return "", false
+}
+
+// loginRoom weighs an account against the share the gateway counts it spent
+// at (loginSwitching, the same SpentShareOf its routing). It reads the
+// allowances the gateway routes by, so the account reported as in use and
+// the one the gateway sends to agree on which is out (#209), and the menu
+// bar's "account in use" card follows the gateway rather than the sign-in
+// that lags behind it.
+func loginRoom(agent string) func(user string) (known, spent bool) {
+	al := Allowances(agent)
+	share, _ := loginSwitching(agent)
+	now := time.Now()
+	return func(user string) (bool, bool) {
+		a, ok := al[user]
+		if !ok {
+			return false, false // not read yet: unknown, never taken for spent
+		}
+		// The account-wide windows (For's "" model), as the gateway's
+		// usedPast does; a window whose reset passed is empty again there.
+		used, _ := a.For("", now)
+		return true, used >= share
+	}
 }
 
 // SwitchLogin signs an agent in to a remembered account. Sessions of the
