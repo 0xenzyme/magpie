@@ -26,6 +26,16 @@ const RoutingGroups = "Routing groups"
 func viaMagpie(agent, prefix string) []Option {
 	var out, groups []Option
 	shown, _ := provider.CatalogFor(agent)
+	// own: whether a provider is the account the agent is signed in to,
+	// asked once a provider (OwnPaused reads the saved logins)
+	own := map[string]bool{}
+	for _, e := range shown {
+		if a := e.Provider.Account; a != nil && a.Agent == agent && !a.StandIn() {
+			if _, ok := own[e.Provider.ID]; !ok {
+				own[e.Provider.ID] = !e.Provider.OwnPaused()
+			}
+		}
+	}
 	for _, e := range shown {
 		if e.Group != "" {
 			groups = append(groups, Option{Value: prefix + e.ID, Label: e.Name, Note: "routing group · via magpie",
@@ -37,7 +47,7 @@ func viaMagpie(agent, prefix string) []Option {
 			note = a.User + " · via magpie"
 		}
 		out = append(out, Option{Value: prefix + e.ID, Label: e.Name, Note: note,
-			Icon: e.Provider.Icon, Group: e.Provider.Name, Ref: e.ID, Free: e.Free, Context: e.Context})
+			Icon: e.Provider.Icon, Group: e.Provider.Name, Ref: e.ID, Free: e.Free, Context: e.Context, own: own[e.Provider.ID]})
 	}
 	return append(groups, out...)
 }

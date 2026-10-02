@@ -593,6 +593,10 @@ func claudeAccount() (Provider, bool) {
 	return claudeProvider(&Account{Agent: "claude", User: user, Plan: plan}), true
 }
 
+// StandIn says the account is a saved one served in the place of the
+// agent's own sign-in, which is signed out.
+func (a *Account) StandIn() bool { return a != nil && a.standIn }
+
 // claudeProvider is the Claude Code provider of acct.
 func claudeProvider(acct *Account) Provider {
 	// nothing is sent to Anthropic in Claude Code's name: a request on the

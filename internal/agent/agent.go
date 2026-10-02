@@ -39,6 +39,17 @@ type Option struct {
 	// sign-in or key, with magpie not in the way ("Anthropic"): its config
 	// then names no magpie endpoint, which is right, not a failed setup
 	Direct string `json:"direct,omitempty"`
+	// Same is a model magpie serves on the very account the agent is
+	// signed in to itself, so the agent reaches it on its own too: the
+	// picker folds these into one row a click opens (Claude Code, #496)
+	Same bool `json:"same,omitempty"`
+	// Alias is the value of the option a dated id is another name of
+	// (claude-opus-4-5-20251101 → claude-opus-4-5): the picker shows one
+	// row for the two, the alias, unless the dated one is the value set
+	Alias string `json:"alias,omitempty"`
+
+	// own: served on the agent's own sign-in (viaMagpie), for Same
+	own bool
 }
 
 // Field is one tunable setting of an agent. Set with an empty value puts

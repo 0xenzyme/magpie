@@ -1885,6 +1885,43 @@ function ultracodeToggle(a, f) {
   return b;
 }
 
+// oneRowPerModel: an alias and its dated id (claude-opus-4-5 and
+// claude-opus-4-5-20251101, models.dev's two names of one model) are one
+// row, the alias's; the dated one's while it is the value set, so a pick
+// made before still shows as picked (#496).
+function oneRowPerModel(options, cur) {
+  const values = new Set(options.map((o) => o.value));
+  const dated = new Map(options.filter((o) => o.alias && values.has(o.alias)).map((o) => [o.alias, o.value]));
+  return options.filter((o) => (o.alias && values.has(o.alias) ? o.value === cur : !dated.has(o.value) || dated.get(o.value) !== cur));
+}
+
+// foldSame: magpie's rows for the very account the agent is signed in to
+// itself (Claude Code's Claude subscription, added in magpie too) are the
+// agent's own models a second time; they fold into one row that a click
+// opens, for the few who want them (failover to more accounts, a fix that
+// only magpie's way has). The value set stays a row of its own (#496).
+function foldSame(items) {
+  if (!pick.modelPicker || pick.groupFilter === "favorites") return items;
+  const same = items.filter((o) => o.same && o.value !== pick.field.value);
+  if (!same.length) return items;
+  const first = same[0];
+  const row = { fold: true, open: !!pick.unfold, n: same.length, group: first.group, icon: first.icon,
+    account: (first.note || "").replace(/ · via magpie$/, "") };
+  const out = [];
+  for (const o of items) {
+    if (o === first) out.push(row);
+    if (!same.includes(o) || pick.unfold) out.push(o);
+  }
+  return out;
+}
+
+// toggleFold opens or closes the folded rows, the fold's row staying under
+// the pointer (or the keys' cursor) where it was
+function toggleFold() {
+  pick.unfold = !pick.unfold;
+  filter((o) => o.fold);
+}
+
 // openPicker drops the option list under a field button. `only` narrows the
 // options (the providers page offers one vendor's models at a time).
 function openPicker(agent, field, anchor, ev, only) {
@@ -1898,6 +1935,7 @@ function openPicker(agent, field, anchor, ev, only) {
   // provider's; only the picker's own choices (Automatic, Off) above them
   options = [...options.filter((o) => o.reset), ...options.filter((o) => !o.reset && o.group === ROUTING_GROUPS), ...options.filter((o) => !o.reset && o.group !== ROUTING_GROUPS)];
   const effortPicker = !only && (field.key === "effort" || field.label === "effort" || field.label === "thinking" || field.label === SUB_EFFORT);
+  options = oneRowPerModel(options, cur);
   // Current model first, then the rest in catalog order. Effort levels keep
   // their natural low → high order because their position is meaningful.
   const i = options.findIndex((o) => o.value === cur);
@@ -2134,7 +2172,9 @@ function renderEffortPicker() {
   update();
 }
 
-function filter() {
+// filter lists the options the query finds; keep: the row for the cursor,
+// the first by default
+function filter(keep) {
   if (!pick) return;
   const q = $("#q").value.trim().toLowerCase();
   let source = pick.options;
@@ -2148,10 +2188,11 @@ function filter() {
   if (typed && pick.free && ["model", "small", "large", ...FOLLOWS_MODEL].includes(pick.field.label) && !pick.items.some((o) => o.value === typed)) {
     pick.items.push({ value: typed, note: t("use as typed"), custom: true });
   }
+  pick.items = foldSame(pick.items);
   // a model the filter finds among those kept for routing groups, which
   // aren't offered: said why, rather than missing without a word
   pick.kept = pick.modelPicker && q ? (state?.unlisted || []).filter((m) => [m.id, m.name].some((s) => s?.toLowerCase().includes(q))).slice(0, 3) : [];
-  pick.cursor = 0;
+  pick.cursor = typeof keep === "function" ? Math.max(0, pick.items.findIndex(keep)) : 0;
   renderPickerRail();
   renderList();
 }
@@ -2298,6 +2339,7 @@ function renderList() {
   pick.items.forEach((o, idx) => {
     if (!q && o.group && o.group !== group) list.append(el("li", "group", o.group === ROUTING_GROUPS ? t(o.group) : o.group));
     if (!q) group = o.group ?? group;
+    if (o.fold) { list.append(foldRow(o, idx, hasIcons)); return; }
     const li = el("li", (idx === pick.cursor ? "sel" : "") + (o.value === pick.field.value ? " cur" : "") + (o.custom ? " custom" : "") + (o.reset ? " reset" : ""));
     li.dataset.i = idx;
     if (hasIcons) li.append(optionIcon(o));
@@ -2335,6 +2377,27 @@ function renderList() {
   });
   for (const m of pick.kept || []) list.append(keptNote(m));
   list.querySelector(`li[data-i="${pick.cursor}"]`)?.scrollIntoView({ block: "nearest" });
+}
+
+// foldRow: the one row the models on the agent's own account through
+// magpie fold into (foldSame), opened or closed at a click
+function foldRow(o, idx, hasIcons) {
+  const li = el("li", "fold" + (o.open ? " open" : "") + (idx === pick.cursor ? " sel" : ""));
+  li.dataset.i = idx;
+  li.setAttribute("role", "button");
+  li.setAttribute("aria-expanded", String(o.open));
+  if (hasIcons) li.append(optionIcon(o));
+  const words = el("span", "option-words");
+  words.append(el("span", "v", t(o.n === 1 ? "{n} model via magpie" : "{n} models via magpie", { n: o.n })));
+  words.append(el("span", "n", o.account ? t("{account} · the account {agent} is signed in to", { account: o.account, agent: pick.agent.name }) : t("the account {agent} is signed in to", { agent: pick.agent.name })));
+  li.append(words);
+  const chev = el("span", "chev");
+  chev.append(svg("m6 4 4 4-4 4", 12, 1.6));
+  li.append(chev);
+  li.title = t(o.open ? "Fold them away again" : "The same models as {agent}'s own, through magpie: click to show them", { agent: pick.agent.name });
+  li.onmousemove = () => { if (pick.cursor !== idx) { pick.cursor = idx; renderList(); } };
+  li.onclick = (ev) => { ev.stopPropagation(); toggleFold(); };
+  return li;
 }
 
 // keptNote: a model of a provider set to "Only through routing groups",
@@ -2465,7 +2528,7 @@ $("#q").addEventListener("input", filter);
 $("#q").addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) { e.preventDefault(); move(1); }
   else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) { e.preventDefault(); move(-1); }
-  else if (e.key === "Enter") { e.preventDefault(); commit(pick?.items[pick.cursor]?.value); }
+  else if (e.key === "Enter") { e.preventDefault(); if (pick?.items[pick.cursor]?.fold) toggleFold(); else commit(pick?.items[pick.cursor]?.value); }
   else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closePicker(); }
 });
 document.addEventListener("mousedown", (e) => {

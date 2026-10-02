@@ -463,7 +463,10 @@ func claudeIn(at place) *Agent {
 			for i := range own {
 				own[i].Direct = direct
 			}
-			return append(group(name, own), claudeViaMagpie()...)
+			// magpie's Claude Code account is the one Claude Code asks on
+			// its own while that is Anthropic: the same models a second
+			// time, folded in the picker (#496)
+			return append(group(name, own), claudeViaMagpie(name == "Claude Code")...)
 		},
 	}, {
 		// the effort Claude Code starts with, as its /effort saves it: under
@@ -602,7 +605,7 @@ func claudeIn(at place) *Agent {
 				if !routed() {
 					return nil
 				}
-				return claudeViaMagpie()
+				return claudeViaMagpie(false)
 			},
 		})
 	}
@@ -635,7 +638,7 @@ func claudeIn(at place) *Agent {
 			if !routed() {
 				return nil
 			}
-			return claudeViaMagpie()
+			return claudeViaMagpie(false)
 		},
 	})
 
@@ -761,7 +764,38 @@ func claudeOwn(cur string, tier func(string) string) []Option {
 			own = append(own, Option{Value: m.ID, Note: m.Name, Icon: "claude-color"})
 		}
 	}
-	return own
+	return claudeDated(own)
+}
+
+// claudeDated marks each dated Claude id that another option of its group
+// names undated (models.dev lists claude-opus-4-5 and
+// claude-opus-4-5-20251101, the one model) as that one's Alias. Two dated
+// ids of one name are two models, and left as they are.
+func claudeDated(opts []Option) []Option {
+	const mark = "[1m]"
+	bare := func(v string) string { return strings.TrimSuffix(v, mark) }
+	type key struct{ group, value string }
+	alias := map[key]int{}
+	for i, o := range opts {
+		if !dated.MatchString(bare(o.Value)) {
+			alias[key{o.Group, bare(o.Value)}] = i
+		}
+	}
+	twins := map[key][]int{}
+	for i, o := range opts {
+		v := bare(o.Value)
+		if base := dated.ReplaceAllString(v, ""); base != v && claudeName(base) != "" {
+			if _, ok := alias[key{o.Group, base}]; ok {
+				twins[key{o.Group, base}] = append(twins[key{o.Group, base}], i)
+			}
+		}
+	}
+	for k, is := range twins {
+		if len(is) == 1 {
+			opts[is[0]].Alias = opts[alias[k]].Value
+		}
+	}
+	return opts
 }
 
 // claudeAliasOption is the option for one of Claude Code's aliases, named
@@ -824,7 +858,9 @@ func claudeAliasOption(v string, ms []catalog.Model, tier func(string) string) (
 // claudeViaMagpie is what magpie serves Claude Code, a model with a window
 // of 1M or more marked [1m]: Claude Code takes any other for 200K, and
 // compacts long before a 1M model needs it. It drops the mark before asking.
-func claudeViaMagpie() []Option {
+// fold marks Same those on the account Claude Code is signed in to, for a
+// picker that lists Claude Code's own models above them.
+func claudeViaMagpie(fold bool) []Option {
 	big := map[string]bool{}
 	for _, m := range magpieModels("claude") {
 		big[m.ID] = m.Context >= 1_000_000
@@ -834,8 +870,9 @@ func claudeViaMagpie() []Option {
 		if big[o.Ref] {
 			opts[i].Value += "[1m]"
 		}
+		opts[i].Same = fold && o.own
 	}
-	return opts
+	return claudeDated(opts)
 }
 
 // claude1M marks [1m] a magpie model whose window is 1M or more, as

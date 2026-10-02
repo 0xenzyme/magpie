@@ -1330,6 +1330,12 @@ body.window .foot { padding-left: 18px; }
 .pop li.reset .ic { opacity: .75; }
 .pop li.custom .v { color: var(--fg); }
 .pop li.custom .n { color: var(--muted); }
+/* the models on the agent's own account through magpie, folded into one
+   row (#496): a chevron says it opens, turned down while open */
+.pop li.fold .v { color: var(--muted); }
+.pop li.fold .chev { display: inline-flex; margin-left: auto; flex: none; color: var(--faint); transition: transform .18s cubic-bezier(.22, 1, .36, 1); }
+.pop li.fold.open .chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .pop li.fold .chev { transition: none; } }
 /* a model kept for routing groups, found by the filter: why it isn't
    offered, and what to do, below the choices */
 .pop li.kept, .pop.model-picker li.kept { height: auto; align-items: flex-start; padding: 8px; margin-top: 3px; border-top: 1px solid var(--line); border-radius: 0; white-space: normal; cursor: default; }
