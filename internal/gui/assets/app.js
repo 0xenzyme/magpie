@@ -585,8 +585,9 @@ function toggleProfile(chip, p) {
 }
 
 // closeProfileDetail closes the details shown, if any: false if none were.
+// Details on the page close whether or not profileOpen still names them.
 function closeProfileDetail() {
-  if (!profileOpen) return false;
+  if (!profileOpen && !$("#profiles > .prof-detail")) return false;
   profileOpen = null;
   $("#profiles > .prof-detail")?.remove();
   $(".profiles").classList.remove("detailed");
@@ -2511,7 +2512,10 @@ async function profileAction(action, name, update) {
     state = data;
     renderAgents();
     if (action === "use") {
-      profileOpen = null;
+      // the details close, renderAgents having drawn them again (#489:
+      // profileOpen dropped first, closeProfileDetail found nothing open and
+      // left them there, their × doing nothing)
+      closeProfileDetail();
       closeProfiles(); // the agents, as they are now, in sight
       let msg = t(data.changed === 1 ? "{name} applied · {n} setting changed" : "{name} applied · {n} settings changed", { name, n: data.changed });
       const lib = data.library;
