@@ -21,6 +21,7 @@ const (
 	Ordered   = "order"
 	Rotate    = "rotate"
 	LeastUsed = "usage"
+	Pace      = "pace"
 )
 
 // SetRouting changes how a provider's requests spread over its keys or
@@ -127,6 +128,66 @@ func (a Allowance) Full(model string, share float64, now time.Time) time.Time {
 		}
 	}
 	return t
+}
+
+// budgetSpan is the shortest window that is a budget rather than a rate
+// cap: the week (Kiro's month too), not the five hours in it — what the
+// five hours leave at their reset is nothing lost.
+const budgetSpan = 24 * time.Hour
+
+// weekSpan is the budget window an account is taken to have when its
+// vendor tells none a day or longer, or tells one without saying how long
+// it runs or when it renews.
+const weekSpan = 7 * 24 * time.Hour
+
+// FreshPace is the pace of an account with a whole week ahead of it:
+// what one not known counts as.
+const FreshPace = 100 / (7 * 24.0)
+
+// Pace is the share of its week an account has left for model, per hour
+// until that week renews: the rate it would have to be used at to spend
+// the week just in time, so the account with the highest has the most to
+// lose at its reset. Of several budget windows that count the model
+// (Opus's own beside the general), the tightest; due is when that one
+// renews, zero when it isn't known. A window not started, or whose reset
+// isn't known, is taken to run its whole span from now; one that doesn't
+// say how long it runs (a plugin may not) is a budget, for as long as its
+// reset says, else a week. The hours until a reset are never taken as
+// fewer than one, or a window a minute from renewing would outweigh all
+// the rest. An account whose vendor tells no budget window (Claude's own
+// usage command gives the five hours alone) is taken to have a week not
+// started with the share its fullest window has used: those go by what
+// they have used, among the rest as the fresh are.
+func (a Allowance) Pace(model string, now time.Time) (pace float64, due time.Time) {
+	model = strings.ToLower(model)
+	any, used := false, 0.0
+	for _, l := range a {
+		if !l.applies(model) {
+			continue
+		}
+		u := min(100, max(0, l.Used))
+		if !l.Resets.IsZero() && !l.Resets.After(now) {
+			u = 0 // its reset has passed: empty again
+		}
+		if l.Span != 0 && l.Span < budgetSpan {
+			used = max(used, u)
+			continue
+		}
+		until, renews := l.Span, time.Time{}
+		if until == 0 {
+			until = weekSpan
+		}
+		if l.Resets.After(now) {
+			until, renews = l.Resets.Sub(now), l.Resets
+		}
+		if p := (100 - u) / max(until, time.Hour).Hours(); !any || p < pace {
+			pace, due, any = p, renews, true
+		}
+	}
+	if !any {
+		return (100 - used) / weekSpan.Hours(), time.Time{}
+	}
+	return pace, due
 }
 
 // Allowances is each of an agent's accounts' allowance by user, as last
