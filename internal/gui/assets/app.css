@@ -265,6 +265,20 @@ body.window .top.inrow .actions { margin-left: 0; }
 /* and when even that doesn't fit, the tabs scroll sideways rather than push the page wider */
 .top.packed .seg { min-width: 0; flex: 0 1 auto; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .top.packed .seg::-webkit-scrollbar { display: none; }
+/* magpie web on a phone, or a browser as narrow (phoneWeb): the magpie and
+   the icons in a row, the tabs at their size in a row of their own under
+   them, sliding sideways when they don't fit (they were squeezed into the
+   room between, too small to read or tap) */
+@media (max-width: 600px) {
+  body.web .top { flex-wrap: wrap; height: auto; row-gap: 4px; padding: 6px 10px 8px 14px; }
+  body.web .top .brand, body.web .top .actions { height: 30px; align-items: center; }
+  body.web .top .seg {
+    position: relative; left: auto; top: auto; transform: none; order: 3; flex: 1 0 100%; max-width: 100%;
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain;
+  }
+  body.web .top .seg::-webkit-scrollbar { display: none; }
+  body.web .top .seg button { flex: 1 0 auto; height: 30px; padding: 0 12px; font-size: 13px; }
+}
 @keyframes update-in { from { opacity: 0; transform: translateY(-3px) scale(.94); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -1984,6 +1998,12 @@ input.words.search-key, input.words.search-url { flex: 1 1 120px; width: auto; m
 .row.pref.lan-container .sub { white-space: normal; }
 .pop.proto-menu.lan-address-menu { width: min(320px, calc(100vw - 16px)); max-height: min(360px, 70vh); overflow-y: auto; }
 .lan-address-menu .pm-name { font: 12px var(--code); }
+/* a phone: a control too wide for the row beside its name goes under it
+   rather than cut the name to a few letters */
+@media (max-width: 600px) {
+  body.web .row.pref:not(.lan-address-row) { flex-wrap: wrap; row-gap: 8px; }
+  body.web .row.pref:not(.lan-address-row) .who { flex: 1 1 150px; }
+}
 @media (max-width: 600px) {
   .row.pref.lan-address-row { height: 76px; }
   .lan-address-controls .segs { right: 12px; }
