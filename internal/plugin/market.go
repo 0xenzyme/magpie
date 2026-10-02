@@ -207,12 +207,21 @@ func fetchJSON(ctx context.Context, u string, limit int64) ([]byte, error) {
 		return nil, errNotFound
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s: %s", u, res.Status)
+		return nil, &statusError{URL: u, Code: res.StatusCode, Status: res.Status}
 	}
 	return io.ReadAll(io.LimitReader(res.Body, limit))
 }
 
 var errNotFound = errors.New("not found")
+
+// statusError is a server's answer other than 200 or 404.
+type statusError struct {
+	URL    string
+	Code   int
+	Status string
+}
+
+func (e *statusError) Error() string { return e.URL + ": " + e.Status }
 
 // npmPath is a package's name as the registry's paths take it.
 func npmPath(name string) string { return strings.Replace(url.PathEscape(name), "%40", "@", 1) }
@@ -333,6 +342,16 @@ func repoURL(v any) string {
 }
 
 func npmInfo(ctx context.Context, name string) (NPM, bool) {
+	info, err := npmAsk(ctx, name)
+	if err != nil {
+		return NPM{}, errors.Is(err, errNotFound) // not on npm: known, and kept
+	}
+	return info, true
+}
+
+// npmAsk is what npm says of the package now, or why it said nothing:
+// errNotFound when it has no such package.
+func npmAsk(ctx context.Context, name string) (NPM, error) {
 	var info NPM
 	var wg sync.WaitGroup
 	var latestErr error
@@ -372,9 +391,9 @@ func npmInfo(ctx context.Context, name string) (NPM, bool) {
 	wg.Wait()
 	info.Weekly = weekly
 	if latestErr != nil {
-		return NPM{}, errors.Is(latestErr, errNotFound) // not on npm: known, and kept
+		return NPM{}, latestErr
 	}
-	return info, true
+	return info, nil
 }
 
 // Hit is a package npm's search found.

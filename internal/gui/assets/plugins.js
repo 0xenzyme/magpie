@@ -23,6 +23,8 @@
   let searchTimer = 0;
   const busy = new Map(); // package → "add" | "remove" | "upgrade" | "off"
   let asking = null;     // { pkg, op }: a remove or switch-off waiting on the user's yes
+  let checking = false;  // Check for updates: npm being asked now
+  let checked = null;    // ...and what it said: { at, by: spec → check }
   let shown = "";
 
   const SEARCH = "M7 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M10 10l3 3";
@@ -170,6 +172,55 @@
       status(e.message, "err");
     }
   }
+  // Check for updates: npm asked now, not what it said within the hour,
+  // for each installed plugin's newest version. Each row then says so (an
+  // update, up to date, or why it couldn't be checked), and its Update, or
+  // Update all, installs it as before. Nothing is installed by the check.
+  async function checkUpdates() {
+    if (checking || busy.size) return;
+    checking = true;
+    draw();
+    try {
+      const r = await api("plugins/check", {});
+      mine = r.state || mine;
+      const by = {};
+      for (const c of r.plugins || []) {
+        by[c.spec] = c;
+        // npm's answer now is the one the rows read
+        if (c.latest) npm[c.package] = { ...(npm[c.package] || {}), version: c.latest };
+      }
+      checked = { at: r.at, by };
+      merge();
+      const asked = (r.plugins || []).filter((c) => c.status === "update" || c.status === "current" || c.status === "unknown");
+      const ups = asked.filter((c) => c.status === "update" && !c.off).length;
+      const unknown = asked.filter((c) => c.status === "unknown");
+      if (asked.length && unknown.length === asked.length) {
+        status(t("Couldn't check for updates: {error}", { error: whyText(unknown[0]) }), "err", 8000);
+      } else {
+        let msg = ups ? (ups === 1 ? t("1 plugin has an update") : t("{n} plugins have updates", { n: ups })) : t("Every plugin is up to date");
+        if (unknown.length) {
+          msg += " · " + t("{n} couldn't be checked: {error}", { n: unknown.length, error: whyText(unknown[0]) });
+          status(msg, "warn", 8000);
+        } else status(msg, "ok");
+      }
+    } catch (e) {
+      status(t("Couldn't check for updates: {error}", { error: e.message }), "err", 8000);
+    }
+    checking = false;
+    draw();
+    window.renderPluginDot?.();
+  }
+  // why npm said nothing of a plugin, in the page's words
+  function whyText(c) {
+    switch (c.why) {
+      case "offline": return t("npm couldn't be reached — check your connection or proxy");
+      case "limited": return t("npm is turning requests away for now (too many); try again in a few minutes");
+      case "missing": return t("npm doesn't have it");
+      default: return t("npm answered with an error: {error}", { error: c.error || "" });
+    }
+  }
+  const checkedAt = () => checked ? new Date(checked.at).toLocaleTimeString(document.documentElement.lang || undefined, { hour: "2-digit", minute: "2-digit" }) : "";
+
   // the built-ins with accounts this plugin could run in their place
   const movableOf = (pkg) => (mine?.movable || []).filter((c) => c.package === pkg);
   // move: a built-in's accounts onto its plugin, installing it if need be,
@@ -554,9 +605,19 @@
     const foot = el("div", "pm-foot");
     const outdated = es.filter((e) => e.latest && e.version && newer(e.latest, e.version));
     foot.append(el("span", "", mine.bun ? t("Plugins run on Bun {v}", { v: mine.bunVersion }) : ""), el("span", "grow"));
+    // only npm has versions to ask for: a folder's or a git one's has none
+    if (es.some((e) => onNPM(e.spec))) {
+      const c = el("button", "text pm-check" + (checking ? " busy" : ""));
+      if (checking) c.append(el("span", "spin"));
+      c.append(el("span", "", checking ? t("Checking…") : t("Check for updates")));
+      c.title = t("Ask npm now for each plugin's newest version") + (checked ? "\n" + t("Last checked {time}", { time: checkedAt() }) : "");
+      c.disabled = checking || busy.size > 0;
+      c.onclick = () => checkUpdates();
+      foot.append(c);
+    }
     if (outdated.length) {
       const up = el("button", "text", busy.has("*") ? t("Updating…") : t("Update all ({n})", { n: outdated.length }));
-      up.disabled = busy.size > 0;
+      up.disabled = busy.size > 0 || checking;
       up.onclick = () => act("*", "update", {}, () => status(t("Plugins updated"), "ok"));
       foot.append(up);
     }
@@ -578,11 +639,25 @@
     const nm = el("div", "name");
     nm.append(el("span", "", shownName(e)));
     if (e.version) nm.append(el("span", "pm-ver", "v" + e.version));
-    if (e.latest && e.version && newer(e.latest, e.version)) nm.append(el("span", "pm-chip up", t("v{v} out", { v: e.latest })));
-    else if (e.autoUpdated && e.autoUpdated.to === e.version) {
+    const ck = checked?.by[e.spec];
+    if (e.latest && e.version && newer(e.latest, e.version)) {
+      const c = el("span", "pm-chip up", t("v{v} out", { v: e.latest }));
+      c.title = t("v{have} installed, v{v} on npm", { have: e.version, v: e.latest });
+      nm.append(c);
+    } else if (ck?.status === "unknown") {
+      // asked just now, and npm didn't say: the row says why
+      const c = el("span", "pm-chip warn");
+      c.append(el("span", "dot"), el("span", "", t("Couldn't check")));
+      c.title = whyText(ck);
+      nm.append(c);
+    } else if (e.autoUpdated && e.autoUpdated.to === e.version) {
       // magpie updated it by itself lately: the row says so, quietly
       const c = el("span", "pm-chip soft", t("Auto-updated"));
       c.title = t("magpie updated it from v{from} to v{to} on {date}", { from: e.autoUpdated.from, to: e.autoUpdated.to, date: new Date(e.autoUpdated.at).toLocaleDateString(document.documentElement.lang || undefined, { month: "short", day: "numeric" }) });
+      nm.append(c);
+    } else if ((ck?.status === "current" || ck?.status === "update") && e.version) {
+      const c = el("span", "pm-chip soft", t("Up to date"));
+      c.title = t("v{v} is the newest on npm", { v: e.version }) + "\n" + t("Last checked {time}", { time: checkedAt() });
       nm.append(c);
     }
     // the built-in subscriptions moved onto it: taking it away moves them
@@ -626,7 +701,9 @@
     const b = busy.get(pkg) || busy.get(e.spec);
     if (e.latest && e.version && newer(e.latest, e.version) && !e.off) {
       const up = el("button", "text", b === "upgrade" ? t("Updating…") : t("Update"));
-      up.disabled = busy.size > 0;
+      up.disabled = busy.size > 0 || checking;
+      // the community's would come by itself: Update brings it now
+      if (pkg.startsWith("@magpie-community/") && !/@(?!latest$)[^@/]+$/.test(e.spec.slice(pkg.length))) up.title = t("magpie updates it by itself within a few hours; Update does it now");
       up.onclick = () => act(pkg, "upgrade", { spec: e.spec }, () => status(t("{name} updated to v{v}", { name: l?.name || pkg, v: e.latest }), "ok"));
       val.append(up);
     } else if (isGit(e.spec) && !e.off) {
