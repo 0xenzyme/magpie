@@ -5,6 +5,7 @@
 package gui
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"embed"
@@ -16,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -360,18 +362,55 @@ func init() {
 // new index.html after an update: a page without what that version added,
 // such as the request archive switch (Jorben on Discord). An unchanged
 // file is a 304.
+//
+// The page itself names each of its scripts and styles with its content's
+// hash (app.js?v=…), so a cache that kept a file from before these headers
+// were sent, and goes on serving it whatever magpie says now, is never asked
+// for it again: a Docker user behind an HTTPS proxy had v0.1.630's page run
+// v0.1.582's app.js and routing.js (incognito and a hard refresh alike),
+// whose first lines looked for an element the page no longer had, and the
+// page was blank under its tabs.
 func revalidated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
 		if name == "" {
 			name = "index.html"
 		}
-		if b, err := fs.ReadFile(staticFS(), name); err == nil {
-			sum := sha256.Sum256(b)
-			rw.Header().Set("ETag", `"`+hex.EncodeToString(sum[:12])+`"`)
-			rw.Header().Set("Cache-Control", "no-cache")
+		b, err := fs.ReadFile(staticFS(), name)
+		if err != nil {
+			next.ServeHTTP(rw, r)
+			return
+		}
+		if r.URL.Path == "/" {
+			b = versionedPage(b)
+		}
+		sum := sha256.Sum256(b)
+		rw.Header().Set("ETag", `"`+hex.EncodeToString(sum[:12])+`"`)
+		rw.Header().Set("Cache-Control", "no-cache")
+		if r.URL.Path == "/" {
+			rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+			http.ServeContent(rw, r, "index.html", time.Time{}, bytes.NewReader(b))
+			return
 		}
 		next.ServeHTTP(rw, r)
+	})
+}
+
+// pageFile is a script or stylesheet of the page's own, named in it.
+var pageFile = regexp.MustCompile(`(src|href)="([A-Za-z0-9_.-]+\.(?:js|css))"`)
+
+// versionedPage is the page with each of its own scripts and stylesheets
+// named with its content's hash; one not among the page's files (boot.js,
+// which the API writes) keeps its name.
+func versionedPage(page []byte) []byte {
+	return pageFile.ReplaceAllFunc(page, func(m []byte) []byte {
+		g := pageFile.FindSubmatch(m)
+		b, err := fs.ReadFile(staticFS(), string(g[2]))
+		if err != nil {
+			return m
+		}
+		sum := sha256.Sum256(b)
+		return []byte(fmt.Sprintf(`%s="%s?v=%s"`, g[1], g[2], hex.EncodeToString(sum[:6])))
 	})
 }
 
