@@ -7986,7 +7986,9 @@ function moveWhy(m, p) {
     case "offline": return t("magpie couldn't reach npm to install the plugin. Check the network or proxy, then try again.");
     case "install": return t("npm couldn't install the plugin: {line}", { line: a.line });
     case "lapsed": return t("every {name} account needs signing in again. Sign one in above, then move.", { name: p.name });
-    case "unserved": return t("the plugin doesn't serve {models}. Untick them under Models, or keep the built-in.", { models: a.models });
+    case "unserved": return a.user
+      ? t("the plugin doesn't serve {models} for {user}, though the built-in does. Untick them under Models, or keep the built-in.", { models: a.models, user: a.user })
+      : t("the plugin doesn't serve {models}. Untick them under Models, or keep the built-in.", { models: a.models });
     case "account": return t("{user} doesn't work through the plugin: {error}", { user: a.user, error: a.error });
   }
   return m.error || "";

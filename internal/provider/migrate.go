@@ -87,7 +87,8 @@ type Migration struct {
 //	offline   magpie couldn't reach npm (or Bun's download) to install the plugin
 //	install   npm couldn't install it: line
 //	lapsed    every account of name needs signing in again
-//	unserved  the plugin doesn't serve models (their names)
+//	unserved  the plugin doesn't serve models (their names) for user (with
+//	          its plan), though the built-in does
 //	account   user doesn't work through the plugin: error
 type MoveWhy struct {
 	Code string            `json:"code"`
@@ -222,6 +223,11 @@ type mover struct {
 	// served is whether the plugin, listing listed, still serves model, one
 	// of the built-in's picks it doesn't list; nil for none.
 	served func(model string, listed []string) bool
+	// builtin is whether the built-in served model on account a, by the
+	// plan a is on; nil for every model on every account. One it didn't
+	// (a ZCode Start Plan account's GLM-5.3) is no loss when the plugin
+	// doesn't list it either.
+	builtin func(ctx context.Context, a Moving, model string) bool
 }
 
 // movers are the deprecated built-ins and their plugins, by id. Once one
@@ -598,10 +604,15 @@ func move(ctx context.Context, id string, mv *mover) (err error) {
 		}
 		if !tried {
 			if missing := slices.DeleteFunc(slices.Clone(inUse), func(m string) bool {
-				return slices.Contains(c.Models, m) || mv.served != nil && mv.served(m, c.Models)
+				return slices.Contains(c.Models, m) || mv.served != nil && mv.served(m, c.Models) ||
+					mv.builtin != nil && !mv.builtin(ctx, a, m)
 			}); len(missing) > 0 {
 				names := strings.Join(modelNames(id, missing), ", ")
-				return &moveError{MoveWhy{Code: "unserved", Args: map[string]string{"models": names}}, fmt.Sprintf("the plugin doesn't serve %s. Untick them under Models, or keep the built-in.", names), nil}
+				who := a.User
+				if a.Plan != "" {
+					who += " (" + a.Plan + ")"
+				}
+				return &moveError{MoveWhy{Code: "unserved", Args: map[string]string{"models": names, "user": who}}, fmt.Sprintf("the plugin doesn't serve %s for %s, though the built-in does. Untick them under Models, or keep the built-in.", names, who), nil}
 			}
 			tried = true
 		}

@@ -36,6 +36,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,6 +60,28 @@ var zcodeStartModels = func() []catalog.Model {
 	}
 	return out
 }()
+
+// zcodeStartNamed is whether a plan's name, as an account showed it, is
+// ZCode's Start Plan (zcodeBalance.active's name for it).
+func zcodeStartNamed(plan string) bool {
+	p := strings.ToLower(plan)
+	return strings.Contains(p, "start plan") || strings.Contains(p, "start-plan") || strings.Contains(plan, "体验")
+}
+
+// zcodeStartServes is the Start Plan's models, as ZCode's config on this
+// machine lists them for account:zai-start-plan (zcodeStartModels without
+// one): whether it serves model. GLM-5.3 is the Coding Plan's alone.
+func zcodeStartServes() func(model string) bool {
+	ms := zcodeStartModels
+	if b, ok := zcodeLocalBuiltin(); ok {
+		if l := b.models("account:zai-start-plan"); len(l) > 0 {
+			ms = l
+		}
+	}
+	return func(model string) bool {
+		return slices.ContainsFunc(ms, func(m catalog.Model) bool { return strings.EqualFold(m.ID, model) })
+	}
+}
 
 // ZCodeStartBlockedHint is what the Start Plan's "request has been blocked
 // due to unusual activity" (HTTP 405, code 3012 "method not allowed")
@@ -96,7 +119,14 @@ type zcodeRoute struct {
 // zcodeOnStart says whether k's requests go to the Start Plan, asking
 // when the last answer is old; with ctx nil it only says what was found
 // last (the Coding Plan when nothing was).
-func zcodeOnStart(ctx context.Context, k zcodeKey) bool {
+func zcodeOnStart(ctx context.Context, k zcodeKey) bool { return zcodeOnStartAs(ctx, k, "") }
+
+// zcodeOnStartAs is zcodeOnStart for an account that showed plan: with
+// ctx nil and nothing found yet, the plan's name says it. An account with
+// a key and no Coding Plan (the key made, the plan not bought) is on the
+// Start Plan, and was shown the Coding Plan's models, GLM-5.3 among them,
+// until a request found where it goes.
+func zcodeOnStartAs(ctx context.Context, k zcodeKey, plan string) bool {
 	if k.JWT == "" || k.team() { // a team's seat is on the team's plan (zcode_team.go)
 		return false
 	}
@@ -107,6 +137,9 @@ func zcodeOnStart(ctx context.Context, k zcodeKey) bool {
 	zcodeRoutes.Lock()
 	r, ok := zcodeRoutes.m[id]
 	zcodeRoutes.Unlock()
+	if ctx == nil && !ok {
+		return zcodeStartNamed(plan)
+	}
 	if ctx == nil || ok && time.Since(r.at) < r.ttl {
 		return r.start
 	}

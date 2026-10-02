@@ -83,7 +83,8 @@ type Account struct {
 	// reach, factory.go; another model for Copilot's Auto, copilot_refused.go).
 	retry func(ctx context.Context, model string, status int, body []byte) bool
 	// unusable is set on a Copilot account: whether a model its list offers
-	// is one the account was refused (copilot_refused.go).
+	// is one the account was refused (copilot_refused.go); and on a ZCode
+	// account on the Start Plan: whether it is one only the Coding Plan has.
 	unusable func(model string) bool
 	// explain adds what the user can do about a refusal the account's
 	// backend answered, "" when there is nothing to add (factory.go).

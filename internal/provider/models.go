@@ -536,6 +536,10 @@ func (p Provider) Exposed() []catalog.Model {
 		// not in a Student plan's) or that it was refused is left out;
 		// with none left, as if none were picked.
 		picks = slices.DeleteFunc(slices.Clone(picks), func(id string) bool { _, ok := byID[id]; return !ok })
+	} else if p.Account != nil && p.Account.unusable != nil {
+		// with no list fetched, a pick the account can't be served (a
+		// ZCode Start Plan account's GLM-5.3) is left out all the same
+		picks = slices.DeleteFunc(slices.Clone(picks), p.Account.unusable)
 	}
 	if len(picks) > 0 {
 		return pick(picks)

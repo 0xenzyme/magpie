@@ -50,6 +50,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yetone/magpie/internal/catalog"
@@ -340,16 +341,23 @@ func zcodeProvider(who, plan string, k zcodeKey) Provider {
 	}
 	acct.clientFor = zcodeStartClientFor
 	acct.explain = func(status int, body []byte) string {
-		if zcodeOnStart(nil, k) {
+		if zcodeOnStartAs(nil, k, plan) {
 			return zcodeStartExplain(status, body)
 		}
 		return ""
 	}
 	acct.models = func() []catalog.Model {
-		if zcodeOnStart(nil, k) {
+		if zcodeOnStartAs(nil, k, plan) {
 			return zcodeStartModels
 		}
 		return zcodeModels
+	}
+	// on the Start Plan, a model only the Coding Plan has (GLM-5.3) is
+	// neither listed nor picked, though the list fetched last (another
+	// account's, or this one's before its plan was found) has it
+	startServes := sync.OnceValue(zcodeStartServes)
+	acct.unusable = func(model string) bool {
+		return zcodeOnStartAs(nil, k, plan) && !startServes()(model)
 	}
 	acct.fetch = func(ctx context.Context) ([]catalog.Model, error) {
 		b := base(zcodeOnStart(ctx, k))
@@ -359,7 +367,7 @@ func zcodeProvider(who, plan string, k zcodeKey) Provider {
 		}
 		return ms, catalog.SaveLive("zcode", b, ms)
 	}
-	return Provider{ID: "zcode", Name: "ZCode", Icon: "zcode", Anthropic: base(zcodeOnStart(nil, k)), Website: "https://zcode.z.ai", Account: acct}
+	return Provider{ID: "zcode", Name: "ZCode", Icon: "zcode", Anthropic: base(zcodeOnStartAs(nil, k, plan)), Website: "https://zcode.z.ai", Account: acct}
 }
 
 // ---- allowance ----------------------------------------------------------------

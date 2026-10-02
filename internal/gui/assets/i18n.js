@@ -479,6 +479,7 @@ const I18N = {
     "every {name} account needs signing in again. Sign one in above, then move.": "所有 {name} 账号都需要重新登录。先在上方登录一个，再迁移。",
     "every {name} account needs signing in again. Sign one in under Providers, then move.": "所有 {name} 账号都需要重新登录。先在「服务商」里登录一个，再迁移。",
     "the plugin doesn't serve {models}. Untick them under Models, or keep the built-in.": "插件不提供 {models}。可在「模型」里取消勾选，或继续使用内置。",
+    "the plugin doesn't serve {models} for {user}, though the built-in does. Untick them under Models, or keep the built-in.": "插件没有为 {user} 提供 {models}（内置提供）。可在「模型」里取消勾选，或继续使用内置。",
     "{user} doesn't work through the plugin: {error}": "{user} 无法通过插件使用：{error}",
     "{name} now runs on its plugin — {accounts}, {models}. Use the built-in again from here any time.": "{name} 现在由插件运行——{accounts}，{models}。随时可以在这里改回内置。",
     "{name} now runs on its plugin — {accounts}, {models}. Its editor in Providers moves it back.": "{name} 现在由插件运行——{accounts}，{models}。在「服务商」里编辑它即可改回。",
