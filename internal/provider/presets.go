@@ -25,6 +25,7 @@ type PresetDef struct {
 	Website   string   `json:"website,omitempty"`
 	KeysURL   string   `json:"keysUrl,omitempty"`
 	NoKey     bool     `json:"noKey,omitempty"`     // local servers: a key is optional
+	KeyHint   string   `json:"keyHint,omitempty"`   // the key field's placeholder, when it says more than NoKey's
 	Sponsored bool     `json:"sponsored,omitempty"` // shown first, with a tag
 	Note      string   `json:"note,omitempty"`      // one line under the name
 	Short     string   `json:"short,omitempty"`     // the add sheet's name for it, when Name is long
@@ -301,6 +302,14 @@ var presets = []PresetDef{
 		// its free models (-free) are served to OpenCode alone, which
 		// magpie asks them as (OpenCodeFree)
 		Website: "https://opencode.ai/docs/zen", KeysURL: "https://opencode.ai/auth"},
+	// Kilo Code's gateway, at the OpenRouter-style API its own clients use
+	// (kilo.go): its free models (isFree, ":free") are served with no key,
+	// as Kilo serves them signed out; a Kilo key reaches the rest
+	{ID: "kilo", Name: "Kilo Gateway", Icon: "kilo", Kind: KindRelay, NoKey: true,
+		Chat:    "https://api.kilo.ai/api/openrouter",
+		Note:    "free models with no key",
+		KeyHint: "optional: free models need no key",
+		Website: "https://kilo.ai/docs/gateway", KeysURL: "https://app.kilo.ai"},
 	// Command Code's Provider API: its Claude models on /messages alone, the
 	// rest on chat and Responses, as its model list says (#93)
 	{ID: "commandcode", Name: "Command Code", Icon: "commandcode", Kind: KindRelay,

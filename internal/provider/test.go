@@ -299,6 +299,9 @@ func probe(ctx context.Context, p Provider, proto Protocol, url string, body []b
 	if p.IsCline() {
 		ClineClient(req.Header)
 	}
+	if p.IsKilo() {
+		KiloClient(req.Header, p.Key, "")
+	}
 	if err := p.Sign(ctx, req, proto, body); err != nil {
 		r.Error = err.Error()
 		return r

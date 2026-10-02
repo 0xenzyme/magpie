@@ -1642,6 +1642,11 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		// ("only available via Cline product surfaces") without
 		provider.ClineClient(req.Header)
 	}
+	if p.IsKilo() {
+		// as the Kilo CLI sends it, signed out when the provider has no
+		// key: the gateway serves its free models to anyone
+		provider.KiloClient(req.Header, p.Key, conversationID(in, body))
+	}
 	if p.Account != nil && p.Account.Agent == "codex" {
 		// what Codex says about the request goes on as codexUpstream
 		// relays it — a subagent's kind, the turn's metadata, a turn on

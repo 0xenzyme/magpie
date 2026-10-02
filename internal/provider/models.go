@@ -147,6 +147,15 @@ func (p Provider) Fetch(ctx context.Context) ([]catalog.Model, error) {
 			return catalog.Chat(ms), catalog.SaveLive(p.ID, base, ms)
 		}
 	}
+	// the Kilo Gateway's list as Kilo's clients ask it, which marks its
+	// free models; with no key, those alone
+	if p.IsKilo() && strings.TrimSpace(p.ModelsURL) == "" {
+		ms, base, err := p.kiloModels(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return catalog.Chat(ms), catalog.SaveLive(p.ID, base, ms)
+	}
 	// Only keys in use. An off key is not asked, and its list does not
 	// join the catalog or take capabilities off a key that is on.
 	if keys := p.KeysOn(); len(keys) > 1 {
@@ -622,7 +631,7 @@ var makerCatalogs = sync.OnceValue(func() []string {
 // at gpt-6-astra's or gemini-3.8-flash's maker's price, as a Claude
 // account is at Anthropic's.
 func (p Provider) ListPrice(model string) (catalog.Price, bool) {
-	if p.clineFreeModel(model) {
+	if p.clineFreeModel(model) || p.kiloFreeModel(model) {
 		// served at no cost: not at the price of the model it is free of
 		return catalog.Price{}, true
 	}

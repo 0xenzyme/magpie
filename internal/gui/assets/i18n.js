@@ -636,6 +636,8 @@ const I18N = {
     "{name} saved": "已保存 {name}",
     "{masked} · paste a new key to replace it": "{masked} · 粘贴新密钥以替换",
     "optional for local servers": "本地服务可不填",
+    "optional: free models need no key": "可不填：免费模型无需密钥",
+    "free models with no key": "免费模型，无需密钥",
     "paste an API key": "粘贴 API 密钥",
     "Show": "显示",
     "Hide": "隐藏",
