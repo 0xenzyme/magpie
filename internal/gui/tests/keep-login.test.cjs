@@ -61,8 +61,8 @@ function serve(lang, first, posts) {
 }
 
 const words = {
-  en: { keep: "Keep Codex signed in to", first: "the first account", signed: "Signed in", firstLabel: "First", makeFirst: "Make first", keptAs: /Codex on its own stays signed in to spare@example.com/, kept: /Codex on its own stays signed in to the first account/, moves: /once it is 98% used/, usedUp: /once it is used up/ },
-  zh: { keep: "Codex 始终登录", first: "首选账号", signed: "已登录", firstLabel: "首选", makeFirst: "设为首选", keptAs: /Codex 自己直连时始终登录 spare@example.com/, kept: /Codex 自己直连时始终登录首选账号/, moves: /用到 98% 时/, usedUp: /额度用完时/ },
+  en: { keep: "Keep Codex signed in to", first: "the first account", pickHead: "Account to stay signed in to", signed: "Signed in", firstLabel: "First", makeFirst: "Make first", keptAs: /Codex on its own stays signed in to spare@example.com/, kept: /Codex on its own stays signed in to the first account/, moves: /once it is 98% used/, usedUp: /once it is used up/ },
+  zh: { keep: "Codex 始终登录", first: "首选账号", pickHead: "始终登录的账号", signed: "已登录", firstLabel: "首选", makeFirst: "设为首选", keptAs: /Codex 自己直连时始终登录 spare@example.com/, kept: /Codex 自己直连时始终登录首选账号/, moves: /用到 98% 时/, usedUp: /额度用完时/ },
 };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -92,6 +92,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const missing = await page.evaluate(() => [
         "Keep {agent} signed in to",
         "the first account",
+        "Account to stay signed in to",
         "The account {agent} stays signed in to; the first is the one the gateway uses first",
         "{agent} stays signed in to {user}",
         "{agent} is kept signed in to this account; requests through magpie go to the accounts in their order",
@@ -123,16 +124,31 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
     test(`${engine} ${lang}: Codex kept signed in to an account of the user's choosing, the first still first`, async (t) => {
       const { page, errors, posts } = await open(t, {});
-      const pick = page.locator(".editor .accts .keep-login select");
-      assert.equal(await pick.inputValue(), "");
-      assert.equal((await pick.locator("option").first().textContent()).trim(), w.first);
+      // the app's own menu, not a native select (the owner: 这里为啥是原生的 selector 而不是我们抽象的 ComboBox？)
+      assert.equal(await page.locator(".editor .accts .keep-login select").count(), 0, "no native select");
+      const pick = page.locator(".editor .accts .keep-login button.keep-as");
+      const choose = async (name) => {
+        await pick.click();
+        const menu = page.locator(".proto-menu");
+        await menu.waitFor();
+        assert.equal((await menu.locator(".pm-head").textContent()).trim(), w.pickHead);
+        await menu.locator(".pm-item", { hasText: name }).click();
+        assert.equal(await page.locator(".proto-menu").count(), 0, "the menu closes on a pick");
+      };
+      assert.equal(await pick.getAttribute("data-value"), "");
+      assert.equal((await pick.textContent()).trim(), w.first);
       assert.ok(await pick.getAttribute("title"), "it says what it does");
       const top = await page.evaluate(() => document.scrollingElement.scrollTop);
-      await pick.selectOption("spare@example.com");
+      await pick.click();
+      assert.deepEqual((await page.locator(".proto-menu .pm-item .pm-name").allTextContents()).map((s) => s.trim()), [w.first, "work@example.com", "spare@example.com"]);
+      await pick.click();
+      assert.equal(await page.locator(".proto-menu").count(), 0, "a second click closes it");
+      await choose("spare@example.com");
       await page.waitForFunction((src) => new RegExp(src).test(document.querySelector(".editor")?.textContent || ""), w.keptAs.source);
       assert.deepEqual(posts, [{ id: "codex", keepLogin: true, keepLoginAs: "spare@example.com" }]);
       assert.equal(await page.locator(".editor .accts .keep-login input").isChecked(), true);
-      assert.equal(await page.locator(".editor .accts .keep-login select").inputValue(), "spare@example.com");
+      assert.equal(await page.locator(".editor .accts .keep-login button.keep-as").getAttribute("data-value"), "spare@example.com");
+      assert.equal((await page.locator(".editor .accts .keep-login button.keep-as").textContent()).trim(), "spare@example.com");
       // the order holds: work first, spare signed in at its place
       const rows = page.locator(".editor .accts .acc[data-account-id]");
       assert.deepEqual(await rows.evaluateAll((rs) => rs.map((r) => r.dataset.accountId)), ["work@example.com", "spare@example.com"]);
@@ -146,7 +162,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.deepEqual(posts[1], { arrange: { id: "codex", accountOrder: ["spare@example.com", "work@example.com"] } });
       assert.equal(await page.evaluate(() => document.scrollingElement.scrollTop), top, "the page doesn't move");
       // back to the first account
-      await page.locator(".editor .accts .keep-login select").selectOption("");
+      await page.locator(".editor .accts .keep-login button.keep-as").click();
+      await page.locator(".proto-menu .pm-item", { hasText: w.first }).click();
       await page.waitForFunction((src) => new RegExp(src).test(document.querySelector(".editor")?.textContent || ""), w.kept.source);
       assert.deepEqual(posts[2], { id: "codex", keepLogin: true });
       assert.deepEqual(errors, []);

@@ -7485,20 +7485,38 @@ function renderAccounts(a, p) {
     const box = el("div", "keep-login");
     const [keep, cb] = tick(t("Keep {agent} signed in to", { agent: a.agentName }), !!p.keepLogin);
     keep.title = t("magpie won't sign {agent} in to another account when the first runs low; requests through magpie still go to the other ticked accounts as Routing says", { agent: a.agentName });
-    const as = el("select", "keep-as");
+    // the app's own menu, as every other pick in it, not a native select
+    let keepAs = kept;
+    const opts = [{ v: "", name: t("the first account"), note: "", literalName: true }];
+    for (const l of ls) if (!l.lapsed) opts.push({ v: l.user, name: l.user, note: "", literalName: true });
+    const as = el("button", "sess-pick keep-as" + (keepAs ? " set" : ""));
+    as.type = "button";
     as.title = t("The account {agent} stays signed in to; the first is the one the gateway uses first", { agent: a.agentName });
-    as.append(new Option(t("the first account"), ""));
-    for (const l of ls) if (!l.lapsed) as.append(new Option(l.user, l.user));
-    as.value = kept;
+    as.dataset.value = keepAs;
+    as.setAttribute("aria-haspopup", "menu");
+    as.setAttribute("aria-expanded", "false");
+    as.append(el("span", "", keepAs || t("the first account")), svg(CHEV, 11, 1.6));
     const post = (keepLogin) => {
       const body = { id: p.id, keepLogin };
-      if (keepLogin && as.value) body.keepLoginAs = as.value;
+      if (keepLogin && keepAs) body.keepLoginAs = keepAs;
       accountAction("provider/keeplogin", body, !keepLogin ? t("magpie moves {agent} to an account with room again", { agent: a.agentName })
-        : as.value ? t("{agent} stays signed in to {user}", { agent: a.agentName, user: as.value }) : t("{agent} stays signed in to the first account", { agent: a.agentName }));
+        : keepAs ? t("{agent} stays signed in to {user}", { agent: a.agentName, user: keepAs }) : t("{agent} stays signed in to the first account", { agent: a.agentName }));
     };
     cb.onchange = () => post(cb.checked);
     // picking one keeps it so, ticked or not
-    as.onchange = () => { cb.checked = true; post(true); };
+    as.onclick = (e) => {
+      e.stopPropagation();
+      if (as.classList.contains("open")) return closeProtoMenu();
+      openProtoMenu(as, opts, keepAs, (v) => {
+        if (v === keepAs && cb.checked) return;
+        keepAs = v;
+        as.dataset.value = v;
+        as.classList.toggle("set", !!v);
+        as.firstChild.textContent = v || t("the first account");
+        cb.checked = true;
+        post(true);
+      }, "Account to stay signed in to", "sess-menu");
+    };
     box.append(keep, as);
     list.append(box);
   }

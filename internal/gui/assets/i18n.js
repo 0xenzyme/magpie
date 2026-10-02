@@ -562,6 +562,7 @@ const I18N = {
     "Keep {agent} signed in to the first account": "{agent} 始终登录首选账号",
     "Keep {agent} signed in to": "{agent} 始终登录",
     "the first account": "首选账号",
+    "Account to stay signed in to": "始终登录的账号",
     "The account {agent} stays signed in to; the first is the one the gateway uses first": "{agent} 始终登录的账号；首选是网关最先使用的账号，两者可以不同",
     "{agent} stays signed in to {user}": "{agent} 将始终登录 {user}",
     "{agent} is kept signed in to this account; requests through magpie go to the accounts in their order": "{agent} 始终登录这个账号；经过 magpie 的请求按账号顺序分配",
