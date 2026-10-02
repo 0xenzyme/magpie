@@ -284,6 +284,50 @@ func (a *Agent) Wired() bool {
 	return false
 }
 
+// Connect puts magpie into the agent's config, the Agents page's switch
+// (the owner: an agent is connected to magpie, and its models are picked in
+// the agent): the agent's main field goes to one of magpie's models — the
+// one serving the model it is on now, else the first — or to magpie itself
+// for an app whose one setting is magpie as its provider. Setting it writes
+// the provider and the whole catalog in, so the agent's own model list has
+// every one of magpie's models. An agent already connected is left as it is.
+func (a *Agent) Connect() error {
+	if len(a.Fields) == 0 || a.Wired() {
+		return nil
+	}
+	f := a.Fields[0]
+	if f.Options == nil {
+		return fmt.Errorf("%s can't be connected to magpie", a.Name)
+	}
+	vals := a.Values()
+	cur, _, _ := a.split(vals[f.Key])
+	if i := strings.LastIndex(cur, "/"); i >= 0 {
+		cur = cur[i+1:]
+	}
+	pick, same := "", ""
+	for _, o := range f.Options(vals) {
+		switch {
+		case o.Value == magpieID:
+			return a.Apply(f.Key, magpieID)
+		case o.Ref == "" || o.Group == RoutingGroups:
+		case pick == "":
+			pick = o.Value
+			fallthrough
+		case same == "" && cur != "" && strings.HasSuffix(o.Ref, "/"+cur):
+			if strings.HasSuffix(o.Ref, "/"+cur) {
+				same = o.Value
+			}
+		}
+	}
+	if same != "" {
+		pick = same
+	}
+	if pick == "" {
+		return fmt.Errorf("magpie has no models %s can use: add a subscription or a provider first", a.Name)
+	}
+	return a.Apply(f.Key, pick)
+}
+
 // Disconnect takes magpie out of the agent's config and puts back what the
 // user had, the Agents page's "Disconnect from magpie" (Fate on Discord:
 // picking the agent's default did it, but nothing said so). Unwire first,

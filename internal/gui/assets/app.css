@@ -496,6 +496,7 @@ body.window .field.solo { grid-column: auto; }
   body.window .row.agent > .who { grid-column: 2; grid-row: 1; width: 100%; }
   body.window .row.agent > .fields { grid-column: 2; grid-row: 2; width: 100%; min-width: 0; margin-left: 0; }
   body.window #agents.extras .row.agent > .fields { grid-template-columns: minmax(0, 1fr) 124px var(--extras-w); }
+  body.window .row.agent > .ag-conn { grid-column: 2; grid-row: 1; justify-self: end; margin-left: 0; }
 }
 .field:hover, .field.open { background: var(--pill-hover); }
 .field.open { box-shadow: inset 0 0 0 1px var(--accent); }
@@ -2635,3 +2636,14 @@ body.window .row.agent .who.with-models { flex-wrap: wrap; row-gap: 0; }
 .am-reset:hover:not(:disabled) { color: var(--accent); }
 .am-reset:disabled { color: var(--faint); cursor: default; }
 .am-dot { color: var(--faint); }
+
+/* ---- an agent's switch onto magpie ---------------------------------------- */
+body.window .row.agent > .ag-conn { margin-left: 12px; align-self: center; cursor: pointer; }
+.ag-conn-line { flex: 0 0 100%; min-width: 0; font-size: 11.5px; line-height: 18px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-conn-line.on { color: var(--muted); }
+.ag-conn-line.on::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--green); vertical-align: 1px; }
+.row.agent.unplugged > .fields { opacity: .55; transition: opacity .15s; }
+.row.agent.unplugged:hover > .fields { opacity: 1; }
+.ag-conn-row { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.ag-conn-row .ag-conn-said { flex: 1; min-width: 0; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-conn-row .lib-switch { cursor: pointer; }

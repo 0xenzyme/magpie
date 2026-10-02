@@ -315,6 +315,36 @@ func claudeIn(at place) *Agent {
 		}
 		return nil
 	}
+	// Claude Code's /model lists what modelPicker says (2.1.287): while it
+	// runs on magpie, that is every one of magpie's models, so the user
+	// picks among them in Claude Code itself. One the user wrote is theirs.
+	pickerKey := at.key("claude.model_picker")
+	pickerOurs := func() bool { return stashLoad()[pickerKey] != "" }
+	dropPicker := func() error {
+		defer forget(pickerKey)
+		if _, has := edit.GetJSON(path, "modelPicker"); has && pickerOurs() {
+			return edit.DelJSON(path, "modelPicker")
+		}
+		return nil
+	}
+	writePicker := func() error {
+		if _, has := edit.GetJSON(path, "modelPicker"); has && !pickerOurs() {
+			return nil
+		}
+		mark1M := claude1M()
+		rows := []any{}
+		for _, o := range viaMagpie("claude", "") {
+			if o.Group == RoutingGroups {
+				continue
+			}
+			rows = append(rows, map[string]any{"model": mark1M(o.Value), "label": cmp.Or(o.Label, o.Value), "description": o.Note})
+		}
+		if len(rows) == 0 {
+			return dropPicker()
+		}
+		stash(map[string]string{pickerKey: "1"})
+		return edit.SetJSON(path, edit.KV{Path: "modelPicker", Value: map[string]any{"options": rows}})
+	}
 	// writeCaps says what magpie's models can do, the ones in models first;
 	// Claude Desktop's ids too while it runs on magpie, its Code tab being
 	// Claude Code on this settings.json
@@ -381,6 +411,9 @@ func claudeIn(at place) *Agent {
 		if err := dropCaps(); err != nil {
 			return "", err
 		}
+		if err := dropPicker(); err != nil {
+			return "", err
+		}
 		if !routed() {
 			return "", nil
 		}
@@ -419,6 +452,9 @@ func claudeIn(at place) *Agent {
 				return err
 			}
 			if err := dropCaps(); err != nil {
+				return err
+			}
+			if err := dropPicker(); err != nil {
 				return err
 			}
 			return edit.DelJSON(path, keys...)
@@ -520,6 +556,9 @@ func claudeIn(at place) *Agent {
 		for _, t := range claudeTiers {
 			m, _ := tierAt(tiers[t])
 			models = append(models, m)
+		}
+		if err := writePicker(); err != nil {
+			return err
 		}
 		return writeCaps(models...)
 	}
@@ -816,6 +855,9 @@ func claudeIn(at place) *Agent {
 			models := []string{env("ANTHROPIC_MODEL")}
 			for _, t := range claudeTiers {
 				models = append(models, env(tierEnv(t)))
+			}
+			if err := writePicker(); err != nil {
+				return err
 			}
 			return writeCaps(models...)
 		},

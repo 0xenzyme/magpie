@@ -410,9 +410,22 @@ function renderAgents() {
       who.append(line);
       who.classList.add("with-models");
     }
+    // connected to magpie or not, said under the name, with where the agent
+    // picks among magpie's models itself
+    const sw = connectable(a) ? connectSwitch(a) : null;
+    if (sw && mode !== "panel") {
+      who.append(el("div", "ag-conn-line" + (a.wired ? " on" : ""), connectSaid(a)));
+      who.classList.add("with-models");
+      row.classList.toggle("unplugged", !a.wired);
+    }
+    if (sw && openBox) {
+      const line = el("div", "ag-conn-row");
+      line.append(el("span", "k", t("magpie")), el("span", "ag-conn-said", connectSaid(a)), sw);
+      openBox.querySelector(".ag-body").prepend(line);
+    }
     row.append(agentHandle(a, row, inFold), who);
     if (sum) row.append(sum, ...(openBox ? [openBox] : []));
-    else row.append(fields);
+    else row.append(fields, ...(sw ? [sw] : []));
     return row;
   };
   // the extras column is there for every row once any agent has one, so the
@@ -721,6 +734,54 @@ const REAPPLY = "M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3.25h-3.25";
 // An unplugged plug: the agent taken off magpie.
 const UNPLUG = "M6 2v3M10 2v3M4.5 5h7v2.5a3.5 3.5 0 0 1-7 0zM8 11v3M2 2l12 12";
 const DISCONNECT_TIP = "Take out everything magpie wrote into {agent}'s config and put back what it had before";
+
+// An agent is connected to magpie with a switch (the owner: the Agents page
+// connects an agent, and its models are picked in the agent): on, magpie is
+// its provider and its own model list has magpie's models (agent.Connect);
+// off, magpie takes out what it wrote (askDisconnect). An agent with none of
+// magpie's models to offer (Cursor, Copilot) has no switch.
+function connectable(a) {
+  const f = a.fields[0];
+  return !a.import && !!f && f.options.some((o) => o.ref || o.value === "magpie");
+}
+
+// PICKS_IN is where an agent picks a model itself, for the words under it.
+const PICKS_IN = { codex: "/model", claude: "/model", opencode: "/models", pi: "/model", droid: "/model", kimi: "/model", grok: "/model", "minimax-code": "/model", dsh: "/model", crush: "ctrl+p", omp: "/model", qwen: "/model", mimocode: "/model" };
+
+function connectSaid(a) {
+  if (!a.wired) return t("Not connected · {agent} uses its own settings", { agent: a.name });
+  const at = PICKS_IN[a.id];
+  return at ? t("Connected · pick magpie's models with {cmd} in {agent}", { cmd: at, agent: a.name }) : t("Connected · magpie's models are in {agent}'s model list", { agent: a.name });
+}
+
+function connectSwitch(a) {
+  const s = el("button", "lib-switch ag-conn" + (a.wired ? " on" : ""));
+  s.type = "button";
+  s.setAttribute("role", "switch");
+  s.setAttribute("aria-checked", a.wired ? "true" : "false");
+  s.setAttribute("aria-label", t("Connect {agent} to magpie", { agent: a.name }));
+  s.title = a.wired ? t("Connected · switch off to put back what {agent} had before magpie", { agent: a.name }) : t("Switch on and {agent}'s model list gets magpie's models", { agent: a.name });
+  s.append(el("i"));
+  s.onclick = async (e) => {
+    e.stopPropagation();
+    if (a.wired) { askDisconnect(a); return; }
+    if (s.disabled) return;
+    s.disabled = true;
+    s.classList.add("on");
+    try {
+      state = await api("agents/connect/" + a.id, {});
+      renderAgents();
+      const msg = t("{agent} is connected to magpie", { agent: a.name });
+      if (state.notice) status(`${msg}. ${t(state.notice)}`, "warn", 9000);
+      else status(msg, "ok");
+    } catch (err) {
+      s.disabled = false;
+      s.classList.remove("on");
+      status(t(err.message), "err");
+    }
+  };
+  return s;
+}
 
 // askDisconnect takes magpie out of an agent's config once asked: every
 // field magpie set, and its endpoint and key, give way to what the agent

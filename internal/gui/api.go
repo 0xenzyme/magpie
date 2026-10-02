@@ -656,6 +656,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			err = a.Reapply()
 		case "keep":
 			a.Keep()
+		case "connect":
+			err = a.Connect()
 		case "disconnect":
 			err = a.Disconnect()
 		default:
