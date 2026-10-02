@@ -62,6 +62,9 @@ type Bundle struct {
 	// Searches are the web search APIs (#419), their keys with the
 	// providers'; nil from a magpie before them.
 	Searches *[]provider.SearchAPI `json:"searches,omitempty"`
+	// Order is the order the user put the providers in (#499), by id;
+	// none from a magpie before it went, or when they were never arranged.
+	Order []string `json:"order,omitempty"`
 }
 
 type envelope struct {
@@ -90,6 +93,9 @@ func Collect(keys bool, app string) (Bundle, error) {
 		return b, err
 	}
 	if b.Groups, err = provider.StoredGroups(); err != nil {
+		return b, err
+	}
+	if b.Order, err = provider.StoredOrder(); err != nil {
 		return b, err
 	}
 	if keys {

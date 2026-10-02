@@ -360,6 +360,65 @@ func TestSyncNutstore(t *testing.T) {
 	}
 }
 
+// The order the providers were put in on the Providers tab (#499) goes
+// with them (ARNO on Discord: 发现webdav同步的时候没有同步provider的顺序):
+// b joins and lists them as a does; b arranges them again and a follows;
+// a moving one alone is a change that syncs.
+func TestSyncProviderOrder(t *testing.T) {
+	fake := &fakeDAV{files: map[string][]byte{}, etags: map[string]string{}, dirs: map[string]bool{"/dav": true}}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+	cfg := Config{URL: srv.URL + "/dav/", User: "me", Password: "pw", Passphrase: "correct horse", Keys: true}
+	now := func(t *testing.T) {
+		t.Helper()
+		if err := Now(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listed := func() []string {
+		var out []string
+		for _, p := range provider.All() {
+			out = append(out, p.ID)
+		}
+		return out
+	}
+	a, b := newComputer(t), newComputer(t)
+	a.use(t)
+	for _, id := range []string{"one", "two", "three"} {
+		provider.Save(provider.Provider{ID: id, Name: id, Chat: "https://" + id + ".example.com/v1", Key: "k-" + id})
+	}
+	if err := provider.SetOrder([]string{"three", "one", "two"}); err != nil {
+		t.Fatal(err)
+	}
+	Configure(cfg)
+	now(t)
+
+	b.use(t)
+	Configure(cfg)
+	now(t)
+	if got := listed(); !slices.Equal(got, []string{"three", "one", "two"}) {
+		t.Fatalf("b after joining: %v", got)
+	}
+	puts := fake.puts
+	now(t)
+	if fake.puts != puts {
+		t.Fatal("b pushed back the order it brought in")
+	}
+	// only the order changes on b: a gets it
+	if err := provider.SetOrder([]string{"two", "three", "one"}); err != nil {
+		t.Fatal(err)
+	}
+	now(t)
+	if fake.puts != puts+1 {
+		t.Fatalf("b's new order not pushed (%d puts)", fake.puts-puts)
+	}
+	a.use(t)
+	now(t)
+	if got := listed(); !slices.Equal(got, []string{"two", "three", "one"}) {
+		t.Fatalf("a after b arranged: %v", got)
+	}
+}
+
 func TestSyncLibrary(t *testing.T) {
 	fake := &fakeDAV{files: map[string][]byte{}, etags: map[string]string{}, dirs: map[string]bool{"/dav": true}}
 	srv := httptest.NewServer(fake)

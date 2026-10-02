@@ -537,6 +537,9 @@ func hashes(b backup.Bundle) map[string]string {
 	if b.Searches != nil && len(*b.Searches) > 0 { // as before them, without one
 		providers = append(providers, *b.Searches)
 	}
+	if len(b.Order) > 0 { // as before it, when never arranged
+		providers = append(providers, map[string][]string{"order": b.Order})
+	}
 	return map[string]string{
 		"providers": h(providers),
 		"settings":  h(s),
@@ -587,7 +590,7 @@ func take(to *backup.Bundle, from backup.Bundle, part string) {
 			}
 			searches = &ss
 		}
-		to.Providers, to.Icons, to.Groups, to.Searches = ps, from.Icons, from.Groups, searches
+		to.Providers, to.Icons, to.Groups, to.Searches, to.Order = ps, from.Icons, from.Groups, searches, from.Order
 		to.Keys = to.Keys || from.Keys
 	case "settings":
 		to.Settings = from.Settings
@@ -645,6 +648,9 @@ func bring(b backup.Bundle, part string) error {
 			}
 		}
 		if err := provider.Mirror(b.Providers, b.Groups); err != nil {
+			return err
+		}
+		if err := provider.MirrorOrder(b.Order); err != nil {
 			return err
 		}
 		if b.Searches == nil { // from a magpie before them: the ones here stay

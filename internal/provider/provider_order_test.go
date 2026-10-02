@@ -63,3 +63,40 @@ func TestProviderOrder(t *testing.T) {
 		}
 	}
 }
+
+// Sync's order (MirrorOrder): the other computer's ids first, as it has
+// them, then those named here alone (an account only this computer has)
+// in the order they have here; none from the other leaves this one's.
+func TestMirrorOrder(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	for _, id := range []string{"a", "b", "c", "d"} {
+		if err := Save(Provider{ID: id, Name: id, Key: "sk-" + id, Chat: "https://" + id + ".example.com/v1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := SetOrder([]string{"d", "a", "c", "b"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := MirrorOrder(nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := StoredOrder(); !slices.Equal(got, []string{"d", "a", "c", "b"}) {
+		t.Fatalf("none from the other: %v", got)
+	}
+	if err := MirrorOrder([]string{"c", "a", "elsewhere"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := StoredOrder(); !slices.Equal(got, []string{"c", "a", "elsewhere", "d", "b"}) {
+		t.Fatalf("mirrored: %v", got)
+	}
+	var listed []string
+	for _, p := range All() {
+		listed = append(listed, p.ID)
+	}
+	if !slices.Equal(listed, []string{"c", "a", "d", "b"}) {
+		t.Fatalf("listed: %v", listed)
+	}
+}
