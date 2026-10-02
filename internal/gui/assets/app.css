@@ -1654,6 +1654,20 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .acc .plan { flex: none; }
 #gatewayKeys .acc { min-width: 0; }
 #gatewayKeys .acc .plan { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* a gateway key's own limit (#585): the badge, what it used under the
+   row, and its editor there */
+#gatewayKeys .acc.with-limit { flex-wrap: wrap; row-gap: 3px; }
+#gatewayKeys .amodels.limit.spent { color: var(--red); background: var(--red-soft); }
+#gatewayKeys .key-limit { flex-basis: 100%; min-width: 0; padding: 0 0 2px 25px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+#gatewayKeys .key-limit.spent { color: var(--red); }
+#gatewayKeys .key-limit-ed .key-limit { padding-left: 0; }
+#gatewayKeys .klf { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+#gatewayKeys .klf-field { display: grid; gap: 3px; min-width: 0; }
+#gatewayKeys .klf-name { font-size: 11px; color: var(--muted); }
+#gatewayKeys .klf input, #gatewayKeys .klf select { width: 100%; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--fg); font: inherit; font-size: 12px; }
+#gatewayKeys .klf-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-2); }
+#gatewayKeys .klf-err { color: var(--red); }
+@media (max-width: 520px) { #gatewayKeys .klf { grid-template-columns: 1fr; } }
 /* the Settings row's picker: the key row's badge, always shown */
 .row.pref .proto.pick { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 6px 0 9px; font: inherit; font-size: 12px; color: var(--fg-2); border: 0; border-radius: 7px; background: var(--pill); white-space: nowrap; cursor: default; transition: background .12s, color .12s; }
 .row.pref .proto.pick svg { opacity: .7; transition: transform .15s var(--ease); }

@@ -21,6 +21,14 @@ literal custom names and narrow layouts in Chinese and English on both engines.
 Sharing off keeps the original API-key field and hides the gateway-key picker;
 sharing on names the arbitrary local option separately from the Magpie key.
 
+`gateway-key-limit.test.cjs` checks a gateway key's own limit (#585): each
+limited key's badge and line (used, limit, left, reset, requests in flight,
+calls without a price), a spent key's "refused until", and the limit editor
+under a key's row. Window, tokens, cost and cache reads are staged, marked
+unsaved and sent only by Save; Cancel drops them, a bad amount disables Save,
+and No limit + Save sends `null`. No click scrolls the page, nothing has a
+left border, and the open editor fits a 560px window, in Chinese and English.
+
 `api-key-usage.test.cjs` exercises the existing provider key list: adding,
 enabling and disabling, choosing the first key, renaming and removing.
 The Usage page's Gateway key rows, request filter and CSV exports identify
@@ -42,7 +50,7 @@ The settings theme picker is also switched and reloaded in Chromium and
 WebKit. No separate colours are defined for gateway keys.
 
 ```sh
-node --test --test-concurrency=1 internal/gui/tests/gateway-caller-keys.test.cjs internal/gui/tests/gateway-connect-keys.test.cjs internal/gui/tests/api-key-usage.test.cjs internal/gui/tests/api-key-theme.test.cjs
+node --test --test-concurrency=1 internal/gui/tests/gateway-caller-keys.test.cjs internal/gui/tests/gateway-connect-keys.test.cjs internal/gui/tests/gateway-key-limit.test.cjs internal/gui/tests/api-key-usage.test.cjs internal/gui/tests/api-key-theme.test.cjs
 ```
 
 ## Other Browser Regressions

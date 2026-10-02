@@ -443,6 +443,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/magpie/quotas", s.quotas)
 	mux.HandleFunc("GET /v1/magpie/route", s.sessionRoute)
 	mux.HandleFunc("GET /v1/magpie/concurrency", s.concurrency)
+	mux.HandleFunc("GET /v1/magpie/limit", s.keyLimit)
 	mux.HandleFunc("POST /v1/chat/completions", s.handle(provider.Chat))
 	mux.HandleFunc("POST /chat/completions", s.handle(provider.Chat))
 	mux.HandleFunc("POST /v1/responses", s.handle(provider.Responses))
@@ -468,7 +469,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, provider.Chat, http.StatusNotFound, "magpie serves /v1/chat/completions, /v1/responses, /v1/messages, /v1/systemone, /v1/images/generations, /v1/images/edits, /v1/videos and /v1beta/models/*")
 	})
-	return s.counted(callerGuard(withCaller(mux)))
+	return s.counted(callerGuard(withCaller(keyLimited(mux))))
 }
 
 func (s *Server) info(w http.ResponseWriter, r *http.Request) {

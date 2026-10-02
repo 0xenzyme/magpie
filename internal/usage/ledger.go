@@ -646,3 +646,22 @@ func LedgerSeries(p Period, rows []Row) (bucket string, pts []SeriesPoint) {
 	}
 	return bucket, pts
 }
+
+// Visit calls fn with each record from since on, as the ledger's index
+// reads usage.jsonl: only its blocks that reach since are decoded.
+func Visit(since time.Time, fn func(Record)) { readLogSnapshot().visit(since, fn) }
+
+// NewCoster prices one record at a time at the effective prices the
+// ledger uses, read once: its cost in USD, and false for a call with
+// tokens but no known price.
+func NewCoster() func(Record) (float64, bool) {
+	priceOf, renamed := pricer(), provider.Renamed()
+	return func(r Record) (float64, bool) {
+		if id, ok := renamed[r.Provider]; ok {
+			r.Provider = id
+		}
+		var t Totals
+		t.add(r, priceOf(r))
+		return t.Cost, t.Unpriced == 0
+	}
+}

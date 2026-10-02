@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/yetone/magpie/internal/access"
+	"github.com/yetone/magpie/internal/budget"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/usage"
@@ -257,7 +258,7 @@ func accountOf(p provider.Provider) string {
 func appendUsage(r *http.Request, rec usage.Record) {
 	who := access.Caller(r.Context())
 	rec.CallerKeyID, rec.CallerKeyName = who.KeyID, who.KeyName
-	usage.Append(rec)
+	budget.Append(rec)
 }
 
 // lanKeyed marks a request from another machine that carried the key.
