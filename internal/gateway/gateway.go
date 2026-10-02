@@ -1561,6 +1561,11 @@ func sinceStart(before, d time.Duration) int64 {
 // attempt sends a request to one provider. call.To stays empty when the
 // provider has no endpoint to send it to.
 func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.Protocol, p provider.Provider, model string, body []byte, call *Call) (int, string) {
+	// Normalize for the actual destination, separately on each fallback.
+	// Native ChatGPT accounts accept standalone tool outputs themselves.
+	if from == provider.Responses && (p.Account == nil || p.Account.Agent != "codex") {
+		body = orphanedToolOutputs(body)
+	}
 	// every request to the provider goes through its own proxy, if it has
 	// one (#237)
 	r = r.WithContext(p.Via(r.Context()))
