@@ -140,6 +140,13 @@ func (p Provider) Fetch(ctx context.Context) ([]catalog.Model, error) {
 	if pr := Preset(p.Preset); pr != nil && pr.NoList && strings.TrimSpace(p.ModelsURL) == "" && !p.listRegion(pr) {
 		return catalog.Chat(p.planModels(nil)), nil
 	}
+	// Cline's plan and free models, from the list its own clients take
+	// theirs from; the API's list has neither, and is asked if that fails
+	if p.IsCline() && strings.TrimSpace(p.ModelsURL) == "" {
+		if ms, base, err := p.clineFeed(ctx); err == nil {
+			return catalog.Chat(ms), catalog.SaveLive(p.ID, base, ms)
+		}
+	}
 	// Only keys in use. An off key is not asked, and its list does not
 	// join the catalog or take capabilities off a key that is on.
 	if keys := p.KeysOn(); len(keys) > 1 {
@@ -313,8 +320,8 @@ func (p Provider) planModels(ms []catalog.Model) []catalog.Model {
 		switch {
 		case strings.HasPrefix(m.ID, pr.Only):
 			out = append(out, m)
-		case p.freeTagged(m.ID):
-			// the vendor's free models, which the key is served too
+		case p.IsCline() && (m.Free || isClineFree(m.ID)):
+			// Cline's free models, served apart from the plan's quota
 			m.Free = true
 			free = append(free, m)
 		}
@@ -324,24 +331,28 @@ func (p Provider) planModels(ms []catalog.Model) []catalog.Model {
 			out = append(out, catalog.Model{ID: id, Name: id})
 		}
 	}
+	if len(free) == 0 && p.IsCline() {
+		// as Cline's desktop app last listed them
+		for _, m := range clineFree {
+			m.Free = true
+			free = append(free, m)
+		}
+	}
 	out = append(out, free...)
 	for i, m := range out {
 		// the vendor's window for its model, as models.dev has it
+		id := strings.TrimPrefix(m.ID, pr.Only)
+		if m.Free {
+			id = m.ID[strings.LastIndex(m.ID, "/")+1:]
+		}
 		if m.Context == 0 {
-			out[i].Context = catalog.ContextOf(strings.TrimPrefix(m.ID, pr.Only))
+			out[i].Context = catalog.ContextOf(id)
 		}
 		if m.Output == 0 {
-			out[i].Output = catalog.OutputOf(strings.TrimPrefix(m.ID, pr.Only))
+			out[i].Output = catalog.OutputOf(id)
 		}
 	}
 	return out
-}
-
-// freeTagged reports whether model is one of the vendor's free models p's
-// preset keeps beside its plan's (PresetDef.FreeTag): Cline's ":free" ones.
-func (p Provider) freeTagged(model string) bool {
-	pr := Preset(p.Preset)
-	return pr != nil && pr.Only != "" && pr.FreeTag != "" && strings.HasSuffix(model, pr.FreeTag)
 }
 
 // fixV1 adds the /v1 an OpenAI-style base URL was given without, when
@@ -611,8 +622,8 @@ var makerCatalogs = sync.OnceValue(func() []string {
 // at gpt-6-astra's or gemini-3.8-flash's maker's price, as a Claude
 // account is at Anthropic's.
 func (p Provider) ListPrice(model string) (catalog.Price, bool) {
-	if p.freeTagged(model) {
-		// served at no cost: not at the price of the model it is a tag of
+	if p.clineFreeModel(model) {
+		// served at no cost: not at the price of the model it is free of
 		return catalog.Price{}, true
 	}
 	for _, m := range pricedNames(model) {

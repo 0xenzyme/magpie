@@ -1616,6 +1616,11 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		// as OpenCode itself sends it, which Zen's free tier asks for
 		provider.OpenCodeClient(req.Header, conversationID(in, body))
 	}
+	if p.IsCline() {
+		// as Cline's desktop app sends it: its free models are 403'd
+		// ("only available via Cline product surfaces") without
+		provider.ClineClient(req.Header)
+	}
 	if p.Account != nil && p.Account.Agent == "codex" {
 		// what Codex says about the request goes on as codexUpstream
 		// relays it — a subagent's kind, the turn's metadata, a turn on

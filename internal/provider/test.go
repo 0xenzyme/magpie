@@ -296,6 +296,9 @@ func probe(ctx context.Context, p Provider, proto Protocol, url string, body []b
 	if p.IsOpenCode() {
 		OpenCodeClient(req.Header, "")
 	}
+	if p.IsCline() {
+		ClineClient(req.Header)
+	}
 	if err := p.Sign(ctx, req, proto, body); err != nil {
 		r.Error = err.Error()
 		return r
