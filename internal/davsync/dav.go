@@ -292,7 +292,7 @@ func (d *dav) put(ctx context.Context, data []byte, etag string) (version, error
 		switch {
 		case res.StatusCode >= 200 && res.StatusCode < 300:
 			writes++
-			he, cerr := d.check(ctx, len(data))
+			he, cerr := d.check(ctx, d.url(folder, file), file, len(data))
 			if cerr != nil {
 				if writes < 3 {
 					// the half file is a new version: the retry matches
@@ -337,8 +337,8 @@ func (d *dav) put(ctx context.Context, data []byte, etag string) (version, error
 // back the ETag it saw, for a retry to match the file as the short write
 // left it. A HEAD that can't be done — an error, or not a 200 — leaves the
 // write unchecked: it landed either way.
-func (d *dav) check(ctx context.Context, want int) (etag string, err error) {
-	res, err := d.send(ctx, http.MethodHead, d.url(folder, file), nil, nil)
+func (d *dav) check(ctx context.Context, u, name string, want int) (etag string, err error) {
+	res, err := d.send(ctx, http.MethodHead, u, nil, nil)
 	if err != nil {
 		return "", nil
 	}
@@ -350,7 +350,7 @@ func (d *dav) check(ctx context.Context, want int) (etag string, err error) {
 	}
 	etag = res.Header.Get("ETag")
 	if n := res.ContentLength; n >= 0 && int(n) < want {
-		return etag, fmt.Errorf("the WebDAV server kept %d of %d bytes of %s: the write was cut short — sync again, and if it keeps happening the network to the server is dropping long uploads", n, want, file)
+		return etag, fmt.Errorf("the WebDAV server kept %d of %d bytes of %s: the write was cut short — sync again, and if it keeps happening the network to the server is dropping long uploads", n, want, name)
 	}
 	return etag, nil
 }

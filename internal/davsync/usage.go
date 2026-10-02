@@ -298,7 +298,7 @@ func (d *dav) read(ctx context.Context, name string) ([]byte, error) {
 }
 
 func (d *dav) write(ctx context.Context, name string, data []byte) error {
-	for try := 0; ; try++ {
+	for try, writes := 0, 0; ; try++ {
 		res, err := d.send(ctx, http.MethodPut, d.usageURL(name), data, map[string]string{"Content-Type": "application/octet-stream"})
 		if err != nil {
 			return err
@@ -306,6 +306,13 @@ func (d *dav) write(ctx context.Context, name string, data []byte) error {
 		res.Body.Close()
 		switch {
 		case res.StatusCode >= 200 && res.StatusCode < 300:
+			writes++
+			if _, err := d.check(ctx, d.usageURL(name), name, len(data)); err != nil {
+				if writes < 3 {
+					continue
+				}
+				return err
+			}
 			return nil
 		case try == 0 && (res.StatusCode == http.StatusNotFound || res.StatusCode == http.StatusConflict || res.StatusCode == http.StatusForbidden):
 			// the folder isn't there yet: magpie's, then usage in it
