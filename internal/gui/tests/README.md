@@ -980,6 +980,13 @@ with a click, with no left-border accent. The copy button beside it
 says it was copied. Open again is still there, and nothing scrolls. The
 checks run in English and Chinese, in Chromium and WebKit.
 
+`copy-command.test.cjs` copies from a tab with no clipboard API, as
+`magpie web` on a NAS is when opened from another computer over http:
+/api/copy refuses and navigator.clipboard is missing, so the copy command
+copies the sign-in link, the status line says it was copied, the textarea
+it used is gone, and nothing scrolls. English and Chinese, in Chromium and
+WebKit.
+
 `signin-close.test.cjs` puts away a sign-in for another account left
 unfinished (#526). In Qoder's editor at the issue's window size, Add another
 → Sign in anyway waits with Qoder's long device link: the box and every

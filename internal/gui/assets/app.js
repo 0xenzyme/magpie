@@ -3148,13 +3148,37 @@ function accountPlan(a) {
 
 // copy asks magpie to put text on the clipboard, as the page's own
 // clipboard API is refused inside the app's window; a browser tab on the
-// dev UI falls back to it.
+// dev UI falls back to it. A tab on `magpie web` reached over plain http
+// from another computer (a NAS's) has no clipboard API at all, so the
+// older copy command is the last try there.
 async function copy(text, what, btn, message) {
   const done = () => { status(message || t("{what} copied", { what }), "ok"); flashCopied(btn); };
   const res = await fetch("/api/copy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) }).catch(() => null);
   if (res && res.ok) return done();
-  try { await navigator.clipboard.writeText(text); done(); }
-  catch { status(text); }
+  try { await navigator.clipboard.writeText(text); return done(); } catch {}
+  if (copyByCommand(text)) return done();
+  status(text);
+}
+
+// copyByCommand copies text with the page's copy command, through a
+// textarea out of sight that is never scrolled to, the focus going back
+// where it was.
+function copyByCommand(text) {
+  const was = document.activeElement;
+  const box = document.createElement("textarea");
+  box.value = text;
+  box.setAttribute("readonly", "");
+  box.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none";
+  document.body.append(box);
+  let ok = false;
+  try {
+    box.focus({ preventScroll: true });
+    box.select();
+    ok = document.execCommand("copy");
+  } catch { ok = false; }
+  box.remove();
+  if (was && was.focus) was.focus({ preventScroll: true });
+  return ok;
 }
 
 // flashCopied answers on the button itself: the icon becomes a tick and
