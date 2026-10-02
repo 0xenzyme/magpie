@@ -73,7 +73,7 @@ func (g Group) Picked() string {
 }
 
 // routes are the members requests to the group may go to now: a manual
-// group's pick alone, else every one.
+// group's pick alone, else every one not switched off.
 func (g Group) routes() []string {
 	if g.Routing == Manual {
 		if p := g.Picked(); p != "" {
@@ -81,8 +81,11 @@ func (g Group) routes() []string {
 		}
 		return nil
 	}
-	return g.Members
+	return slices.DeleteFunc(slices.Clone(g.Members), g.IsOff)
 }
+
+// IsOff is whether the group's member id is switched off.
+func (g Group) IsOff(id string) bool { return slices.Contains(g.Off, id) }
 
 // Live is the group as the gateway routes it: a manual group's rules
 // wait (the member picked is all it sends to), though they are kept.
@@ -100,6 +103,10 @@ type Group struct {
 	Members  []string `json:"members"`            // "provider/model[:effort]" or "group/<id>", in order (see MemberEffort)
 	Routing  string   `json:"routing,omitempty"`  // as Provider.Routing, over all the members' keys and accounts; or Manual
 	Affinity string   `json:"affinity,omitempty"` // as Provider.Affinity
+	// Off are the members switched off: kept where they are in the
+	// order, with their rules, but sent nothing until switched on again,
+	// so trying a group without one doesn't mean taking it out.
+	Off []string `json:"off,omitempty"`
 	// Pick is the member a Manual group sends every request to, as the
 	// user picked it on the group's card; "" is its first. It is kept
 	// while the group routes otherwise, for when it is manual again.
@@ -648,6 +655,16 @@ func SaveGroup(g Group) error {
 		g.Members[i] = cleanMember(entries, m)
 	}
 	g.Members = cleanList(g.Members)
+	var off []string
+	for _, m := range cleanList(g.Off) {
+		if m = cleanMember(entries, m); slices.Contains(g.Members, m) && !slices.Contains(off, m) {
+			off = append(off, m)
+		}
+	}
+	g.Off = off
+	if g.Routing != Manual && len(g.Off) == len(g.Members) {
+		return fmt.Errorf("every model in %s is switched off: switch one on, or it has nothing to send to", g.Name)
+	}
 	for i := range g.Rules {
 		g.Rules[i].Use = cleanMember(entries, strings.TrimSpace(g.Rules[i].Use))
 	}
@@ -924,6 +941,11 @@ func RenameGroup(from, to string) error {
 		}
 		if f.Groups[i].Pick == old {
 			f.Groups[i].Pick = now
+		}
+		for j, m := range f.Groups[i].Off {
+			if m == old {
+				f.Groups[i].Off[j] = now
+			}
 		}
 		if f.Groups[i].Classifier == old {
 			f.Groups[i].Classifier = now

@@ -1786,6 +1786,8 @@ const I18N = {
     "Standard speed": "标准速度",
     "Sent in its vendor's fast mode whatever the agent asks: quicker, at a higher price": "无论 Agent 要求什么，都以服务商的快速模式发送：更快，价格更高",
     "Sent at its vendor's usual speed; click to send it in fast mode": "以服务商的常规速度发送；点击改为快速模式",
+    "Off: kept in its place, sent nothing. Click to switch it on": "已停用：保留位置，不会收到请求。点击启用",
+    "On: requests may go to it. Click to switch it off and keep its place": "已启用：请求可能发给它。点击停用（保留位置）",
     "Sent in its vendor's fast mode, as the group says": "按分组设置，以服务商的快速模式发送",
     "{level} reasoning: the model's nearest to the {asked} {agent} asked for": "{level} 推理强度：模型最接近 {agent} 要求的 {asked} 的档位",
     "{level} reasoning, as {agent} asked": "{level} 推理强度，按 {agent} 的要求",
