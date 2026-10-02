@@ -159,7 +159,17 @@ func parseResponses(body []byte) (*Request, error) {
 		if err := json.Unmarshal(q.Input, &items); err != nil {
 			return nil, fmt.Errorf("invalid input: %v", err)
 		}
+		// replied: the conversation has had a turn answered. Codex adds a
+		// developer message where its context changed (world state, settings,
+		// a model switch) and keeps it there; lifted into the system prompt it
+		// changed the prompt's very start, so the whole conversation was
+		// written to the vendor's cache again (Anthropic's system comes
+		// first; a Claude subscription's waiting run is found by it) (#502)
+		replied := false
 		for _, it := range items {
+			if it.Role == "assistant" || strings.HasPrefix(it.Type, "function_call") || strings.HasPrefix(it.Type, "tool_search") || it.Type == "reasoning" {
+				replied = true
+			}
 			switch {
 			case it.Type == "message" || (it.Type == "" && it.Role != ""):
 				role := "user"
@@ -167,6 +177,13 @@ func parseResponses(body []byte) (*Request, error) {
 					role = "assistant"
 				}
 				parts := responsesParts(it.Content)
+				if (it.Role == "system" || it.Role == "developer") && replied {
+					// in place, told as the system's, not the user's words
+					if t := text(parts); t != "" {
+						r.Messages = append(r.Messages, Message{Role: "user", Parts: []Part{{Kind: Text, Text: "<system-reminder>\n" + t + "\n</system-reminder>"}}})
+					}
+					continue
+				}
 				if it.Role == "system" || it.Role == "developer" {
 					if t := text(parts); t != "" {
 						if r.System != "" {
