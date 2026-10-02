@@ -435,6 +435,7 @@ func (p Provider) fixV1(base, at string) string {
 func (p Provider) fetchPerKey(ctx context.Context, keys []KeyAccount) ([]catalog.Model, error) {
 	old, _, _ := catalog.Live(p.ID)
 	old = append(old, catalog.LiveDrawers(p.ID)...)
+	old = append(old, catalog.LiveVideomakers(p.ID)...)
 	var out []catalog.Model
 	at := map[string]int{}
 	add := func(m catalog.Model, id string) {

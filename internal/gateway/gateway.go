@@ -525,6 +525,24 @@ func drawerObjects() []map[string]any {
 	return out
 }
 
+// videomakerObjects are the video models magpie makes videos with, as
+// another magpie asks for them (provider.VideomakersHeader): "kind": "video".
+func videomakerObjects() []map[string]any {
+	var out []map[string]any
+	for _, p := range provider.All() {
+		if !p.On() || p.Decides() {
+			continue
+		}
+		for _, m := range Videomakers(p) {
+			name := cmp.Or(m.Name, m.ID)
+			out = append(out, map[string]any{"id": p.ID + "/" + m.ID, "object": "model", "type": "model", "kind": "video", "created": 0,
+				"owned_by": p.ID, "display_name": name, "magpie_label": name + " · " + p.Name,
+				"modalities": map[string]any{"input": []string{"text", "image"}, "output": []string{"video"}}})
+		}
+	}
+	return out
+}
+
 // catalogFor is the catalog as the agent asking is shown it.
 func catalogFor(r *http.Request) []provider.Entry {
 	shown, _ := provider.CatalogFor(agentOf(r))
@@ -550,6 +568,9 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Header.Get(provider.DrawersHeader) != "" {
 		data = append(data, drawerObjects()...)
+	}
+	if r.Header.Get(provider.VideomakersHeader) != "" {
+		data = append(data, videomakerObjects()...)
 	}
 	out := map[string]any{"object": "list", "data": data, "has_more": false}
 	if len(data) > 0 {
