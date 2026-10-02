@@ -662,6 +662,15 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// editor's Names & levels changed, by model id, made with the
 			// rest of the Save and not a click at a time
 			ModelPrefs map[string]provider.ModelPref `json:"modelPrefs"`
+			// Routing and Affinity, for route, affinity and save: how
+			// requests spread over its keys or accounts, and how long a
+			// conversation stays with the one that answered it. The
+			// editor's Save sends them only when picked there, a save
+			// that leaves them out keeping them: the Routing page's Stays
+			// was lost at each Save of the provider's editor, which never
+			// sent it.
+			Routing  *string `json:"routing"`
+			Affinity *string `json:"affinity"`
 			// Test, for test: models to send a request each, in place of
 			// one per endpoint
 			Test []string `json:"test"`
@@ -685,6 +694,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			return
 		}
 		in := req.Provider
+		if req.Routing != nil {
+			in.Routing = *req.Routing
+		}
+		if req.Affinity != nil {
+			in.Affinity = *req.Affinity
+		}
 		var moved []agent.Move
 		switch r.PathValue("action") {
 		case "show":
@@ -808,8 +823,14 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				if old != nil {
 					// the other keys are kept apart, in the Accounts list
 					in.Keys = old.Keys
-					in.Routing = old.Routing     // set on its own, with route
-					in.KeepLogin = old.KeepLogin // and this with keeplogin
+					// the editor's picks, or as they were
+					if req.Routing == nil {
+						in.Routing = old.Routing
+					}
+					if req.Affinity == nil {
+						in.Affinity = old.Affinity
+					}
+					in.KeepLogin = old.KeepLogin // set on its own, with keeplogin
 					in.KeepLoginAs = old.KeepLoginAs
 					in.Off = old.Off             // and this with off and on
 					if in.Contexts == nil {

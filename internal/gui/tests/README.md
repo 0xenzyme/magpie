@@ -75,6 +75,13 @@ and dismissal. It does not start the backend or read local user configuration.
 `provider-levels-scroll.test.cjs` keeps the provider editor's scrollable model
 list in place after saving a reasoning level farther down the list.
 
+`routing-save.test.cjs` checks that a provider's Routing and Stays, in its
+editor, are staged and made with the editor's Save: each option clicked shows
+what it does and "unsaved", with nothing sent, redrawn or scrolled; Cancel
+drops them; one Save carries `routing` and `affinity`. For a subscription
+with several accounts and a provider with several keys, in English and
+Chinese, Chromium and WebKit.
+
 `click-scroll.test.cjs` holds the rule that a click never moves the page
 (see "where the reader is" in `app.js`): on the Routing page, Live and a day
 picked in turn with the list scrolled to its end; a click whose handler sets

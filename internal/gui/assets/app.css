@@ -1899,6 +1899,9 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 /* an installed list's order (#481): small, beside the list's heading */
 .segs.sortby { align-self: center; flex: none; }
 .segs.sortby .opt { height: 20px; padding: 0 8px; font-size: 11px; }
+/* a provider's Routing and Stays, with "unsaved" beside a pick not saved yet */
+.route-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.route-pick > .hint { margin: 0; }
 .thumb.still { transition: none; }
 .link { font-size: 12px; color: var(--accent); padding: 3px 4px; white-space: nowrap; }
 .link:hover { text-decoration: underline; text-underline-offset: 2px; }

@@ -5203,7 +5203,7 @@ function drawEditor(p, presetID) {
       }
       const maxConcurrency = concurrencyOfDraft();
       if (maxConcurrency === undefined) return concurrencyError(ed);
-      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, proxy, accountProxies: own.map, maxConcurrency, modelPrefs: modelPrefsOfDraft() }, t("{name} saved", { name: p.name })); };
+      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, proxy, accountProxies: own.map, maxConcurrency, modelPrefs: modelPrefsOfDraft(), ...routingOfDraft(p) }, t("{name} saved", { name: p.name })); };
     bar.append(cancel, saveBtn);
     ed.append(bar);
     return ed;
@@ -5492,7 +5492,7 @@ function drawEditor(p, presetID) {
     if (isNew && draft.copyOf) body.copyOf = draft.copyOf;
     if (decides) body.decide = (draft.decide || "").trim();
     if (custom) { body.icon = draft.icon || "generic"; body.balanceURL = (draft.balanceURL || "").trim(); body.balancePath = (draft.balancePath || "").trim(); body.modelsURL = (draft.modelsURL || "").trim(); }
-    if (p) { body.fallback = draft.fallback; body.unlisted = draft.unlisted; body.modelPrefs = modelPrefsOfDraft(); }
+    if (p) { body.fallback = draft.fallback; body.unlisted = draft.unlisted; body.modelPrefs = modelPrefsOfDraft(); Object.assign(body, routingOfDraft(p)); }
     body.searches = !!draft.searches && searchable();
     const cx = parseContexts(draft.contexts || "");
     if (cx.error) return editorError(t("Context window: {v} is not a length like 128k or 1m", { v: cx.error }), "warn");
@@ -6477,7 +6477,12 @@ function renderDrawers(p) {
 }
 
 // renderRouting: how the gateway spreads requests over the keys or
-// accounts a provider has on. It takes effect at once, like ticking one.
+// accounts a provider has on, and how long a conversation stays with the
+// one that answered it. Both are staged in the editor's draft (routing,
+// affinity) and made with its Save, as the rest of the editor is: a click
+// shows the option and what it does, nothing is sent or redrawn, and
+// Cancel drops it (01huadalang on Discord: each click saved and redrew,
+// so looking through what each says lagged).
 const ROUTINGS = [
   ["", "Smart", "The first takes requests while it has quota to spare; when it runs low, the one with the most left takes over. One out of credit sits out half an hour, one out of quota until it resets, one rate limited as long as the vendor asks, and one that fails a minute, longer each time it fails again."],
   ["order", "In order", "Requests go to the first; the next takes over when the one before runs out of quota, hits a rate limit or fails."],
@@ -6485,27 +6490,69 @@ const ROUTINGS = [
   ["usage", "Least used first", "Each request goes to the one used least: a subscription by the share of its allowance used, a key by the tokens it served in the last hours."],
   ["pace", "Weekly pace", "Each request goes to the subscription with the most of its week left per hour until it renews — the one with the most to lose at its reset — so less of each week is lost at its reset; one at 90% or more waits until the others can't answer. A key goes by the tokens it served in the last hours."],
 ];
+// as on the Routing page's list of these (routing.js AFF_OPTS)
+const STAYS = [
+  ["", "Auto", "A conversation stays with the account or key that answered it while what the vendor cached of it is worth keeping — within a turn always, across turns while it's fresh."],
+  ["session", "Session", "A conversation stays with the account or key that answered it for the whole session, while it can answer."],
+  ["turn", "Within a turn", "A conversation stays put within a turn, while the agent sends tool results back; when you speak again, routing decides afresh."],
+  ["off", "Off", "Every request is routed afresh, whoever answered its conversation before."],
+];
+// routingOfDraft: what the editor's Save sends of them — only what was
+// picked and differs from what is saved
+function routingOfDraft(p) {
+  const out = {};
+  if (draft?.routing !== undefined && draft.routing !== (p.routing || "")) out.routing = draft.routing;
+  if (draft?.affinity !== undefined && draft.affinity !== (p.affinity || "")) out.affinity = draft.affinity;
+  return out;
+}
 function renderRouting(p) {
-  const cur = ROUTINGS.find(([id]) => id === (p.routing || "")) || ROUTINGS[0];
-  const pick = segs(ROUTINGS.map(([id, name]) => [id, t(name)]), cur[0], (routing) => {
-    const r = ROUTINGS.find(([id]) => id === routing);
-    accountAction("provider/route", { id: p.id, routing }, t("{name}: {routing}", { name: p.name, routing: t(r[1]) }));
-  });
+  const routingNow = () => draft.routing ?? (p.routing || "");
+  const affinityNow = () => draft.affinity ?? (p.affinity || "");
   // what Codex or Claude Code sends past magpie goes to the account it is
   // signed in to, which magpie moves on once Smart would count it spent
   // and back once the first has room (provider.KeepOnAnAccountWithRoom,
   // #209, #408)
   const a = p.account;
   // — at 98%, In order once used up (#530), never when kept on the first (#524)
-  const own = !a || (a.agent !== "codex" && a.agent !== "claude") ? ""
+  const own = (routing) => !a || (a.agent !== "codex" && a.agent !== "claude") ? ""
     : " " + (keptLogin(p)
       ? t("Routing picks the account for each request through magpie, in the accounts' order; {agent} on its own stays signed in to {user}, whatever it has left.", { agent: a.agentName, user: keptLogin(p) })
       : p.keepLogin
       ? t("Routing picks the account for each request through magpie; {agent} on its own stays signed in to the first account, whatever it has left.", { agent: a.agentName })
-      : cur[0] === "order"
+      : routing === "order"
         ? t("Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is used up, and back to the first once that has room again.", { agent: a.agentName })
         : t("Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is 98% used, and back to the first once that has room again.", { agent: a.agentName }));
-  return field(t("Routing"), pick, t(cur[2]) + own);
+  // what the Save will make of it differs from what it is: said beside it
+  const unsaved = () => {
+    const u = el("span", "hint munsaved", t("unsaved"));
+    u.title = t("Made when the provider is saved; Cancel drops it");
+    return u;
+  };
+  const rHint = el("div", "hint"), rUnsaved = unsaved();
+  const drawRouting = () => {
+    const cur = ROUTINGS.find(([id]) => id === routingNow()) || ROUTINGS[0];
+    rHint.textContent = t(cur[2]) + own(cur[0]);
+    rUnsaved.hidden = routingNow() === (p.routing || "");
+  };
+  const rPick = segs(ROUTINGS.map(([id, name]) => [id, t(name)]), routingNow(), (routing) => { draft.routing = routing; drawRouting(); });
+  const rRow = el("div", "route-pick");
+  rRow.append(rPick, rUnsaved);
+  const rWrap = el("div");
+  rWrap.append(rRow, rHint);
+  const sHint = el("div", "hint"), sUnsaved = unsaved();
+  const drawStays = () => {
+    const cur = STAYS.find(([id]) => id === affinityNow()) || STAYS[0];
+    sHint.textContent = t(cur[2]);
+    sUnsaved.hidden = affinityNow() === (p.affinity || "");
+  };
+  const sPick = segs(STAYS.map(([id, name]) => [id, t(name)]), affinityNow(), (affinity) => { draft.affinity = affinity; drawStays(); });
+  const sRow = el("div", "route-pick");
+  sRow.append(sPick, sUnsaved);
+  const sWrap = el("div");
+  sWrap.append(sRow, sHint);
+  drawRouting();
+  drawStays();
+  return [el("label", "", t("Routing")), rWrap, el("label", "", t("Stays")), sWrap];
 }
 
 // renderFallback: where requests go when this provider can't take them —
