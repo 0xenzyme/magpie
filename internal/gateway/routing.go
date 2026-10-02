@@ -138,6 +138,9 @@ const (
 	// failShape: the vendor couldn't read the request's shape (#350) — the
 	// next one is asked, and nobody rests
 	failShape = "shape"
+	// failEffort: the account's plan doesn't take the reasoning level
+	// asked for (#520) — another account is asked, and nobody rests
+	failEffort = "effort"
 	// failProxy: the proxy magpie sends through (its own setting, the
 	// *_PROXY variables, the system's) didn't take the connection (#381) —
 	// nothing reached the vendor, so the next one is asked, and nobody rests

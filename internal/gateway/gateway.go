@@ -1153,6 +1153,17 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		}
 		// the reasoning the model is asked for, whoever chose it
 		sent = sentEffort(from, attemptBody, c.p, c.model)
+		if !takesEffort(c, sent) {
+			if j := effortMate(cands[i+1:], c, sent); j >= 0 {
+				// its plan doesn't take this level, which another account
+				// of its member may (#520): that one first, this one after
+				j += i + 1
+				cs := slices.Clone(cands)
+				cands = slices.Insert(slices.Delete(cs, i, i+1), j, c)
+				i--
+				continue
+			}
+		}
 		s.trace.update(tr, func(t *Route) {
 			t.Tries = append(t.Tries, Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Fast: fast, Start: began})
 		})
@@ -1275,6 +1286,25 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				appendUsage(r, rec)
 			}
 			continue
+		}
+		if c.p.Account != nil && !hw.passing && hw.code() >= 400 && hw.code() < 500 && modelTakes(c, sent) {
+			if takes, ok := effortRefused(hw.errBody(), sent); ok {
+				// the account's plan doesn't take the level, which the
+				// model has (#520: a Free ChatGPT account, gpt-6-luna at
+				// high): another account is asked, and this one doesn't
+				// rest, as it serves the model at other levels
+				noteEffortRefused(c, sent, takes)
+				try.Fail = failEffort
+				s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+				skipped = append(skipped, c.label()+": "+call.Error)
+				if !last {
+					matesFirst(cands[i+1:], c)
+					continue
+				}
+				call.Status, call.Error = http.StatusBadRequest, effortError(c, sent, takes, call.Error)
+				writeError(w, from, call.Status, call.Error)
+				break
+			}
 		}
 		if !last && hw.failed() && shapeRefused(hw.code(), hw.errBody()) {
 			// a request this vendor's API can't read (xAI's 422 over an
