@@ -454,6 +454,48 @@ func Move(ctx context.Context, id string) error {
 	return err
 }
 
+// Adopt puts the built-in id onto its plugin before any account of it is
+// signed in: the plugin installed, and the subscription signs in through
+// it from now on, as a moved one does. One with accounts is moved instead.
+func Adopt(ctx context.Context, id string) error {
+	mv := movers[id]
+	if mv == nil {
+		return fmt.Errorf("%s has no plugin to move to", id)
+	}
+	if accts, err := mv.out(); err != nil {
+		return err
+	} else if len(accts) > 0 {
+		return Move(ctx, id)
+	}
+	unlock, err := lockMoves()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if Moved(id) {
+		return nil
+	}
+	had := pluginListed(mv.pkg)
+	if err := installPlugin(ctx, mv.pkg, mv.min); err != nil {
+		return installFailed(mv.pkg, err)
+	}
+	pps, err := pluginProviders(ctx)
+	if err == nil && !slices.ContainsFunc(pps, func(p plugin.Provider) bool { return p.ID == id && plugin.PackageName(p.Spec) == mv.pkg }) {
+		err = fmt.Errorf("%s doesn't serve %s", mv.pkg, id)
+	}
+	if err == nil {
+		err = setMigration(id, func(m *Migration) {
+			*m = Migration{State: MovePlugin, Package: mv.pkg, At: time.Now().UTC().Truncate(time.Second), Installed: !had}
+		})
+	}
+	if err != nil && !had {
+		if rerr := removePlugin(context.WithoutCancel(ctx), mv.pkg); rerr != nil {
+			log.Printf("removing %s after %s failed to go onto it: %s", mv.pkg, id, rerr)
+		}
+	}
+	return err
+}
+
 func move(ctx context.Context, id string, mv *mover) (err error) {
 	inUse := modelsInUse(id)
 	var host string

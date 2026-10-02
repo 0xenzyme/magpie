@@ -220,6 +220,9 @@ type providersJSON struct {
 	// Movable are the built-in subscriptions a community plugin can run,
 	// deprecated in magpie itself: the add sheet marks them so
 	Movable []string `json:"movable,omitempty"`
+	// MovesTo is the plugin each of them goes to, for the add sheet's
+	// offer to install it before signing in
+	MovesTo map[string]string `json:"movesTo,omitempty"`
 	// Moved is the agents the change moved off models it stopped serving
 	// (agent.Reseat), for the page to say so.
 	Moved []agent.Move `json:"moved,omitempty"`
@@ -435,6 +438,12 @@ func providersState() providersJSON {
 	s := providersJSON{Providers: []providerJSON{}, Presets: []presetJSON{}, Excluded: []excludedJSON{}}
 	s.OnPlugins = provider.OnPlugins()
 	s.Movable = provider.MovableIDs()
+	for _, id := range s.Movable {
+		if s.MovesTo == nil {
+			s.MovesTo = map[string]string{}
+		}
+		s.MovesTo[id] = provider.MovePackage(id)
+	}
 	if err := provider.FileError(); err != nil {
 		s.FileError = err.Error()
 	}
@@ -504,6 +513,7 @@ func failMove(rw http.ResponseWriter, err error) {
 var (
 	moveProvider     = provider.Move
 	moveBackProvider = provider.MoveBack
+	adoptProvider    = provider.Adopt
 )
 
 // moveContext keeps a move going though the page that asked for it goes
@@ -652,6 +662,15 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			ctx, cancel := moveContext(r)
 			defer cancel()
 			if err := moveProvider(ctx, in.ID); err != nil {
+				failMove(rw, err)
+				return
+			}
+		case "adopt":
+			// a built-in subscription not signed in to, onto its plugin
+			// first: the plugin installed, and its sign-in the plugin's
+			ctx, cancel := moveContext(r)
+			defer cancel()
+			if err := adoptProvider(ctx, in.ID); err != nil {
 				failMove(rw, err)
 				return
 			}

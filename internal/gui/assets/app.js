@@ -4117,13 +4117,6 @@ function renderAdd() {
       const grid = section("Subscriptions", "sign in, no key");
       for (const x of subs) grid.append(subTile(x));
       if (!f) grid.append(morePluginsTile());
-      if (!f && subs.some((x) => !x.plugin && deprecatedSub(x.agent))) {
-        const foot = el("div", "dep-foot");
-        const go = el("button", "link", t("Browse plugins"));
-        go.onclick = () => openPlugins();
-        foot.append(el("span", "", t("Subscriptions marked")), el("span", "badge deprecated", t("Deprecated")), el("span", "", t("are moving to community plugins, so that magpie itself isn't banned by their vendors.")), go);
-        tiles.append(foot);
-      }
       const w = subs.find((x) => signing?.agent === x.agent);
       if (w) tiles.append(renderSigning(w));
     }
@@ -4280,9 +4273,12 @@ function subTile(x) {
   const b = pickRow(x.icon, shortName(x.name), signing?.agent === x.agent ? " on" : "");
   b.title = t("{name} subscription", { name: x.name }) + " · " + x.plans;
   if (x.hint) b.title += "\n" + t(x.hint);
+  // deprecated: badged once signed in; before that, a click offers its plugin
   if (!x.plugin && deprecatedSub(x.agent)) {
-    b.querySelector(".nm").append(deprecatedBadge());
-    b.title += "\n" + t("Deprecated") + " · " + t(DEPRECATED_WHY);
+    if (n) {
+      b.querySelector(".nm").append(deprecatedBadge());
+      b.title += "\n" + t("Deprecated") + " · " + t(DEPRECATED_WHY);
+    } else b.title += "\n" + t("Signs in through a community plugin");
   }
   if (n) {
     markAdded(b, x.single ? 1 : n);
@@ -6299,8 +6295,20 @@ let signing = null; // the sign-in under way: { id, agent, url, state, installin
 const signingOpen = () => signing?.state === "waiting" || signing?.state === "installing";
 let justAdded = ""; // the account that just came in, to greet it
 
+// builtinAsked: deprecated subscriptions the user chose to sign in to with
+// magpie's own sign-in, past the offer of the plugin
+const builtinAsked = new Set();
+const offersPlugin = (agent) => !subOf(agent)?.plugin && deprecatedSub(agent) && !builtinAsked.has(agent)
+  && !providers.providers.some((p) => p.account?.agent === agent) && !!providers.movesTo?.[agent];
+
 async function startSignIn(agent, risky, site) {
   if (signingOpen()) api("signin/" + signing.id + "/cancel", {}).catch(() => {});
+  // a deprecated one not signed in to yet: its plugin first
+  if (offersPlugin(agent)) {
+    signing = { agent, state: "plugin" };
+    renderProviders();
+    return;
+  }
   // an account Google may suspend is added only once that is said
   if (subOf(agent)?.risk && !risky) {
     signing = { agent, state: "risk" };
@@ -6326,6 +6334,25 @@ async function startSignIn(agent, risky, site) {
     signing = { agent, site, state: "failed", error: e.message };
     renderProviders();
   }
+}
+
+// adoptSub: the deprecated subscription's plugin installed and the
+// subscription put onto it, then signed in to through it
+async function adoptSub(agent) {
+  signing = { agent, state: "adopting" };
+  renderProviders();
+  try {
+    providers = await api("provider/adopt", { id: agent });
+  } catch (e) {
+    if (signing?.agent === agent && signing.state === "adopting") {
+      signing = { agent, state: "plugin", error: e.message };
+      renderProviders();
+    }
+    return;
+  }
+  if (signing?.agent !== agent || signing.state !== "adopting") { renderProviders(); return; }
+  signing = null;
+  startSignIn(agent);
 }
 
 async function followSignIn(id) {
@@ -6585,6 +6612,34 @@ function dropSigningIn(id) {
 function renderSigning(sub) {
   const box = el("div", "signing" + (signing.state === "failed" ? " failed" : ""));
   const tt = el("span", "tt");
+  if (signing.state === "plugin" || signing.state === "adopting") {
+    // a deprecated one: its community plugin installed, then signed in
+    // through it; magpie's own sign-in still there, quieter
+    const pkg = providers.movesTo?.[sub.agent] || "";
+    const busy = signing.state === "adopting";
+    box.classList.add("plugin-offer");
+    box.append(busy ? el("span", "spinner") : el("span", "mark plug", ""));
+    if (!busy) box.lastChild.append(svg("M6 1.8v3 M10 1.8v3 M4.2 4.8h7.6v2.4a3.8 3.8 0 0 1-7.6 0Z M8 11v3.2", 16, 1.4));
+    tt.append(el("span", "n", busy ? t("Installing {name}'s plugin…", { name: sub.name }) : t("{name} now signs in through a community plugin", { name: sub.name })));
+    const p = el("span", "s pkg");
+    p.append(el("code", "", pkg));
+    tt.append(p, el("span", "s", busy ? t("The first plugin also fetches Bun, which runs plugins; that can take a minute or two. The sign-in opens as soon as it's in.")
+      : t("Subscription sign-ins are moving out of magpie into community plugins, so that magpie itself isn't banned by their vendors.")));
+    if (signing.error) tt.append(el("span", "s why", signing.error));
+    box.append(tt);
+    const acts = el("span", "offer-acts");
+    const close = el("button", "text", t("Cancel"));
+    close.onclick = cancelSignIn;
+    if (busy) { acts.append(close); box.append(acts); return box; }
+    const own = el("button", "text quiet", t("Use the built-in"));
+    own.title = t("Sign in with magpie's own sign-in, which is deprecated");
+    own.onclick = () => { builtinAsked.add(sub.agent); startSignIn(sub.agent); };
+    const go = el("button", "text primary", t(signing.error ? "Try again" : "Install and sign in"));
+    go.onclick = () => adoptSub(sub.agent);
+    acts.append(own, close, go);
+    box.append(acts);
+    return box;
+  }
   if (signing.state === "risk") {
     box.append(el("span", "mark", "!"));
     tt.append(el("span", "n", t("{name} accounts can be suspended", { name: sub.name })));
