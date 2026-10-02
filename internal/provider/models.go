@@ -308,10 +308,15 @@ func (p Provider) planModels(ms []catalog.Model) []catalog.Model {
 	if pr == nil || pr.Only == "" && (len(pr.Models) == 0 || len(ms) > 0) {
 		return ms
 	}
-	var out []catalog.Model
+	var out, free []catalog.Model
 	for _, m := range ms {
-		if strings.HasPrefix(m.ID, pr.Only) {
+		switch {
+		case strings.HasPrefix(m.ID, pr.Only):
 			out = append(out, m)
+		case p.freeTagged(m.ID):
+			// the vendor's free models, which the key is served too
+			m.Free = true
+			free = append(free, m)
 		}
 	}
 	if len(out) == 0 {
@@ -319,6 +324,7 @@ func (p Provider) planModels(ms []catalog.Model) []catalog.Model {
 			out = append(out, catalog.Model{ID: id, Name: id})
 		}
 	}
+	out = append(out, free...)
 	for i, m := range out {
 		// the vendor's window for its model, as models.dev has it
 		if m.Context == 0 {
@@ -329,6 +335,13 @@ func (p Provider) planModels(ms []catalog.Model) []catalog.Model {
 		}
 	}
 	return out
+}
+
+// freeTagged reports whether model is one of the vendor's free models p's
+// preset keeps beside its plan's (PresetDef.FreeTag): Cline's ":free" ones.
+func (p Provider) freeTagged(model string) bool {
+	pr := Preset(p.Preset)
+	return pr != nil && pr.Only != "" && pr.FreeTag != "" && strings.HasSuffix(model, pr.FreeTag)
 }
 
 // fixV1 adds the /v1 an OpenAI-style base URL was given without, when
@@ -598,6 +611,10 @@ var makerCatalogs = sync.OnceValue(func() []string {
 // at gpt-6-astra's or gemini-3.8-flash's maker's price, as a Claude
 // account is at Anthropic's.
 func (p Provider) ListPrice(model string) (catalog.Price, bool) {
+	if p.freeTagged(model) {
+		// served at no cost: not at the price of the model it is a tag of
+		return catalog.Price{}, true
+	}
 	for _, m := range pricedNames(model) {
 		if pr, ok := catalog.PricedBy(p.Catalogs(), m); ok {
 			return pr, true
