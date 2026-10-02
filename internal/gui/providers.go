@@ -199,6 +199,9 @@ type providersJSON struct {
 	// OnPlugins are the built-in subscriptions moved onto their plugins,
 	// which the add sheet offers as the plugin's alone
 	OnPlugins []string `json:"onPlugins,omitempty"`
+	// Movable are the built-in subscriptions a community plugin can run,
+	// deprecated in magpie itself: the add sheet marks them so
+	Movable []string `json:"movable,omitempty"`
 	// Moved is the agents the change moved off models it stopped serving
 	// (agent.Reseat), for the page to say so.
 	Moved []agent.Move `json:"moved,omitempty"`
@@ -412,6 +415,7 @@ func providersState() providersJSON {
 	agents := agent.Detected()
 	s := providersJSON{Providers: []providerJSON{}, Presets: []presetJSON{}, Excluded: []excludedJSON{}}
 	s.OnPlugins = provider.OnPlugins()
+	s.Movable = provider.MovableIDs()
 	if err := provider.FileError(); err != nil {
 		s.FileError = err.Error()
 	}

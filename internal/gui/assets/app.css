@@ -1698,13 +1698,31 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 /* stepping aside it fades, then goes; back, it is there at once, so the
    focus can go to it as the sheet closes */
 #view-providers .after-list.away { opacity: 0; visibility: hidden; transition: opacity .18s ease, visibility 0s .18s; }
-#movable { margin: 0 0 8px; }
+#movable { margin: 0 0 10px; }
+/* a built-in subscription a community plugin can run: an outlined amber
+   word, apart from the filled "sponsored" */
+.badge.deprecated { background: transparent; color: var(--amber); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
+/* over the list: what is deprecated, why, and the way on */
+.deprecation { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px 12px 12px; border: 1px solid color-mix(in srgb, var(--amber) 20%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--amber-soft) 45%, var(--card)); animation: fade-in .2s; }
+.deprecation .dep-ic { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--amber-soft); color: var(--amber); }
+.deprecation .dep-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.deprecation .dep-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 7px; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: var(--fg); }
+.deprecation .dep-head .badge { vertical-align: 0; }
+.deprecation p { margin: 0; font-size: 11.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.deprecation .dep-why { color: var(--fg-2); }
+.deprecation .dep-keep { color: var(--muted); }
+.deprecation .dep-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
+.deprecation .dep-acts .link { font-size: 11.5px; color: var(--muted); }
+/* the same, said in a provider's editor over its Move */
+.move .dep-note { display: flex; align-items: flex-start; gap: 7px; padding: 7px 10px; border-radius: 8px; background: color-mix(in srgb, var(--amber-soft) 55%, transparent); font-size: 11.5px; line-height: 1.5; color: var(--fg-2); }
+.move .dep-note .badge { flex: none; margin-top: 2px; }
+/* and in the add sheet, under the subscriptions */
+.dep-foot { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 5px; padding: 6px 4px 2px; font-size: 11px; line-height: 1.5; color: var(--muted); }
+.dep-foot .badge { align-self: center; }
+.dep-foot .link { font-size: 11px; padding: 0 2px; }
 #fileError { margin: 0 0 10px; }
 #fileError .signing { border: 1px solid var(--line); border-radius: 10px; }
 #fileError .signing .mark { background: var(--red); }
-.movable { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 4px; padding: 2px 14px; font-size: 11.5px; line-height: 1.6; color: var(--muted); }
-.movable .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; margin-right: 4px; align-self: center; }
-.movable .link { font-size: 11.5px; padding: 0 2px; }
 .excluded { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px 2px; font-size: 11.5px; line-height: 1.45; color: var(--muted); }
 .excluded .ic { width: 16px; height: 16px; margin-top: 1px; opacity: .7; }
 .excluded b { font-weight: 500; color: var(--fg-2); }

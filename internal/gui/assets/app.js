@@ -2746,6 +2746,7 @@ function renderProviders() {
     const name = el("div", "name", p.name);
     if (p.sponsored) name.append(el("span", "badge", t("sponsored")));
     if (p.off) name.append(el("span", "badge off", t("Switched off")));
+    if (p.move && p.move.state !== "plugin") name.append(deprecatedBadge());
     const n = p.models.filter((m) => m.on).length;
     // a provider that only draws images (Settings → Image generation) says so
     const models = n ? t(n === 1 ? "{n} model" : "{n} models", { n })
@@ -2922,35 +2923,55 @@ function renderFileError() {
   box.append(r);
 }
 
-// renderMovable: one quiet line over the list naming the built-in
-// subscriptions a community plugin can run, and Review: for one, its editor
+// DEPRECATED_WHY: why a built-in subscription a community plugin can run
+// is deprecated, said wherever it is marked so.
+const DEPRECATED_WHY = "Some subscriptions are reached in ways their vendors' terms may not allow. So that magpie itself isn't banned over them, subscription providers are being decoupled from magpie and run by community plugins instead.";
+// deprecatedSub: a built-in subscription with a plugin, not moved onto it
+const deprecatedSub = (agent) => (providers?.movable || []).includes(agent) && !movedSub(agent);
+function deprecatedBadge() {
+  const b = el("span", "badge deprecated", t("Deprecated"));
+  b.title = t(DEPRECATED_WHY);
+  return b;
+}
+
+// renderMovable: over the list, the signed-in built-in subscriptions that
+// are deprecated, why, and the way to their plugins: for one, its editor
 // at its Runs on; for several, the Plugins tab, where each has its own Move
-// (opening the first one's editor read as if the line were about it alone).
-// Hidden, it stays hidden until another built-in can move.
+// (opening the first one's editor read as if the notice were about it
+// alone). Hidden, it stays hidden until another one is signed in.
 function renderMovable() {
   const box = $("#movable");
   if (!box) return;
   box.replaceChildren();
   const ps = providers.providers.filter((p) => p.move && p.move.state !== "plugin" && p.account);
   let hid = "";
-  try { hid = localStorage.getItem("magpie.movableHidden") || ""; } catch {}
+  try { hid = localStorage.getItem("magpie.deprecatedHidden") || ""; } catch {}
   const ids = ps.map((p) => p.id).join(",");
   box.hidden = !ps.length || hid === ids;
   if (box.hidden) return;
   const names = ps.map((p) => p.name).join(t(", "));
-  const line = el("div", "movable");
-  line.append(el("span", "dot"), el("span", "", t("{names} can run on community plugins, with the same accounts.", { names }) + " "));
-  const review = el("button", "link", t("Take a look"));
+  const card = el("div", "deprecation");
+  card.setAttribute("role", "note");
+  const ic = el("span", "dep-ic");
+  ic.append(svg(PUZZLE, 15, 1.4));
+  const body = el("div", "dep-body");
+  const head = el("div", "dep-head");
+  head.append(el("span", "badge deprecated", t("Deprecated")),
+    el("span", "", ps.length > 1 ? t("These built-in subscriptions are deprecated: {names}", { names }) : t("{name}'s built-in subscription is deprecated", { name: names })));
+  const acts = el("div", "dep-acts");
+  const review = el("button", "text primary", ps.length > 1 ? t("Review in Plugins") : t("Review the move"));
   // the editor opens over the list: the page itself doesn't move
   review.onclick = () => {
     if (ps.length > 1) { openPlugins(); return; }
     editing = ps[0].id; draft = null; renderProviders();
   };
   const hide = el("button", "link", t("Not now"));
-  hide.title = t("Hide this line until another built-in can move");
-  hide.onclick = () => { try { localStorage.setItem("magpie.movableHidden", ids); } catch {} renderMovable(); };
-  line.append(review, " · ", hide);
-  box.append(line);
+  hide.title = t("Hide this until another deprecated subscription is signed in");
+  hide.onclick = () => { try { localStorage.setItem("magpie.deprecatedHidden", ids); } catch {} renderMovable(); };
+  acts.append(review, hide);
+  body.append(head, el("p", "dep-why", t(DEPRECATED_WHY)), el("p", "dep-keep", t("Moving keeps your accounts, models and agents as they are.")), acts);
+  card.append(ic, body);
+  box.append(card);
 }
 
 // Sign-ins magpie found but leaves alone, so nobody wonders why an agent that
@@ -4034,6 +4055,13 @@ function renderAdd() {
       const grid = section("Subscriptions", "sign in, no key");
       for (const x of subs) grid.append(subTile(x));
       if (!f) grid.append(morePluginsTile());
+      if (!f && subs.some((x) => !x.plugin && deprecatedSub(x.agent))) {
+        const foot = el("div", "dep-foot");
+        const go = el("button", "link", t("Browse plugins"));
+        go.onclick = () => openPlugins();
+        foot.append(el("span", "", t("Subscriptions marked")), el("span", "badge deprecated", t("Deprecated")), el("span", "", t("are moving to community plugins, so that magpie itself isn't banned by their vendors.")), go);
+        tiles.append(foot);
+      }
       const w = subs.find((x) => signing?.agent === x.agent);
       if (w) tiles.append(renderSigning(w));
     }
@@ -4190,6 +4218,10 @@ function subTile(x) {
   const b = pickRow(x.icon, shortName(x.name), signing?.agent === x.agent ? " on" : "");
   b.title = t("{name} subscription", { name: x.name }) + " · " + x.plans;
   if (x.hint) b.title += "\n" + t(x.hint);
+  if (!x.plugin && deprecatedSub(x.agent)) {
+    b.querySelector(".nm").append(deprecatedBadge());
+    b.title += "\n" + t("Deprecated") + " · " + t(DEPRECATED_WHY);
+  }
   if (n) {
     markAdded(b, x.single ? 1 : n);
     b.title += "\n" + (x.single ? t("Signed in") : t(n === 1 ? "1 account" : "{n} accounts", { n })) + " · " + t(x.single ? "signed in · click to switch account" : "click to add another account");
@@ -7535,7 +7567,13 @@ function renderMove(p) {
       b.textContent = onPlugin ? t("Use the built-in again") : t("Try again");
     }
   };
-  box.append(said, b, why);
+  box.append(said);
+  if (!onPlugin) {
+    const note = el("div", "dep-note");
+    note.append(el("span", "badge deprecated", t("Deprecated")), el("span", "", t(DEPRECATED_WHY)));
+    box.append(note);
+  }
+  box.append(b, why);
   return field(t("Runs on"), box, onPlugin ? t("Going back puts every account, with the plugin's newer sign-ins, back into the built-in.") : t("If an account doesn't work through the plugin, nothing changes."));
 }
 

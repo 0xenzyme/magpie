@@ -231,6 +231,17 @@ var errStays = errors.New("stays with the plugin")
 // Movable is whether the built-in id has a plugin it can move to.
 func Movable(id string) bool { return movers[id] != nil }
 
+// MovableIDs are the built-ins that have a plugin to move to, by id: the
+// page marks them deprecated, moved or not.
+func MovableIDs() []string {
+	out := make([]string, 0, len(movers))
+	for id := range movers {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // MoveCandidate is a built-in with accounts its plugin could run instead.
 type MoveCandidate struct {
 	ID       string `json:"id"`

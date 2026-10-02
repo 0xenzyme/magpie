@@ -4,8 +4,9 @@
 // plugins…"), and its Take a look opened the first one's editor: Cursor's,
 // as if the line were about Cursor alone. With several named it now opens the
 // Plugins tab, whose cards offer each one's Move; with one named it still
-// opens that one's editor (plugin-move.test.cjs). In English and Chinese,
-// Chromium and WebKit; the API is faked here.
+// opens that one's editor (plugin-move.test.cjs). The line is now a
+// deprecation notice whose button reads Review in Plugins. In English and
+// Chinese, Chromium and WebKit; the API is faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -45,11 +46,11 @@ function serve(lang) {
   };
 }
 
-const L = { en: { look: "Take a look", move: "Move" }, zh: { look: "查看", move: "迁移" } };
+const L = { en: { look: "Review in Plugins", move: "Move" }, zh: { look: "前往插件页迁移", move: "迁移" } };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   for (const lang of ["en", "zh"]) {
-    test(`${engine} ${lang}: Take a look over several movable subscriptions opens Plugins`, async (t) => {
+    test(`${engine} ${lang}: Review in Plugins over several deprecated subscriptions opens Plugins`, async (t) => {
       const w = L[lang];
       const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
       t.after(() => browser.close());
