@@ -967,12 +967,18 @@ function dragRows(e, handle, row, list, rows, commit, start = () => {}, idle = (
       : y > bounds.bottom - edge ? Math.min(1, (y - bounds.bottom + edge) / edge) : 0;
     if (speed) scroll.scrollTop += speed * dt * .6;
     const dy = y - y0 + scroll.scrollTop - scroll0;
-    const d = Math.max(tops[0] - tops[from], Math.min(tops.at(-1) + heights.at(-1) - h - tops[from], dy));
+    const lo = tops[0] - tops[from], hi = tops.at(-1) + heights.at(-1) - h - tops[from];
+    const d = Math.max(lo, Math.min(hi, dy));
     row.style.transform = `translateY(${d}px)`;
     const mid = tops[from] + d + h / 2;
     to = from;
     if (d > 0) { while (to < rows.length - 1 && mid >= tops[to + 1] + heights[to + 1] / 2) to++; }
     else { while (to > 0 && mid <= tops[to - 1] + heights[to - 1] / 2) to--; }
+    // held at the top or the foot it goes there, though the first row is a
+    // pixel shorter than the rest (they have a border over them) and its
+    // middle was out of reach (#499)
+    if (d <= lo && from > 0) to = 0;
+    else if (d >= hi && from < rows.length - 1) to = rows.length - 1;
     rows.forEach((r, i) => {
       if (i === from) return;
       const shift = i > from && i <= to ? -h : i < from && i >= to ? h : 0;
@@ -2702,7 +2708,7 @@ $("#foldOff").onclick = () => {
 // One row per provider: logo, name, the agents pointed at it, key status.
 // Everything else lives in the editor, a dialog over the page.
 function renderProviders() {
-  if (accountArranging) { accountRenderPending = true; return; }
+  if (accountArranging || providerArranging) { accountRenderPending = true; return; }
   // Rebuilding the list empties the page for a moment, which clamps its
   // scroll to the top; put it back so closing the editor leaves the reader
   // where they were.
@@ -2772,7 +2778,9 @@ function renderProviders() {
     if (!key.title.includes(label)) key.title = (p.account && !lapsed ? accountPlan(p.account) : label) + " · " + key.title;
     const chev = el("span", "chev");
     chev.append(svg(CHEV_R, 11, 1.7));
-    row.append(icon(p.icon || "generic"), who, uses, key, providerSwitch(p), chev);
+    // a provider on is listed, and tried, in the order the user puts it in
+    // (#499): its logo is the handle, as an agent row's is
+    row.append(p.off ? icon(p.icon || "generic") : providerHandle(p, row), who, uses, key, providerSwitch(p), chev);
     row.onclick = () => { editing = open ? null : p.id; draft = null; renderProviders(); }; // the preset sheet stays as it is under the dialog
     list.append(row);
     if (open) dialog = renderEditor(p);
@@ -2787,6 +2795,74 @@ function renderProviders() {
   view.scrollTop = top; // first: a closing dialog folds into its row where it is
   if (dialog) openModal(dialog); else closeModal();
 }
+
+// providerHandle is an on row's logo, which is also its handle (#499):
+// drag it to move the row among the ones on, Alt+↑/↓ moves it from the
+// keyboard, and a click opens the row as a click anywhere on it does. The
+// grip that says so is drawn in the row's margin on hover (app.css). The
+// order is the one providers are tried in too: a model several serve goes
+// to the higher one first.
+let providerArranging = false;
+function providerHandle(p, row) {
+  const b = el("button", "ag-handle pv-handle");
+  b.type = "button";
+  b.setAttribute("aria-label", t("Arrange {agent}", { agent: p.name }));
+  b.title = t("Drag to reorder — a model several providers serve goes to the higher one first · Alt+↑/↓ to move");
+  b.append(icon(p.icon || "generic"));
+  b.onkeydown = (e) => {
+    if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const ids = providers.providers.filter((x) => !x.off).map((x) => x.id);
+    arrangeProvider(p.id, ids.indexOf(p.id) + (e.key === "ArrowUp" ? -1 : 1), true);
+  };
+  // the click that ends a drag doesn't open the row
+  b.addEventListener("click", (e) => { if (b.dataset.dragged) { e.stopPropagation(); e.preventDefault(); } });
+  b.onpointerdown = (e) => {
+    if (providerArranging) return;
+    const list = $("#providers");
+    providerArranging = dragRows(e, b, row, list, [...list.children].filter((r) => r.classList.contains("provider")),
+      (to) => arrangeProvider(p.id, to), closeProtoMenu, () => {
+        providerArranging = false;
+        if (accountRenderPending && !accountArranging) { accountRenderPending = false; renderProviders(); }
+      });
+  };
+  return b;
+}
+
+// arrangeProvider puts the provider at index `to` among the ones on; the
+// ones switched off keep their places among the rest. The list is drawn in
+// its new order at once and put back if the save fails.
+async function arrangeProvider(id, to, keyboard) {
+  const prev = providers;
+  const on = prev.providers.filter((p) => !p.off).map((p) => p.id);
+  const from = on.indexOf(id);
+  if (from < 0 || to < 0 || to >= on.length || to === from) return;
+  on.splice(to, 0, ...on.splice(from, 1));
+  let k = 0;
+  const order = prev.providers.map((p) => (p.off ? p.id : on[k++]));
+  const byId = new Map(prev.providers.map((p) => [p.id, p]));
+  const handle = () => $(`#providers .row.provider[data-id="${CSS.escape(id)}"] .pv-handle`);
+  providers = { ...prev, providers: order.map((x) => byId.get(x)) };
+  renderProviders();
+  if (keyboard) handle()?.focus({ preventScroll: true });
+  const seq = ++providerArrangeSeq;
+  let next;
+  try {
+    next = await api("providers/arrange", { order });
+    status(t("Provider order saved"), "ok");
+  } catch (e) {
+    next = prev;
+    status(e.message, "err");
+  }
+  // a later move, made while this one was saved, has the last word
+  if (seq !== providerArrangeSeq) return;
+  const held = document.activeElement === handle();
+  providers = next;
+  renderProviders();
+  if (held) handle()?.focus({ preventScroll: true });
+}
+let providerArrangeSeq = 0;
 
 // providerSwitch turns a provider off and on (#163): off, it stays with its
 // keys and settings, but agents are given none of its models and no request

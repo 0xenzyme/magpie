@@ -72,6 +72,11 @@ func Rename(from, to string) error {
 			f.Providers[j].Fallback[k] = renamedRef(m, from, to)
 		}
 	}
+	for j, id := range f.Order {
+		if id == from {
+			f.Order[j] = to
+		}
+	}
 	for j := range f.Groups {
 		g := &f.Groups[j]
 		for k, m := range g.Members {

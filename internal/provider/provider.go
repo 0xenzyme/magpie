@@ -192,6 +192,10 @@ type file struct {
 	// NoAutoGroups: the user turned off the groups magpie finds on its
 	// own (SetAutoGroups); the groups they made or changed stay.
 	NoAutoGroups bool `json:"noAutoGroups,omitempty"`
+	// Order is the order the user put the providers in on the Providers
+	// tab (#499), by id; one not in it follows those that are, in the
+	// order it was added (see SetOrder).
+	Order []string `json:"order,omitempty"`
 }
 
 // Path is the file the user's providers live in.
@@ -276,7 +280,8 @@ func store(f file) error {
 // the signed-in agents. An entry in the file with no URL is only the
 // model picks for one of those accounts.
 func All() []Provider {
-	stored := load().Providers
+	f := load()
+	stored := f.Providers
 	picks := map[string]Provider{}
 	var out []Provider
 	for _, p := range stored {
@@ -302,7 +307,7 @@ func All() []Provider {
 		}
 		out = append(out, a)
 	}
-	return out
+	return ordered(out, f.Order)
 }
 
 // Hidden lists the signed-in accounts the user removed from magpie.

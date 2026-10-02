@@ -416,6 +416,15 @@ body.window .agent-fold-cap { padding: 10px 14px 3px; }
 #agents.sorting .ag-handle { cursor: grabbing; }
 #agents > .row.dragging { position: relative; z-index: 2; background: var(--card); box-shadow: 0 6px 18px rgba(20, 22, 30, .12), 0 0 0 1px var(--line); border-radius: 8px; }
 #agents > .row.dragging { transition: none; }
+/* a provider on is moved as an agent is (#499): its logo is the handle,
+   the grip in its margin drawn only with the pointer on the row */
+#providers > .row .pv-handle { position: relative; }
+#providers > .row .pv-handle::before { content: ""; position: absolute; left: -6px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; opacity: 0; transition: opacity .15s; }
+#providers > .row:is(:hover, .dragging) .pv-handle::before, #providers > .row .pv-handle:focus-visible::before { opacity: 1; }
+#providers.sorting { user-select: none; -webkit-user-select: none; }
+#providers.sorting > .row { transition: transform .22s cubic-bezier(.22, 1, .36, 1); }
+#providers.sorting .pv-handle { cursor: grabbing; }
+#providers > .row.dragging { position: relative; z-index: 2; background: var(--card); box-shadow: 0 6px 18px rgba(20, 22, 30, .12), 0 0 0 1px var(--line); border-radius: 8px; transition: none; }
 
 .pop.row-menu { width: auto; min-width: 176px; max-height: none; padding: 4px; border: 1px solid var(--line); display: grid; gap: 1px; }
 .row-menu .rm-item { display: flex; align-items: center; gap: 8px; width: 100%; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--fg); font: inherit; font-size: 12.5px; text-align: left; cursor: default; outline: none; }

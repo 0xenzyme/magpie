@@ -496,6 +496,20 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 	mux.HandleFunc("GET /api/providers", func(rw http.ResponseWriter, r *http.Request) {
 		writeJSON(rw, providersState())
 	})
+	// the order the Providers tab lists them in, which is the order they
+	// are tried in too (#499)
+	mux.HandleFunc("POST /api/providers/arrange", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ Order []string }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		if err := provider.SetOrder(in.Order); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, providersState())
+	})
 	// a picture for a provider, picked in the editor: kept by content before
 	// the provider is saved, which then points at it. The page sends it as
 	// base64 in JSON — the app's web view hands a scheme handler no body for
