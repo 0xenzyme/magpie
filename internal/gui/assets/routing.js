@@ -161,6 +161,11 @@
   }
   const tokens = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(Math.round(n));
   const pct = (n) => Math.round(n) + "%";
+  // an account's window as Settings' allowance display has it, how much is
+  // used or how much is left, the bar filling with the same (#602)
+  const share = (w) => quotaLeft ? 100 - Math.max(0, Math.min(100, w.used)) : w.used;
+  const quota = (w, used, left, vars) => t(quotaLeft ? left : used, { n: pct(share(w)), ...vars });
+  const fill = (w) => Math.max(0, Math.min(100, share(w))) + "%";
   const FAIL = { rate: "rate limited", credit: "out of credit", quota: "quota used up", other: "failed", canceled: "canceled", foreign: "another account's reasoning", floor: "reply too short", verify: "needs verification", refused: "refused (safety filter)", shape: "request not understood", proxy: "proxy not reachable", effort: "reasoning effort not in its plan" };
   const failWord = (why) => t(FAIL[why] || "failed");
   const API = { anthropic: "Anthropic", chat: "OpenAI", responses: "OpenAI Responses", gemini: "Gemini" };
@@ -973,9 +978,9 @@
       else if (gave.has(id)) s = t("{status} · {fail} · passed to {agent}", { status: gave.get(id).status, fail: failWord(gave.get(id).fail), agent: agentName(r.agent) });
       else if (w.kind === "account" && w.known) {
         const soon = renews(w)[0];
-        s = !w.routing && w.used >= 98 ? t("{n} used · all but used up", { n: pct(w.used) })
-          : !w.routing && w.used >= 90 ? t("{n} used · kept for last", { n: pct(w.used) })
-          : soon ? t("{n} used · renews in {d}", { n: pct(w.used), d: dur(soon - n) }) : t("{n} used", { n: pct(w.used) });
+        s = !w.routing && w.used >= 98 ? quota(w, "{n} used · all but used up", "{n} left · all but used up")
+          : !w.routing && w.used >= 90 ? quota(w, "{n} used · kept for last", "{n} left · kept for last")
+          : soon ? quota(w, "{n} used · renews in {d}", "{n} left · renews in {d}", { d: dur(soon - n) }) : quota(w, "{n} used", "{n} left");
       } else if (w.kind === "account") s = t("what's left not known yet");
       else if (w.routing === "usage") s = t("{n} tokens lately", { n: tokens(w.tokens || 0) });
       else if (w.aside) s = t("{api} only · after the others", { api: API[w.speaks] || w.speaks || t("any API") });
@@ -984,7 +989,7 @@
       if (row.st.textContent !== s) row.st.textContent = s;
       const bar = w.kind === "account" && w.known;
       row.li.classList.toggle("nobar", !bar);
-      row.bi.style.width = bar ? Math.min(100, w.used) + "%" : "0";
+      row.bi.style.width = bar ? fill(w) : "0";
       const on = !resting && (trying.has(id) || answered.has(id) || onWire.has(id));
       row.li.classList.toggle("on", on);
       row.li.classList.toggle("low", !!(!w.routing && w.known && w.used >= 90));
@@ -1504,8 +1509,8 @@
       else if (w.unlisted) { st = unlistedWord(w); cls = "left"; }
       else if (w.kind === "account" && w.known) {
         const soon = renews(w)[0];
-        st = soon && soon <= n ? t("{n} used at {time}; it has renewed since", { n: pct(w.used), time: clock(a.at) })
-          : (soon ? t("{n} used · renews in {d}", { n: pct(w.used), d: dur(soon - n) }) : t("{n} used", { n: pct(w.used) })) + " · " + t("as of {time}", { time: clock(a.at) });
+        st = soon && soon <= n ? quota(w, "{n} used at {time}; it has renewed since", "{n} left at {time}; it has renewed since", { time: clock(a.at) })
+          : (soon ? quota(w, "{n} used · renews in {d}", "{n} left · renews in {d}", { d: dur(soon - n) }) : quota(w, "{n} used", "{n} left")) + " · " + t("as of {time}", { time: clock(a.at) });
       } else if (w.kind === "account") st = t("what's left not known yet");
       else st = "";
       const tally = el("div", "tally");
@@ -1538,7 +1543,7 @@
       }
       if (w.kind === "account" && w.known) {
         const bar = el("div", "bar"), bi = el("i");
-        bi.style.width = Math.min(100, w.used) + "%";
+        bi.style.width = fill(w);
         bar.append(bi);
         row.append(bar);
       }
