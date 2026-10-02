@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -156,6 +157,42 @@ func searchFound(tools []rTool) string {
 
 // flatName is the name a namespaced tool is offered to a model under,
 // namespace__name, the same a Grok subscription is offered it under.
+// unsealed is a tool's parameters without the "encrypted" marks Codex puts
+// on some (spawn_agent's message): a translated request's calls go back to
+// Codex as unsealed (callTo's encrypted_function_args), so an upstream that
+// honours the mark must not seal them (#613).
+func unsealed(schema json.RawMessage) json.RawMessage {
+	if !bytes.Contains(schema, []byte(`"encrypted"`)) {
+		return schema
+	}
+	var v any
+	if json.Unmarshal(schema, &v) != nil {
+		return schema
+	}
+	var strip func(any)
+	strip = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			if _, ok := x["encrypted"].(bool); ok {
+				delete(x, "encrypted")
+			}
+			for _, c := range x {
+				strip(c)
+			}
+		case []any:
+			for _, c := range x {
+				strip(c)
+			}
+		}
+	}
+	strip(v)
+	out, err := marshalPlain(v)
+	if err != nil {
+		return schema
+	}
+	return out
+}
+
 func flatName(namespace, name string) string {
 	return provider.FlatName(namespace, name)
 }
@@ -333,7 +370,7 @@ func parseResponses(body []byte) (*Request, error) {
 		}
 		switch t.Type {
 		case "function":
-			offer(i, Tool{Name: t.Name, Description: t.Description, Schema: t.Parameters, Strict: t.Strict != nil && *t.Strict}, nsTool{})
+			offer(i, Tool{Name: t.Name, Description: t.Description, Schema: unsealed(t.Parameters), Strict: t.Strict != nil && *t.Strict}, nsTool{})
 		case "custom":
 			offer(i, Tool{Name: t.Name, Description: customDescription(t), Schema: customSchema}, nsTool{Name: t.Name, Custom: true})
 		case "namespace":
@@ -343,7 +380,7 @@ func parseResponses(body []byte) (*Request, error) {
 				flat := flatName(t.Name, nt.Name)
 				switch nt.Type {
 				case "function":
-					offer(i, Tool{Name: flat, Description: nt.Description, Schema: nt.Parameters, Strict: nt.Strict != nil && *nt.Strict}, nsTool{Namespace: t.Name, Name: nt.Name})
+					offer(i, Tool{Name: flat, Description: nt.Description, Schema: unsealed(nt.Parameters), Strict: nt.Strict != nil && *nt.Strict}, nsTool{Namespace: t.Name, Name: nt.Name})
 				case "custom":
 					offer(i, Tool{Name: flat, Description: customDescription(nt), Schema: customSchema}, nsTool{Namespace: t.Name, Name: nt.Name, Custom: true})
 				}

@@ -29,6 +29,12 @@ func TestNamespacedCallKeepsArgsWhenSearchTakesOver(t *testing.T) {
 			http.Error(w, `{"error":{"message":"no spawn_agent: `+strings.ReplaceAll(string(b), `"`, `'`)+`"}}`, 400)
 			return
 		}
+		// its calls go back to Codex as unsealed, so the upstream isn't
+		// asked to seal them
+		if strings.Contains(string(b), `"encrypted"`) {
+			http.Error(w, `{"error":{"message":"sealed message asked for"}}`, 400)
+			return
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		io.WriteString(w, sse(
 			`data: {"type":"response.created","response":{"id":"r1","model":"m"}}`,
