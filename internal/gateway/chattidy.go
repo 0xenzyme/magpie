@@ -301,3 +301,134 @@ func (t *chatWhole) flush() []byte {
 	}
 	return nb
 }
+
+// messageReasoning are the fields a Chat client sends an earlier
+// assistant turn's thinking back in: reasoning_content (DeepSeek's, which
+// OpenCode and most clients send), reasoning (OpenRouter's) and
+// reasoning_details (OpenRouter's structured one). DeepSeek, Kimi and the
+// like want it back; Mistral turns each away as extra_forbidden (#494).
+var messageReasoning = []string{"reasoning_content", "reasoning", "reasoning_details"}
+
+// reasoningText is the thinking a message carries in messageReasoning:
+// reasoning_content, else reasoning, else reasoning_details' text.
+func reasoningText(m map[string]json.RawMessage) string {
+	for _, f := range messageReasoning[:2] {
+		var s string
+		if json.Unmarshal(m[f], &s) == nil && s != "" {
+			return s
+		}
+	}
+	var details []struct {
+		Text    string `json:"text"`
+		Summary string `json:"summary"`
+	}
+	json.Unmarshal(m["reasoning_details"], &details)
+	var b strings.Builder
+	for _, d := range details {
+		if d.Text != "" {
+			b.WriteString(d.Text)
+		} else {
+			b.WriteString(d.Summary)
+		}
+	}
+	return b.String()
+}
+
+// editMessages hands each message of a Chat request whose JSON names any
+// of fields to edit, and puts back those edit reports it changed; every
+// other message keeps its bytes. The body comes back as it was if nothing
+// changed.
+func editMessages(body []byte, fields []string, edit func(m map[string]json.RawMessage) bool) []byte {
+	has := false
+	for _, f := range fields {
+		has = has || bytes.Contains(body, []byte(`"`+f+`"`))
+	}
+	if !has {
+		return body
+	}
+	var q map[string]json.RawMessage
+	if json.Unmarshal(body, &q) != nil {
+		return body
+	}
+	var msgs []json.RawMessage
+	if json.Unmarshal(q["messages"], &msgs) != nil {
+		return body
+	}
+	changed := false
+	for i, raw := range msgs {
+		var m map[string]json.RawMessage
+		if json.Unmarshal(raw, &m) != nil || !edit(m) {
+			continue
+		}
+		if nb, err := marshalPlain(m); err == nil {
+			msgs[i], changed = nb, true
+		}
+	}
+	if !changed {
+		return body
+	}
+	q["messages"], _ = marshalPlain(msgs)
+	nb, err := marshalPlain(q)
+	if err != nil {
+		return body
+	}
+	return nb
+}
+
+// withoutMessageFields leaves fields out of every message of a Chat
+// request.
+func withoutMessageFields(body []byte, fields ...string) []byte {
+	return editMessages(body, fields, func(m map[string]json.RawMessage) bool {
+		changed := false
+		for _, f := range fields {
+			if _, ok := m[f]; ok {
+				delete(m, f)
+				changed = true
+			}
+		}
+		return changed
+	})
+}
+
+// mistralThinking puts an assistant turn's thinking, sent back in
+// reasoning_content (or reasoning, reasoning_details) as OpenCode does,
+// into the typed thinking part Mistral itself returns it in, ahead of the
+// turn's content: Mistral turns those fields away with 422 extra_forbidden
+// (#494) and takes the part, so the thinking stays in context. A turn
+// with tool calls and no text has the thinking part alone for content.
+func mistralThinking(body []byte) []byte {
+	return editMessages(body, messageReasoning, func(m map[string]json.RawMessage) bool {
+		had := false
+		for _, f := range messageReasoning {
+			_, ok := m[f]
+			had = had || ok
+		}
+		if !had {
+			return false
+		}
+		think := reasoningText(m)
+		for _, f := range messageReasoning {
+			delete(m, f)
+		}
+		var role string
+		json.Unmarshal(m["role"], &role)
+		if think == "" || role != "assistant" {
+			return true
+		}
+		thinking, _ := marshalPlain(map[string]any{"type": "thinking",
+			"thinking": []map[string]string{{"type": "text", "text": think}}})
+		parts := []json.RawMessage{thinking}
+		c := bytes.TrimSpace(m["content"])
+		var list []json.RawMessage
+		var s string
+		switch {
+		case len(c) > 0 && c[0] == '[' && json.Unmarshal(c, &list) == nil:
+			parts = append(parts, list...)
+		case json.Unmarshal(c, &s) == nil && s != "":
+			text, _ := marshalPlain(map[string]string{"type": "text", "text": s})
+			parts = append(parts, text)
+		}
+		m["content"], _ = marshalPlain(parts)
+		return true
+	})
+}

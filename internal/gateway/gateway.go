@@ -1716,6 +1716,11 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		}
 	case provider.Chat:
 		body = developerAsSystem(body)
+		if p.Preset == "mistral" || p.Host() == "api.mistral.ai" {
+			// an earlier turn's reasoning_content, which Mistral turns
+			// away, as the thinking part it takes (#494)
+			body = mistralThinking(body)
+		}
 		if strings.HasSuffix(p.Host(), "openai.com") || p.IsAzure() {
 			// Qwen's switch and Kimi Code's (thinking: {type: …}), which
 			// OpenAI turns away as arguments it doesn't know, and Azure
@@ -1776,11 +1781,21 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		res.Body.Close()
 		res.Body = io.NopCloser(bytes.NewReader(b))
 		fs := refusedOptional(res.StatusCode, b, body)
-		if len(fs) == 0 {
+		// and an earlier turn's thinking sent back inside messages, which
+		// DeepSeek and Kimi want and a stricter vendor turns away (#494)
+		var ms []string
+		if proto == provider.Chat {
+			ms = refusedInMessages(res.StatusCode, b, body)
+		}
+		if len(fs) == 0 && len(ms) == 0 {
 			break
 		}
 		refused = append(refused, fs...)
 		body = withoutFields(body, fs...)
+		for _, f := range ms {
+			refused = append(refused, messageField(f))
+		}
+		body = withoutMessageFields(body, ms...)
 		if res, err = s.forward(r.Context(), p, proto, path, p.Prepare(body), r.Header); err != nil {
 			return writeError(w, proto, 502, p.Name+": "+err.Error()), err.Error(), true
 		}
@@ -2332,10 +2347,64 @@ func (s *Server) withoutRefused(providerID string, proto provider.Protocol, body
 			drop = append(drop, f)
 		}
 	}
-	if len(drop) == 0 {
+	if len(drop) > 0 {
+		body = withoutFields(body, drop...)
+	}
+	if proto != provider.Chat {
 		return body
 	}
-	return withoutFields(body, drop...)
+	var ms []string
+	for _, f := range messageReasoning {
+		if !s.fits(providerID, messageField(f), proto) {
+			ms = append(ms, f)
+		}
+	}
+	return withoutMessageFields(body, ms...)
+}
+
+// messageField is the name a field of a request's messages is remembered
+// under in unfit once a provider has refused it.
+func messageField(f string) string { return "messages[]." + f }
+
+// refusedInMessages lists the thinking fields (messageReasoning) an
+// upstream turned a Chat request away for where its messages carry them:
+// extra_forbidden located in the messages, as Mistral's loc ["body",
+// "messages",2,"assistant","reasoning_content"] (#494).
+func refusedInMessages(status int, msg, body []byte) []string {
+	if !badRequest(status) {
+		return nil
+	}
+	var fault any
+	if i := bytes.IndexByte(msg, '{'); i < 0 || json.Unmarshal(msg[i:], &fault) != nil {
+		return nil
+	}
+	var out []string
+	var walk func(v any)
+	walk = func(v any) {
+		switch v := v.(type) {
+		case []any:
+			for _, x := range v {
+				walk(x)
+			}
+		case map[string]any:
+			if loc, _ := v["loc"].([]any); v["type"] == "extra_forbidden" && len(loc) >= 2 {
+				if loc[0] == "body" {
+					loc = loc[1:]
+				}
+				f, _ := loc[len(loc)-1].(string)
+				if loc[0] == "messages" && slices.Contains(messageReasoning, f) && !slices.Contains(out, f) &&
+					bytes.Contains(body, []byte(`"`+f+`"`)) {
+					out = append(out, f)
+				}
+				return
+			}
+			for _, x := range v {
+				walk(x)
+			}
+		}
+	}
+	walk(fault)
+	return out
 }
 
 // badRequest is a status an upstream refuses a request's contents with.
