@@ -1,17 +1,19 @@
 package provider
 
-// ZCode's Start Plan serves only what looks like the ZCode app's own
-// request: one without ZCode's system prompt is turned away with 405
-// "request has been blocked due to unusual activity", code 3012 (#425).
-// So a Start Plan request goes as ZCode sends it: the app's system prompt
-// first, three blocks (its opening line; its identity and desktop
-// context; "\n\n" and its dynamic sections around the environment), each
-// cached, the agent's own system prompt after them; the day in a
-// <system-reminder> before the first user turn; and the app's headers.
-// The text is ZCode 3.11's (zcode_prompt.json), as zcode2api
-// (github.com/a137460387/zcode2api, src/upstream/system-prompt.js,
-// zcode-system.json, headers.js) takes it from the app. The GLM Coding
-// Plan, and every other provider, get the agent's request as it is.
+// ZCode's Start Plan serves only what looks like ZCode's own request: one
+// without ZCode's system prompt is turned away with 405 "request has been
+// blocked due to unusual activity", code 3012 (#425), and one dressed as
+// the desktop app still was for some, where what the ZCode CLI sends got
+// through. So a Start Plan request goes as the ZCode 3.14.3 CLI sends it:
+// its system prompt first, three blocks (its opening line; its identity,
+// without the desktop context only the app adds; "\n\n" and its dynamic
+// sections around the environment), each cached, the agent's own system
+// prompt after them; the day in a <system-reminder> before the first user
+// turn; and the CLI's headers (zcodeSourceHeaders). The text
+// (zcode_prompt.json) and how it is put together are ZCode's own source
+// (github.com/zai-org/ZCode, apps/zcode-cli/packages/core/src/context).
+// The GLM Coding Plan, and every other provider, get the agent's request
+// as it is.
 
 import (
 	_ "embed"
@@ -56,7 +58,7 @@ var zcodePrompt = func() (p struct {
 	return p
 }()
 
-// zcodePlatform is the platform as ZCode (Electron) names it.
+// zcodePlatform is the platform as ZCode (Node's process.platform) names it.
 func zcodePlatform() string {
 	if runtime.GOOS == "windows" {
 		return "win32"
@@ -64,9 +66,40 @@ func zcodePlatform() string {
 	return runtime.GOOS
 }
 
-// zcodeEnvironment is the prompt's environment section. Where the agent
-// runs isn't magpie's to say, so that is left unknown.
-func zcodeEnvironment(model string) string {
+// zcodeArch is the architecture as ZCode (Node's os.arch()) names it.
+func zcodeArch() string {
+	switch runtime.GOARCH {
+	case "amd64":
+		return "x64"
+	case "386":
+		return "ia32"
+	}
+	return runtime.GOARCH
+}
+
+// zcodeOSVersion is the prompt's OS Version as ZCode gives it: "darwin
+// 25.2.0 arm64".
+func zcodeOSVersion() string {
+	parts := []string{zcodePlatform()}
+	if r := zcodeOSRelease(); r != "" {
+		parts = append(parts, r)
+	}
+	return strings.Join(append(parts, zcodeArch()), " ")
+}
+
+// zcodeStartProvider is ZCode's id for the Start Plan of an account on
+// base, as the powered-by line names it.
+func zcodeStartProvider(base string) string {
+	if base == ZCodeBigModelBase {
+		return "account:bigmodel-start-plan"
+	}
+	return "account:zai-start-plan"
+}
+
+// zcodeEnvironment is the prompt's environment section for model on
+// provider. Where the agent runs isn't magpie's to say, so that is left
+// unknown.
+func zcodeEnvironment(provider, model string) string {
 	e := zcodePrompt.Environment
 	shell := "unknown"
 	if s := os.Getenv("SHELL"); s != "" {
@@ -81,38 +114,39 @@ func zcodeEnvironment(model string) string {
 		"- " + e.GitLabel + ": " + e.GitNo,
 		"- " + e.PlatformLabel + ": " + zcodePlatform(),
 		"- " + e.ShellLabel + ": " + shell,
-		"- " + e.OSVersionLabel + ": unknown",
+		"- " + e.OSVersionLabel + ": " + zcodeOSVersion(),
 	}
 	if model != "" {
-		lines = append(lines, strings.NewReplacer("{provider}", "bigmodel-api", "{model}", strings.ToLower(model)).Replace(e.PoweredByLine))
+		lines = append(lines, strings.NewReplacer("{provider}", provider, "{model}", model).Replace(e.PoweredByLine))
 	}
 	return strings.Join(lines, "\n")
 }
 
-// zcodeSystem is ZCode's three system blocks for model.
-func zcodeSystem(model string) []any {
+// zcodeSystem is ZCode's three system blocks for model on provider.
+func zcodeSystem(provider, model string) []any {
 	cached := func(text string) map[string]any {
 		return map[string]any{"type": "text", "text": text, "cache_control": map[string]any{"type": "ephemeral"}}
 	}
-	dynamic := strings.Join([]string{zcodePrompt.BeforeEnvironment, zcodeEnvironment(model), zcodePrompt.AfterEnvironment}, "\n\n")
+	dynamic := strings.Join([]string{zcodePrompt.BeforeEnvironment, zcodeEnvironment(provider, model), zcodePrompt.AfterEnvironment}, "\n\n")
 	return []any{cached(zcodePrompt.Prefix), cached(zcodePrompt.Stable), cached("\n\n" + dynamic)}
 }
 
-// zcodeDateReminder is what ZCode puts before the first user turn.
+// zcodeDateReminder is what ZCode puts before the first user turn, wrapped
+// as its context prefix is: each tag on a line of its own, a newline after.
 func zcodeDateReminder(now time.Time) map[string]any {
 	c := zcodePrompt.Context
 	text := strings.Join([]string{c.Intro, c.CurrentDateHeading + "\n" + strings.ReplaceAll(c.CurrentDateLine, "{date}", now.Format("2006-01-02")), "", c.Outro}, "\n")
-	return map[string]any{"type": "text", "text": "<system-reminder>" + text + "</system-reminder>"}
+	return map[string]any{"type": "text", "text": "<system-reminder>\n" + text + "\n</system-reminder>\n"}
 }
 
 // zcodeStartBody is an Anthropic messages request as ZCode would send it
-// to the Start Plan: ZCode's system blocks before the agent's, the date
+// to the Start Plan, provider (zcodeStartProvider) serving it: ZCode's system blocks before the agent's, the date
 // before the first user turn when nothing is reminded there already. As
 // ZCode's blocks take three of the four cache breakpoints Anthropic's API
 // allows, the agent's are dropped from its system and tools, and only its
 // last in the messages is kept. A body that isn't one, or already starts
 // with ZCode's prompt, is left as it is.
-func zcodeStartBody(body []byte, now time.Time) []byte {
+func zcodeStartBody(body []byte, provider string, now time.Time) []byte {
 	var m map[string]json.RawMessage
 	if json.Unmarshal(body, &m) != nil || m["messages"] == nil {
 		return body
@@ -141,7 +175,7 @@ func zcodeStartBody(body []byte, now time.Time) []byte {
 			delete(b, "cache_control")
 		}
 	}
-	system, _ := zcodeEncode(append(zcodeSystem(model), own...))
+	system, _ := zcodeEncode(append(zcodeSystem(provider, model), own...))
 
 	var msgs []map[string]any
 	if zcodeDecode(m["messages"], &msgs) != nil {

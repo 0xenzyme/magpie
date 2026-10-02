@@ -27,7 +27,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -145,28 +144,31 @@ func zcodeRebase(req *http.Request, from, to string) {
 	}
 }
 
-// zcodeSourceHeaders are the headers ZCode names itself with on a model
-// request to the Start Plan (zcode_client.go), as zcode2api found them
-// (src/upstream/headers.js): the app, its agent and release, the
-// machine, the language and time zone, a new request and trace id, and
-// no query or session id.
+// zcodeSourceHeaders are the headers the ZCode CLI names itself with on a
+// model request to the Start Plan (zcode_client.go), as its source has
+// them (apps/zcode-cli/packages/bootstrap/src/model-config.ts,
+// runtime-platform-headers.ts; adapters/src/model/runner-attribution.ts):
+// the CLI ("Z Code@cli", the app's own agent being "@electron") and its
+// SDK, its agent and release, the machine and its OS release, the
+// language and time zone, a new request and trace id, and no query or
+// session id. No X-Device-Mid: ZCode sends that to its own APIs, never
+// with a model request.
 func zcodeSourceHeaders(req *http.Request) {
 	platform := zcodePlatform()
-	arch := runtime.GOARCH
-	if arch == "amd64" {
-		arch = "x64"
-	}
 	category := map[string]string{"darwin": "macos", "win32": "windows"}[platform]
 	if category == "" {
 		category = "linux"
 	}
 	req.Header.Set("User-Agent", "ZCode/"+zcodeAppVersion+" ai-sdk/anthropic/3.0.81")
 	req.Header.Set("X-ZCode-App-Version", zcodeAppVersion)
-	req.Header.Set("X-Title", "Z Code@electron")
+	req.Header.Set("X-Title", "Z Code@cli")
 	req.Header.Set("X-ZCode-Agent", "glm")
 	req.Header.Set("HTTP-Referer", zcodeAPI)
-	req.Header.Set("X-Platform", platform+"-"+arch)
+	req.Header.Set("X-Platform", platform+"-"+zcodeArch())
 	req.Header.Set("X-Os-Category", category)
+	if r := zcodeOSRelease(); r != "" {
+		req.Header.Set("X-Os-Version", r)
+	}
 	req.Header.Set("X-Release-Channel", "production")
 	req.Header.Set("X-Client-Language", zcodeLanguage())
 	if tz := zcodeTimezone(); tz != "" {
@@ -175,7 +177,6 @@ func zcodeSourceHeaders(req *http.Request) {
 	req.Header.Set("X-Request-Id", randomUUID())
 	req.Header.Set("X-ZCode-Session-Type", "main")
 	req.Header.Set("X-ZCode-Trace-Id", randomUUID())
-	zcodeDeviceHeader(req)
 }
 
 // zcodeLanguage is the user's language as ZCode gives it (zh-CN, en-US).
@@ -205,13 +206,13 @@ func zcodeTimezone() string {
 
 // zcodeStartRequest makes req, a request to the Start Plan, ZCode's own:
 // its headers, and a model request's body shaped as ZCode's
-// (zcodeStartBody).
-func zcodeStartRequest(req *http.Request, body []byte) {
+// (zcodeStartBody) for an account on base.
+func zcodeStartRequest(req *http.Request, base string, body []byte) {
 	zcodeSourceHeaders(req)
 	if len(body) == 0 || !strings.HasSuffix(req.URL.Path, "/v1/messages") {
 		return
 	}
-	nb := zcodeStartBody(body, time.Now())
+	nb := zcodeStartBody(body, zcodeStartProvider(base), time.Now())
 	req.Body = io.NopCloser(bytes.NewReader(nb))
 	req.ContentLength = int64(len(nb))
 	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(nb)), nil }

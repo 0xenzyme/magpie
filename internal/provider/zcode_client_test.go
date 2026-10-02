@@ -40,12 +40,14 @@ func countCached(v any) int {
 }
 
 // ZCode's Start Plan turns away a request without ZCode's own system
-// prompt as unusual activity (#425, 405 / 3012), as zcode2api found. A
-// Start Plan request reaches zcode.z.ai as the ZCode app sends it: its
-// three cached system blocks before the agent's own, the day reminded
-// before the first turn, at most four cache breakpoints, and the app's
-// headers; the rest of the request as the agent sent it. A Coding Plan
-// account's request goes as it is.
+// prompt as unusual activity (#425, 405 / 3012), and dressed as the desktop
+// app some still were (miaopasi and ARNO on Discord). A Start Plan request
+// reaches zcode.z.ai as the ZCode CLI sends it: its three cached system
+// blocks (no desktop context) before the agent's own, the day reminded
+// before the first turn, at most four cache breakpoints, and the CLI's
+// headers, the token as a Bearer only and no X-Device-Mid; the rest of the
+// request as the agent sent it. A Coding Plan account's request goes as it
+// is.
 func TestZCodeStartSentAsTheApp(t *testing.T) {
 	signIn(t)
 	t.Setenv("LANG", "zh_CN.UTF-8")
@@ -76,19 +78,20 @@ func TestZCodeStartSentAsTheApp(t *testing.T) {
 	h := u.model.Header
 	for k, want := range map[string]string{
 		"User-Agent": "ZCode/" + zcodeAppVersion + " ai-sdk/anthropic/3.0.81", "X-ZCode-App-Version": zcodeAppVersion,
-		"X-Title": "Z Code@electron", "X-ZCode-Agent": "glm", "X-ZCode-Session-Type": "main", "X-Release-Channel": "production",
+		"X-Title": "Z Code@cli", "X-ZCode-Agent": "glm", "X-ZCode-Session-Type": "main", "X-Release-Channel": "production",
 		"X-Client-Language": "zh-CN", "X-Client-Timezone": "Asia/Shanghai", "HTTP-Referer": zcodeAPI, "Authorization": "Bearer " + jwt,
+		"X-Platform": zcodePlatform() + "-" + zcodeArch(), "X-Os-Version": zcodeOSRelease(),
 	} {
 		if got := h.Get(k); got != want {
 			t.Errorf("%s: %q, want %q", k, got, want)
 		}
 	}
-	for _, k := range []string{"X-Request-Id", "X-ZCode-Trace-Id", "X-Platform", "X-Os-Category", "X-Device-Mid"} {
+	for _, k := range []string{"X-Request-Id", "X-ZCode-Trace-Id", "X-Os-Category", "X-Os-Version"} {
 		if h.Get(k) == "" {
 			t.Errorf("no %s", k)
 		}
 	}
-	for _, k := range []string{"X-Session-Id", "X-Query-Id"} {
+	for _, k := range []string{"X-Session-Id", "X-Query-Id", "X-Device-Mid", "X-Api-Key"} {
 		if h.Get(k) != "" {
 			t.Errorf("%s sent", k)
 		}
@@ -120,10 +123,12 @@ func TestZCodeStartSentAsTheApp(t *testing.T) {
 	}
 	if len(got.System) != 5 || got.System[0].Text != "You are ZCode, an interactive coding agent" ||
 		!strings.HasPrefix(got.System[1].Text, "\nYou are an interactive ZCode agent that helps users with software engineering tasks.") ||
-		!strings.Contains(got.System[1].Text, "# ZCode Desktop Context") ||
+		!strings.HasSuffix(got.System[1].Text, "- Reference code as `file_path:line_number` — it's clickable.") ||
+		strings.Contains(got.System[1].Text, "Desktop") ||
 		!strings.HasPrefix(got.System[2].Text, "\n\n# Communicating with the user") ||
 		!strings.Contains(got.System[2].Text, "\n# Environment\nYou have been invoked in the following environment:\n") ||
-		!strings.Contains(got.System[2].Text, "- You are powered by the model named bigmodel-api/glm-5.3-flash.") ||
+		!strings.Contains(got.System[2].Text, "\n- OS Version: "+zcodePlatform()+" "+zcodeOSRelease()+" "+zcodeArch()+"\n") ||
+		!strings.Contains(got.System[2].Text, "- You are powered by the model named account:zai-start-plan/GLM-5.3-Flash.") ||
 		!strings.HasSuffix(got.System[2].Text, "may have a different cause.") {
 		t.Fatalf("ZCode's system prompt: %s", u.body)
 	}
@@ -136,7 +141,8 @@ func TestZCodeStartSentAsTheApp(t *testing.T) {
 		t.Fatalf("the agent's system prompt: %+v", got.System[3:])
 	}
 	first := got.Messages[0].Content
-	if len(first) != 2 || !strings.HasPrefix(first[0].Text, "<system-reminder>As you answer the user's questions") ||
+	if len(first) != 2 || !strings.HasPrefix(first[0].Text, "<system-reminder>\nAs you answer the user's questions") ||
+		!strings.HasSuffix(first[0].Text, "unless it is highly relevant to your task.\n</system-reminder>\n") ||
 		!strings.Contains(first[0].Text, "# currentDate\nToday's date is "+time.Now().Format("2006-01-02")+".") || first[1].Text != "hello" {
 		t.Fatalf("first turn: %+v", first)
 	}
@@ -151,7 +157,7 @@ func TestZCodeStartSentAsTheApp(t *testing.T) {
 	}
 
 	// a request already ZCode's, and one with a reminder of its own, keep it
-	again := zcodeStartBody(u.body, time.Now())
+	again := zcodeStartBody(u.body, "account:zai-start-plan", time.Now())
 	if !bytes.Equal(again, u.body) {
 		t.Fatalf("shaped twice:\n%s\n%s", u.body, again)
 	}
@@ -162,13 +168,13 @@ func TestZCodeStartSentAsTheApp(t *testing.T) {
 			Content []map[string]any `json:"content"`
 		} `json:"messages"`
 	}
-	json.Unmarshal(zcodeStartBody([]byte(own), time.Now()), &o)
+	json.Unmarshal(zcodeStartBody([]byte(own), "account:zai-start-plan", time.Now()), &o)
 	if len(o.System) != 4 || o.System[3]["text"] != "mine" || len(o.Messages[0].Content) != 2 {
 		t.Fatalf("a string system and its own reminder: %+v", o)
 	}
 	// what isn't a messages request is left alone
 	for _, b := range []string{`not json`, `{"model":"GLM-5.2"}`} {
-		if got := zcodeStartBody([]byte(b), time.Now()); string(got) != b {
+		if got := zcodeStartBody([]byte(b), "account:zai-start-plan", time.Now()); string(got) != b {
 			t.Fatalf("%s became %s", b, got)
 		}
 	}

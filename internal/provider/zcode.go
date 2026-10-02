@@ -317,8 +317,12 @@ func zcodeProvider(who, plan string, k zcodeKey) Provider {
 			if zcodeJWTExpired(k.JWT) {
 				return errZCodeExpired
 			}
-			key = k.JWT
-			zcodeStartRequest(req, body)
+			zcodeStartRequest(req, k.Base, body)
+			// the token as a Bearer only, no x-api-key, as a client the
+			// Start Plan still serves sends it
+			req.Header.Del("x-api-key")
+			req.Header.Set("Authorization", "Bearer "+k.JWT)
+			return nil
 		}
 		req.Header.Del("Authorization")
 		req.Header.Set("x-api-key", key)

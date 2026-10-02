@@ -126,7 +126,7 @@ func TestZCodeStartPlanOwnAccount(t *testing.T) {
 	req, _ := http.NewRequest("POST", p.Anthropic+"/v1/messages", nil)
 	req.Header.Set("Authorization", "Bearer magpie")
 	if err := p.Sign(context.Background(), req, Anthropic, []byte(`{}`)); err != nil ||
-		req.Header.Get("x-api-key") != jwt || req.Header.Get("Authorization") != "Bearer "+jwt ||
+		req.Header.Get("x-api-key") != "" || req.Header.Get("Authorization") != "Bearer "+jwt ||
 		req.Header.Get("X-ZCode-App-Version") == "" || req.URL.Path != "/api/v1/zcode-plan/anthropic/v1/messages" {
 		t.Fatalf("signs with ZCode's token: %v %s %v", err, req.URL, req.Header)
 	}
@@ -184,7 +184,7 @@ func TestZCodeStartPlanRouting(t *testing.T) {
 	}
 	// no Coding Plan: the Start Plan, with ZCode's token
 	req := sign()
-	if req.URL.String() != u.srv.URL+"/api/v1/zcode-plan/anthropic/v1/messages?beta=true" || req.Header.Get("x-api-key") != jwt {
+	if req.URL.String() != u.srv.URL+"/api/v1/zcode-plan/anthropic/v1/messages?beta=true" || req.Header.Get("Authorization") != "Bearer "+jwt {
 		t.Fatalf("no coding plan: %s %v", req.URL, req.Header)
 	}
 	if q := zcodeQuota(context.Background(), Login{User: "a@example.com"}, k); q.Plan != "Start Plan" || len(q.Windows) != 1 {
