@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -107,7 +108,9 @@ func (c wbProductConfig) cliModels() []catalog.Model {
 					m.Name = d.Name
 				}
 				m.Context, m.Output = d.MaxInputTokens, d.MaxOutputTokens
-				m.Free = wbFreeCredits(d.Credits)
+				if r, ok := wbCredits(d.Credits); ok {
+					m.Free, m.Rate = r == 0, r
+				}
 				if d.SupportsImages != nil {
 					m.Images, m.ImageInput = *d.SupportsImages, d.SupportsImages
 				}
@@ -127,16 +130,17 @@ func (c wbProductConfig) cliModels() []catalog.Model {
 	return wbDistinctNames(out)
 }
 
-// wbFreeCredits says whether a model's credits are none: "x0.00", "0" or 0.
-// A rate it can't read is not free.
-func wbFreeCredits(raw json.RawMessage) bool {
+// wbCredits reads a model's credits, the multiple WorkBuddy's picker shows
+// by it: "x0.03", "0" or 0; "x0.00" is free. A rate it can't read (or
+// none) is not ok, and the model is neither free nor rated.
+func wbCredits(raw json.RawMessage) (float64, bool) {
 	var s string
 	if json.Unmarshal(raw, &s) != nil {
 		s = string(raw)
 	}
 	s = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(s)), "x")
 	f, err := strconv.ParseFloat(s, 64)
-	return err == nil && f == 0
+	return f, err == nil && f >= 0 && !math.IsInf(f, 1)
 }
 
 // wbDistinctNames tells apart models the config gives the same name:

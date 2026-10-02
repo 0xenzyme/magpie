@@ -29,15 +29,17 @@ type modelJSON struct {
 	Default  string   `json:"default,omitempty"` // its own name, when the user gave it another
 	Kept     []string `json:"kept,omitempty"`    // the reasoning levels the user keeps of Efforts, when not all
 	Efforts  []string `json:"efforts,omitempty"`
-	Given    bool     `json:"given,omitempty"`    // its levels aren't known: Efforts are those it can be given, Kept those it was
-	Images   bool     `json:"images"`             // agents are told it can see images
-	ImageSet bool     `json:"imageSet,omitempty"` // the user said so, rather than its vendor
+	Given    bool     `json:"given,omitempty"`     // its levels aren't known: Efforts are those it can be given, Kept those it was
+	Images   bool     `json:"images"`              // agents are told it can see images
+	ImageSet bool     `json:"imageSet,omitempty"`  // the user said so, rather than its vendor
 	Own      bool     `json:"ownImages,omitempty"` // its vendor's answer, which a staged Restore default shows
-	On       bool     `json:"on"`                 // exposed to agents
+	On       bool     `json:"on"`                  // exposed to agents
 	Context  int      `json:"context,omitempty"`
-	Max      int      `json:"max,omitempty"`  // the most its context may be set to, above Context
-	Free     bool     `json:"free,omitempty"` // costs the subscription nothing
-	API      string   `json:"api,omitempty"`  // the one API the user said it is asked on
+	Max      int      `json:"max,omitempty"`     // the most its context may be set to, above Context
+	Free     bool     `json:"free,omitempty"`    // costs the subscription nothing
+	Rate     float64  `json:"rate,omitempty"`    // the credits a request costs the subscription, as a multiple
+	RateWas  float64  `json:"rateWas,omitempty"` // the rate before a discount running now
+	API      string   `json:"api,omitempty"`     // the one API the user said it is asked on
 }
 
 type providerJSON struct {
@@ -385,7 +387,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		own := images
 		images, _ = provider.ApplyImage(p.ID, m.ID, images, m.ImageInput)
 		_, imageSet := provider.ImageOverride(p.ID, m.ID)
-		j := modelJSON{ID: m.ID, Name: m.Name, Efforts: provider.EffortsOf(m), On: on, Context: m.Context, Max: m.MaxContext, Free: m.Free, Images: images, ImageSet: imageSet, Own: own}
+		j := modelJSON{ID: m.ID, Name: m.Name, Efforts: provider.EffortsOf(m), On: on, Context: m.Context, Max: m.MaxContext, Free: m.Free, Rate: m.Rate, RateWas: m.RateWas, Images: images, ImageSet: imageSet, Own: own}
 		if i := slices.IndexFunc(most, func(c catalog.Model) bool { return c.ID == m.ID }); j.Max == 0 && i >= 0 {
 			j.Max = most[i].MaxContext
 		}

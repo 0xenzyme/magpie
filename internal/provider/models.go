@@ -827,6 +827,10 @@ type Entry struct {
 	Family string `json:"family,omitempty"`
 	// Free is set on a model its subscription serves at no cost to it.
 	Free bool `json:"free,omitempty"`
+	// Rate and RateWas are the credits a request costs its subscription,
+	// as a multiple, and before a discount running now (catalog.Model's).
+	Rate    float64 `json:"rate,omitempty"`
+	RateWas float64 `json:"rateWas,omitempty"`
 	// Shared are a group's levels its members have in common: its Efforts,
 	// unless the group names its own (Group.Levels).
 	Shared []string `json:"-"`
@@ -915,7 +919,7 @@ func entryFor(p Provider, m catalog.Model, s settings.Settings) Entry {
 	}
 	images, imageInput := ApplyImage(p.ID, m.ID, images, m.ImageInput)
 	e := Entry{ID: p.ID + "/" + m.ID, Model: m.ID, Family: p.Family, Name: m.Name, Efforts: effortsOf(m), Provider: p,
-		Images: images, ImageInput: imageInput, Context: ctx, Output: output, Free: m.Free}
+		Images: images, ImageInput: imageInput, Context: ctx, Output: output, Free: m.Free, Rate: m.Rate, RateWas: m.RateWas}
 	if n, ok := modelNameIn(s.ModelNames, p.ID, m.ID); ok {
 		e.Name, e.Default = n, m.Name
 	}

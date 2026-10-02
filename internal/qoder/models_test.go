@@ -60,3 +60,36 @@ func TestParseModelsFreeIsThePrice(t *testing.T) {
 		}
 	}
 }
+
+// Each model carries its price as Qoder's client shows it beside the
+// model (01huadalang on Discord: pick the cheap ones without opening
+// Qoder): Qwen3.8-Max 0.5×, Kimi-K3 1.4×, Qwen3.8-Flash 0× (free) with
+// 0.1× struck through; a running promotion's price before it struck
+// through, and its 0 that isn't free read as that price times its
+// discount. A listing with no price gives none.
+func TestParseModelsRate(t *testing.T) {
+	body := []byte(`{"chat":[
+		{"key":"qmodel_38max","enable":true,"price_factor":0.5,"is_free":true,"promotion":{"active":false,"discount_factor":0.4,"before_promotion_price_factor":0.5}},
+		{"key":"qmodel_38max-offpeak","enable":true,"price_factor":0.2,"promotion":{"active":true,"discount_factor":0.4,"before_promotion_price_factor":0.5}},
+		{"key":"qfmodel","enable":true,"price_factor":0.0,"original_price_factor":0.1,"is_free":true},
+		{"key":"qmodel_latest","enable":true,"price_factor":0.5,"original_price_factor":0.5},
+		{"key":"kmodel_latest","enable":true,"priceFactor":1.4,"originalPriceFactor":2},
+		{"key":"window","enable":true,"price_factor":0,"promotion":{"active":true,"discount_factor":0.5,"before_promotion_price_factor":1}},
+		{"key":"window-camel","enable":true,"priceFactor":0,"promotion":{"active":true,"discountFactor":0.25,"beforePromotionPriceFactor":2}},
+		{"key":"unpriced","enable":true,"is_free":true}
+	]}`)
+	ms, err := ParseModels(body, ProviderKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][2]float64{"qmodel_38max": {0.5, 0}, "qmodel_38max-offpeak": {0.2, 0.5}, "qfmodel": {0, 0.1},
+		"qmodel_latest": {0.5, 0}, "kmodel_latest": {1.4, 2}, "window": {0.5, 1}, "window-camel": {0.5, 2}, "unpriced": {0, 0}}
+	if len(ms) != len(want) {
+		t.Fatalf("models %+v", ms)
+	}
+	for _, m := range ms {
+		if w := want[m.ID]; m.Rate != w[0] || m.RateWas != w[1] {
+			t.Errorf("%s: Rate, RateWas = %v, %v, want %v, %v", m.ID, m.Rate, m.RateWas, w[0], w[1])
+		}
+	}
+}

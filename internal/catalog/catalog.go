@@ -62,6 +62,13 @@ type Model struct {
 	// Free is set on a model a subscription serves at no cost to its
 	// allowance: WorkBuddy's "credits": "x0.00".
 	Free bool `json:",omitempty"`
+	// Rate is what a request costs of a subscription's credits, as a
+	// multiple, when its vendor lists it: Qoder's price_factor (0.5),
+	// WorkBuddy's "credits": "x0.03". 0 is not listed, or Free.
+	Rate float64 `json:",omitempty"`
+	// RateWas is the rate before a discount running now, when the vendor
+	// says it: Qoder's Qwen3.8-Flash at 0× with 0.1× struck through.
+	RateWas float64 `json:",omitempty"`
 	// Reasoning is set on a model that thinks, whether or not it takes
 	// levels: mimo-v2.6-flash thinks with a switch alone (#402).
 	Reasoning bool `json:",omitempty"`

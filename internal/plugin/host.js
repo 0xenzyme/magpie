@@ -693,6 +693,14 @@ function concurrencyOf(a) {
   return ok(readJSON(path.join(dir, "package.json"))?.magpie?.maxConcurrency)
 }
 
+// rateOf reads a model's credit rate as a plugin gives it: a number (0.5)
+// or as the vendor's picker writes it ("x0.03", "0.5×"); 0 is none, as is
+// one it can't read
+function rateOf(v) {
+  const n = typeof v === "string" ? Number(v.trim().replace(/^[x×]\s*|\s*[x×]$/gi, "")) : v
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0
+}
+
 // providers lists each provider and its accounts' models, each asked
 // through its proxy (proxies[provider][key], "" the provider's own), as a
 // built-in fetches each account's list through the account's.
@@ -752,6 +760,10 @@ async function providers({ proxies } = {}) {
           cost: m.cost,
           variants: Object.keys(m.variants ?? {}),
           free: m.free === true,
+          // what a request costs of the plan's credits, as a multiple,
+          // and before a discount running now (Qoder's price_factor)
+          rate: rateOf(m.rate),
+          rateWas: rateOf(m.rateWas),
         })),
     })
   }

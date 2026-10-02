@@ -809,6 +809,16 @@ the first's, and the footer names the model. The right-click neither picks
 the chip nor moves the page, Esc closes the menu only, and Test models still
 asks every model. The API is faked.
 
+`model-rate.test.cjs` shows a model's credit rate by it (01huadalang on
+Discord: pick the cheap Qoder or WorkBuddy models without opening their
+apps), in Chromium and WebKit, English and Chinese: the provider editor's
+chips carry a small grey badge, Qoder's 0.5× or WorkBuddy's 0.03×, a
+discount's price before it struck through (0.5× 0.2×; a free model's FREE
+then 0.1× struck through), its title saying what a request costs; a model
+with none has no badge. The badge is the context badge's grey, not FREE's
+green, and no stripe. A click on it picks the chip and moves nothing. An
+agent's model picker shows the same badges. The API is faked.
+
 `whats-new.test.cjs` shows what changed after an update (a Discord user:
 to see whether their issue was fixed): after an upgrade the window opens a
 dialog with every release's notes since the version last run, newest first,

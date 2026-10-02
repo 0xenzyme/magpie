@@ -54,7 +54,15 @@ type Model struct {
 	// Free is set by the plugin on a model the plan serves at no cost to
 	// its allowance (WorkBuddy's "credits": "x0.00")
 	Free bool `json:"free"`
-	Cost *struct {
+	// Rate is set by the plugin on a model whose price its vendor lists:
+	// the credits a request costs, as a multiple (Qoder's price_factor
+	// 0.5, WorkBuddy's "credits": "x0.03"), and RateWas the price before a
+	// discount running now. The plugin gives either as a number or as the
+	// vendor writes it ("x0.03"), on the model it lists (m.rate,
+	// m.rateWas); 0 is none.
+	Rate    float64 `json:"rate"`
+	RateWas float64 `json:"rateWas"`
+	Cost    *struct {
 		Input  float64 `json:"input"`
 		Output float64 `json:"output"`
 	} `json:"cost"`

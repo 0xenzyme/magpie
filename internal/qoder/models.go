@@ -41,15 +41,22 @@ type ModelInfo struct {
 	// Free is set on a model that costs the plan no credits, as Qoder's
 	// client shows it: a price_factor of 0 (see free).
 	Free bool `json:"-"`
+	// Rate is the credits a request costs, as a multiple (its
+	// price_factor), and RateWas the price struck through beside it while
+	// a discount runs (see free); 0 when the listing says none.
+	Rate    float64 `json:"-"`
+	RateWas float64 `json:"-"`
 }
 
 // promotion is a listing entry's running discount: a price_factor of 0
 // while it is active, with a price before it, is a discount, not a free
 // model.
 type promotion struct {
-	Active  bool     `json:"active"`
-	Before  *float64 `json:"before_promotion_price_factor"`
-	BeforeC *float64 `json:"beforePromotionPriceFactor"`
+	Active    bool     `json:"active"`
+	Before    *float64 `json:"before_promotion_price_factor"`
+	BeforeC   *float64 `json:"beforePromotionPriceFactor"`
+	Discount  float64  `json:"discount_factor"`
+	DiscountC float64  `json:"discountFactor"`
 }
 
 // free reads whether a model costs the plan no credits: a price_factor (the
@@ -62,12 +69,20 @@ type promotion struct {
 // model; a limited-time free model (Qwen3.8-Flash: 0×, its
 // original_price_factor 0.1 struck through) is free while it is. The same
 // rule as the plugin's freeOf (packages/qoder/index.mjs).
+//
+// The price is kept too (Rate), as Qoder's client shows it beside the
+// model: 0.5×, and the price before a discount struck through (RateWas):
+// an active promotion's before_promotion_price_factor, else an
+// original_price_factor above the price. A promotion's 0 that isn't free
+// is its price before times its discount_factor.
 func (m *ModelInfo) free(raw json.RawMessage) {
 	var v struct {
 		IsFree      *bool      `json:"is_free"`
 		IsFreeC     *bool      `json:"isFree"`
 		PriceFactor *float64   `json:"price_factor"`
 		PriceC      *float64   `json:"priceFactor"`
+		Original    float64    `json:"original_price_factor"`
+		OriginalC   float64    `json:"originalPriceFactor"`
 		Promotion   *promotion `json:"promotion"`
 		PromotionT  *promotion `json:"prommotion"`
 	}
@@ -84,15 +99,25 @@ func (m *ModelInfo) free(raw json.RawMessage) {
 		v.Promotion = v.PromotionT
 	}
 	if v.PriceFactor != nil {
-		if *v.PriceFactor != 0 {
-			m.Free = false
-			return
-		}
 		p := v.Promotion
 		if p != nil && p.Before == nil {
 			p.Before = p.BeforeC
 		}
-		m.Free = !(p != nil && p.Active && p.Before != nil && *p.Before > 0)
+		if p != nil && p.Discount == 0 {
+			p.Discount = p.DiscountC
+		}
+		discounted := p != nil && p.Active && p.Before != nil && *p.Before > 0
+		m.Rate, m.RateWas = max(*v.PriceFactor, 0), max(v.Original, v.OriginalC)
+		if discounted {
+			m.RateWas = *p.Before
+			if m.Rate == 0 {
+				m.Rate = *p.Before * p.Discount
+			}
+		}
+		if m.RateWas <= m.Rate {
+			m.RateWas = 0
+		}
+		m.Free = *v.PriceFactor == 0 && !discounted
 		return
 	}
 	m.Free = v.IsFree != nil && *v.IsFree
@@ -209,7 +234,8 @@ func ParseModels(body []byte, provider string) ([]catalog.Model, error) {
 			name = m.Key
 		}
 		out = append(out, catalog.Model{ID: m.Key, Name: name, Provider: provider,
-			Context: m.MaxInputTokens, Images: m.IsVL, Efforts: m.Efforts, Free: m.Free})
+			Context: m.MaxInputTokens, Images: m.IsVL, Efforts: m.Efforts, Free: m.Free,
+			Rate: m.Rate, RateWas: m.RateWas})
 	}
 	return out, nil
 }

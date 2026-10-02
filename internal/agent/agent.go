@@ -32,6 +32,11 @@ type Option struct {
 	GroupIcon string `json:"groupIcon,omitempty"`
 	Ref       string `json:"ref,omitempty"`  // the catalog model, the same in every agent
 	Free      bool   `json:"free,omitempty"` // costs its subscription nothing
+	// Rate and RateWas are the credits a request costs its subscription,
+	// as a multiple, and before a discount running now (Qoder's 0.5×,
+	// WorkBuddy's x0.03), when its vendor lists them
+	Rate    float64 `json:"rate,omitempty"`
+	RateWas float64 `json:"rateWas,omitempty"`
 	// Context is the tokens the model takes, when known; the picker marks
 	// the large ones
 	Context int `json:"context,omitempty"`

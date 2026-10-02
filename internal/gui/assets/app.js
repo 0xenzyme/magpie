@@ -2373,6 +2373,23 @@ function freeBadge(plan) {
   return f;
 }
 
+// rateTag: the plan's credits a request to a model costs, as its vendor
+// lists them (Qoder's 0.5×, WorkBuddy's x0.03), small and grey by it, so a
+// cheap one is picked without opening the vendor's app (01huadalang on
+// Discord); a discount's price before it struck through, as Qoder's
+// client shows it (a free one's beside its FREE)
+function rateTag(rate = 0, was = 0) {
+  if (!(rate > 0) && !(was > rate)) return null;
+  const times = (n) => (n < 0.01 ? "<0.01" : String(+n.toFixed(2))) + "×";
+  const tag = el("span", "badge rate");
+  if (was > rate) tag.append(el("s", "", times(was)));
+  if (rate > 0) tag.append(el("span", "", times(rate)));
+  tag.title = rate > 0
+    ? (was > rate ? t("costs {rate} credits a request, {was} before the discount", { rate: times(rate), was: times(was) }) : t("costs {rate} credits a request", { rate: times(rate) }))
+    : t("free now, {was} before the discount", { was: times(was) });
+  return tag;
+}
+
 // contextTag: the small grey 1M by a model that holds a million tokens or
 // more (Cursor's names said it, and no longer do); the usual 128K–400K
 // aren't marked, as nearly every model has one of those; nor is a name
@@ -2404,6 +2421,8 @@ function renderList() {
     const own = pick.field.label === "sign-in";
     words.append(el("span", "v", own ? t(o.label || o.value) : o.label || o.value));
     if (o.free || (pick.modelPicker && o.value && namedFree(o.value, o.label))) words.append(freeBadge(o.free));
+    const rate = rateTag(o.rate, o.rateWas);
+    if (rate) words.append(rate);
     const ctx = contextTag(o.context, o.label);
     if (ctx) words.append(ctx);
     let note = o.note && o.note !== (o.label || o.value) ? (own ? t(o.note) : o.note) : "";
@@ -6015,6 +6034,8 @@ function renderModels(p) {
       // or one its vendor names free (#185)
       const free = m.free || namedFree(m.id, m.name);
       if (free) c.append(el("span", "badge free", t("free")));
+      const rate = rateTag(m.rate, m.rateWas);
+      if (rate) c.append(rate);
       const ctx = contextTag(m.context, m.name);
       if (ctx) c.append(ctx);
       if (m.default) c.title = `${m.id} · ${m.default}`;

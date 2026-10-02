@@ -155,6 +155,7 @@ func pluginCatalog(pp plugin.Provider) []catalog.Model {
 			ID: m.ID, Name: m.Name, Provider: pp.ID, Released: m.Released,
 			APIs: []string{string(pluginProtocol(pp.ID, m))}, Images: m.Image,
 			Context: m.Input, Output: m.Output, Free: m.Free,
+			Rate: m.Rate, RateWas: m.RateWas,
 		}
 		if c.Context == 0 {
 			c.Context = m.Context
