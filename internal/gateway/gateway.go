@@ -1086,7 +1086,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		last := i == len(cands)-1
 		// the last one's failure is held too when an earlier one failed,
 		// for its allowance running out to be told as that one's error
-		hw := newHoldWriter(w, !last || again < lastRetries || other != nil)
+		hw := newHoldWriter(w, !last || again < max(lastRetries, rateRetries) || other != nil)
 		hw.thinkingShown = !refusesAfterThinking(c.model)
 		call.Provider, call.To, call.Usage = c.p.ID, "", Usage{}
 		model = c.model
@@ -1279,7 +1279,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			skipped = append(skipped, c.label()+": "+call.Error)
 			continue
 		}
-		if wait, ok := passing(hw.code(), hw.header, again); ok && !last && again < lastRetries && hw.failed() && spentAfter(cands[i+1:]) {
+		if wait, ok := passing(hw.code(), hw.header, hw.errBody(), again); ok && !last && hw.failed() && spentAfter(cands[i+1:]) {
 			// the others left are out of their allowance (Discord, waroy: a
 			// Codex account run out, Grok busy a moment): this one is the
 			// last that may answer, and is tried again as the last is
@@ -1306,7 +1306,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			skipped = append(skipped, c.label()+": "+call.Error)
 			continue
 		}
-		if wait, ok := passing(hw.code(), hw.header, again); ok && again < lastRetries && hw.failed() {
+		if wait, ok := passing(hw.code(), hw.header, hw.errBody(), again); ok && hw.failed() {
 			// nobody else is left: the same one again, after a moment
 			try.Fail, try.Again = failure(hw.code(), hw.errBody()), wait.Milliseconds()
 			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
