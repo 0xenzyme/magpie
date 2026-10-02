@@ -1630,6 +1630,16 @@ function installFrom() {
   return mode === "window" ? { view } : {};
 }
 
+// updateBusy says what a restart would cut short (#577): the agents'
+// requests in flight through the gateway, the Claude Code turns waiting on
+// their tool results.
+function updateBusyText(b) {
+  const parts = [];
+  if (b?.requests) parts.push(t("{n} in flight", { n: b.requests }));
+  if (b?.tools) parts.push(t("{n} awaiting tool results", { n: b.tools }));
+  return parts.join(" · ");
+}
+
 // updatePath asks for the update's state or the release notes in the
 // page's language: the notes follow Settings' language, Chinese where a
 // release has it (freecss on Discord).
@@ -1670,6 +1680,7 @@ async function renderUpdateBadge() {
     if (a) {
       if (["checking", "downloading"].includes(a.state)) b.dataset.pulling = "1";
       else b.classList.remove("busy");
+      if (a.waiting) b.dataset.armed = String(Date.now());
       renderUpdateBadge();
     }
   };
@@ -1683,6 +1694,28 @@ async function renderUpdateBadge() {
     return;
   }
   if (b.classList.contains("busy")) return;
+  // a restart waiting for the gateway to be idle (#577): a click restarts
+  // at once; one just after the click that armed it is taken as a double
+  // click, not as "now"
+  if (u.state === "ready" && u.waiting) {
+    label.textContent = t("Waiting to update");
+    b.title = t("magpie restarts to update to {v} once the agents' requests through the gateway have finished: {busy}. Click to restart now.", { v: u.latest, busy: updateBusyText(u.busy) || "…" });
+    b.onclick = () => {
+      if (Date.now() - (+b.dataset.armed || 0) < 1500) return;
+      b.classList.add("busy");
+      label.textContent = t("Restarting…");
+      api("update/install", { ...installFrom(), when: "now" }).then((a) => {
+        if (!a) return backAsNew(u.current);
+        b.classList.remove("busy");
+        renderUpdateBadge();
+      }, () => backAsNew(u.current));
+    };
+    clearTimeout(b.waitPoll);
+    b.waitPoll = setTimeout(() => {
+      api(updatePath("update")).then(() => renderUpdateBadge(), () => backAsNew(u.current));
+    }, 1500);
+    return;
+  }
   // a swap that failed says so where it was clicked, not only in the tooltip
   label.textContent = u.state === "ready" && u.error ? t("Update failed") : t("Update");
   b.title = u.state === "ready" ? t("Restart to update to {v}", { v: u.latest })
@@ -13097,21 +13130,47 @@ async function renderUpdate(r, u) {
     setTimeout(() => { if (r.isConnected && (updateSeq.get(r) || 0) === seen) renderUpdate(r); }, ms);
   };
   switch (u.state) {
-    case "ready":
+    case "ready": {
       sub.textContent = t("{v} is downloaded", { v: u.latest }) + (u.error ? " · " + u.error : "");
       // a failed install says why in full, and offers the release page to
       // put the new version in by hand
       sub.title = u.error || "";
       if (u.error) sub.classList.add("wraps");
-      // back with an answer only when it didn't restart
-      btn(t("Restart to update"), async () => {
-        const a = await api("update/install", installFrom()).catch(() => ({ state: "error" }));
+      // back with an answer only when it didn't restart: a busy gateway
+      // has the restart wait for it to be idle (#577)
+      const install = async (when) => {
+        const a = await api("update/install", { ...installFrom(), ...(when ? { when } : {}) }).catch(() => ({ state: "error" }));
         if (a) return renderUpdate(r, a.current ? a : undefined);
         sub.textContent = t("Restarting…");
         backAsNew(u.current);
-      });
+      };
+      const busyNow = updateBusyText(u.busy);
+      if (u.waiting) {
+        sub.textContent += " · " + t("restarts once the gateway is idle") + (busyNow ? " · " + busyNow : "");
+        btn(t("Restart now"), () => install("now"));
+        btn(t("Cancel"), () => install("cancel"));
+        // the wait ends in a restart: a read that finds no one is that
+        const seen = updateSeq.get(r) || 0;
+        setTimeout(async () => {
+          if (!r.isConnected || (updateSeq.get(r) || 0) !== seen) return;
+          const n = await api(updatePath("update")).catch(() => null);
+          if (!r.isConnected || (updateSeq.get(r) || 0) !== seen) return;
+          if (!n) {
+            sub.textContent = t("Restarting…");
+            for (const b of val.querySelectorAll("button")) b.remove();
+            return backAsNew(u.current);
+          }
+          renderUpdate(r, n);
+        }, 1000);
+        break;
+      }
+      if (u.gaveUp) sub.textContent += " · " + t("the gateway stayed busy for an hour, so magpie didn't restart; it updates when you restart or quit it");
+      else if (busyNow) sub.textContent += " · " + busyNow;
+      if (u.gaveUp) sub.classList.add("wraps");
+      btn(t("Restart to update"), () => install());
       if (u.error && u.url) btn(t("Download"), () => (web ? window.open(u.url, "_blank", "noopener") : api("open", { url: u.url })));
       break;
+    }
     case "available":
       sub.textContent = t("{v} is out", { v: u.latest });
       if (u.stuck) sub.textContent += " · " + updateStuck(u);

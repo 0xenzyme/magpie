@@ -271,6 +271,8 @@ type Server struct {
 	// those waiting their turn (concurrency.go)
 	lanes         lanes
 	requestLimits requestLimits
+	// what a restart would cut short (busy.go)
+	busyCounters
 }
 
 // New makes a gateway.
@@ -434,7 +436,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, provider.Chat, http.StatusNotFound, "magpie serves /v1/chat/completions, /v1/responses, /v1/messages, /v1/systemone, /v1/images/generations, /v1/images/edits, /v1/videos and /v1beta/models/*")
 	})
-	return callerGuard(withCaller(mux))
+	return s.counted(callerGuard(withCaller(mux)))
 }
 
 func (s *Server) info(w http.ResponseWriter, r *http.Request) {

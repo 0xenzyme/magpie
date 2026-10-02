@@ -392,14 +392,29 @@ func Run(version string, showMain bool, link string) error {
 	restart := menu.Add(labels.restart).SetHidden(true)
 	restart.OnClick(func(*application.Context) {
 		// the window comes back if it was open; the tray alone if not
-		if restartToUpdate(false, h.MainShown(), "") {
-			h.app.Quit()
+		now := func() bool {
+			if restartToUpdate(false, h.MainShown(), "") {
+				h.app.Quit()
+				return true
+			}
+			return false
 		}
+		// with the gateway busy the first click waits for it to be idle,
+		// and the item then restarts at once (#577)
+		if waiting, _ := updates.waitingFor(); !waiting && !updates.idle() {
+			updates.waitIdle(now)
+			return
+		}
+		updates.cancelWait()
+		now()
 	})
 	quit := menu.Add(labels.quit).OnClick(func(*application.Context) { h.app.Quit() })
 	var ready string // the version waiting for a restart; on the main thread
 	relabel := func() {
 		l := trayMenuLabels(trayLang(settings.Load().Lang, systemLang), version, ready)
+		if waiting, b := updates.waitingFor(); waiting && ready != "" {
+			l.restart = trayRestartNow(trayLang(settings.Load().Lang, systemLang), b)
+		}
 		open.SetLabel(l.open)
 		ver.SetLabel(l.version)
 		restart.SetLabel(l.restart)
@@ -414,6 +429,7 @@ func Run(version string, showMain bool, link string) error {
 			relabel()
 		})
 	}
+	updates.onWait = func() { application.InvokeSync(relabel) }
 	updates.start()
 	news.start()
 	// the library written into the agents again, once: one installed or

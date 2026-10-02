@@ -476,6 +476,15 @@ A failed check gives the button back, and a check already under way shows
 the button without starting another. The page stays where it was. English
 and Chinese.
 
+`update-wait.test.cjs` checks a restart to update with the gateway busy
+(#577): Settings → Version says what is in flight (requests, Claude Code
+turns awaiting tool results), Restart to update then waits with "Restart
+now" and "Cancel", the counts follow the gateway, a wait that ran out says
+so, and with nothing in flight the click restarts at once. The header's
+Update pill waits on its click and restarts at once on the next (not on a
+double click's second half). No click moves the page, no coloured left
+border. English and Chinese.
+
 `sync-update.test.cjs` checks the header's refresh button looks for a newer
 magpie too: one click, one check, and the Update pill shows what it found.
 Its tooltip says so. English and Chinese.

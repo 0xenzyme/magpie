@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/update"
 )
@@ -43,6 +44,16 @@ type updater struct {
 	lang     string    // the pages' language, "" before one asked
 	notesIn  string    // the language latest's notes are in
 	relangAt time.Time // when they were last asked for in another
+	// A restart asked for while the gateway is busy waits until it is idle
+	// (#577): waiting since waitFrom, then whenIdle restarts, unless it ran
+	// waitMost first (gaveUp). onWait tells the tray what it waits on.
+	waiting  bool
+	waitFrom time.Time
+	waitGen  int
+	gaveUp   bool
+	whenIdle func() bool
+	onWait   func()
+	loops    sync.WaitGroup // the waits going on
 }
 
 type updateJSON struct {
@@ -56,6 +67,12 @@ type updateJSON struct {
 	Error   string `json:"error,omitempty"`
 	Done    int64  `json:"done,omitempty"` // downloading: bytes so far
 	Total   int64  `json:"total,omitempty"`
+	// ready: what the gateway this process serves has in flight, which a
+	// restart would cut short; Waiting, the restart waits for it to end;
+	// GaveUp, the last wait ran out with it still busy
+	Busy    *gateway.Busy `json:"busy,omitempty"`
+	Waiting bool          `json:"waiting,omitempty"`
+	GaveUp  bool          `json:"gaveUp,omitempty"`
 }
 
 var updates = &updater{}
@@ -252,6 +269,7 @@ func (u *updater) json() updateJSON { return u.jsonIn("") }
 // Notes held in another language are asked for again in lang, at most
 // once a minute; the page's next look has them.
 func (u *updater) jsonIn(lang string) updateJSON {
+	busy := gatewayBusy()
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if lang != "" {
@@ -270,6 +288,12 @@ func (u *updater) jsonIn(lang string) updateJSON {
 	}
 	if u.state == "downloading" {
 		j.Done, j.Total = u.done, u.total
+	}
+	if j.State == "ready" || u.waiting {
+		j.Waiting, j.GaveUp = u.waiting, u.gaveUp && !u.waiting
+		if busy.Any() {
+			j.Busy = &busy
+		}
 	}
 	if u.latest != nil {
 		// the notes without their download links: magpie downloads it itself
@@ -324,9 +348,29 @@ func updateRoutes(mux *http.ServeMux, w Windows) {
 	mux.HandleFunc("POST /api/update/install", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct {
 			View string `json:"view"`
+			// When: "now" restarts whatever is in flight, "cancel" stops
+			// a restart waiting; else a busy gateway is waited for (#577)
+			When string `json:"when"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&in)
+		if in.When == "cancel" {
+			updates.cancelWait()
+			writeJSON(rw, updates.json())
+			return
+		}
 		if updates.json().State == "ready" {
+			if in.When != "now" && !updates.idle() {
+				updates.waitIdle(func() bool {
+					if restartToUpdate(isWeb(w), in.View != "" || mainShown(w), in.View) {
+						go w.Quit()
+						return true
+					}
+					return false
+				})
+				writeJSON(rw, updates.json())
+				return
+			}
+			updates.cancelWait()
 			updates.recheck()
 		}
 		switch j := updates.json(); {
