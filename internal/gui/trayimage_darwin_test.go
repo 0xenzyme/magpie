@@ -99,3 +99,39 @@ func inkIn(img image.Image, r image.Rectangle, dark bool) int {
 	}
 	return n
 }
+
+// A coloured logo is drawn as a template image is, in the bar's text colour
+// alone (the user: 去掉色彩满足 tray icon 样式): no colour left in it, and
+// Codex's white glyph on its blue tile is cut out of a tile of ink.
+func TestTrayImageMonoLogos(t *testing.T) {
+	bird, err := os.ReadFile("tray.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"codex-color", "claude-color", "gemini-color", "zcode", "alma"} {
+		icon, _ := trayIconFile(name)
+		for _, dark := range []bool{false, true} {
+			b, _, _ := trayImagePNG([]trayCell{{Icon: icon, Rows: []string{"5%", "7%"}}}, bird, 22, 2, dark, true)
+			img, err := png.Decode(bytes.NewReader(b))
+			if err != nil {
+				t.Fatal(err)
+			}
+			logo := image.Rect(48, 8, 48+28, 36)
+			for y := logo.Min.Y; y < logo.Max.Y; y++ {
+				for x := logo.Min.X; x < logo.Max.X; x++ {
+					r, g, b, _ := img.At(x, y).RGBA()
+					if max(r, g, b)-min(r, g, b) > 0x1800 {
+						t.Fatalf("%s, dark %v: colour at %d,%d: %x %x %x", name, dark, x, y, r>>8, g>>8, b>>8)
+					}
+				}
+			}
+			ink := inkIn(img, logo, dark)
+			if ink < 40 {
+				t.Errorf("%s, dark %v: the logo has %d px of ink", name, dark, ink)
+			}
+			if name == "codex-color" && ink > 28*28*85/100 {
+				t.Errorf("codex, dark %v: %d px of ink, its glyph not cut out", dark, ink)
+			}
+		}
+	}
+}

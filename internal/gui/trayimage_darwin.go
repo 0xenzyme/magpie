@@ -90,6 +90,56 @@ static void mpTinted(NSImage *im, NSRect r) {
 	CGContextEndTransparencyLayer(cg);
 }
 
+// mpMasked draws a coloured logo as a template image would be: one ink,
+// the bar's text colour. Its shape is what is opaque, less what is near
+// white when the rest isn't (Codex's white glyph on a blue tile is the tile
+// with the glyph cut out); a logo that is all one light colour keeps its
+// whole shape.
+static void mpMasked(NSImage *im, NSRect r) {
+	const int n = 64; // 14pt at more than any backing scale
+	size_t stride = n * 4;
+	unsigned char *px = calloc(n * stride, 1);
+	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+	CGContextRef bm = CGBitmapContextCreate(px, n, n, 8, stride, cs, kCGImageAlphaPremultipliedLast);
+	CGColorSpaceRelease(cs);
+	if (bm == NULL) {
+		free(px);
+		return;
+	}
+	[NSGraphicsContext saveGraphicsState];
+	[NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithCGContext:bm flipped:NO]];
+	[im drawInRect:NSMakeRect(0, 0, n, n) fromRect:NSZeroRect operation:NSCompositingOperationCopy fraction:1];
+	[NSGraphicsContext restoreGraphicsState];
+	// how much of it is light: the least of its channels, unpremultiplied
+	int solid = 0, light = 0;
+	for (int i = 0; i < n * n; i++) {
+		unsigned char *p = px + i * 4;
+		if (p[3] < 128) continue;
+		solid++;
+		if (MIN(MIN(p[0], p[1]), p[2]) * 255 / p[3] > 200) light++;
+	}
+	BOOL cut = solid > 0 && light < solid * 0.85;
+	for (int i = 0; i < n * n; i++) {
+		unsigned char *p = px + i * 4;
+		CGFloat a = p[3] / 255.0;
+		if (cut && p[3] > 0) {
+			// none from 200 up, whole from 150 down: a soft edge
+			CGFloat w = MIN(MIN(p[0], p[1]), p[2]) * 255.0 / p[3];
+			a *= MAX(0, MIN(1, (200 - w) / 50));
+		}
+		p[0] = p[1] = p[2] = 0;
+		p[3] = (unsigned char)round(a * 255);
+	}
+	CGImageRef mask = CGBitmapContextCreateImage(bm);
+	CGContextRelease(bm);
+	free(px);
+	if (mask == NULL) return;
+	NSImage *glyph = [[NSImage alloc] initWithCGImage:mask size:r.size];
+	CGImageRelease(mask);
+	mpTinted(glyph, r);
+	[glyph release];
+}
+
 // mpRows draws a cell's digits in its column from x: the digits (cap
 // height) centred as a block, each row right-aligned; drawAtPoint takes the
 // line's top, its baseline an ascender below.
@@ -133,7 +183,7 @@ static void mpDraw(NSArray *cells, NSImage *bird, CGFloat h) {
 		if (icon != nil && [c[@"mono"] boolValue]) {
 			mpTinted(icon, logo);
 		} else if (icon != nil) {
-			[icon drawInRect:logo fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
+			mpMasked(icon, logo);
 		} else {
 			// no logo: the name's first letter in a ring
 			NSBezierPath *ring = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(logo, 0.75, 0.75) xRadius:3.5 yRadius:3.5];
