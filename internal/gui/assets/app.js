@@ -2721,6 +2721,23 @@ async function loadProviders() {
     backToReader($("#view-gateway"));
   } else renderProviders();
   renderArchive();
+  providersWhileFetching();
+}
+
+// Accounts' lists still on their way from their vendors (#541: the page no
+// longer waits for them): asked again every few seconds until they are in,
+// and drawn again only when something changed — never under an open editor.
+function providersWhileFetching() {
+  clearTimeout(providersWhileFetching.timer);
+  if (!providers?.fetching) return;
+  providersWhileFetching.timer = setTimeout(async () => {
+    if (!["providers", "gateway", "routing"].includes(view) || editing !== null || adding || document.hidden) return;
+    let next;
+    try { next = await api("providers"); } catch { return; }
+    const json = (p) => JSON.stringify({ ...p, fetching: false, gateway: { ...p.gateway, calls: 0 } });
+    if (json(next) !== json(providers)) await loadProviders().catch(() => {});
+    else { providers.fetching = next.fetching; providersWhileFetching(); }
+  }, 2500);
 }
 
 // Rows in the shape of the list while it is first asked for; a reload keeps
@@ -6445,7 +6462,7 @@ async function signedIn(st) {
   signing = null;
   justAdded = st.user;
   delete loginUsage[st.agent]; // what was fetched before has nothing on the new account
-  providers = await api("providers");
+  providers = await api("providers?wait=1"); // with its vendor's list (#204)
   const p = providers.providers.find((x) => x.account?.agent === st.agent);
   if (p) { editing = p.id; draft = null; adding = false; presetQuery = ""; }
   renderProviders();

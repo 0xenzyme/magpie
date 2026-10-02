@@ -231,6 +231,9 @@ type providersJSON struct {
 	// the page says so over what is listed, which is then the signed-in
 	// accounts alone, never "add your first provider".
 	FileError string `json:"fileError,omitempty"`
+	// Fetching: accounts' lists are still being asked for
+	// (provider.FetchingNew); the page asks again until they are in
+	Fetching bool `json:"fetching,omitempty"`
 }
 
 // agentModel is the model an agent is on, as magpie's catalog names it.
@@ -434,8 +437,9 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 
 func providersState() providersJSON {
 	// an account signed in since start-up is listed with its vendor's
-	// models, not magpie's own list of them (#204)
-	provider.FetchNew(8 * time.Second)
+	// models, not magpie's own list of them (#204): asked behind the page,
+	// which is told so and asks again, never waited for (#541)
+	provider.FetchNewBehind(8 * time.Second)
 	agents := agent.Detected()
 	s := providersJSON{Providers: []providerJSON{}, Presets: []presetJSON{}, Excluded: []excludedJSON{}}
 	s.OnPlugins = provider.OnPlugins()
@@ -499,6 +503,7 @@ func providersState() providersJSON {
 	s.Gateway.Archive = archiveState()
 	s.CodexDaemon = provider.CodexDaemonStale()
 	s.Plugins = pluginSubs()
+	s.Fetching = provider.FetchingNew()
 	return s
 }
 
@@ -531,6 +536,11 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 	traceRoutes(mux)
 	groupRoutes(mux)
 	mux.HandleFunc("GET /api/providers", func(rw http.ResponseWriter, r *http.Request) {
+		// ?wait: an account just signed in opens in the editor with its
+		// vendor's list, worth the wait there (#204)
+		if r.URL.Query().Has("wait") {
+			provider.FetchNew(8 * time.Second)
+		}
 		writeJSON(rw, providersState())
 	})
 	// the order the Providers tab lists them in, which is the order they
