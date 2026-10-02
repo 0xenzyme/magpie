@@ -694,6 +694,12 @@ func normalize(p Provider) Provider {
 	if p.Preset == "qianfan-token-plan" {
 		p.Preset = "baidu-qianfan"
 	}
+	// OpenCode Zen serves its free models (-free) signed out, to the key
+	// OpenCode itself sends then: a Zen provider saved with no key of its
+	// own asks with that one
+	if p.Preset == "opencode-zen" && p.Key == "" {
+		p.Key = OpenCodeAnonymousKey
+	}
 	if p.Routing != Ordered && p.Routing != Rotate && p.Routing != LeastUsed && p.Routing != Pace {
 		p.Routing = ""
 	}
