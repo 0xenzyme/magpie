@@ -219,6 +219,9 @@ type mover struct {
 	// what else of the built-in's they carry (a key onto its provider),
 	// whose saving syncs the agents, which read the accounts.
 	settle func(auths map[string]map[string]any) error
+	// served is whether the plugin, listing listed, still serves model, one
+	// of the built-in's picks it doesn't list; nil for none.
+	served func(model string, listed []string) bool
 }
 
 var movers = map[string]*mover{}
@@ -548,7 +551,9 @@ func move(ctx context.Context, id string, mv *mover) (err error) {
 			return &moveError{MoveWhy{Code: "account", Args: map[string]string{"user": a.User, "error": err.Error()}}, fmt.Sprintf("%s doesn't work through the plugin: %s", a.User, err), err}
 		}
 		if !tried {
-			if missing := slices.DeleteFunc(slices.Clone(inUse), func(m string) bool { return slices.Contains(c.Models, m) }); len(missing) > 0 {
+			if missing := slices.DeleteFunc(slices.Clone(inUse), func(m string) bool {
+				return slices.Contains(c.Models, m) || mv.served != nil && mv.served(m, c.Models)
+			}); len(missing) > 0 {
 				names := strings.Join(modelNames(id, missing), ", ")
 				return &moveError{MoveWhy{Code: "unserved", Args: map[string]string{"models": names}}, fmt.Sprintf("the plugin doesn't serve %s. Untick them under Models, or keep the built-in.", names), nil}
 			}
@@ -588,7 +593,9 @@ func modelNames(id string, ids []string) []string {
 		if names[m] != "" {
 			m = names[m]
 		}
-		out = append(out, m)
+		if !slices.Contains(out, m) {
+			out = append(out, m)
+		}
 	}
 	return out
 }

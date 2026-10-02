@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -19,6 +20,16 @@ func init() {
 		pkg:    "@magpie-community/opencode-devin-auth",
 		min:    "0.1.5", // a failure's status and its sign-in mark as the built-in's
 		agents: []string{"devin"},
+		// a variant picked before the families were one model (swe-2-high)
+		// goes to Devin as it is, through the plugin too, which keeps the
+		// picks it is given; Adaptive and Fusion the built-in never served
+		served: func(model string, listed []string) bool {
+			if id := strings.ToLower(model); id == "adaptive" || id == "fusion" {
+				return true
+			}
+			base := devinBase(model)
+			return base != model && slices.Contains(listed, base)
+		},
 		out: func() ([]Moving, error) {
 			var out []Moving
 			for _, l := range devinLogins() {

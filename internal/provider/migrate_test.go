@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -150,6 +151,15 @@ func TestMoveToPlugin(t *testing.T) {
 	if len(fakeSaved(t)) != 1 || plugin.SignedIn("fakeco") {
 		t.Fatal("a move short of a model moved")
 	}
+	// one the mover says the plugin serves though it doesn't list it (a
+	// Devin variant) isn't named, nor is a name twice
+	movers["fakeco"].served = func(m string, listed []string) bool { return m == "fake-1-high" && slices.Contains(listed, "fake-1") }
+	reset(fakeLogin("a@fake", "r-a", false, true))
+	inUse = []string{"fake-1", "fake-1-high", "gone-model", "gone-model"}
+	if err := Move(ctx, "fakeco"); err == nil || strings.Contains(err.Error(), "fake-1-high") || strings.Count(err.Error(), "gone-model") != 1 {
+		t.Fatalf("Move with a served variant and a model the plugin lacks = %v", err)
+	}
+	movers["fakeco"].served = nil
 	inUse = []string{"fake-1", "fake-claude"}
 
 	// an account signed in through the plugin already gets back what it had
