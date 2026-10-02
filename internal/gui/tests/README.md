@@ -1336,9 +1336,10 @@ node --test internal/gui/tests/seg-contrast.test.cjs
 ```
 
 `agent-grip.test.cjs` checks that hiding an agent can be found without a
-right-click (#479): a row in the Agents list under the pointer draws a grip
-in its left margin, beside its logo, and no row does with the pointer away;
-the logo stays the logo on hover (no second grip over it); dragging the grip
+right-click or hovering (#479, #537): every row in the Agents list draws a
+faint grip in its left margin, beside its logo, with the pointer away, and the
+row under the pointer draws it darker; the logo stays the logo on hover (no
+second grip over it); dragging the grip
 moves the row, and clicking it opens the row's menu, whose Hide puts the row in the fold
 at the foot of the list. Opened, the fold's Show button is there without the
 pointer on its row, and brings the row back; no click moves the page. It runs
