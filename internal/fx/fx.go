@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/yetone/magpie/internal/appdir"
 )
 
 // rateURL is a free, no-key endpoint that gives every currency's rate
@@ -56,13 +58,7 @@ var (
 )
 
 // CachePath is where the rate is kept between runs.
-func CachePath() string {
-	if x := os.Getenv("XDG_CACHE_HOME"); x != "" {
-		return filepath.Join(x, "magpie", "fxrate.json")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".cache", "magpie", "fxrate.json")
-}
+func CachePath() string { return filepath.Join(appdir.Cache(), "fxrate.json") }
 
 // Get is the rate to show right now: what this process (or, failing that,
 // the cache file) last learned, if it's under TTL old; else a fresh fetch

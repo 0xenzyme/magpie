@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/steady"
@@ -199,13 +200,7 @@ type file struct {
 }
 
 // Path is the file the user's providers live in.
-func Path() string {
-	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-		return filepath.Join(x, "magpie", "providers.json")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "magpie", "providers.json")
-}
+func Path() string { return filepath.Join(appdir.Config(), "providers.json") }
 
 // load is the file for a read that goes on without it: start-up, the
 // gateway, the catalog. One that can't be read is taken as empty there;

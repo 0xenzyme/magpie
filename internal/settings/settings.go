@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/redact"
 )
@@ -475,16 +476,14 @@ func renameInMap(m reflect.Value, from, to string) bool {
 }
 
 // Path is the settings file.
-func Path() string {
-	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-		return filepath.Join(x, "magpie", "settings.json")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "magpie", "settings.json")
-}
+func Path() string { return filepath.Join(Dir(), "settings.json") }
 
-// Dir is the folder every magpie file lives in.
-func Dir() string { return filepath.Dir(Path()) }
+// Dir is the folder every magpie file lives in: the data folder beside a
+// portable magpie (appdir.Portable), else ~/.config/magpie.
+func Dir() string { return appdir.Config() }
+
+// Portable is the data folder of a portable magpie, or "" when installed.
+func Portable() string { return appdir.Portable() }
 
 // Load reads the settings; anything missing or unreadable is the default.
 func Load() Settings {

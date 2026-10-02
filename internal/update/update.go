@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/proc"
 )
@@ -278,8 +279,8 @@ func team(ctx context.Context, app string) string {
 // in its cache, to be moved in with the administrator's password.
 func stageDir(dir string) string {
 	if !Writable(dir) {
-		if cache, err := os.UserCacheDir(); err == nil {
-			return filepath.Join(cache, "magpie", "update")
+		if cache, err := appdir.SystemCache(); err == nil {
+			return filepath.Join(cache, "update")
 		}
 	}
 	return filepath.Join(dir, ".magpie-update")

@@ -1456,6 +1456,7 @@ const I18N = {
     "magpie is running from its disk image, so it can't update itself; drag it to Applications and open it from there.": "magpie 正在从磁盘映像中运行，所以它无法自动更新；请把它拖到「应用程序」文件夹，再从那里打开。",
     "Config folder": "配置目录",
     "providers, profiles and these settings": "供应商、方案与这些设置",
+    "Portable: everything magpie keeps, in the data folder beside it": "便携模式：magpie 的所有数据都在它旁边的 data 文件夹里",
     "Open": "打开",
     "Path": "路径",
     "the address every agent is pointed at": "各 Agent 指向的地址",

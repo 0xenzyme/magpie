@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yetone/magpie/internal/appdir"
 )
 
 // The plugin market: the plugins magpie suggests, from the community
@@ -128,13 +130,7 @@ func InfoCached(names []string) map[string]NPM {
 	return out
 }
 
-func marketCache() string {
-	if x := os.Getenv("XDG_CACHE_HOME"); x != "" {
-		return filepath.Join(x, "magpie", "plugin-market.json")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".cache", "magpie", "plugin-market.json")
-}
+func marketCache() string { return filepath.Join(appdir.Cache(), "plugin-market.json") }
 
 func parseMarket(b []byte) ([]Listing, error) {
 	var r registry
