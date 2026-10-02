@@ -327,6 +327,13 @@ var presets = []PresetDef{
 	{ID: "aihubmix", Name: "AiHubMix", Icon: "aihubmix-color", Kind: KindRelay,
 		Chat: "https://aihubmix.com/v1", Anthropic: "https://aihubmix.com",
 		Website: "https://aihubmix.com", KeysURL: "https://console.aihubmix.com/token"},
+	// one key for every vendor's models: Chat on its converter, which
+	// takes any of them; GPT on its own Responses API and Claude on its
+	// own Messages API, each of which serves its family alone (the
+	// model list's type_target says which is which)
+	{ID: "pipellm", Name: "PipeLLM", Icon: "pipellm-color", Kind: KindRelay,
+		Chat: "https://api.pipellm.ai/openai/v1", Responses: "https://api.pipellm.ai/v1", Anthropic: "https://api.pipellm.ai",
+		Website: "https://www.pipellm.ai", KeysURL: "https://console.pipellm.ai"},
 	{ID: "302ai", Name: "302.AI", Icon: "ai302-color", Kind: KindRelay,
 		Chat: "https://api.302.ai/v1", Anthropic: "https://api.302.ai",
 		Website: "https://302.ai", KeysURL: "https://302.ai/api-keys/list"},

@@ -799,7 +799,7 @@ func (p Provider) Speaks() []Protocol {
 	return out
 }
 
-// ResponsesFirst: an OpenAI model on OpenAI's API, Copilot's or Bedrock's,
+// ResponsesFirst: an OpenAI model on OpenAI's API, Copilot's, PipeLLM's or Bedrock's,
 // which is best asked on the Responses API though Chat serves it too.
 func (p Provider) ResponsesFirst(model string) bool {
 	if p.Responses != "" && p.IsBedrock() {
@@ -807,7 +807,7 @@ func (p Provider) ResponsesFirst(model string) bool {
 	}
 	// Azure OpenAI's deployments are named as the user likes; one named
 	// for its model (gpt-5-codex, o4-mini) is taken for it
-	if p.Responses == "" || (p.ID != "copilot" && HostOf(p.Responses) != "api.openai.com" && !p.IsAzure()) {
+	if p.Responses == "" || (p.ID != "copilot" && HostOf(p.Responses) != "api.openai.com" && HostOf(p.Responses) != "api.pipellm.ai" && !p.IsAzure()) {
 		return false
 	}
 	m := strings.ToLower(model[strings.LastIndex(model, "/")+1:])

@@ -281,6 +281,9 @@ func fetchOne(ctx context.Context, url, key string, anthropic bool, headers map[
 		if native := EndpointAPIs(r.Native); len(native) > 0 {
 			apis = native
 		}
+		if len(apis) == 0 {
+			apis = targetAPIs(r.TypeTarget)
+		}
 		m := Model{ID: id, Name: name, ImageInput: input, APIs: apis, Draws: drawer}
 		if n, ok := r.ContextLength.(float64); ok && n > 0 {
 			m.Context = int(n)
@@ -350,6 +353,9 @@ type liveModel struct {
 	// it, and "image" on one it draws with
 	Label string `json:"magpie_label"`
 	Kind  string `json:"kind"`
+	// the protocol family PipeLLM routes the model by: openai, anthropic
+	// or gemini
+	TypeTarget string `json:"type_target"`
 }
 
 // levelsOf are the efforts of a list's supported_reasoning_levels, as
@@ -389,6 +395,23 @@ func EndpointAPIs(endpoints []string) []string {
 		}
 	}
 	return out
+}
+
+// targetAPIs are the APIs a model is served on by its type_target, as
+// PipeLLM's list says it: its own /v1/chat/completions and /v1/responses
+// take the openai family alone, /v1/messages the anthropic one (asked
+// there rather than through a converter), and its converter for Chat
+// (/openai/v1) every family, Gemini's too.
+func targetAPIs(target string) []string {
+	switch target {
+	case "openai":
+		return []string{"chat", "responses"}
+	case "anthropic":
+		return []string{"anthropic"}
+	case "gemini":
+		return []string{"chat"}
+	}
+	return nil
 }
 
 // Decorate fills in names and reasoning levels for live models from the
