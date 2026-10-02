@@ -4351,6 +4351,13 @@ function cancelEdit(keep) {
   editing = null; draft = null; importing = null; importingApps = null; renderProviders();
 }
 
+// modelPrefsOfDraft: the names, levels and images staged in the editor's
+// Names & levels, for its Save, or nothing when none changed.
+function modelPrefsOfDraft() {
+  const x = draft?.modelPrefs;
+  return x && Object.keys(x).length ? x : undefined;
+}
+
 // proxyPicker: the proxy one provider's requests go through (#237) — the
 // one in Settings, none, or its own — so Codex can go through a proxy
 // while a vendor at home goes direct. The draft keeps the choice as
@@ -5072,7 +5079,7 @@ function drawEditor(p, presetID) {
       }
       const maxConcurrency = concurrencyOfDraft();
       if (maxConcurrency === undefined) return concurrencyError(ed);
-      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, proxy, accountProxies: own.map, maxConcurrency }, t("{name} saved", { name: p.name })); };
+      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, proxy, accountProxies: own.map, maxConcurrency, modelPrefs: modelPrefsOfDraft() }, t("{name} saved", { name: p.name })); };
     bar.append(cancel, saveBtn);
     ed.append(bar);
     return ed;
@@ -5361,7 +5368,7 @@ function drawEditor(p, presetID) {
     if (isNew && draft.copyOf) body.copyOf = draft.copyOf;
     if (decides) body.decide = (draft.decide || "").trim();
     if (custom) { body.icon = draft.icon || "generic"; body.balanceURL = (draft.balanceURL || "").trim(); body.balancePath = (draft.balancePath || "").trim(); body.modelsURL = (draft.modelsURL || "").trim(); }
-    if (p) { body.fallback = draft.fallback; body.unlisted = draft.unlisted; }
+    if (p) { body.fallback = draft.fallback; body.unlisted = draft.unlisted; body.modelPrefs = modelPrefsOfDraft(); }
     body.searches = !!draft.searches && searchable();
     const cx = parseContexts(draft.contexts || "");
     if (cx.error) return editorError(t("Context window: {v} is not a length like 128k or 1m", { v: cx.error }), "warn");
@@ -5902,67 +5909,100 @@ function renderModels(p) {
       lost.append(b);
     }
   };
-  // the names and reasoning levels of the models agents see: saved at once,
-  // apart from the editor's Save, as they change nothing but what is shown
+  // the names and reasoning levels of the models agents see, and whether
+  // they see images: staged in draft.modelPrefs and made with the editor's
+  // Save, as the rest of it is, Cancel dropping them. Each tick used to be
+  // saved on its own, every one rewriting the agents' files, so picking a
+  // model's levels lagged a click behind (ARNO on Discord).
   const drawNames = () => {
     names.replaceChildren();
     names.hidden = naming !== p.id;
     if (names.hidden) return;
     const ids = draft.chosen.length ? draft.chosen : p.models.filter((m) => m.on).map((m) => m.id);
     if (!ids.length) { names.append(el("span", "hint", t("Pick a model first."))); return; }
+    const prefs = draft.modelPrefs = draft.modelPrefs || {};
     for (const id of ids) {
       const m = p.models.find((x) => x.id === id) || { id, name: id };
       const own = m.default || m.name || m.id;
+      // what is staged for it, and what it is saved as
+      const pref = () => prefs[id] = prefs[id] || {};
+      const savedName = m.default ? m.name : "";
+      const levels = m.efforts || [];
+      const savedKept = m.kept?.length || m.given ? m.kept || [] : levels;
+      const nameNow = () => prefs[id]?.name ?? savedName;
+      const keptNow = () => prefs[id]?.efforts ? (prefs[id].efforts.length || m.given ? prefs[id].efforts : levels) : savedKept;
+      const imagesNow = () => prefs[id]?.ownImages ? !!m.ownImages : prefs[id]?.images ?? !!m.images;
       const row = el("div", "mname");
-      const name = input(m.default ? m.name : "", own);
+      const name = input(nameNow(), own);
       name.title = t("The name agents and magpie show for {id}; empty for its own", { id: m.id });
-      const save = () => {
+      name.onchange = () => {
         const v = name.value.trim();
-        if (v === (m.default ? m.name : "")) return;
-        accountAction("provider/name", { id: p.id, model: m.id, modelName: v }, v ? t("{id} is called {name}", { id: m.id, name: v }) : t("{id} has its own name again", { id: m.id }));
+        if (v === savedName) delete pref().name; else pref().name = v;
+        drawReset();
       };
-      name.onchange = save;
-      name.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") name.blur(); else if (e.key === "Escape") { name.value = m.default ? m.name : ""; name.blur(); } };
+      name.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") name.blur(); else if (e.key === "Escape") { name.value = nameNow(); name.blur(); } };
       const who = el("div", "mwho");
       who.append(name, el("code", "", m.id));
       row.append(who);
-      const [img, imgCb] = tick(t("Accepts images"), !!m.images);
+      const [img, imgCb] = tick(t("Accepts images"), imagesNow());
       img.title = t("Whether agents are told {id} can see images", { id: m.id });
-      imgCb.onchange = () => accountAction("provider/images", { id: p.id, model: m.id, images: imgCb.checked },
-        imgCb.checked ? t("{id} accepts images", { id: m.id }) : t("{id} does not accept images", { id: m.id }));
+      imgCb.onchange = () => {
+        const x = pref();
+        delete x.ownImages;
+        if (imgCb.checked === !!m.images) delete x.images;
+        else x.images = imgCb.checked;
+        drawReset();
+      };
       row.append(img);
-      const levels = m.efforts || [];
       // a model whose levels aren't known (m.given) can be given any
       // of them, and none again
+      const boxes = [];
       if (levels.length > 1) {
         const lv = el("div", "mlevels");
         lv.title = t(m.given ? "Its reasoning levels aren't known: tick the ones it takes" : "Reasoning levels agents are offered");
-        const kept = m.kept?.length || m.given ? m.kept || [] : levels;
         for (const l of levels) {
-          const [tk, cb] = tick(t(l), kept.includes(l));
+          const [tk, cb] = tick(t(l), keptNow().includes(l));
           cb.onchange = () => {
+            const kept = keptNow();
             const next = levels.filter((x) => x === l ? cb.checked : kept.includes(x));
             if (!next.length && !m.given) { cb.checked = true; status(t("Keep at least one level"), "err"); return; }
-            accountAction("provider/efforts", { id: p.id, model: m.id, efforts: next.length === levels.length && !m.given ? [] : next },
-              next.length ? t("{id}: {levels}", { id: m.id, levels: next.map((x) => t(x)).join(", ") }) : t("{id} is as its provider has it again", { id: m.id }));
+            const all = next.length === levels.length && !m.given;
+            if (all ? !m.kept?.length : next.join() === savedKept.join()) delete pref().efforts;
+            else pref().efforts = all ? [] : next;
+            drawReset();
           };
+          boxes.push([l, cb]);
           lv.append(tk);
         }
         row.append(lv);
       }
-      if (m.default || m.kept?.length || m.imageSet) {
-        const reset = el("button", "text action", t("Restore default"));
-        reset.title = t("Its own name, every reasoning level it has, and whether it sees images");
-        reset.onclick = async () => {
-          reset.classList.add("busy");
-          try {
-            if (m.default) await api("provider/name", { id: p.id, model: m.id, modelName: "" });
-            if (m.imageSet) await api("provider/images", { id: p.id, model: m.id, images: null });
-          } catch (e) { status(e.message, "err"); reset.classList.remove("busy"); return; }
-          accountAction("provider/efforts", { id: p.id, model: m.id, efforts: [] }, t("{id} is as its provider has it again", { id: m.id }));
-        };
-        row.append(reset);
-      }
+      // what the Save will make of it differs from what it is: said beside
+      // it, so a change not yet saved isn't taken for one made
+      const unsaved = el("span", "hint munsaved", t("unsaved"));
+      unsaved.title = t("Made when the provider is saved; Cancel drops it");
+      const reset = el("button", "text action", t("Restore default"));
+      reset.title = t("Its own name, every reasoning level it has, and whether it sees images");
+      reset.onclick = () => {
+        prefs[id] = {};
+        if (m.default) prefs[id].name = "";
+        if (m.kept?.length) prefs[id].efforts = [];
+        if (m.imageSet) prefs[id].ownImages = true;
+        name.value = nameNow();
+        imgCb.checked = imagesNow();
+        for (const [l, cb] of boxes) cb.checked = keptNow().includes(l);
+        drawReset();
+      };
+      const drawReset = () => {
+        const x = prefs[id];
+        if (x && !Object.keys(x).length) delete prefs[id];
+        unsaved.hidden = !prefs[id];
+        // staged back to its own already, there is nothing to restore
+        const images = prefs[id]?.ownImages ? false : prefs[id]?.images !== undefined ? prefs[id].images !== !!m.ownImages : !!m.imageSet;
+        const custom = nameNow() !== "" || (prefs[id]?.efforts ? prefs[id].efforts.length > 0 : !!m.kept?.length) || images;
+        reset.hidden = !custom;
+      };
+      row.append(unsaved, reset);
+      drawReset();
       names.append(row);
     }
   };

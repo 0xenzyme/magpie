@@ -869,6 +869,8 @@ const I18N = {
     "Restore default": "恢复默认",
     "Its own name, every reasoning level it has, and whether it sees images": "恢复默认名称、全部推理档位，以及是否支持图片",
     "{id} is as its provider has it again": "{id} 已恢复为供应商的默认设置",
+    "unsaved": "未保存",
+    "Made when the provider is saved; Cancel drops it": "保存供应商时生效；取消则放弃",
 
     // gateway
     "running": "运行中",

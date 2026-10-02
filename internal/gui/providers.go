@@ -32,6 +32,7 @@ type modelJSON struct {
 	Given    bool     `json:"given,omitempty"`    // its levels aren't known: Efforts are those it can be given, Kept those it was
 	Images   bool     `json:"images"`             // agents are told it can see images
 	ImageSet bool     `json:"imageSet,omitempty"` // the user said so, rather than its vendor
+	Own      bool     `json:"ownImages,omitempty"` // its vendor's answer, which a staged Restore default shows
 	On       bool     `json:"on"`                 // exposed to agents
 	Context  int      `json:"context,omitempty"`
 	Max      int      `json:"max,omitempty"`  // the most its context may be set to, above Context
@@ -377,9 +378,10 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		if m.ImageInput != nil {
 			images = *m.ImageInput
 		}
+		own := images
 		images, _ = provider.ApplyImage(p.ID, m.ID, images, m.ImageInput)
 		_, imageSet := provider.ImageOverride(p.ID, m.ID)
-		j := modelJSON{ID: m.ID, Name: m.Name, Efforts: provider.EffortsOf(m), On: on, Context: m.Context, Max: m.MaxContext, Free: m.Free, Images: images, ImageSet: imageSet}
+		j := modelJSON{ID: m.ID, Name: m.Name, Efforts: provider.EffortsOf(m), On: on, Context: m.Context, Max: m.MaxContext, Free: m.Free, Images: images, ImageSet: imageSet, Own: own}
 		if i := slices.IndexFunc(most, func(c catalog.Model) bool { return c.ID == m.ID }); j.Max == 0 && i >= 0 {
 			j.Max = most[i].MaxContext
 		}
@@ -632,6 +634,10 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// Images, for images: whether the model takes images. Nil
 			// gives the vendor's answer back.
 			Images *bool `json:"images"`
+			// ModelPrefs, for save: the names, levels and images the
+			// editor's Names & levels changed, by model id, made with the
+			// rest of the Save and not a click at a time
+			ModelPrefs map[string]provider.ModelPref `json:"modelPrefs"`
 			// Test, for test: models to send a request each, in place of
 			// one per endpoint
 			Test []string `json:"test"`
@@ -795,6 +801,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 						return
 					}
 					in.ID = to
+				}
+			}
+			if len(req.ModelPrefs) > 0 {
+				if err := provider.SetModelPrefs(in.ID, req.ModelPrefs); err != nil {
+					fail(rw, err)
+					return
 				}
 			}
 			provider.ForgetBalances()
