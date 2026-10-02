@@ -103,6 +103,7 @@ article p b, article li b { color: var(--ink); font-weight: 600; }
 article ul { color: var(--ink2); padding-left: 20px; margin: 0 0 16px; }
 article li { margin: 6px 0; }
 article :not(pre) > code { font-size: .86em; background: var(--code); border: 1px solid var(--line); padding: 1px 5px; border-radius: 5px; color: var(--ink); white-space: nowrap; }
+@media (max-width: 700px) { article :not(pre) > code { white-space: normal; overflow-wrap: break-word; } }
 .anchor { text-decoration: none; }
 .anchor:hover::after { content: " #"; color: var(--ink3); }
 
