@@ -91,6 +91,9 @@ async function api(path, body) {
     if (data?.why) err.why = data.why; // a failed move's reason, said in the reader's language
     throw err;
   }
+  // the accounts it names, for Hide accounts to know them (#568); a
+  // session's or a library's words aren't looked through
+  if (data && typeof data === "object" && !/^(sessions|library|skills|plugins|market)/.test(path)) noteAccounts(data);
   return data;
 }
 
@@ -8432,6 +8435,8 @@ function renderQuotas() {
         card.append(who);
       } else if (every) head.append(every);
       card.append(meters);
+      // WorkBuddy's credits, day by day, as magpie counted them (#568)
+      if (sub.daily && !sub.error) card.append(creditDays(sub));
       // what is left besides the windows, under them
       if (sub.balance && sub.windows?.length && !sub.error) card.append(balanceRow(sub, "What is left on the account besides its windows", false));
       // windows standing in for ones that couldn't be read just now say
@@ -8456,6 +8461,51 @@ function renderQuotas() {
     }
     subscriptions.append(card);
   }
+}
+
+// creditDays: the credits an account used each day of the period, as
+// magpie counted them from its readings of the vendor's meter, which tells
+// only what the cycle has used so far — a bar a day, and the period's sum;
+// a day before magpie first read it is not known rather than nothing.
+function creditDays(sub) {
+  const box = el("div", "credit-days");
+  const { since, days } = sub.daily;
+  const by = new Map(days.map((d) => [d.day, d.used]));
+  const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  // the period's days, the first from when counting began for All
+  let n = { today: 1, "7d": 7, "30d": 30 }[period];
+  if (!n) n = Math.min(120, Math.max(1, Math.round((today - new Date(since + "T12:00:00")) / 864e5) + 1));
+  const list = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    list.push({ day: key(d), date: d, used: by.get(key(d)) || 0, known: key(d) >= since });
+  }
+  const num = (v) => (Math.round(v * 100) / 100).toLocaleString(locale === "zh" ? "zh-CN" : undefined);
+  const dayName = (d) => d.toLocaleDateString(locale === "zh" ? "zh-CN" : undefined, { month: "short", day: "numeric" });
+  const sum = list.reduce((a, d) => a + d.used, 0);
+  const head = el("div", "cd-head");
+  const name = el("span", "", t("Credits used per day"));
+  name.title = t("Counted from magpie's readings of the vendor's meter, since {date}: what is used while magpie isn't reading it is counted on the day it next does", { date: dayName(new Date(since + "T12:00:00")) });
+  head.append(name, el("b", "", n === 1 ? t("{n} today", { n: num(sum) }) : t("{n} in {days} days", { n: num(sum), days: n })));
+  box.append(head);
+  if (n > 1) {
+    const bars = el("div", "cd-bars");
+    const peak = Math.max(...list.map((d) => d.used), 0);
+    for (const d of list) {
+      const b = el("span", "cd-day" + (d.known ? "" : " unknown"));
+      const fill = el("i");
+      fill.style.height = d.known && peak ? Math.max(d.used ? 6 : 0, 100 * d.used / peak).toFixed(1) + "%" : "0%";
+      b.append(fill);
+      b.title = d.known ? t("{date}: {n} credits", { date: dayName(d.date), n: num(d.used) }) : t("{date}: not counted — magpie began counting on {since}", { date: dayName(d.date), since: dayName(new Date(since + "T12:00:00")) });
+      bars.append(b);
+    }
+    box.append(bars);
+  }
+  if (since > list[0].day) box.append(el("div", "cd-note", t("Counted since {date}", { date: dayName(new Date(since + "T12:00:00")) })));
+  return box;
 }
 
 // planTerm says when a plan's paid time ends: renewed then, over, or
@@ -13428,34 +13478,111 @@ window.renderPluginDot = renderPluginDot;
 renderPluginDot();
 window.addEventListener("focus", renderPluginDot);
 setInterval(renderPluginDot, 15 * 60 * 1000);
-// ---------- hiding emails, for a screenshot to share ----------
-// Routing and Usage each have a Hide emails button, one setting for both.
-// Each email address on the page — an account's, in a row, a sentence,
-// a tooltip — is swapped for blurred stand-in letters while it's on, as the
-// page redraws too; the address itself is kept aside to put back.
+// ---------- hiding accounts, for a screenshot to share ----------
+// Routing and Usage each have a Hide accounts button, one setting for both,
+// which the tray panel follows too. Each account on the page — an email
+// address, or a name that isn't one (WorkBuddy's nickname or phone number,
+// a plugin's account id, #568), in a row, a sentence, a tooltip — is
+// swapped for blurred stand-in letters while it's on, as the page redraws
+// too; the account itself is kept aside to put back.
+//
+// accountNames are the names of subscription accounts magpie has told the
+// page of (noteAccounts, from what the API answered), beside the accounts
+// of the providers and allowances it holds now.
+const accountNames = new Set();
+// generic words an account can't be named, lest every one of them on the
+// page is hidden
+const NOT_ACCOUNTS = new Set(["default", "own", "desktop", "account", "main", "local", "unknown", "none", "free", "pro"]);
+function noteAccount(s) {
+  if (typeof s !== "string") return;
+  s = s.trim();
+  if (s.length >= 2 && s.length <= 80 && !/[\n\r]/.test(s)) accountNames.add(s);
+}
+// noteAccounts takes the accounts out of an answer of the API: a user, an
+// account named, or a route's account (kind "account", who)
+function noteAccounts(x, depth = 0) {
+  if (!x || typeof x !== "object" || depth > 8) return;
+  if (Array.isArray(x)) { for (const v of x) noteAccounts(v, depth + 1); return; }
+  for (const [k, v] of Object.entries(x)) {
+    if (typeof v === "string") {
+      if (k === "user" || k === "account" || (k === "who" && x.kind === "account")) noteAccount(v);
+    } else if (k === "who" && x.kind === "account" && Array.isArray(v)) for (const w of v) noteAccount(w);
+    else if (v && typeof v === "object") noteAccounts(v, depth + 1);
+  }
+}
+window.noteAccounts = noteAccounts;
 (() => {
   const EYE = "M2 12s3.5-8 10-8 10 8 10 8-3.5 8-10 8-10-8-10-8zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z";
   const EYE_OFF = "M9.9 4.2A10.4 10.4 0 0 1 12 4c6.5 0 10 8 10 8a17.6 17.6 0 0 1-2.2 3.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 8 10 8a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M2 2l20 20";
   // an address a vendor has half masked itself (Zhipu's abc***gh@…) is one
   // address still, the letters before its stars hidden too
-  const EMAIL = /[\w.+*•-]+@[\w*•-]+(?:\.[\w*•-]+)+/g, IS_EMAIL = new RegExp(EMAIL.source);
-  // stand-in letters of the address's shape, the same each time it's drawn:
+  const EMAIL = /[\w.+*•-]+@[\w*•-]+(?:\.[\w*•-]+)+/g, IS_EMAIL = new RegExp("^" + EMAIL.source + "$");
+  // stand-in letters of the account's shape, the same each time it's drawn:
   // blurred, they read as a name without being one
   const dots = (s) => { let h = 7; return s.replace(/[^@.]/g, (c) => (h = (h * 31 + c.charCodeAt(0)) >>> 0, "aeiounrstlcmdh"[h % 14])); };
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // names: the accounts that aren't addresses, longest first so one inside
+  // another is hidden whole; a name that is a provider's, an agent's or a
+  // card's own (WorkBuddy's account with no nickname is "WorkBuddy") is not
+  // one to hide
+  function names() {
+    const all = new Set(accountNames), not = new Set(NOT_ACCOUNTS);
+    for (const p of providers?.providers || []) {
+      for (const n of [p.id, p.name, p.account?.agentName, p.account?.agent]) if (n) not.add(String(n).toLowerCase());
+      if (p.account) { all.add((p.account.user || "").trim()); for (const l of p.account.logins || []) all.add((l.user || "").trim()); }
+    }
+    for (const q of quotas || []) {
+      for (const n of [q.provider, q.name, q.plan]) if (n) not.add(String(n).toLowerCase());
+      all.add((q.user || "").trim());
+    }
+    for (const a of state?.agents || []) for (const n of [a.id, a.name]) if (n) not.add(String(n).toLowerCase());
+    return [...all].filter((n) => n.length >= 2 && !IS_EMAIL.test(n) && !not.has(n.toLowerCase())).sort((a, b) => b.length - a.length);
+  }
+  let findKey = null, find = EMAIL;
+  // finder is the pattern of everything to hide now: an address, or a name
+  function finder() {
+    const ns = names(), key = ns.join("\n");
+    if (key !== findKey) {
+      findKey = key;
+      find = ns.length ? new RegExp(EMAIL.source + "|" + ns.map(esc).join("|"), "g") : EMAIL;
+    }
+    return find;
+  }
+  // a name found inside a longer word ("dev" in "developer") isn't the
+  // account; an address always is
+  const WORD = /[A-Za-z0-9_]/;
+  function* hits(s, re) {
+    re.lastIndex = 0; // matchAll starts where the pattern's last test ended
+    for (const m of s.matchAll(re)) {
+      const name = !m[0].includes("@");
+      if (name && ((WORD.test(m[0][0]) && WORD.test(s[m.index - 1] || "")) || (WORD.test(m[0].at(-1)) && WORD.test(s[m.index + m[0].length] || "")))) continue;
+      yield m;
+    }
+  }
   // what a page redraws is masked before it's painted; masking isn't
   // itself watched, so it can't set itself off again
   const OBS = { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["title"] };
+  const SKIP = new Set(["SCRIPT", "STYLE", "OPTION", "TEXTAREA"]);
   let masked = false;
   try { masked = localStorage.getItem("magpie.maskEmails") === "1"; } catch {}
-  const pages = [["#view-routing", "#rtMask"], ["#view-usage", "#usageMask"]].map(([v, b]) => {
-    const view = $(v), btn = $(b);
+  // the pages it hides on: Routing's and Usage's, each with its button; in
+  // the tray panel, the whole of it, as the window's setting says
+  const targets = mode === "panel" ? [["#view-agents", null]] : [["#view-routing", "#rtMask"], ["#view-usage", "#usageMask"]];
+  const pages = targets.map(([v, b]) => {
+    const view = $(v), btn = b && $(b);
+    if (!view) return () => {};
     function mask() {
+      const re = finder();
       const walk = document.createTreeWalker(view, NodeFilter.SHOW_TEXT), found = [];
-      for (let n; (n = walk.nextNode());) if (n.data.includes("@") && IS_EMAIL.test(n.data) && !n.parentElement?.closest(".pii")) found.push(n);
+      for (let n; (n = walk.nextNode());) {
+        if (n.data.length < 2 || SKIP.has(n.parentElement?.tagName) || n.parentElement?.closest(".pii")) continue;
+        re.lastIndex = 0;
+        if (re.test(n.data)) found.push(n);
+      }
       for (const n of found) {
         const bits = [];
         let last = 0;
-        for (const m of n.data.matchAll(EMAIL)) {
+        for (const m of hits(n.data, re)) {
           if (m.index > last) bits.push(n.data.slice(last, m.index));
           const s = el("span", "pii", dots(m[0]));
           s.dataset.raw = m[0];
@@ -13470,10 +13597,16 @@ setInterval(renderPluginDot, 15 * 60 * 1000);
         else n.replaceWith(...bits);
       }
       for (const e of view.querySelectorAll("[title]")) {
-        // one masked already reads as an address too, its stars and all
-        if ("piiTitle" in e.dataset || !e.title.includes("@") || !IS_EMAIL.test(e.title)) continue;
+        // one masked already reads as an account too, its stars and all
+        if ("piiTitle" in e.dataset || !e.title) continue;
+        let out = "", last = 0;
+        for (const m of hits(e.title, re)) {
+          out += e.title.slice(last, m.index) + m[0].replace(m[0].includes("@") ? /[^@.]/g : /./gu, "•"); // a tooltip can't blur
+          last = m.index + m[0].length;
+        }
+        if (!last) continue;
         e.dataset.piiTitle = e.title;
-        e.title = e.title.replace(EMAIL, (m) => m.replace(/[^@.]/g, "•")); // a tooltip can't blur
+        e.title = out + e.title.slice(last);
       }
     }
     function unmask() {
@@ -13488,7 +13621,7 @@ setInterval(renderPluginDot, 15 * 60 * 1000);
       mask();
       watch.observe(view, OBS);
     });
-    btn.onclick = () => {
+    if (btn) btn.onclick = () => {
       setMasked(!masked);
       // pixelated in when asked for, not again each time the page redraws
       view.classList.add("masking");
@@ -13496,23 +13629,30 @@ setInterval(renderPluginDot, 15 * 60 * 1000);
       btn._t = setTimeout(() => view.classList.remove("masking"), 450);
     };
     return (on) => {
-      btn.setAttribute("aria-pressed", String(on));
-      // what it is now, in its icon and its words: an open eye while the
-      // addresses show, struck through once they're hidden
-      btn.querySelector("path").setAttribute("d", on ? EYE_OFF : EYE);
-      const label = btn.querySelector("[data-t]");
-      label.dataset.en = on ? "Emails hidden" : "Hide emails";
-      label.textContent = t(label.dataset.en);
+      if (btn) {
+        btn.setAttribute("aria-pressed", String(on));
+        // what it is now, in its icon and its words: an open eye while the
+        // accounts show, struck through once they're hidden
+        btn.querySelector("path").setAttribute("d", on ? EYE_OFF : EYE);
+        const label = btn.querySelector("[data-t]");
+        label.dataset.en = on ? "Accounts hidden" : "Hide accounts";
+        label.textContent = t(label.dataset.en);
+      }
       view.classList.toggle("masked", on);
-      if (on) { mask(); watch.observe(view, OBS); }
+      // a name learnt since it was masked: hidden afresh
+      if (on) { watch.disconnect(); unmask(); mask(); watch.observe(view, OBS); }
       else { watch.disconnect(); unmask(); }
     };
   });
-  function setMasked(on) {
+  function setMasked(on, keep) {
     masked = on;
-    try { localStorage.setItem("magpie.maskEmails", on ? "1" : "0"); } catch {}
+    if (!keep) try { localStorage.setItem("magpie.maskEmails", on ? "1" : "0"); } catch {}
     for (const set of pages) set(on);
   }
+  // turned in the window: the tray panel (or another window) follows
+  window.addEventListener("storage", (e) => {
+    if (e.key === "magpie.maskEmails" && (e.newValue === "1") !== masked) setMasked(e.newValue === "1", true);
+  });
   setMasked(masked);
 })();
 

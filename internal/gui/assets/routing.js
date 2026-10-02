@@ -1123,6 +1123,7 @@
       if (res.status === 404) throw new Error(t("Routing history for this request is no longer available."));
       if (!res.ok) throw new Error(await res.text());
       r = await res.json();
+      noteAccounts(r);
     }
     day = routes.has(id) ? "" : r.time.slice(0, 10);
     if (day) {
@@ -1221,6 +1222,7 @@
     try {
       const res = await (await fetch("/api/gateway/history?day=" + encodeURIComponent(d || ""))).json();
       days = res.days || [];
+      noteAccounts(res.routes);
       if (d && d === day) { past = res.routes || []; pastCut = !!res.cut; }
     } catch {}
     renderHist(); // shown once there are days, though none are live
@@ -2015,6 +2017,7 @@
       try {
         const res = await fetch(`/api/gateway/trace?after=${seq}${loaded ? "&wait=1" : ""}`);
         const d = await res.json();
+        noteAccounts(d);
         skew = at(d.now) - Date.now();
         mine = d.mine;
         hubText();

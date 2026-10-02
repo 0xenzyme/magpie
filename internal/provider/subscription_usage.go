@@ -81,6 +81,9 @@ type SubscriptionQuota struct {
 	// Resets are the rate-limit resets a Codex account holds, nil when it
 	// holds none (codex_resets.go).
 	Resets *ResetCredits `json:"resets,omitempty"`
+	// Daily is a WorkBuddy account's credits used day by day, as magpie
+	// counted them from its readings (credits_daily.go).
+	Daily *DailyCredits `json:"daily,omitempty"`
 }
 
 var subscriptionUsageCache struct {
@@ -118,6 +121,7 @@ func SubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 		go func() {
 			start := time.Now()
 			out := fetchSubscriptionUsage()
+			noteDailyCredits(out, time.Now())
 			c.Lock()
 			c.at, c.data, c.pending = time.Now(), out, nil
 			if claudeAsked.Load() > start.UnixNano() {
@@ -140,8 +144,9 @@ func SubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 		}
 	}
 	c.Lock()
-	defer c.Unlock()
-	return visibleQuotas(c.data)
+	out := visibleQuotas(c.data)
+	c.Unlock()
+	return withDailyCredits(out, time.Now())
 }
 
 // visibleQuotas drops accounts removed from magpie since the last refresh.

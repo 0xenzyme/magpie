@@ -515,7 +515,8 @@ body.window .field.solo { grid-column: auto; }
 .subscription-card.several .quota-windows + .subscription-account,
 .subscription-card.several .subscription-error + .subscription-account,
 .subscription-card.several .quota-balance + .subscription-account,
-.subscription-card.several .quota-read + .subscription-account { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
+.subscription-card.several .quota-read + .subscription-account,
+.subscription-card.several .credit-days + .subscription-account { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
 .subscription-account .user { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .subscription-account .plan { margin-left: auto; flex: none; font-size: 10.5px; color: var(--muted); text-transform: capitalize; }
 .subscription-head .plan { margin-left: auto; font-size: 10.5px; color: var(--muted); text-transform: capitalize; }
@@ -542,6 +543,16 @@ body.window .field.solo { grid-column: auto; }
 .quota-track { height: 4px; border-radius: 2px; background: var(--pill); overflow: hidden; }
 .quota-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
 .subscription-error { font-size: 11px; color: var(--faint); }
+/* WorkBuddy's credits a day (#568): the period's sum over a bar a day; a
+   day before counting began is an empty slot, not a zero */
+.credit-days { margin-top: 10px; }
+.credit-days .cd-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 10.5px; color: var(--muted); }
+.credit-days .cd-head b { color: var(--fg-2); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.credit-days .cd-bars { display: flex; align-items: flex-end; gap: 2px; height: 28px; margin-top: 5px; }
+.credit-days .cd-day { flex: 1; height: 100%; display: flex; align-items: flex-end; border-radius: 2px; background: var(--pill); }
+.credit-days .cd-day.unknown { background: none; outline: 1px dashed var(--line); outline-offset: -1px; }
+.credit-days .cd-day i { display: block; width: 100%; border-radius: 2px; background: var(--accent); }
+.credit-days .cd-note { margin-top: 4px; font-size: 10px; color: var(--faint); }
 .quota-resets { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 10.5px; font-variant-numeric: tabular-nums; }
 .quota-resets .text { margin-left: auto; flex: none; font-size: 11px; padding: 2px 7px; }
 .subscription-card.several .quota-resets + .subscription-account { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
