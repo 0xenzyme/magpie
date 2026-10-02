@@ -75,6 +75,9 @@ func revealable(v *library.View) []string {
 		for _, e := range p.Placed {
 			out = append(out, filepath.Join(p.Dir, filepath.FromSlash(e)))
 		}
+		for f := range p.Wrote {
+			out = append(out, filepath.Join(p.Dir, filepath.FromSlash(f)))
+		}
 	}
 	return out
 }
@@ -323,6 +326,8 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 			res, err = library.RemoveProject(in.Dir)
 		case "projects/skill":
 			res, err = library.ProjectSkill(in.Dir, in.Name, in.Agents)
+		case "projects/server":
+			res, err = library.ProjectServer(in.Dir, in.Name, in.Agents)
 		case "projects/copy":
 			res, err = library.ProjectCopy(in.Dir, in.Copy)
 		case "all/sync":

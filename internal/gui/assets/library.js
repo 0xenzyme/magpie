@@ -1143,6 +1143,7 @@
       for (const f of found) list.append(foundServerRow(f));
       body.append(list);
     }
+    if (lib.servers.length || lib.projects.length) renderProjects(body, "mcp");
     const skip = shownAgents().filter((a) => !a.mcp);
     if (skip.length) body.append(el("p", "lib-aside", t("{agents} has no MCP servers magpie can write.", { agents: skip.map((a) => a.name).join(", ") })));
     body.append(discover("mcp"));
@@ -1483,7 +1484,7 @@
       for (const f of lib.foundSkills) list.append(foundSkillRow(f));
       body.append(list);
     }
-    if (lib.skills.length || lib.projects.length) renderProjects(body);
+    if (lib.skills.length || lib.projects.length) renderProjects(body, "skills");
     const skip = shownAgents().filter((a) => !a.skills);
     if (skip.length) body.append(el("p", "lib-aside", t("{agents} has no skills folder.", { agents: skip.map((a) => a.name).join(", ") })));
     body.append(discover("skills"));
@@ -1897,24 +1898,31 @@
   // library's skills there, as the project's own: linked (or copied) into
   // the folder each agent reads a project's skills from, and kept out of
   // git in the project's .gitignore. Only what magpie placed is taken away.
+  // Its MCP servers are written into the file each agent reads a project's
+  // servers from (.mcp.json, .codex/config.toml…), beside what's there; the
+  // MCP tab lists the same projects with the servers.
   let addingProject = null;       // the folder being added: { dir, error, busy }
-  const openProjects = new Set(); // projects whose skills are shown
+  const openProjects = new Set(); // projects whose skills (or servers) are shown
   const projectAgents = () => shownAgents().filter((a) => a.projectSkills);
+  const projectMCPAgents = () => shownAgents().filter((a) => a.projectMCP);
+  const projectFiles = () => [...new Set(projectMCPAgents().map((a) => a.projectMCP))].join(", ");
 
-  function renderProjects(body) {
+  function renderProjects(body, kind) {
     const rh = el("div", "row-head");
     rh.append(el("span", "label", t("In projects")), el("span", "grow"));
     if (!addingProject) rh.append(button(t("Add a project"), "action lib-updall", () => { addingProject = { dir: "" }; render(); }));
     body.append(rh);
-    if (addingProject) body.append(addProjectCard());
+    if (addingProject) body.append(addProjectCard(kind));
     if (!lib.projects.length && !addingProject) {
-      body.append(el("p", "lib-aside", t("Give a project's agents some of these skills as the project's own: magpie links them into its .claude/skills and .agents/skills and keeps them out of git.")));
+      body.append(el("p", "lib-aside", kind === "mcp"
+        ? t("Give a project's agents some of these servers as the project's own: magpie writes them into its {files}, leaving the rest of each file as it is.", { files: projectFiles() })
+        : t("Give a project's agents some of these skills as the project's own: magpie links them into its .claude/skills and .agents/skills and keeps them out of git.")));
       return;
     }
-    for (const p of lib.projects) body.append(projectCard(p));
+    for (const p of lib.projects) body.append(projectCard(p, kind));
   }
 
-  function addProjectCard() {
+  function addProjectCard(kind) {
     const a = addingProject;
     const card = el("div", "list lib-card lib-install");
     const line = el("div", "lib-find");
@@ -1953,7 +1961,7 @@
         addingProject = null;
         const p = lib.projects.find((x) => !was.has(x.dir));
         if (p) openProjects.add(p.dir);
-        status(t("{name} added — pick the skills it gets", { name: p?.name || dir }), "ok");
+        status(kind === "mcp" ? t("{name} added — pick the servers it gets", { name: p?.name || dir }) : t("{name} added — pick the skills it gets", { name: p?.name || dir }), "ok");
       } catch (e) {
         a.busy = false;
         a.error = e.message;
@@ -1963,24 +1971,25 @@
     return card;
   }
 
-  function projectCard(p) {
+  function projectCard(p, kind) {
+    const mcp = kind === "mcp";
     const card = el("div", "list lib-card lib-project" + (p.missing ? " missing" : ""));
     const isOpen = openProjects.has(p.dir);
     const head = el("div", "row lib-row click lib-projhead" + (isOpen ? " open" : ""));
     const who = el("div", "who");
     const nm = el("div", "name", p.name);
     if (p.missing) nm.append(tag(t("Folder is gone"), "warn"));
-    else if (p.copy) nm.append(tag(t("Copies"), ""));
+    else if (p.copy && !mcp) nm.append(tag(t("Copies"), ""));
     who.append(nm);
     const src = el("div", "lib-src");
     src.append(pathLink(p.dir));
     who.append(src);
-    const names = Object.keys(p.skills).sort();
+    const names = Object.keys((mcp ? p.servers : p.skills) || {}).sort();
     const pills = el("div", "lib-tags");
     if (!isOpen) {
       for (const n of names.slice(0, 4)) pills.append(tag(n, "lib-dot"));
       if (names.length > 4) pills.append(tag("+" + (names.length - 4), ""));
-      if (!names.length) pills.append(tag(t("No skills yet"), "lib-unchecked"));
+      if (!names.length) pills.append(tag(mcp ? t("No servers yet") : t("No skills yet"), "lib-unchecked"));
     }
     const acts = el("div", "lib-rowacts");
     const rm = button("", "lib-icon danger", () => confirmRemoveProject(p));
@@ -1991,10 +2000,11 @@
     chev.append(svg(CHEV_R, 11, 1.7));
     head.append(glyph(GLYPH.folder), who, pills, acts, chev);
     head.onclick = () => { isOpen ? openProjects.delete(p.dir) : openProjects.add(p.dir); render(); };
-    head.title = isOpen ? t("Hide its skills") : t("Pick the skills it gets");
+    head.title = mcp ? (isOpen ? t("Hide its servers") : t("Pick the servers it gets")) : isOpen ? t("Hide its skills") : t("Pick the skills it gets");
     card.append(head);
     if (p.problems?.[""]) card.append(el("div", "lib-err", p.problems[""]));
     if (!isOpen) return card;
+    if (mcp) return projectServers(p, card);
 
     const opts = el("div", "lib-projopts");
     const copy = toggle(p.copy, t("Copy files instead of linking"), (on) =>
@@ -2022,10 +2032,9 @@
       const on = p.skills[s.name] || [];
       // an agent reading the same folder as one that has it has it too
       const via = (a) => { const o = on.find((id) => agentOf(id)?.projectSkills === a.projectSkills); return o ? nameOf(o) : ""; };
-      row.append(mark(s.icon, GLYPH.skill), w, agentChips(all, on, (next) =>
-        change("projects/skill", { dir: p.dir, name: s.name, agents: next }, next.length
-          ? t("{skill} is in {name} for {agents}", { skill: s.name, name: p.name, agents: next.map(nameOf).join(", ") })
-          : t("{skill} is out of {name}", { skill: s.name, name: p.name })), { via }));
+      row.append(mark(s.icon, GLYPH.skill), w, agentChips(all, on, projectChange("projects/skill", p.dir, s.name, (next) => next.length
+        ? t("{skill} is in {name} for {agents}", { skill: s.name, name: p.name, agents: next.map(nameOf).join(", ") })
+        : t("{skill} is out of {name}", { skill: s.name, name: p.name })), { via }));
       card.append(row);
     }
     const dirs = [...new Set(all.map((a) => a.projectSkills))];
@@ -2035,12 +2044,72 @@
     return card;
   }
 
+  // A project row's chip: lit at once, so a second click before magpie has
+  // answered the first counts from it; the clicks are sent one at a time,
+  // the last of them winning, and the page drawn again once they're in.
+  const projectWriting = new Map();
+  function projectChange(path, dir, name, done) {
+    return async (next, c) => {
+      const on = next.includes(c.dataset.agent);
+      c.classList.toggle("on", on);
+      if (on) c.classList.remove("via");
+      c.setAttribute("aria-pressed", on ? "true" : "false");
+      const key = path + "\n" + dir + "\n" + name;
+      const w = projectWriting.get(key);
+      if (w) { w.want = next; return; }
+      const me = { want: next };
+      projectWriting.set(key, me);
+      let sent = null;
+      const same = () => [...sent].sort().join() === [...me.want].sort().join();
+      try {
+        while (!sent || !same()) {
+          sent = me.want;
+          const v = await api("library/" + path, { dir, name, agents: sent });
+          take(v);
+          if (same()) report(v.result, done(sent));
+        }
+      } catch (e) {
+        status(e.message, "err", 6000);
+        await api("library").then(take, () => {});
+      }
+      projectWriting.delete(key);
+      render();
+    };
+  }
+
+  // The project's card, open on the MCP tab: each library server with the
+  // chips of the agents that read a project's own servers.
+  function projectServers(p, card) {
+    const all = projectMCPAgents();
+    for (const s of lib.servers) {
+      const row = el("div", "row lib-row lib-projskill lib-projserver");
+      const w = el("div", "who");
+      const n = el("div", "name mono", s.name);
+      const problem = p.problems?.["mcp:" + s.name];
+      if (problem) n.append(tag(t("Not written"), "warn", problem));
+      w.append(n);
+      const sub = el("div", "sub mono", problem || serverLine(s));
+      sub.title = problem || serverLine(s);
+      w.append(sub);
+      row.append(mark(s.icon, s.transport === "stdio" ? GLYPH.cmd : GLYPH.web), w, agentChips(all, p.servers?.[s.name] || [], projectChange("projects/server", p.dir, s.name, (next) => next.length
+        ? t("{server} is in {name} for {agents}", { server: s.name, name: p.name, agents: next.map(nameOf).join(", ") })
+        : t("{server} is out of {name}", { server: s.name, name: p.name })), { blocked: sseBlocked(s) }));
+      card.append(row);
+    }
+    if (!lib.servers.length) card.append(el("p", "lib-aside lib-projfoot", t("No servers in the library yet")));
+    card.append(el("p", "lib-aside lib-projfoot", t("Written into {files} of the project, beside what's in them; a file magpie makes is listed in its .gitignore. A server there by the same name that isn't magpie's is left as it is.", { files: projectFiles() })));
+    card.append(el("p", "lib-aside lib-projfoot", t("Claude Code asks before it starts a project's servers, and Codex reads .codex/config.toml only in a project you trust.")));
+    const skip = shownAgents().filter((a) => a.mcp && !a.projectMCP);
+    if (skip.length) card.append(el("p", "lib-aside lib-projfoot", t("{agents} reads no project MCP file magpie knows of.", { agents: skip.map((a) => a.name).join(", ") })));
+    return card;
+  }
+
   function confirmRemoveProject(p) {
     const ed = el("div", "editor lib-editor");
     const head = el("div", "ehead");
     head.append(glyph(GLYPH.trash), el("b", "", t("Remove {name}?", { name: p.name })));
     ed.append(head);
-    ed.append(el("p", "lib-confirm", t("The skills magpie placed in it are taken away, with their lines in its .gitignore. Nothing else in the folder is touched.")));
+    ed.append(el("p", "lib-confirm", t("The skills and MCP servers magpie put in it are taken away, with their lines in its .gitignore. Nothing else in the folder is touched.")));
     const bar = el("div", "bar");
     const go = button(t("Remove"), "primary danger-fill", async () => {
       if (await change("projects/remove", { dir: p.dir }, t("{name} removed", { name: p.name }))) { openProjects.delete(p.dir); closeLibModal(); }

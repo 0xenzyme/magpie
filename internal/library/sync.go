@@ -153,12 +153,14 @@ type AgentView struct {
 	MCP          string `json:"mcp,omitempty"`
 	Skills       string `json:"skills,omitempty"`
 	// ProjectSkills is the folder in a project it reads skills from
-	ProjectSkills string   `json:"projectSkills,omitempty"`
-	SkillsAlso    []string `json:"skillsAlso,omitempty"`
-	Note          string   `json:"note,omitempty"`
-	NoSSE         bool     `json:"noSSE,omitempty"`
-	NoRemote      bool     `json:"noRemote,omitempty"`
-	MCPVia        string   `json:"mcpVia,omitempty"`
+	ProjectSkills string `json:"projectSkills,omitempty"`
+	// ProjectMCP is the file, in a project, it reads MCP servers from
+	ProjectMCP string   `json:"projectMCP,omitempty"`
+	SkillsAlso []string `json:"skillsAlso,omitempty"`
+	Note       string   `json:"note,omitempty"`
+	NoSSE      bool     `json:"noSSE,omitempty"`
+	NoRemote   bool     `json:"noRemote,omitempty"`
+	MCPVia     string   `json:"mcpVia,omitempty"`
 }
 
 // ServerView is a library server, and what each agent it's on made of it.
@@ -213,7 +215,7 @@ func Read(problems []Problem) (*View, error) {
 	targets := Targets()
 	for _, t := range targets {
 		av := AgentView{ID: t.Agent.ID, Name: t.Agent.Name, Icon: t.Agent.Icon, Instructions: t.Instructions, Skills: t.Skills,
-			SkillsAlso: t.SkillsAlso, Note: t.Note, MCPVia: t.MCPVia, ProjectSkills: ProjectSkillsDir(t.Agent.ID)}
+			SkillsAlso: t.SkillsAlso, Note: t.Note, MCPVia: t.MCPVia, ProjectSkills: ProjectSkillsDir(t.Agent.ID), ProjectMCP: ProjectMCPFile(t.Agent.ID)}
 		if t.MCP != nil {
 			av.MCP = t.MCP.Path
 			av.NoSSE = t.MCP.supports(&Server{Transport: "sse"}) != nil
@@ -296,6 +298,9 @@ func SaveServer(old string, s Server) (*Result, error) {
 				return fmt.Errorf("no server called %s", old)
 			}
 			l.MCP = slices.Delete(l.MCP, i, i+1)
+			if old != s.Name {
+				l.renameProjectServers(old, s.Name)
+			}
 		}
 		s.Agents = slices.Sorted(slices.Values(s.Agents))
 		l.MCP = append(l.MCP, &s)
@@ -359,6 +364,9 @@ func RemoveServer(name string) (*Result, error) {
 		}
 		k := serverKey(l.MCP[i])
 		l.MCP = slices.Delete(l.MCP, i, i+1)
+		for _, p := range l.Projects {
+			delete(p.Servers, name)
+		}
 		// its icon goes with it, unless another server runs the same thing
 		if !slices.ContainsFunc(l.MCP, func(x *Server) bool { return serverKey(x) == k }) {
 			delete(l.Icons, k)
