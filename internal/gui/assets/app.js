@@ -6812,11 +6812,7 @@ function renderSigning(sub) {
     const acts = el("span", "acts");
     const open = el("button", "link", t("Open again"));
     open.onclick = () => api("open", { url: signing.url }).catch(() => {});
-    // a sign-in left unfinished is put away from beside the link too (#526)
-    const close = el("button", "link", t("Close"));
-    close.title = t("Stop waiting for this sign-in");
-    close.onclick = cancelSignIn;
-    acts.append(open, close);
+    acts.append(open);
     tt.append(acts);
   }
   if (signing.pasteCallback || signing.pasteCode || signing.pasteKey) {
@@ -6892,7 +6888,10 @@ function renderSigning(sub) {
     const acts = tt.querySelector(".acts") || tt.appendChild(el("span", "acts"));
     acts.append(imp);
   }
+  // the one way to put it away (#526): a Close beside Open again did what
+  // this does, two buttons for one thing
   const x = el("button", "text", t("Cancel"));
+  x.title = t("Stop waiting for this sign-in");
   x.onclick = cancelSignIn;
   box.append(x);
   return box;
