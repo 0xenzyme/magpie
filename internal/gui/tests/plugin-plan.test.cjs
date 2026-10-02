@@ -66,6 +66,15 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(metrics.rings, 1);
       assert.equal(metrics.full, 1);
       assert.equal(metrics.tracks, 1);
+      // windows past the row's two still read on one tooltip line, " · "
+      // between them, when no family joins them (#510 split them by line)
+      const tip = await page.evaluate(() => {
+        const windows = ["A", "B", "C", "D"].map((name, i) => ({ name, used: 10 * i, display: String(i) }));
+        const line = accountQuota({ test: { windows, name: "Copilot", user: "test" } }, "test");
+        return line.title;
+      });
+      assert.equal(tip.split("\n").length, 1);
+      assert.match(tip, /^C .* · D /);
       assert.deepEqual(errors, []);
     });
   }
