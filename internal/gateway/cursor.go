@@ -200,6 +200,9 @@ func (s *Server) serveCursor(w http.ResponseWriter, r *http.Request, from provid
 		return writeError(w, from, 400, err.Error()), err.Error()
 	}
 	req.Model = model
+	if conv := cursorConversation(r.Header, req.CacheKey, body); conv != "" {
+		r = r.WithContext(context.WithValue(r.Context(), cursorConvKey{}, conv))
+	}
 	ask := s.askCursor(model)
 	if req.WebSearch && !searching(r.Context()) {
 		if canSearch() {
@@ -243,7 +246,8 @@ func (s *Server) askCursor(model string) round {
 func (s *Server) cursorRun(ctx context.Context, req *Request, model, id, tok, base string) (<-chan Event, int, string) {
 	tools := bridgeTools(req)
 	msgs := cursorMessages(req, tools)
-	run, blobs := buildCursorRun(msgs, cursorLastUser(req), tools, id)
+	conv, _ := ctx.Value(cursorConvKey{}).(string)
+	run, blobs := buildCursorRun(msgs, cursorLastUser(req), tools, id, conv)
 
 	// the Run ends with the turn, or once the calls are made
 	rctx, cancel := context.WithCancel(ctx)
@@ -554,16 +558,58 @@ func cursorBlobID(b []byte) []byte {
 
 func cursorUUID() string {
 	b, _ := hex.DecodeString(randomToken()[:32])
+	return uuidOf(b)
+}
+
+// uuidOf is 16 bytes as a version 4 UUID, the shape of every id Cursor's
+// own client sends.
+func uuidOf(b []byte) string {
+	b = slices.Clone(b[:16])
 	b[6] = b[6]&0x0f | 0x40
 	b[8] = b[8]&0x3f | 0x80
 	h := hex.EncodeToString(b)
 	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
 }
 
+// cursorConvKey holds, in a request's context, the conversation_id its
+// Runs go with.
+type cursorConvKey struct{}
+
+// cursorConversation is the AgentRunRequest's conversation_id for a
+// conversation: the same on every request of it, so that Cursor's backend
+// keeps sending it to the machine that has its prompt cached — the
+// x-grok-conv-id grokSigned sends xAI for Grok, which caches by machine
+// (#498). Cursor's own client keeps one conversationId per agent session,
+// so it is made from what names the session — the client's
+// prompt_cache_key (Codex's thread id), else the agent's own session
+// header (Claude Code's, OpenCode's) — together with the conversation's
+// first user message, which every later request repeats: subagents
+// running at once under one session (Claude Code's Task agents share its
+// session id) are separate conversations to Cursor, as they are to its
+// own client, and never one conversation sent twice at the same time.
+// With nothing naming the session it is "", and each Run gets a new id
+// as before: a first message alone ("hi") would put strangers'
+// conversations under one id.
+func cursorConversation(in http.Header, cacheKey string, body []byte) string {
+	key := cacheKey
+	if key == "" {
+		key = nativeSessionOf(in)
+	}
+	if key == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("cursor conversation\x00" + key + "\x00" + conversationID(http.Header{}, body)))
+	return uuidOf(sum[:])
+}
+
 // buildCursorRun is the Run's first message, an AgentClientMessage with its
 // run_request, and the blobs it names. The conversation state is the
 // messages and one turn, which the server wants there to sample at all.
-func buildCursorRun(msgs [][]byte, lastUser string, tools []bridgeTool, model string) ([]byte, map[string][]byte) {
+// conv is the conversation_id (cursorConversation), a new one when "".
+func buildCursorRun(msgs [][]byte, lastUser string, tools []bridgeTool, model, conv string) ([]byte, map[string][]byte) {
+	if conv == "" {
+		conv = cursorUUID()
+	}
 	blobs := map[string][]byte{}
 	put := func(b []byte) []byte {
 		id := cursorBlobID(b)
@@ -593,10 +639,21 @@ func buildCursorRun(msgs [][]byte, lastUser string, tools []bridgeTool, model st
 	action := pb{}.bytes(2, pb{}.bytes(2, rc)) // resume_action
 	rr := pb{}.bytes(1, state).bytes(2, action).
 		bytes(3, pb{}.str(1, model).str(3, model).str(4, model)).
-		bytes(4, mcp).str(5, cursorUUID()).
+		bytes(4, mcp).str(5, conv).
 		bytes(9, pb{}.str(1, model)).
 		varint(19, 1) // inline images
 	return pb{}.bytes(1, rr), blobs
+}
+
+// cursorUsage is a TurnEndedUpdate as magpie counts usage. Its
+// input_tokens is the whole prompt, what was read from the cache and
+// written to it included, as Cursor's own client has it (it takes both out
+// to get the prompt's uncached rest); Usage.Input is that rest, as
+// Anthropic's count and every other provider here has it, prompt() adding
+// the cache back (#498). Its reasoning_tokens is kept as Reasoning.
+func cursorUsage(uf []pbField) Usage {
+	in, cr, cw := int(pbNum(uf, 1)), int(pbNum(uf, 3)), int(pbNum(uf, 4))
+	return Usage{Input: max(in-cr-cw, 0), Output: int(pbNum(uf, 2)), CacheRead: cr, CacheWrite: cw, Reasoning: int(pbNum(uf, 5))}
 }
 
 // cursorToolDef is an McpToolDefinition.
@@ -800,7 +857,7 @@ func (st *cursorStream) decode(ctx context.Context, br *bufio.Reader, out chan<-
 							}
 						}
 					case 14: // turn ended, with what it used
-						usage = Usage{Input: int(pbNum(uf, 1)), Output: int(pbNum(uf, 2)), CacheRead: int(pbNum(uf, 3)), CacheWrite: int(pbNum(uf, 4))}
+						usage = cursorUsage(uf)
 						if calls == 0 {
 							finish()
 							return
