@@ -235,6 +235,9 @@ type Server struct {
 	sightMu    sync.Mutex
 	sights     map[string]*sight
 	sightOrder []string
+	// the requests out at each key or account with a MaxConcurrency, and
+	// those waiting their turn (concurrency.go)
+	lanes lanes
 }
 
 // New makes a gateway.
@@ -369,6 +372,7 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /v1/magpie/quotas", s.quotas)
 	mux.HandleFunc("GET /v1/magpie/route", s.sessionRoute)
+	mux.HandleFunc("GET /v1/magpie/concurrency", s.concurrency)
 	mux.HandleFunc("POST /v1/chat/completions", s.handle(provider.Chat))
 	mux.HandleFunc("POST /chat/completions", s.handle(provider.Chat))
 	mux.HandleFunc("POST /v1/responses", s.handle(provider.Responses))
@@ -1153,6 +1157,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			t.Tries = append(t.Tries, Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Fast: fast, Start: began})
 		})
 		held := false // answered as its vendor did a moment ago, without asking
+		var queued int64 // ms it waited for a slot of its key's or account's
 		if said, ok := verifyHeld(c.restKey()); ok && last {
 			// the account must be verified first (#152): the agent's
 			// reconnects are told so again, not sent on to a vendor that
@@ -1164,7 +1169,23 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// once (hw.stop), not read on until the vendor hangs up
 			ctx, stop := context.WithCancel(r.Context())
 			hw.stop = stop
-			call.Status, call.Error = s.attempt(hw, r.WithContext(ctx), from, c.p, c.model, attemptBody, &call)
+			// a key or account with a MaxConcurrency is asked once one of
+			// its slots is free, in turn; the agent gone while it waits,
+			// nothing is sent (the 499 below)
+			waited := time.Now()
+			release, ok := s.lanes.acquire(ctx, c.who(), c.p.Concurrency())
+			queued = time.Since(waited).Milliseconds()
+			if ok {
+				if queued > 0 {
+					s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1].Queued = queued })
+				}
+				func() {
+					// the slot is the vendor's until the reply is read to
+					// its end or the agent has gone: attempt returns then
+					defer release()
+					call.Status, call.Error = s.attempt(hw, r.WithContext(ctx), from, c.p, c.model, attemptBody, &call)
+				}()
+			}
 			stop()
 		}
 		hw.settle()
@@ -1175,7 +1196,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// the vendor's safety filter, with nothing said (#248)
 			call.Error = refusedError(c.p, c.model, hw.failMsg)
 		}
-		try := Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Fast: fast, Start: began, Done: true, Status: call.Status, Millis: time.Since(began).Milliseconds(), Error: call.Error,
+		try := Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Fast: fast, Start: began, Done: true, Status: call.Status, Millis: time.Since(began).Milliseconds(), Error: call.Error, Queued: queued,
 			Served: call.Usage.Served}
 		asName := provider.SentNameOnIn(wiresOf(r.Context()), c.p.ID, accountAgent(c.p), c.model, sent)
 		try.Swapped, try.Routed = swapped(asName, call.Usage.Served), usage.GroupRouted(asName, call.Usage.Served)

@@ -681,6 +681,18 @@ function iconOf(a) {
   return ok(readJSON(path.join(dir, "package.json"))?.magpie?.icon)
 }
 
+// concurrencyOf is how many requests the plugin says each of its accounts
+// takes at once, magpie's own field: the auth hook's maxConcurrency, else
+// package.json's magpie.maxConcurrency. A whole number over 0, else none
+// (0); the user's setting on the provider goes over it.
+function concurrencyOf(a) {
+  const ok = (v) => (Number.isInteger(v) && v > 0 ? Math.min(v, 1000) : 0)
+  const own = ok(a.auth.maxConcurrency)
+  if (own || !a.target) return own
+  const dir = fs.statSync(a.target, { throwIfNoEntry: false })?.isDirectory() ? a.target : path.dirname(a.target)
+  return ok(readJSON(path.join(dir, "package.json"))?.magpie?.maxConcurrency)
+}
+
 // providers lists each provider and its accounts' models, each asked
 // through its proxy (proxies[provider][key], "" the provider's own), as a
 // built-in fetches each account's list through the account's.
@@ -709,6 +721,7 @@ async function providers({ proxies } = {}) {
       methods: methods(a.auth),
       icon: iconOf(a),
       usage: typeof a.auth.usage === "function",
+      maxConcurrency: concurrencyOf(a),
       signedIn: keys.length > 0,
       authType: first?.type ?? "",
       accountId: whoOf(first),

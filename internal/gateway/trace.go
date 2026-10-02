@@ -212,6 +212,9 @@ type Try struct {
 	Error   string `json:"error,omitempty"`
 	Rest    *Rest  `json:"rest,omitempty"`  // how long it now sits out; none when it was the last to try
 	Again   int64  `json:"again,omitempty"` // ms waited before it was tried again, the last one left
+	// Queued: ms it waited for one of its key's or account's slots, the
+	// provider's MaxConcurrency out already (concurrency.go)
+	Queued int64 `json:"queued,omitempty"`
 	// Reset: its week used up and nobody else left, one of the account's
 	// Codex resets was spent by itself (the user's setting) — on Who, and
 	// what spending it did — and the request asked again

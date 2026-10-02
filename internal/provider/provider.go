@@ -88,6 +88,13 @@ type Provider struct {
 	// "turn", "off".
 	Affinity string `json:"affinity,omitempty"`
 
+	// MaxConcurrency is how many requests may be out at the vendor at once
+	// on each of its keys or accounts (Discord, Lemon: a Codex account is
+	// risk-controlled past five or six at once); the rest wait their turn,
+	// in the order they came (see Concurrency). nil follows what a
+	// plugin's provider says it takes, else none; 0 is no limit.
+	MaxConcurrency *int `json:"maxConcurrency,omitempty"`
+
 	// Headers are extra HTTP request headers sent to the vendor, exactly as
 	// the user typed them. They ride on every request magpie makes to a plain
 	// key+URL provider — forwarded calls, connectivity tests, and model-list
@@ -294,6 +301,7 @@ func All() []Provider {
 		pk := picks[a.ID]
 		a.Models, a.Unlisted, a.Off, a.Fallback, a.Routing, a.Affinity, a.Contexts, a.Family = pk.Models, pk.Unlisted, pk.Off, pk.Fallback, pk.Routing, pk.Affinity, pk.Contexts, pk.Family
 		a.Proxy, a.AccountProxies, a.AccountModels = pk.Proxy, pk.AccountProxies, pk.AccountModels
+		a.MaxConcurrency = pk.MaxConcurrency
 		if a.ID == "cursor" { // picked before its efforts were one model
 			a.Models = cursorPicks(a.Models)
 		}
@@ -392,7 +400,7 @@ func Save(p Provider) error {
 		if p.ID == "kiro" {
 			key = p.Key
 		}
-		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Contexts: p.Contexts, Family: p.Family, Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID)}
+		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Contexts: p.Contexts, Family: p.Family, Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, MaxConcurrency: p.MaxConcurrency, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID)}
 	} else {
 		p.AccountProxies = nil // a provider of a key has no accounts to proxy apart
 		if subscriptionID(p.ID) && !stored(p.ID) {
@@ -683,6 +691,9 @@ func normalize(p Provider) Provider {
 	}
 	if !slices.Contains(Affinities, p.Affinity) {
 		p.Affinity = ""
+	}
+	if p.MaxConcurrency != nil && *p.MaxConcurrency < 0 {
+		p.MaxConcurrency = new(int)
 	}
 	p.Catalog = strings.Join(p.Catalogs(), ", ")
 	// a Bedrock provider saved before the preset had its Responses API

@@ -4331,6 +4331,39 @@ function proxyPicker() {
   box.append(row, hint);
   return box;
 }
+
+// concurrencyField: how many requests each of the provider's keys or
+// accounts may have out at the vendor at once (Discord, Lemon: a Codex
+// account is risk-controlled past five or six); more wait their turn and
+// go in order. The draft keeps what is typed as concurrency, "" for none
+// set — a plugin's provider then takes what its plugin says, shown as the
+// placeholder — and concurrencyOfDraft is what is saved.
+function concurrencyField(p) {
+  const plugin = p?.pluginConcurrency || 0;
+  const box = input(draft.concurrency ?? "", plugin ? t("{n}, as its plugin says", { n: plugin }) : t("No limit"), "number");
+  box.classList.add("concurrency");
+  box.min = "0";
+  box.max = "1000";
+  box.step = "1";
+  box.inputMode = "numeric";
+  box.oninput = () => { draft.concurrency = box.value; };
+  return field(t("Max concurrent requests"), box, plugin ? t("Over it, requests queue and go out in order; empty takes the plugin's {n}, 0 is no limit", { n: plugin }) : t("Over it, requests queue and go out in order; 0 or empty is no limit"));
+}
+function concurrencyDraft(p) {
+  return { concurrency: p?.maxConcurrency == null ? "" : String(p.maxConcurrency) };
+}
+// concurrencyOfDraft is the draft's limit as it is saved — null for none
+// set, else the number — or undefined when what is typed isn't one.
+function concurrencyOfDraft() {
+  const v = String(draft.concurrency ?? "").trim();
+  if (!v) return null;
+  if (!/^\d+$/.test(v) || +v > 1000) return undefined;
+  return +v;
+}
+function concurrencyError(ed) {
+  ed.querySelector("input.concurrency")?.focus({ preventScroll: true });
+  return editorError(t("Max concurrent requests: a whole number from 0 to 1000"), "warn");
+}
 function proxyDraft(p) {
   const v = (p?.proxy || "").trim();
   // each account's own (accountProxies), by its name in lower case
@@ -4770,7 +4803,7 @@ const PROTOS = [["chat", "OpenAI", "Chat Completions — most agents"], ["respon
 
 // draftOf is a saved provider as its editor's form holds it.
 function draftOf(p) {
-  return { id: p.id, name: p.name, preset: p.preset, chat: p.chat, responses: p.responses, anthropic: p.anthropic, catalog: p.catalog, key: "", api: p.chat ? "openai" : p.anthropic ? "anthropic" : p.responses ? "responses" : "openai", chosen: p.models.filter((m) => m.on).map((m) => m.id), extra: [], headers: headerRows(p.headers), icon: p.icon || "", fallback: [...(p.fallback || [])], unlisted: !!p.unlisted, searches: !!p.searches, balanceURL: p.balanceURL || "", balancePath: p.balancePath || "", modelsURL: p.modelsURL || "", contexts: contextsText(p.contexts), keysUrl: p.keysUrl || "", ...proxyDraft(p) };
+  return { id: p.id, name: p.name, preset: p.preset, chat: p.chat, responses: p.responses, anthropic: p.anthropic, catalog: p.catalog, key: "", api: p.chat ? "openai" : p.anthropic ? "anthropic" : p.responses ? "responses" : "openai", chosen: p.models.filter((m) => m.on).map((m) => m.id), extra: [], headers: headerRows(p.headers), icon: p.icon || "", fallback: [...(p.fallback || [])], unlisted: !!p.unlisted, searches: !!p.searches, balanceURL: p.balanceURL || "", balancePath: p.balancePath || "", modelsURL: p.modelsURL || "", contexts: contextsText(p.contexts), keysUrl: p.keysUrl || "", ...proxyDraft(p), ...concurrencyDraft(p) };
 }
 
 // duplicateProvider opens the Add form on a copy of p (#268): its URLs,
@@ -4960,6 +4993,7 @@ function drawEditor(p, presetID) {
     const perAccount = subOf(a.agent) ? accountProxyPicker(a) : null;
     if (perAccount) proxies.append(perAccount);
     ed.append(...field(t("Proxy"), proxies));
+    ed.append(...concurrencyField(p));
     // a plugin's provider is reached inside magpie: its plugin:// URLs go
     // nowhere to show or test
     const urls = [p.chat, p.responses, p.anthropic].filter(Boolean);
@@ -4984,7 +5018,9 @@ function drawEditor(p, presetID) {
         line?.querySelector(".proxy-url")?.focus({ preventScroll: true });
         return editorError(t("Proxy of {user}: type its address, like http://127.0.0.1:7890", { user: line?.dataset.user || own.missing }), "warn");
       }
-      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, proxy, accountProxies: own.map }, t("{name} saved", { name: p.name })); };
+      const maxConcurrency = concurrencyOfDraft();
+      if (maxConcurrency === undefined) return concurrencyError(ed);
+      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, proxy, accountProxies: own.map, maxConcurrency }, t("{name} saved", { name: p.name })); };
     bar.append(cancel, saveBtn);
     ed.append(bar);
     return ed;
@@ -5048,6 +5084,7 @@ function drawEditor(p, presetID) {
     ed.append(...field(t("Headers"), headerEditor(pr?.headerHints || []), t("Optional headers sent with every request to {p}, applied after auth.", { p: pr?.name || p?.name })));
   }
   ed.append(...field(t("Proxy"), proxyPicker()));
+  ed.append(...concurrencyField(p));
 
   // a relay in front of Anthropic's or OpenAI's API searches the web as
   // they do, which magpie can't tell from its host (#359): a client's web
@@ -5279,6 +5316,8 @@ function drawEditor(p, presetID) {
     body.contexts = cx.map;
     body.proxy = proxyOfDraft();
     if (body.proxy === null) { ed.querySelector(".proxy-url")?.focus(); return editorError(t("Proxy: type its address, like http://127.0.0.1:7890"), "warn"); }
+    body.maxConcurrency = concurrencyOfDraft();
+    if (body.maxConcurrency === undefined) return concurrencyError(ed);
     if (draft.balanceToken) body.balanceToken = draft.balanceToken;
     else if (draft.clearBalanceToken) body.clearBalanceToken = true;
     if (team) {

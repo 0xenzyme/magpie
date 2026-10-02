@@ -89,6 +89,11 @@ type providerJSON struct {
 	Fallback []string    `json:"fallback"`          // where requests go when this one can't take them
 	Routing  string      `json:"routing"`           // how requests spread over its keys or accounts
 	Affinity string      `json:"affinity"`          // how long a conversation stays with who answered it
+	// how many requests each of its keys or accounts has out at once, the
+	// rest queued: the user's (null: not set), and what its plugin says
+	// when the user set none (provider.Concurrency)
+	MaxConcurrency    *int `json:"maxConcurrency"`
+	PluginConcurrency int  `json:"pluginConcurrency,omitempty"`
 	Models   []modelJSON `json:"models"`            // everything the vendor lists, exposed ones flagged
 	Exposed  int         `json:"exposed"`           // how many reach the agents
 	Draws    int         `json:"draws,omitempty"`   // how many of its models draw images (gateway.Drawers)
@@ -254,6 +259,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, Headers: p.Headers, Searches: p.Searches, BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, ModelsURL: p.ModelsURL,
 		Ready: p.Ready(), Chosen: p.Models, Models: []modelJSON{}, Agents: []providerAgent{},
 		Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
+		MaxConcurrency: p.MaxConcurrency, PluginConcurrency: p.PluginConcurrency(),
 	}
 	if out.Fallback == nil {
 		out.Fallback = []string{}
@@ -573,8 +579,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			provider.Provider
 			// Proxy is the proxy its requests go through (#237), "" to
 			// follow the global one; a save that leaves it out keeps it
-			Proxy        *string  `json:"proxy"`
-			AccountOrder []string `json:"accountOrder"`
+			Proxy *string `json:"proxy"`
+			// MaxConcurrency is how many requests each of its keys or
+			// accounts has out at once: a number (0 none), null for what
+			// its plugin says or none; a save that leaves it out keeps it
+			MaxConcurrency json.RawMessage `json:"maxConcurrency"`
+			AccountOrder   []string        `json:"accountOrder"`
 			// New is set by the editor's Add: the provider is one more, never
 			// one replacing the provider that has its id or name
 			New bool `json:"new"`
@@ -663,6 +673,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				}
 				in = pr
 			}
+			cc, keepCC, err := concurrencyOf(req.MaxConcurrency)
+			if err != nil {
+				fail(rw, err)
+				return
+			}
+			in.MaxConcurrency = cc
 			var old *provider.Provider
 			if req.New {
 				// a second one of a preset, or a name already in use, is
@@ -696,6 +712,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 					in.Proxy = *req.Proxy
 				} else if old != nil {
 					in.Proxy = old.Proxy
+				}
+				if keepCC && old != nil {
+					in.MaxConcurrency = old.MaxConcurrency
 				}
 				// each account's own proxy likewise: {} clears them
 				if in.AccountProxies == nil && old != nil {
@@ -1166,4 +1185,19 @@ func typed(p, in provider.Provider, proxy *string) provider.Provider {
 		p.Proxy = *proxy
 	}
 	return p
+}
+
+// concurrencyOf is a save's maxConcurrency: keep when the save left it
+// out, nil for null (the plugin's, or none), else the number, 0 for none.
+func concurrencyOf(raw json.RawMessage) (n *int, keep bool, err error) {
+	if len(raw) == 0 {
+		return nil, true, nil
+	}
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return nil, false, fmt.Errorf("max concurrent requests must be a whole number, not %s", raw)
+	}
+	if n != nil && (*n < 0 || *n > 1000) {
+		return nil, false, fmt.Errorf("max concurrent requests must be from 0 to 1000, not %d", *n)
+	}
+	return n, false, nil
 }
