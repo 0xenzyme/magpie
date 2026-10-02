@@ -198,6 +198,15 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 		}
 		writeJSON(rw, v)
 	})
+	// rtk put on the PATH the agents get, when magpie found it off it
+	mux.HandleFunc("POST /api/library/rtk/path", func(rw http.ResponseWriter, r *http.Request) {
+		v, err := library.PathRTK()
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, v)
+	})
 	mux.HandleFunc("POST /api/library/rtk/install", func(rw http.ResponseWriter, r *http.Request) {
 		v, err := library.InstallRTK()
 		if err != nil {

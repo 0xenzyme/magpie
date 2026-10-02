@@ -40,6 +40,10 @@ func sandbox(t *testing.T) string {
 	roots := piGlobalRoots
 	piGlobalRoots = func() []string { return nil }
 	t.Cleanup(func() { piGlobalRoots = roots })
+	// a terminal's PATH is the test's, never the developer's login shell's
+	up := userPath
+	userPath = func() []string { return filepath.SplitList(os.Getenv("PATH")) }
+	t.Cleanup(func() { userPath = up })
 	for _, k := range agentenv.Vars {
 		t.Setenv(k, "")
 	}

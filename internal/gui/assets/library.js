@@ -697,6 +697,25 @@
       }
       card.append(ttl);
       if (rtk.note) card.append(el("p", "lib-rtk-note", rtk.note));
+      // found where magpie looks, but not on the PATH the agents get: their
+      // hooks run rtk by name, so it does nothing for them (#601)
+      if (rtk.offPath) {
+        const dir = tilde(rtk.path.replace(/[\\/][^\\/]*$/, ""));
+        card.append(el("p", "lib-rtk-note lib-rtk-offpath", t("RTK is in {dir}, which isn't on your PATH. Agents run rtk by name, so they can't find it and RTK does nothing for them (Pi says \"rtk binary not found in PATH\").", { dir })));
+        card.append(el("p", "lib-rtk-cmd", !rtk.pathDir
+          ? t("Add {dir} to PATH in your shell profile, then check again.", { dir })
+          : rtk.pathLink
+            ? t("Put RTK on PATH links it into {dir}.", { dir: tilde(rtk.pathDir) })
+            : t("Put RTK on PATH adds {dir} to your user PATH.", { dir: tilde(rtk.pathDir) })));
+        const acts = el("div", "lib-acts");
+        if (rtk.pathDir) {
+          const pb = button(rtkPathing ? t("Putting RTK on PATH…") : t("Put RTK on PATH"), "action", pathRTK);
+          pb.disabled = rtkPathing;
+          acts.append(pb);
+        }
+        acts.append(button(t("Check again"), rtk.pathDir ? "" : "action", () => { rtk = null; render(); }));
+        card.append(acts);
+      }
       const g = rtk.gain;
       card.append(el("p", "lib-rtk-gain", g
         ? t("{saved} tokens saved over {n} commands — {pct}% on average", { saved: tokens(g.saved), n: g.commands.toLocaleString(), pct: Math.round(g.pct) })
@@ -730,6 +749,8 @@
       row.append(icon(a.icon), who, el("span", "grow"));
       // its hook calls an rtk that isn't there: switching it off still works
       if (a.on && !rtk.path) row.append(tag(t("RTK missing"), "warn", t("{agent}'s hook calls rtk, which isn't installed, so its shell commands fail. Install RTK, or switch this off.", { agent: a.name })));
+      // …or one that is, off the PATH the agent gets
+      else if (a.on && rtk.offPath) row.append(tag(t("Not on PATH"), "warn", t("{agent}'s hook runs rtk by name and can't find it, so RTK does nothing for it. Put RTK on PATH above.", { agent: a.name })));
       // OpenCode 2 won't load rtk's plugin (written for OpenCode 1): it can't
       // be switched on, and one already there can be switched off
       if (a.blocked && a.id !== "opencode") row.append(tag(t("Update RTK"), "warn", t("{agent}'s hook needs RTK 0.50 or newer: older ones only add @RTK.md to AGENTS.md, which rewrites no command. Update RTK (brew upgrade rtk, or its installer again), then switch it on.", { agent: a.name })));
@@ -838,6 +859,19 @@
       status(e.message, "err", 10000);
     }
     rtkUpgrading = false;
+    render();
+  }
+  let rtkPathing = false;
+  async function pathRTK() {
+    rtkPathing = true;
+    render();
+    try {
+      rtk = await api("library/rtk/path", {});
+      status(rtk.restart?.length ? t("RTK is on your PATH — restart your agents, and the terminals they run in, to use it") : t("RTK is on your PATH"), "ok", 6000);
+    } catch (e) {
+      status(e.message, "err", 10000);
+    }
+    rtkPathing = false;
     render();
   }
   let rtkInstalling = false;

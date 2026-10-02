@@ -143,7 +143,11 @@ func rtkUpgrader(bin string) []string {
 			return []string{"cargo", "install", "--git", "https://github.com/rtk-ai/rtk", "--force"}
 		}
 	case runtime.GOOS != "windows":
-		// its own script, told the folder it is in (RTK_INSTALL_DIR)
+		// its own script, told the folder it is in (RTK_INSTALL_DIR): the
+		// one a link to it points into (Put RTK on PATH's), not the link's
+		if st, err := os.Lstat(bin); err == nil && st.Mode()&os.ModeSymlink != 0 {
+			dir = filepath.Dir(real)
+		}
 		if have("curl") {
 			return []string{"sh", "-c", "curl -fsSL " + rtkScript + " | sh", dir}
 		}
