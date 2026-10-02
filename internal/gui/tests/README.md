@@ -104,10 +104,10 @@ code the browser page shows; an API-key way opens the account. English and
 Chinese, Chromium and WebKit, with the API faked.
 
 `plugin-move-overflow.test.cjs` checks a Plugins card that offers a
-built-in's accounts ("Move my 1 Grok (SuperGrok) account"): the button has a
-row of its own at the card's foot, so it stays inside the card and the
-plugin's name and "magpie community" aren't cut, in a three-, two- and
-one-column window. English and Chinese, Chromium and WebKit, with the API
+built-in's accounts: the button is one word beside the name, as Install is
+("Move", its title saying whose accounts and how many), on one line, and it
+stays inside the card and the plugin's name and "magpie community" aren't
+cut, in a three-, two- and one-column window. English and Chinese, Chromium and WebKit, with the API
 faked.
 
 `plugin-key-hint.test.cjs` checks a plugin's API-key way: its label titles
@@ -1291,9 +1291,10 @@ node --test internal/gui/tests/seg-contrast.test.cjs
 ```
 
 `agent-grip.test.cjs` checks that hiding an agent can be found without a
-right-click (#479): with the pointer away, every row in the Agents list draws
-a faint grip in its left margin, beside its logo; dragging the grip moves the
-row, and clicking it opens the row's menu, whose Hide puts the row in the fold
+right-click (#479): a row in the Agents list under the pointer draws a grip
+in its left margin, beside its logo, and no row does with the pointer away;
+the logo stays the logo on hover (no second grip over it); dragging the grip
+moves the row, and clicking it opens the row's menu, whose Hide puts the row in the fold
 at the foot of the list. Opened, the fold's Show button is there without the
 pointer on its row, and brings the row back; no click moves the page. It runs
 in the window and the tray panel, in Chromium and WebKit, in English and

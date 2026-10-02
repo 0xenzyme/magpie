@@ -201,7 +201,7 @@ body.window:not(.mac):not(.linux):not(.web) .brand { display: none; } /* Windows
 .seg {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   display: inline-flex; padding: 2px; border-radius: 8px;
-  background: var(--seg-track);
+  /* no grey track behind the tabs: only the open one's thumb */
 }
 .seg > .thumb { border-radius: 6px; background: var(--seg-thumb); box-shadow: var(--seg-edge); }
 body.panel .seg { display: none; }
@@ -329,28 +329,25 @@ body.window .row .ic { width: 22px; height: 22px; }
 .agent-fold .row { opacity: 0; transform: translateY(-10px) scale(.985); transform-origin: 50% 0; transition: opacity .22s ease, transform .32s cubic-bezier(.4, 0, .2, 1); transition-delay: calc((var(--n) - 1 - var(--i)) * 22ms); }
 .agent-fold.open .row { opacity: 1; transform: none; transition: opacity .42s ease, transform .56s cubic-bezier(.22, 1, .36, 1); transition-delay: calc(70ms + var(--i) * 48ms); }
 
-/* the logo is the row's handle: hovered, it turns into a grip to drag the row
-   by, and a click opens the row's menu (Move up, Move down, Hide). It takes
-   no more room than the logo did. */
+/* the logo is the row's handle: drag it to move the row, and a click opens
+   the row's menu (Move up, Move down, Hide). It stays the logo under the
+   pointer; the grip that says the row can be taken hold of is in its margin. */
 .ag-handle { display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; margin: -3px; padding: 0; border: 0; border-radius: 6px; background: none; color: inherit; cursor: grab; touch-action: none; transition: background-color .15s; }
 body.window .ag-handle { width: 28px; height: 28px; }
-.ag-handle > .ic, .ag-handle > .grip { grid-area: 1 / 1; transition: opacity .15s, transform .2s cubic-bezier(.22, 1, .36, 1); }
-.ag-handle > .grip { display: grid; place-items: center; color: var(--muted); opacity: 0; transform: scale(.8); }
+.ag-handle > .ic { grid-area: 1 / 1; transition: opacity .15s; }
 .ag-handle:hover, .ag-handle.open { background: var(--pill); }
 .ag-handle:focus-visible { background: var(--pill); outline: 1.5px solid var(--fg-2); outline-offset: 0; }
 .agent-fold .ag-handle { cursor: default; }
-#agents > .row .ag-handle:is(:hover, .open) > .ic, #agents > .row.dragging .ag-handle > .ic { opacity: 0; transform: scale(.8); }
-#agents > .row .ag-handle:focus-visible > .ic { opacity: 0; transform: scale(.8); }
-#agents > .row .ag-handle:is(:hover, .open) > .grip, #agents > .row.dragging .ag-handle > .grip { opacity: 1; transform: none; }
-#agents > .row .ag-handle:focus-visible > .grip { opacity: 1; transform: none; }
-/* the logo's grip comes up only on hover, so a row in the list also carries a
-   faint one in its left margin, always there, that says the row can be taken
-   hold of (#479): it is the handle's own, so a drag or a click on it does what
-   the logo does, and it takes no room from the row */
+/* a row in the list carries a grip in its left margin (#479), drawn only
+   while the row is under the pointer, dragged, or its handle has the
+   keyboard or its menu open: always there, it was noise down every row. It
+   is the handle's own, so a drag or a click on it does what the logo does,
+   and it takes no room from the row */
 #agents > .row .ag-handle { position: relative; }
-#agents > .row .ag-handle::before { content: ""; position: absolute; left: -6px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--grip-dot) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; --grip-dot: var(--faint); }
+#agents > .row .ag-handle::before { content: ""; position: absolute; left: -6px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; opacity: 0; transition: opacity .15s; }
 body.panel #agents > .row .ag-handle::before { left: -9px; }
-#agents > .row:is(:hover, .dragging) .ag-handle::before { --grip-dot: var(--muted); }
+#agents > .row:is(:hover, .dragging) .ag-handle::before, #agents > .row .ag-handle.open::before { opacity: 1; }
+#agents > .row .ag-handle:focus-visible::before { opacity: 1; }
 /* one hidden by hand reads as put away, with its way back beside its name */
 .agent-fold .row.put-away .ag-handle > .ic, .agent-fold .row.put-away .name { opacity: .6; }
 .agent-fold .row.put-away .who { display: flex; align-items: center; gap: 8px; }

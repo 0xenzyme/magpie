@@ -1,12 +1,13 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
-// #479: an agent row's handle (its logo, which turns into a grip on hover;
-// a click opens Move up, Move down, Hide) showed nothing until the pointer
-// was on it, so hiding an agent was found only by right-clicking, and a
-// hidden one's way back, the Show button in the fold at the foot of the
-// list, came up only with the pointer on its row. Now every row in the list
-// carries a faint grip in its left margin, there with the pointer away: it is
-// the handle's own, so dragging it moves the row and clicking it opens the
-// menu. Hidden from that menu, the row goes into the fold, whose Show button
+// #479: an agent row's handle (its logo; a click opens Move up, Move down,
+// Hide) showed nothing until the pointer was on it, so hiding an agent was
+// found only by right-clicking, and a hidden one's way back, the Show button
+// in the fold at the foot of the list, came up only with the pointer on its
+// row. Every row in the list then carried a faint grip in its left margin,
+// always there; down every row that was noise, and the logo also turned into
+// a second grip on hover. Now the margin grip is drawn only with the pointer
+// on its row, and the logo stays the logo: the grip is the handle's own, so
+// dragging it moves the row and clicking it opens the menu. Hidden from that menu, the row goes into the fold, whose Show button
 // is there without the pointer on it and brings the row back. No click moves
 // the page. In the window and the tray panel, Chromium and WebKit, English
 // and Chinese; no backend, the API is faked here.
@@ -46,7 +47,7 @@ function fixture(lang) {
 }
 
 const order = (page) => page.locator("#agents > .row.agent").evaluateAll((rs) => rs.map((r) => r.dataset.id));
-// the faint grip of each row in the list, as drawn with the pointer away
+// the margin grip of each row in the list, where it is drawn
 const grips = (page) => page.locator("#agents > .row.agent").evaluateAll((rs) => rs.map((r) => {
   const h = r.querySelector(".ag-handle"), s = getComputedStyle(h, "::before"), hb = h.getBoundingClientRect(), rb = r.getBoundingClientRect();
   const left = hb.left + parseFloat(s.left), w = parseFloat(s.width), ht = parseFloat(s.height);
@@ -76,14 +77,28 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator("#agents > .row.agent").nth(2).waitFor();
         await page.mouse.move(1, 1);
 
-        // with the pointer away, every row's grip is drawn, in its margin
+        // with the pointer away no row's grip is drawn; it is there, in the
+        // row's margin, for the row under the pointer, and the logo stays as
+        // it was
+        const shown = (page) => page.locator("#agents > .row.agent").evaluateAll((rs) => rs.map((r) => getComputedStyle(r.querySelector(".ag-handle"), "::before").opacity));
+        await page.waitForFunction(() => [...document.querySelectorAll("#agents > .row.agent .ag-handle")].every((h) => getComputedStyle(h, "::before").opacity === "0"));
         let g = await grips(page);
         for (const x of g) {
-          assert.notEqual(x.content, "none", `${x.id} has no grip with the pointer away`);
+          assert.notEqual(x.content, "none", `${x.id} has no grip`);
           assert.match(x.image, /gradient/, `${x.id}'s grip draws nothing`);
-          assert(x.opacity > 0 && x.visibility === "visible" && x.w >= 4 && x.ht >= 8, `${x.id}'s grip can't be seen: ${JSON.stringify(x)}`);
+          assert(x.visibility === "visible" && x.w >= 4 && x.ht >= 8, `${x.id}'s grip can't be seen: ${JSON.stringify(x)}`);
           assert(x.inRow, `${x.id}'s grip is off its row or over its logo: ${JSON.stringify(x)}`);
         }
+        assert.equal(await page.locator("#agents .ag-handle .grip").count(), 0, "the logo still has a grip of its own");
+        const row1 = page.locator("#agents > .row.agent").nth(1);
+        await row1.locator(".name").hover();
+        await page.waitForFunction(() => {
+          const rs = [...document.querySelectorAll("#agents > .row.agent .ag-handle")].map((h) => getComputedStyle(h, "::before").opacity);
+          return rs[1] === "1" && rs.every((o, i) => i === 1 || o === "0");
+        });
+        await row1.locator(".ag-handle").hover();
+        assert.equal(await row1.locator(".ag-handle > .ic").evaluate((i) => getComputedStyle(i).opacity), "1", "the logo changes on hover");
+        assert.equal((await shown(page))[1], "1");
 
         // dragging by the grip moves the row
         const before = await order(page);

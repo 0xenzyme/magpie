@@ -201,9 +201,13 @@
     }
   }
   const moveButton = (b, c, here) => {
-    b.classList.add("go", "move");
-    b.textContent = here ? t("Move {name} here", { name: c.name }) : t(c.accounts === 1 ? "Move my {n} {name} account" : "Move my {n} {name} accounts", { name: c.name, n: c.accounts });
-    b.title = t("Runs {name} on this plugin in place of the built-in, with the same accounts; nothing changes if one doesn't work through it", { name: c.name });
+    // one word beside the name, as Install is: the card already says whose
+    // accounts, the title says how many and what it does (a whole sentence
+    // was a solid bar under the card that broke onto two lines)
+    b.classList.add("get", "move");
+    b.textContent = t("Move");
+    b.title = (here ? t("Move {name} here", { name: c.name }) : t(c.accounts === 1 ? "Move my {n} {name} account" : "Move my {n} {name} accounts", { name: c.name, n: c.accounts }))
+      + " — " + t("Runs {name} on this plugin in place of the built-in, with the same accounts; nothing changes if one doesn't work through it", { name: c.name });
     b.disabled = busy.size > 0;
     b.onclick = (ev) => { ev.stopPropagation(); move(c); };
     return b;
@@ -299,11 +303,7 @@
       by.append(v);
     } else by.append(el("span", "", l.npm?.publisher || l.package));
     who.append(by);
-    const act = actionFor(l.package, l.name, l);
-    // a move says whose accounts: too long for the top row, it has one of its own
-    const own = act.classList.contains("move");
-    top.append(logo(l.icon), who);
-    if (!own) top.append(act);
+    top.append(logo(l.icon), who, actionFor(l.package, l.name, l));
     const sum = el("p", "pm-sum", summary(l));
     const meta = el("div", "pm-meta");
     if (l.npm?.weekly) {
@@ -322,7 +322,6 @@
       meta.append(b);
     }
     c.append(top, sum, meta);
-    if (own) c.append(act);
     c.onclick = () => detail(l);
     c.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); detail(l); } };
     return c;

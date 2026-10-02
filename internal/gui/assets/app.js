@@ -901,22 +901,20 @@ function setAgentHidden(a, hide) {
 }
 
 const ALT = /^Mac/.test(navigator.platform) ? "⌥" : "Alt+";
-const GRIP = "M6 4h.01M10 4h.01M6 8h.01M10 8h.01M6 12h.01M10 12h.01";
 const EYE_OFF = "M6.6 3.7A6.9 6.9 0 0 1 8 3.5c3.75 0 6.25 4.5 6.25 4.5a11 11 0 0 1-1.5 2M4.4 4.4C2.7 5.55 1.75 8 1.75 8S4.25 12.5 8 12.5c1.2 0 2.25-.45 3.1-1.05M6.75 6.75a1.75 1.75 0 0 0 2.5 2.5M2 2l12 12";
 const EYE = "M1.75 8S4.25 3.5 8 3.5 14.25 8 14.25 8 11.75 12.5 8 12.5 1.75 8 1.75 8ZM8 9.75a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Z";
 
 // agentHandle is the row's logo, which is also its handle: drag it to move
 // the row, click it (or right-click the row) for Move up, Move down and
-// Hide; Alt+↑/↓ moves it from the keyboard.
+// Hide; Alt+↑/↓ moves it from the keyboard. The grip that says so is drawn
+// in the row's margin on hover (app.css), not over the logo.
 function agentHandle(a, row, inFold) {
   const b = el("button", "ag-handle");
   b.type = "button";
   b.setAttribute("aria-label", t("Arrange {agent}", { agent: a.name }));
   b.setAttribute("aria-haspopup", "menu");
   b.title = inFold ? t(isHidden(a) ? "Show {agent}" : "Hide {agent}", { agent: a.name }) : t("Drag to reorder · click to move or hide");
-  const grip = el("span", "grip");
-  grip.append(svg(GRIP, 14, 2.4));
-  b.append(icon(a.icon), grip);
+  b.append(icon(a.icon));
   b.onkeydown = (e) => {
     if (inFold || !e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
     e.preventDefault();
