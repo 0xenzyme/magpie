@@ -1,0 +1,140 @@
+// The home page in other languages. public/index.html is written in
+// English, each string to translate marked data-i18n="key" (its inner HTML)
+// or data-i18n-attr="attr:key,..." (attributes); worker.js serves it at
+// /<lang>/ with these put in. A key a language lacks keeps the English, and
+// worker.test.mjs fails on a key the page doesn't have or the language
+// misses, so the two stay in step. Links inside a string point at the
+// language's own pages.
+//
+// A language is added here and in LANGS: its dictionary, the name of the
+// page's link to the English, and "<html lang>".
+
+const zh = {
+  "meta.desc": "一个地方给每个 Agent 选模型。Codex 用 DeepSeek，Claude Code 用 Kimi，Gemini CLI 用 GLM——在菜单栏里点一下，经由同一个本地网关。",
+  "meta.tagline": "每个 Agent 的模型，一处搞定。",
+  "meta.ogalt": "magpie：每个 Agent 的模型，一处搞定",
+  "meta.url": "https://usemagpie.ai/zh/",
+  "alt.picker": "magpie 里 Codex 的模型选择器，列出了 DeepSeek、Kimi 和 GLM 的模型",
+  "alt.panel": "magpie 菜单栏面板：每个 Agent 各用一家厂商的模型",
+  "alt.providers": "magpie 的供应商页：DeepSeek、Kimi、GLM、Qwen、MiniMax、OpenRouter、Anthropic 和 Gemini，各自列出在用它的 Agent",
+
+  "nav.how": "工作原理",
+  "nav.routing": "路由",
+  "nav.providers": "供应商",
+  "nav.docs": "文档",
+  "nav.releases": "版本发布",
+  "nav.lang": "EN",
+  "nav.lang.href": "/",
+  "nav.lang.code": "en",
+  "nav.lang.title": "English",
+  "nav.menu": "菜单",
+  "nav.download": "下载",
+
+  "hero.h1": "每个 Agent 的模型，<span>一处搞定。</span>",
+  "hero.lede": "magpie 让每个 Agent 都能用上每一个模型。供应商只需添加一次——DeepSeek、Kimi、GLM、Qwen、OpenRouter、Ollama，或你已经在付费的 Claude 和 ChatGPT 订阅——然后在 Codex、Claude Code、Gemini CLI 或任何 Agent 里一键选用。",
+  "dl.mac": "下载 Mac 版",
+  "hero.term": "用终端安装",
+  "hero.free": "免费",
+  "hero.oss": "开源",
+  "hero.other": "Windows 与 Linux",
+
+  "sponsor.by": "赞助商",
+  "sponsor.yylx": "Claude 与 GPT 的一站式 API 网关，为 Claude Code 调优。",
+  "sponsor.become": "成为赞助商",
+  "agents.agents": "支持的 Agent",
+  "agents.models": "支持的模型",
+
+  "how.eyebrow": "工作原理",
+  "how.h2": "一个网关，通吃所有 API。",
+  "how.sub": "Codex 只认 OpenAI Responses，Claude Code 只认 Anthropic Messages。magpie 在你的电脑上运行一个网关，这些协议它都会说，并在两个方向上互相转换——流式输出、工具调用和推理过程都不落下——于是任何 Agent 都能用任何厂商的模型。",
+  "how.agents": "你的 Agent",
+  "how.gateway": "magpie 网关",
+  "how.providers": "任意供应商",
+  "how.claude": "你的 Claude 订阅",
+  "how.chatgpt": "你的 ChatGPT 订阅",
+
+  "bar.eyebrow": "菜单栏",
+  "bar.h2": "每个 Agent，各用各的模型。",
+  "bar.sub": "每个 Agent 在用什么，一眼就能看清。点一下就能换；magpie 只改写那个 Agent 配置里你改动的那一项，下次会话即生效。",
+  "bar.l1": "<b>Codex</b> 的 <code>/model</code> 列表里直接出现 DeepSeek，推理强度也对得上。",
+  "bar.l2": "<b>Claude Code</b> 的 <code>opus</code>、<code>sonnet</code>、<code>haiku</code> 背后换成 Kimi、GLM 或 GPT。",
+  "bar.l3": "<b>选回原生模型</b>，magpie 会把配置原样恢复。",
+  "bar.l4": "<b>方案</b>一次切换所有 Agent——“省钱”“专注”，随你保存。",
+
+  "subs.eyebrow": "订阅共享",
+  "subs.h2": "你付费的订阅，每个 Agent 都能用。",
+  "subs.sub": "在某个 Agent 里登录过？这个登录就成了一个供应商，它的模型会出现在其他所有 Agent 的选择器里——不复制任何东西，不用粘贴密钥，令牌按那个 Agent 自己的方式刷新。",
+  "subs.claude": "用 Claude Code 的登录驱动 OpenCode、Pi 或 Goose：<code>claude/claude-sonnet-5</code>。",
+  "subs.codex": "用 Codex 的登录在 Claude Code 里用上 GPT：<code>codex/gpt-5.5</code>。",
+  "subs.copilot": "你的 Copilot 席位可以服务任意 Agent：<code>copilot/claude-sonnet-4.5</code>。",
+
+  "rt.eyebrow": "智能路由",
+  "rt.h2": "每轮对话用对模型，额度永不断供。",
+  "rt.sub": "写下每个模型的用途——“简单提问”“编写或修复测试”——每轮对话开始时，一个小而快的模型告诉 magpie 这轮属于哪一类：这一轮就交给对应的模型，它的工具轮次也留在那里。<a href=\"/docs/zh/intent\">原理说明</a>。再把你所有的密钥和订阅都加进来——几个 Claude、ChatGPT、Copilot 或 Grok 账号，同一厂商的多个密钥——全部打开。每个请求由 magpie 挑选该答的账号；某个答不了，下一个会在你的 Agent 看到错误之前接上。",
+  "rt.intent": "按意图",
+  "rt.smart": "智能",
+  "rt.order": "按顺序",
+  "rt.turn": "轮流",
+  "rt.least": "用量少的优先",
+  "rt.mode.smart": "智能（默认）：最先重置的账号先用，额度一点不浪费；答不了的账号直接跳过。（演示里每个请求代表一小时。）",
+  "rt.agent": "你的 Agent",
+  "rt.cap": "Claude Code 把每个请求发给 magpie，由 magpie 决定哪个账号来答。",
+  "rt.s1": "个请求",
+  "rt.s2": "次改道",
+  "rt.s3": "个错误被 Agent 看到",
+  "rt.reset": "看重置时间",
+  "rt.reset.p": "最先重置的账号先用——它剩下的额度到重置时就作废了。只要额度还宽裕，请求就一直交给它，提示词缓存也保持温热。",
+  "rt.credit": "余额用完",
+  "rt.credit.p": "余额耗尽的密钥歇半小时，请求转给还付得起的那个。",
+  "rt.limits": "限流与配额",
+  "rt.limits.p": "被厂商限流的账号，按厂商要求的时长跳过——依据它的 Retry-After 和重置响应头，不瞎猜，也不硬撞。",
+  "rt.failover": "故障转移",
+  "rt.failover.p": "出错的账号先退下一分钟，每再错一次就退得更久；请求会在回复的第一个字节到达你的 Agent 之前，换到下一个账号重试。",
+
+  "prov.eyebrow": "供应商",
+  "prov.h2": "粘贴密钥，就配好了。",
+  "prov.sub": "二十个预设——模型厂商、中转服务和本地服务器。magpie 会问每家厂商提供哪些模型，所以今早刚发布的模型，下次刷新就出现在每个选择器里。密钥只留在 magpie 里，Agent 永远看不到。",
+
+  "det.eyebrow": "细节",
+  "det.h2": "小巧、细致、不打扰。",
+  "det.edits": "精准修改配置",
+  "det.edits.p": "<code>settings.json</code>、<code>config.toml</code>、<code>config.yaml</code> 里的注释、顺序和缩进都原样保留，写入是原子的。",
+  "det.tiny": "小巧、原生、开源",
+  "det.tiny.p": "不到 15 MB，基于系统 WebView。没有 Electron，不需要运行时。MIT 许可，<a href=\"https://github.com/yetone/magpie\">源码在 GitHub</a>。",
+  "det.env": "不读 shell 里的密钥",
+  "det.env.p": "magpie 从不读取环境变量里的 API 密钥。你添加了什么，它就用什么。",
+  "det.client": "任何客户端都能接",
+  "det.client.p": "凡是能设置 base URL 的都能用：<code>OPENAI_BASE_URL</code>、<code>ANTHROPIC_BASE_URL</code>、<code>GOOGLE_GEMINI_BASE_URL</code>。",
+  "det.usage": "按 Agent 统计用量",
+  "det.usage.p": "经过网关的每个 Agent、每个模型的 token、缓存命中和费用。",
+  "det.update": "自动更新",
+  "det.update.p": "新版本在后台悄悄下载，重启时安装。Mac 版经过签名和公证。",
+
+  "cli.eyebrow": "终端",
+  "cli.h2": "还有 TUI 和 CLI。",
+  "cli.sub": "同一个应用，在终端里用。安装脚本把 <code>magpie</code> 命令放进 <code>~/.local/bin</code>，把应用放到该放的地方：Mac 上是 <code>/Applications</code>，Linux 上是应用菜单。",
+  "copy": "复制",
+  "cli.win": "Windows 上 <code>magpie.exe</code> 接受同样的命令；<a href=\"https://github.com/yetone/magpie-releases/releases/latest\">最新版本</a>里的 <code>magpie-cli-windows-amd64.exe</code> 是只有终端的版本。",
+  "cli.c.add": "# 添加供应商",
+  "cli.c.preset": "# 预设只需要密钥",
+  "cli.c.local": "# 本地服务器不需要",
+  "cli.c.give": "# 给 Agent 换上第三方模型",
+  "cli.c.plan": "# 在 OpenCode 里用你的 Claude 订阅",
+  "cli.c.group": "# 一个模型，多个供应商",
+  "cli.c.ls": "# 每个 Agent 和它的模型",
+  "cli.c.prof": "# 方案",
+  "cli.c.tui": "# 在终端里用完整的应用",
+
+  "comm.h": "加入 magpie 社区",
+  "comm.p": "提问、分享你的配置、告诉我们下一步做什么——都在 Discord。",
+
+  "fin.h2": "每个 Agent，每个模型。",
+  "fin.sub": "免费、开源、原生。支持 macOS、Windows 和 Linux。",
+  "fin.gh": "在 GitHub 上查看",
+  "plat.mac": "11 及以上",
+  "plat.win": "10 及以上",
+  "foot.start": "快速上手",
+  "foot.feed": "更新源",
+};
+
+export const LANGS = { zh: { dict: zh, html: "zh-CN" } };

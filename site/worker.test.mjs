@@ -57,3 +57,38 @@ test("notes: each release in the language, English where it has no Chinese", asy
   const again = (await get("/api/notes?after=0.1.1&upto=0.1.3&lang=zh")).body.releases;
   assert.equal(again[0].notes, ZH);
 });
+
+test("i18n: every string the home page marks has its Chinese, and no other", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { LANGS } = await import("./i18n.js");
+  const html = await readFile(new URL("./public/index.html", import.meta.url), "utf8");
+  const keys = new Set();
+  for (const [, k] of html.matchAll(/data-i18n="([^"]+)"/g)) keys.add(k);
+  for (const [, pairs] of html.matchAll(/data-i18n-attr="([^"]+)"/g))
+    for (const p of pairs.split(",")) keys.add(p.split(":")[1]);
+  for (const [lang, { dict }] of Object.entries(LANGS)) {
+    assert.deepEqual([...keys].filter((k) => !(k in dict)), [], `${lang} lacks`);
+    assert.deepEqual(Object.keys(dict).filter((k) => !keys.has(k)), [], `${lang} has unused`);
+  }
+});
+
+test("home: / sends a browser that prefers Chinese to /zh/, until a language is picked", async () => {
+  const env = { ASSETS: { fetch: async () => new Response("<html></html>", { headers: { "Content-Type": "text/plain" } }) } };
+  const home = (headers) => worker.fetch(new Request("https://usemagpie.ai/", { headers }), env, ctx);
+  const to = async (headers) => {
+    const res = await home(headers);
+    assert.match(res.headers.get("Vary") || "", /Accept-Language/);
+    return res.status === 302 ? res.headers.get("Location") : null;
+  };
+  assert.equal(await to({}), null);
+  assert.equal(await to({ "Accept-Language": "en-US,en;q=0.9,zh;q=0.8" }), null);
+  assert.equal(await to({ "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8" }), "/zh/");
+  assert.equal(await to({ "Accept-Language": "zh-TW" }), "/zh/");
+  assert.equal(await to({ "Accept-Language": "fr-FR,zh;q=0.5,en;q=0.4" }), "/zh/");
+  assert.equal(await to({ "Accept-Language": "en;q=0.2,zh;q=0.8" }), "/zh/");
+  assert.equal(await to({ "Accept-Language": "zh-CN", Cookie: "a=b; lang=en" }), null);
+  assert.equal(await to({ Cookie: "lang=zh" }), "/zh/");
+  const res = await worker.fetch(new Request("https://usemagpie.ai/zh"), env, ctx);
+  assert.equal(res.status, 301);
+  assert.equal(new URL(res.headers.get("Location")).pathname, "/zh/");
+});
