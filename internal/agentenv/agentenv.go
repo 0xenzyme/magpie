@@ -15,10 +15,10 @@
 // Each package keeps its own sandbox, because a test in internal/sessions
 // cannot import internal/agent, which imports it, to ask which variables
 // there are; this is the list they all clear. A name here is one magpie
-// reads, and VarsTest says so, so a variable magpie stopped reading does not
-// linger — that is how GEMINI_CLI_HOME and OPENCODE_CONFIG came to be
-// cleared by a sandbox while OPENCODE_CONFIG_DIR, the one magpie reads, was
-// not. What is deliberately not here: APPDATA and LOCALAPPDATA, Windows'
+// reads, and TestVarsAreRead says so, so a variable magpie stopped reading
+// does not linger — that is how GEMINI_CLI_HOME and OPENCODE_CONFIG came to
+// be cleared by a sandbox while OPENCODE_CONFIG_DIR, the one magpie reads,
+// was not. What is deliberately not here: APPDATA and LOCALAPPDATA, Windows'
 // folders rather than an agent's, which a sandbox sets to a folder of its
 // own instead of clearing; and CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, a
 // behaviour flag whose one test sets it on purpose to read what magpie then
