@@ -2006,6 +2006,8 @@ input.words { width: 240px; max-width: 100%; }
 .row.pref.rule-row { flex-wrap: wrap; row-gap: 8px; }
 .row.pref.rule-row .who { flex: 1 1 100%; }
 .row.pref.rule-row .sub { white-space: normal; }
+/* an update that failed says why in full (the version row) */
+.row .sub.wraps { white-space: normal; overflow-wrap: anywhere; }
 .prefs .val.rule-add { flex: 1 1 100%; max-width: none; margin-left: 0; gap: 6px; }
 input.words.rule-kind { flex: none; width: 110px; }
 input.words.rule-match { flex: 1 1 auto; width: auto; min-width: 0; }

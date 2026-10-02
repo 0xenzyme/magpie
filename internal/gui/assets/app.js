@@ -12185,6 +12185,7 @@ async function renderUpdate(r, u) {
   const who = r.querySelector(".who"), val = r.querySelector(".val");
   const sub = who.querySelector(".sub") || who.appendChild(el("div", "sub"));
   sub.title = "";
+  sub.classList.remove("wraps");
   for (const b of val.querySelectorAll("button")) b.remove();
   const btn = (label, fn, dim) => {
     const b = el("button", "text" + (dim ? " busy" : ""), label);
@@ -12220,6 +12221,10 @@ async function renderUpdate(r, u) {
   switch (u.state) {
     case "ready":
       sub.textContent = t("{v} is downloaded", { v: u.latest }) + (u.error ? " · " + u.error : "");
+      // a failed install says why in full, and offers the release page to
+      // put the new version in by hand
+      sub.title = u.error || "";
+      if (u.error) sub.classList.add("wraps");
       // back with an answer only when it didn't restart
       btn(t("Restart to update"), async () => {
         const a = await api("update/install", installFrom()).catch(() => ({ state: "error" }));
@@ -12227,6 +12232,7 @@ async function renderUpdate(r, u) {
         sub.textContent = t("Restarting…");
         backAsNew(u.current);
       });
+      if (u.error && u.url) btn(t("Download"), () => (web ? window.open(u.url, "_blank", "noopener") : api("open", { url: u.url })));
       break;
     case "available":
       sub.textContent = t("{v} is out", { v: u.latest });
@@ -12252,6 +12258,7 @@ async function renderUpdate(r, u) {
       // the reason in sight: "timed out" says try a proxy, a 404 says wait
       sub.textContent = t(u.latest ? "Couldn't download {v}" : "Couldn't check for updates", { v: u.latest }) + (u.error ? " · " + u.error.replace(/^Get "[^"]*": /, "") : "");
       sub.title = u.error || "";
+      if (u.error) sub.classList.add("wraps");
       btn(t("Check"), check);
       break;
     case "": // not asked yet: with automatic updates off, only this asks
