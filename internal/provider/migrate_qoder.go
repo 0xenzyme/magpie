@@ -24,7 +24,7 @@ func init() {
 func qoderMover(id string) *mover {
 	return &mover{
 		pkg:    "@magpie-community/opencode-qoder-auth",
-		min:    "0.2.0", // Qoder CN as "qoder-cn", its device-token chat as the built-in's
+		min:    "0.2.2", // Qoder CN as "qoder-cn", its device-token chat as the built-in's; each model's credit rate
 		agents: []string{id},
 		out: func() ([]Moving, error) {
 			// no refresh of the built-in's runs while the pairs are read
