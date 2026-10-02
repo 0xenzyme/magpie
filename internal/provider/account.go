@@ -106,8 +106,13 @@ type Account struct {
 // APIs lists the APIs model is served on, as the provider's last model
 // list said: Copilot serves its GPT models on Responses alone and its
 // Claude models on Chat and Anthropic's. nil is not known, and every API
-// the provider speaks may be tried.
+// the provider speaks may be tried. One the user set for the model
+// (SetModelAPI) is the only one.
 func (p Provider) APIs(model string) []Protocol {
+	// the one the user said it is asked on, whatever the list says
+	if proto, ok := p.ModelAPI(model); ok {
+		return []Protocol{proto}
+	}
 	if p.IsPlugin() {
 		return p.pluginAPIs(model)
 	}

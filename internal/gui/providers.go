@@ -37,6 +37,7 @@ type modelJSON struct {
 	Context  int      `json:"context,omitempty"`
 	Max      int      `json:"max,omitempty"`  // the most its context may be set to, above Context
 	Free     bool     `json:"free,omitempty"` // costs the subscription nothing
+	API      string   `json:"api,omitempty"`  // the one API the user said it is asked on
 }
 
 type providerJSON struct {
@@ -392,6 +393,9 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 			j.Default = cmp.Or(m.Name, m.ID)
 			j.Name = n
 		}
+		if api, ok := p.ModelAPI(m.ID); ok {
+			j.API = string(api)
+		}
 		if len(j.Efforts) == 0 {
 			j.Efforts, j.Given = provider.Levels, true
 		}
@@ -659,6 +663,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// Typed, for test and models: the request carries the editor's
 			// form, which is tried as it stands before a Save (see typed)
 			Typed bool `json:"typed"`
+			// Base, for detect: the base URL typed, asked as each API
+			// takes it where the form has no URL of that API's own
+			Base string `json:"base"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			fail(rw, err)
@@ -926,6 +933,29 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				Results  []provider.Result `json:"results"`
 				Provider providerJSON      `json:"provider"`
 			}{p.Test(ctx), providerInfo(saved, agentUses(agent.Detected(), provider.GroupFinder()))})
+			return
+		case "detect":
+			// which APIs answer at the URL typed (Model, or one from the
+			// list for each), the form as it stands: a new provider's,
+			// or a saved one's with its key when none is typed
+			var p provider.Provider
+			if in.ID != "" {
+				saved, err := provider.Find(in.ID)
+				if err != nil {
+					fail(rw, err)
+					return
+				}
+				p = *saved
+			}
+			p = typed(p, in, req.Proxy)
+			ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+			defer cancel()
+			got, err := p.Detect(ctx, req.Base, req.Model)
+			if err != nil {
+				fail(rw, err)
+				return
+			}
+			writeJSON(rw, map[string]any{"results": got})
 			return
 		case "balance":
 			// the editor's check of a balance as it stands in the form,

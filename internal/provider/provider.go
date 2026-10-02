@@ -829,6 +829,12 @@ func (p Provider) ResponsesFirst(model string) bool {
 	if p.Responses == "" || (p.ID != "copilot" && HostOf(p.Responses) != "api.openai.com" && HostOf(p.Responses) != "api.pipellm.ai" && !p.IsAzure()) {
 		return false
 	}
+	return openAIModel(model)
+}
+
+// openAIModel is whether model is one of OpenAI's own by its name: a GPT,
+// a Codex or an o-series model, after any vendor prefix.
+func openAIModel(model string) bool {
 	m := strings.ToLower(model[strings.LastIndex(model, "/")+1:])
 	return strings.HasPrefix(m, "gpt-") || strings.HasPrefix(m, "codex") ||
 		len(m) > 1 && m[0] == 'o' && m[1] >= '0' && m[1] <= '9'

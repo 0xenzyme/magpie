@@ -5033,21 +5033,40 @@ function drawEditor(p, presetID) {
           draft[to] = respellURL(draft[from], v);
           draft[from] = p?.[from] || "";
         }
-        draft.api = v;
-        url.value = draft[to] || "";
-        for (const x of seg.querySelectorAll(".opt")) x.classList.toggle("on", x === b);
-        slide(seg, "api");
-        url.placeholder = v === "anthropic" ? "https://…" : "https://…/v1";
-        fillEndpoints();
-        showSearch();
+        showApi(v);
       };
+      b.dataset.api = v;
       seg.append(b);
     }
+    // the protocol the base URL is for, shown as picked: by its button,
+    // or by a detection taken (useDetected)
+    const showApi = (v) => {
+      draft.api = v;
+      url.value = draft[apiField[v]] || "";
+      for (const x of seg.querySelectorAll(".opt")) x.classList.toggle("on", x.dataset.api === v);
+      slide(seg, "api");
+      url.placeholder = v === "anthropic" ? "https://…" : "https://…/v1";
+      fillEndpoints();
+      showSearch();
+    };
     queueMicrotask(() => slide(seg, "api"));
     url = input(draft[apiField[draft.api]], draft.api === "anthropic" ? "https://…" : "https://…/v1", "url");
     url.oninput = () => { draft[apiField[draft.api]] = url.value; showSearch(); };
     const urlWrap = el("div", "stack");
     urlWrap.append(seg, url);
+    // the APIs that answered a detection, taken for the provider: their
+    // URLs set, one that wasn't found there (404, 405) cleared, and the
+    // base URL's protocol one of those that answered
+    const useDetected = (rs) => {
+      for (const x of rs) {
+        if (x.ok) draft[x.protocol] = x.base;
+        else if ((x.status === 404 || x.status === 405) && (draft[x.protocol] || "").trim().replace(/\/+$/, "") === x.base) draft[x.protocol] = "";
+      }
+      const v = draft[apiField[draft.api]] ? draft.api : ["openai", "responses", "anthropic"].find((a) => draft[apiField[a]]);
+      showApi(v || draft.api);
+      draft.onModelPrefs?.(); // the APIs a model can be given follow the URLs
+    };
+    urlWrap.append(detectAPIs(p, () => url.value, useDetected));
     ed.append(...field("Base URL", urlWrap));
   }
 
@@ -5819,6 +5838,92 @@ function renderEndpoints(p, src) {
   return eps;
 }
 
+// detectAPIs: which of the APIs magpie speaks to a vendor answer at the base
+// URL typed (01huadalang on Discord: 一键检测支持什么协议) — Detect sends
+// each the smallest request there, with the key typed (or the saved one)
+// and a model typed or picked from the vendor's list, and shows what each
+// answered; "Use these" takes those that answered for the provider. With
+// a model typed for a saved provider and only some APIs answering, that
+// model alone can be asked on one of them (staged with Names & levels).
+function detectAPIs(p, base, use) {
+  const box = el("div", "detect");
+  const row = el("div", "detect-row");
+  const go = el("button", "text action", t("Detect APIs"));
+  go.title = t("Send the smallest request to each API (OpenAI chat completions, Responses, Anthropic messages) at this URL, to see which answer");
+  const model = input(draft.detectModel || "", t("model to try · empty picks one from the vendor's list"));
+  model.classList.add("detect-model");
+  model.oninput = () => { draft.detectModel = model.value; };
+  model.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") go.click(); else if (e.key === "Escape") cancelEdit(); };
+  row.append(go, model);
+  const out = el("div", "eps detect-out");
+  out.hidden = true;
+  box.append(row, out);
+  go.onclick = async () => {
+    const typedBase = (base() || "").trim();
+    if (!typedBase && !(draft.chat || draft.responses || draft.anthropic || "").trim()) { status(t("Type the base URL first"), "warn"); return; }
+    go.classList.add("busy");
+    out.hidden = false;
+    out.replaceChildren(el("span", "hint", t("Asking each API…")));
+    try {
+      const m = model.value.trim();
+      // the URL typed is asked as each API takes it, not as the field
+      // holding it would send it; URLs given under More endpoints as they are
+      const body = { ...asTyped(), id: p?.id, base: typedBase, model: m };
+      for (const k of ["chat", "responses", "anthropic"]) if (body[k] === typedBase) body[k] = "";
+      const r = await api("provider/detect", body);
+      out.replaceChildren();
+      for (const x of r.results) {
+        const e = el("div", "ep");
+        e.dataset.api = x.protocol;
+        const [, label, hint] = PROTOS.find(([k]) => k === x.protocol) || [x.protocol, x.protocol, ""];
+        const pl = el("span", "pl", label);
+        pl.title = t(hint);
+        const res = el("span", "res " + (x.ok ? "ok" : "bad"));
+        res.append(svg(x.ok ? CHECK : "M4.5 4.5l7 7M11.5 4.5l-7 7", 10, 2));
+        const why = x.status ? `${x.status} · ${x.error}` : t(x.error || "");
+        res.append(el("span", "", x.ok ? ledTook(x.ms) : why));
+        res.title = (x.model ? t("model {model}", { model: x.model }) : "") + (x.ok ? "" : "\n" + why);
+        e.append(pl, el("code", "", x.base || "—"), res);
+        out.append(e);
+      }
+      const ok = r.results.filter((x) => x.ok);
+      const acts = el("div", "detect-acts");
+      if (!ok.length) acts.append(el("span", "hint", t("None answered: check the URL and the key, or type a model the vendor serves")));
+      else {
+        const take = el("button", "text action", t("Use these"));
+        take.title = t("Set the URLs of the APIs that answered; one not found there is cleared");
+        take.onclick = () => { use(r.results); take.disabled = true; take.textContent = t("Taken · save to keep"); };
+        acts.append(take);
+        // one model the provider serves, answering on some APIs only:
+        // it can be asked on one of them alone
+        const pm = p && m && p.models.find((x) => x.id === m);
+        if (pm && ok.length < r.results.filter((x) => x.base).length) {
+          for (const x of ok) {
+            const label = (PROTOS.find(([k]) => k === x.protocol) || [])[1] || x.protocol;
+            const b = el("button", "text action", t("Ask {model} on {api} only", { model: m, api: label }));
+            b.title = t("Staged in Names & levels and made with the Save; Auto there gives it back");
+            b.onclick = () => {
+              const prefs = draft.modelPrefs = draft.modelPrefs || {};
+              prefs[m] = prefs[m] || {};
+              if ((pm.api || "") === x.protocol) delete prefs[m].api; else prefs[m].api = x.protocol;
+              if (!Object.keys(prefs[m]).length) delete prefs[m];
+              if (!draft[x.protocol]) use(r.results);
+              for (const o of acts.querySelectorAll(".pick-api")) o.classList.toggle("on", o === b);
+              draft.onModelPrefs?.();
+              status(t("{model} is asked on {api} once saved", { model: m, api: label }), "ok");
+            };
+            b.classList.add("pick-api");
+            acts.append(b);
+          }
+        }
+      }
+      out.append(acts);
+    } catch (e) { out.replaceChildren(); out.hidden = true; status(e.message, "err"); }
+    go.classList.remove("busy");
+  };
+  return box;
+}
+
 // modelTestWhy: why a provider's models can't each be sent a test request
 // (the server's providerJSON.modelTest), in words, or "" when they can
 function modelTestWhy(p) {
@@ -5944,6 +6049,12 @@ function renderModels(p) {
     const ids = draft.chosen.length ? draft.chosen : p.models.filter((m) => m.on).map((m) => m.id);
     if (!ids.length) { names.append(el("span", "hint", t("Pick a model first."))); return; }
     const prefs = draft.modelPrefs = draft.modelPrefs || {};
+    draft.onModelPrefs = drawNames;
+    // the APIs a model can be asked on alone: those of a key's provider
+    // it has a URL for, when it has more than one (01huadalang on Discord:
+    // 一个 api 里有很多模型但是不同协议)
+    const urls = ["chat", "responses", "anthropic"].filter((k) => (draft[k] ?? p[k] ?? "").trim());
+    const apis = p.account || urls.length < 2 ? [] : PROTOS.filter(([k]) => urls.includes(k));
     for (const id of ids) {
       const m = p.models.find((x) => x.id === id) || { id, name: id };
       const own = m.default || m.name || m.id;
@@ -5977,6 +6088,23 @@ function renderModels(p) {
         drawReset();
       };
       row.append(img);
+      const apiNow = () => prefs[id]?.api ?? m.api ?? "";
+      let apiSeg = null;
+      if (apis.length || m.api) {
+        const items = [["", t("Auto")], ...apis.map(([k, l]) => [k, l])];
+        if (m.api && !items.some(([k]) => k === m.api)) items.push([m.api, (PROTOS.find(([k]) => k === m.api) || [])[1] || m.api]);
+        apiSeg = segs(items, apiNow(), (v) => {
+          if (v === (m.api || "")) delete pref().api; else pref().api = v;
+          drawReset();
+        });
+        apiSeg.classList.add("mapi");
+        apiSeg.title = t("The API {id} is asked on. Auto: as the vendor's list says, else each URL the provider has; pick one when the vendor serves it on that one only", { id: m.id });
+        for (const [i, b] of [...apiSeg.querySelectorAll(".opt")].entries()) {
+          b.dataset.api = items[i][0];
+          if (items[i][0]) b.title = t((PROTOS.find(([k]) => k === items[i][0]) || [])[2] || "");
+        }
+        row.append(apiSeg);
+      }
       // a model whose levels aren't known (m.given) can be given any
       // of them, and none again
       const boxes = [];
@@ -6004,7 +6132,7 @@ function renderModels(p) {
       const unsaved = el("span", "hint munsaved", t("unsaved"));
       unsaved.title = t("Made when the provider is saved; Cancel drops it");
       const reset = el("button", "text action", t("Restore default"));
-      reset.title = t("Its own name, every reasoning level it has, and whether it sees images");
+      reset.title = t("Its own name, every reasoning level it has, whether it sees images, and the API it is asked on");
       reset.onclick = () => {
         prefs[id] = {};
         if (m.default) prefs[id].name = "";
@@ -6013,6 +6141,8 @@ function renderModels(p) {
         name.value = nameNow();
         imgCb.checked = imagesNow();
         for (const [l, cb] of boxes) cb.checked = keptNow().includes(l);
+        if (m.api) prefs[id].api = "";
+        if (apiSeg) { for (const b of apiSeg.querySelectorAll(".opt")) b.classList.toggle("on", b.dataset.api === apiNow()); slide(apiSeg, "api"); }
         drawReset();
       };
       const drawReset = () => {
@@ -6021,7 +6151,7 @@ function renderModels(p) {
         unsaved.hidden = !prefs[id];
         // staged back to its own already, there is nothing to restore
         const images = prefs[id]?.ownImages ? false : prefs[id]?.images !== undefined ? prefs[id].images !== !!m.ownImages : !!m.imageSet;
-        const custom = nameNow() !== "" || (prefs[id]?.efforts ? prefs[id].efforts.length > 0 : !!m.kept?.length) || images;
+        const custom = nameNow() !== "" || (prefs[id]?.efforts ? prefs[id].efforts.length > 0 : !!m.kept?.length) || images || apiNow() !== "";
         reset.hidden = !custom;
       };
       row.append(unsaved, reset);

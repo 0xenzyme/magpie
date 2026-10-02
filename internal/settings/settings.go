@@ -239,6 +239,12 @@ type Settings struct {
 	// the routing groups, the usage records and what a call is priced at —
 	// keeps the name magpie knows the model by.
 	ModelWires map[string]string `json:"modelWires,omitempty"`
+	// ModelAPIs is the one API a model is asked on at its provider, by
+	// "<provider id>/<model id>": chat, responses or anthropic, for a relay
+	// whose one key serves some models on one and others on another
+	// (01huadalang on Discord). Absent leaves it to the vendor's list and
+	// to each URL the provider has (see provider.SetModelAPI).
+	ModelAPIs map[string]string `json:"modelAPIs,omitempty"`
 	// The main window's size when it was last resized, width and height,
 	// so it opens at it again after a restart.
 	Window []int `json:"window,omitempty"`
