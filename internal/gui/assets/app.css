@@ -1675,7 +1675,7 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .row.pref .proto.pick.open svg { transform: rotate(180deg); }
 .row.pref .proto.pick:hover, .row.pref .proto.pick.open { color: var(--fg); background: var(--pill-hover); }
 .row.pref .proto.pick.busy { opacity: .6; }
-.pop.proto-menu { width: 262px; max-height: none; padding: 4px; border: 1px solid var(--line); display: grid; gap: 1px; }
+.pop.proto-menu { width: 262px; max-height: min(360px, 70vh); overflow-y: auto; overscroll-behavior: contain; padding: 4px; border: 1px solid var(--line); display: grid; gap: 1px; }
 .proto-menu .pm-head { padding: 6px 8px 5px; font-size: 11px; color: var(--muted); }
 .proto-menu .pm-item { display: flex; align-items: flex-start; gap: 7px; width: 100%; padding: 6px 8px 7px; border: 0; border-radius: 7px; background: none; color: var(--fg); font: inherit; text-align: left; cursor: default; outline: none; }
 .proto-menu .pm-item:hover, .proto-menu .pm-item:focus { background: var(--pill); }
