@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -41,9 +42,34 @@ type place struct {
 	spell func(string) string // a path under home as the agent names it; nil: as is
 	sys   func(string) string // a path of the agent's system (/etc/…) as magpie opens it; nil: as is
 	base  func() string       // the gateway's URL from the agent; nil: gateway.URL
+	// cold: a stopped distro's, whose files can't be looked at without
+	// starting it — an agent built there takes its files at their defaults
+	cold bool
 }
 
 func here(home string) place { return place{home: home} }
+
+// getenv is this machine's variable for this machine's agent; "" for one
+// in a distro, whose variables magpie can't read.
+func (p place) getenv(k string) string {
+	if p.spell != nil {
+		return ""
+	}
+	return os.Getenv(k)
+}
+
+// exists is whether there is a file or folder at path, as an agent looks
+// for the one it reads; false at a cold place.
+func (p place) exists(path string) bool {
+	if p.cold {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// isDir is isDir at the place; false at a cold one.
+func (p place) isDir(path string) bool { return !p.cold && isDir(path) }
 
 func (p place) gw() string {
 	if p.base != nil {
@@ -125,7 +151,7 @@ func (d distro) base() string {
 }
 
 func (d distro) place(id string) place {
-	return place{home: d.local(d.Home), id: id, spell: d.native, sys: d.local, base: d.base}
+	return place{home: d.local(d.Home), id: id, spell: d.native, sys: d.local, base: d.base, cold: !d.Running}
 }
 
 // wslKind is an agent magpie looks for in a distro: what the probe finds
@@ -201,10 +227,101 @@ var wslKinds = []wslKind{
 				return claudeViaMagpie(false)
 			}
 		}},
+	// The CLIs below keep a plain file in the distro's home, written as on
+	// this machine, at their default folders: the distro's variables that
+	// move them (OPENCODE_CONFIG_DIR, KIMI_CODE_HOME, HERMES_HOME, …)
+	// aren't read. Each one's restart advice is its own Notice's.
+	{id: "opencode", name: "OpenCode", dir: ".config/opencode", bin: "opencode", in: opencodeIn,
+		restart: "reads its config at start-up — restart open opencode sessions to use this.",
+		asleep:  wslOwnAsleep("opencode", "model", "small")},
+	{id: "mimocode", name: "MiMo Code", dir: ".config/mimocode", bin: "mimo", in: mimocodeIn,
+		restart: "reads its config at start-up — restart open mimo sessions to use this.",
+		asleep:  wslOwnAsleep("mimocode", "model", "small")},
+	// Kimi Code's ~/.kimi-code, or the old kimi-cli's ~/.kimi where that is
+	// all there is; a stopped distro's is looked at once it is started
+	{id: "kimi", name: "Kimi Code", dir: ".kimi-code", bin: "kimi", in: kimiIn,
+		restart: "reads its settings at start-up — restart open kimi sessions to use this.",
+		asleep: func(key string) func(map[string]string) []Option {
+			if key != "model" {
+				return nil
+			}
+			return func(cur map[string]string) []Option {
+				return append(kimiOwnOptions("", cur["model"]), viaMagpie("kimi", magpieID+"/")...)
+			}
+		}},
+	{id: "omp", name: "omp", dir: ".omp", bin: "omp", in: ompIn,
+		restart: "reads its settings at start-up — restart open omp sessions to use this.",
+		asleep: func(key string) func(map[string]string) []Option {
+			if key == "effort" {
+				return nil
+			}
+			return func(cur map[string]string) []Option {
+				return append(ompOwnOptions("", cur[key]), viaMagpie("omp", magpieID+"/")...)
+			}
+		}},
+	{id: "crush", name: "Crush", dir: ".config/crush", bin: "crush", in: crushIn,
+		restart: "reads its settings at start-up — restart open crush sessions to use this.",
+		asleep:  wslOwnAsleep("crush", "model", "small")},
+	{id: "hermes", name: "Hermes Agent", dir: ".hermes", bin: "hermes", in: hermesIn,
+		restart: "reads its settings at start-up — restart open Hermes sessions to use this."},
+	// no bin: grok is also other tools' name, as on this machine
+	{id: "grok", name: "Grok Build", dir: ".grok", in: grokIn,
+		restart: "reads its settings at start-up — restart open grok sessions to use this."},
+	{id: "droid", name: "Droid", dir: ".factory", bin: "droid", in: droidIn,
+		restart: "reads its settings at start-up — restart open droid sessions to use this.",
+		asleep: func(key string) func(map[string]string) []Option {
+			if key != "model" {
+				return nil
+			}
+			return func(cur map[string]string) []Option {
+				var own []Option
+				if c := cur["model"]; c != "" && !usesMagpie(c) {
+					own = append(own, Option{Value: c, Icon: modelIcon("", c)})
+				}
+				return append(group("Droid", own), viaMagpie("droid", magpieID+"/")...)
+			}
+		}},
+	// no bin: fx is also the JSON viewer's name
+	{id: "fx", name: "fx", dir: ".fx", in: fxIn,
+		restart: "reads its settings at start-up — restart open fx sessions to use this."},
+	{id: "commandcode", name: "Command Code", dir: ".commandcode", bin: "command-code", in: commandCodeIn,
+		restart: "wants its own sign-in there (cmd login) even for models through magpie, and reads its settings at start-up — restart open Command Code sessions to use this."},
+	{id: "minimax-code", name: "MiniMax Code", dir: ".minimax", bin: "mcode", in: miniMaxIn,
+		restart: "reads its settings at start-up — restart open mcode sessions to use this.",
+		asleep: func(key string) func(map[string]string) []Option {
+			if key != "model" {
+				return nil
+			}
+			return func(cur map[string]string) []Option {
+				return append(miniMaxOwnOptions("", cur["model"]), viaMagpie("minimax-code", magpieID+"/")...)
+			}
+		}},
+	{id: "muse", name: "Muse Code", dir: ".config/muse", bin: "muse", in: museIn,
+		restart: "reads its settings at start-up — restart open muse sessions to use this."},
+	{id: "qoder", name: "Qoder", dir: ".qoder", bin: "qodercli", in: qoderIn,
+		restart: "reads its settings as a session starts — open sessions keep the model they have; new ones use this."},
+	{id: "qoder-cn", name: "Qoder CN", dir: ".qoder-cn", bin: "qoderclicn", in: qoderCNIn,
+		restart: "reads its settings as a session starts — open sessions keep the model they have; new ones use this."},
+}
+
+// wslOwnAsleep is a stopped distro's options for an agent's model fields
+// (keys) whose live ones read its files: the providers of the value last
+// seen, and magpie's.
+func wslOwnAsleep(id string, keys ...string) func(string) func(map[string]string) []Option {
+	return func(key string) func(map[string]string) []Option {
+		if !slices.Contains(keys, key) {
+			return nil
+		}
+		return func(cur map[string]string) []Option {
+			return append(ownOptions("", cur[key]), viaMagpie(id, magpieID+"/")...)
+		}
+	}
 }
 
 // found reports whether the probe found the agent in d.
-func (k wslKind) found(d distro) bool { return d.Has["dir:"+k.dir] || d.Has["bin:"+k.bin] }
+func (k wslKind) found(d distro) bool {
+	return d.Has["dir:"+k.dir] || k.bin != "" && d.Has["bin:"+k.bin]
+}
 
 // memo is the key a field of the agent is kept under in distro.Values:
 // Codex's as they are, as wsl.json has always had them.
@@ -315,7 +432,7 @@ func asleep(live *Agent, k wslKind, d distro) *Agent {
 			return "WSL " + d.Name + " isn't running: magpie shows what it last saw there, and starts it only to change something."
 		}}
 	for _, lf := range live.Fields {
-		key, set := lf.Key, lf.Set
+		key := lf.Key
 		f := Field{Key: key, Label: lf.Label, Quiet: lf.Quiet, Options: lf.Options,
 			Get: func() string { return wslLastSeen(d.Name, k.memo(key)) },
 			Set: func(v string) error {
@@ -325,9 +442,19 @@ func asleep(live *Agent, k wslKind, d distro) *Agent {
 					return fmt.Errorf("start WSL %s: %w", d.Name, err)
 				}
 				started = true
-				err := set(v)
+				// the agent again, now its files can be looked at: which of
+				// them it reads (opencode.jsonc or .json, ~/.kimi-code or
+				// ~/.kimi) is theirs to say, not the defaults it was built on
+				w := d
+				w.Running = true
+				warm := k.in(w.place(live.ID))
+				wf := warm.Field(key)
+				if wf == nil || wf.Set == nil {
+					return fmt.Errorf("%s has no %s", live.Name, key)
+				}
+				err := wf.Set(v)
 				// a model settles the effort too
-				for _, f := range live.Fields {
+				for _, f := range warm.Fields {
 					wslRemember(d.Name, k.memo(f.Key), f.Get())
 				}
 				wslSave()
@@ -575,8 +702,10 @@ const wslProbeVersion = 2
 var wslProbeScript = func() string {
 	s := `echo "home:$HOME"; `
 	for _, k := range wslKinds {
-		s += `[ -d "$HOME/` + k.dir + `" ] && echo dir:` + k.dir + `; ` +
-			`p=$(command -v ` + k.bin + ` 2>/dev/null) && echo "bin:` + k.bin + ` $p"; `
+		s += `[ -d "$HOME/` + k.dir + `" ] && echo dir:` + k.dir + `; `
+		if k.bin != "" {
+			s += `p=$(command -v ` + k.bin + ` 2>/dev/null) && echo "bin:` + k.bin + ` $p"; `
+		}
 	}
 	// a drive's source in /proc/mounts is C:\ (written C:\134), under any automount root
 	s += `awk '$1 ~ /^[A-Za-z]:/ {print "win:" $2}' /proc/mounts 2>/dev/null; `

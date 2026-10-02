@@ -370,17 +370,19 @@ func piThinkingLevels(efforts []string, anthropic bool) map[string]any {
 // openCodeLike is OpenCode and the forks that keep its config shape
 // (mimocode): a provider block with npm/@ai-sdk/openai-compatible, model and
 // small_model fields, and its own auth file beside its config.
-func openCodeLike(id, name, icon, bin, dir, auth string, ua []string, aliases ...string) *Agent {
+// at is where it lives: this machine, or a WSL distro (see wsl.go), whose
+// gateway address its provider names.
+func openCodeLike(at place, id, name, icon, bin, dir, auth string, ua []string, aliases ...string) *Agent {
 	// the first of its files there is, as the agent looks for them; with
 	// none, a new <id>.json
 	path := filepath.Join(dir, id+".json")
 	for _, name := range []string{id + ".jsonc", id + ".json", "config.json"} {
-		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+		if at.exists(filepath.Join(dir, name)) {
 			path = filepath.Join(dir, name)
 			break
 		}
 	}
-	provider := func() any { return magpieProviderJSONFor("opencode", id) }
+	provider := func() any { return magpieProviderJSONAt("opencode", id, at.gw()) }
 	opts := func(key string) func(map[string]string) []Option {
 		return func(cur map[string]string) []Option {
 			return append(ownOptions(auth, cur[key]), viaMagpie(id, magpieID+"/")...)
@@ -391,7 +393,7 @@ func openCodeLike(id, name, icon, bin, dir, auth string, ua []string, aliases ..
 	// OpenCode it runs on this config, is one of magpie's: magpie's
 	// provider has to stay
 	onMagpie := func() bool {
-		return usesMagpie(get("model"), get("small_model")) || id == "opencode" && openChamberOnMagpie()
+		return usesMagpie(get("model"), get("small_model")) || id == "opencode" && at.spell == nil && openChamberOnMagpie()
 	}
 	set := func(key string) func(string) error {
 		return func(v string) error {
@@ -404,7 +406,7 @@ func openCodeLike(id, name, icon, bin, dir, auth string, ua []string, aliases ..
 				}
 				return edit.DelJSON(path, "provider."+magpieID)
 			}
-			v, err := openCodeRef(path, id, v)
+			v, err := openCodeRefAt(at, path, id, v)
 			if err != nil {
 				return err
 			}
@@ -420,7 +422,7 @@ func openCodeLike(id, name, icon, bin, dir, auth string, ua []string, aliases ..
 				return ""
 			}
 			return wiringOff(name, path, func(k string) (string, bool) { return edit.GetJSON(path, "provider."+magpieID+".options."+k) },
-				"baseURL", gatewayV1(), "apiKey", gateway.Token)
+				"baseURL", at.v1(), "apiKey", gateway.Token)
 		},
 		Sync: func() error {
 			// a model of magpie's chosen, but its provider gone from the
@@ -443,21 +445,27 @@ func openCodeLike(id, name, icon, bin, dir, auth string, ua []string, aliases ..
 // magpie, named there rather than in a second list of the same models, else
 // to magpie's provider, put in the file; any other is v as it is.
 func openCodeRef(path, id, v string) (string, error) {
+	return openCodeRefAt(here(""), path, id, v)
+}
+
+// openCodeRefAt is openCodeRef for the agent at a place, which reaches the
+// gateway at its own address.
+func openCodeRefAt(at place, path, id, v string) (string, error) {
 	ref, ok := strings.CutPrefix(v, magpieID+"/")
 	if !ok || !isMagpie(ref) {
 		return v, nil
 	}
-	if own := ownGatewayProvider(path, ref); own != "" {
+	if own := ownGatewayProvider(path, ref, at.v1()); own != "" {
 		return own + "/" + ref, nil
 	}
-	return v, edit.SetJSON(path, edit.KV{Path: "provider." + magpieID, Value: magpieProviderJSONFor("opencode", id)})
+	return v, edit.SetJSON(path, edit.KV{Path: "provider." + magpieID, Value: magpieProviderJSONAt("opencode", id, at.gw())})
 }
 
 // ownGatewayProvider is the provider in an OpenCode config, other than
-// magpie's own, whose baseURL is magpie's gateway and that lists the model
-// ref, as a layout of one provider per family of magpie's models has; ""
-// when there is none.
-func ownGatewayProvider(path, ref string) string {
+// magpie's own, whose baseURL is magpie's gateway (v1, as the agent reaches
+// it) and that lists the model ref, as a layout of one provider per family
+// of magpie's models has; "" when there is none.
+func ownGatewayProvider(path, ref, v1 string) string {
 	raw, ok := edit.GetJSON(path, "provider")
 	if !ok {
 		return ""
@@ -478,27 +486,44 @@ func ownGatewayProvider(path, ref string) string {
 	sort.Strings(names)
 	for _, name := range names {
 		p := ps[name]
-		if _, has := p.Models[ref]; name != magpieID && has && sameGateway(p.Options.BaseURL) {
+		if _, has := p.Models[ref]; name != magpieID && has && sameGateway(p.Options.BaseURL, v1) {
 			return name
 		}
 	}
 	return ""
 }
 
-// sameGateway reports whether a base URL is magpie's gateway's, its host
-// spelled 127.0.0.1 or localhost.
-func sameGateway(base string) bool {
+// sameGateway reports whether a base URL is magpie's gateway's (v1), its
+// host spelled 127.0.0.1 or localhost.
+func sameGateway(base, v1 string) bool {
 	norm := func(u string) string {
 		u = strings.TrimRight(strings.TrimSpace(u), "/")
 		return strings.Replace(u, "://localhost:", "://127.0.0.1:", 1)
 	}
-	return base != "" && norm(base) == norm(gatewayV1())
+	return base != "" && norm(base) == norm(v1)
 }
 
 func opencode(home, cfg string) *Agent {
-	return openCodeLike("opencode", "OpenCode", "opencode", "opencode",
+	return openCodeLike(here(home), "opencode", "OpenCode", "opencode", "opencode",
 		openCodeDir(cfg), filepath.Join(home, ".local", "share", "opencode", "auth.json"),
 		[]string{"opencode"}, "oc")
+}
+
+// opencodeIn is OpenCode in a WSL distro (see wsl.go): its config in
+// ~/.config/opencode, as XDG_CONFIG_HOME and OPENCODE_CONFIG_DIR, the
+// distro's variables, aren't read; OpenChamber, a Windows app, isn't there.
+func opencodeIn(at place) *Agent {
+	return openCodeLike(at, "opencode", "OpenCode", "opencode", "opencode",
+		filepath.Join(at.home, ".config", "opencode"), filepath.Join(at.home, ".local", "share", "opencode", "auth.json"),
+		[]string{"opencode"}, "oc")
+}
+
+// mimocodeIn is MiMo Code in a WSL distro: ~/.config/mimocode, as
+// MIMOCODE_HOME isn't read there.
+func mimocodeIn(at place) *Agent {
+	return openCodeLike(at, "mimocode", "MiMo Code", "mimocode", "mimo",
+		filepath.Join(at.home, ".config", "mimocode"), filepath.Join(at.home, ".local", "share", "mimocode", "auth.json"),
+		[]string{"mimocode"}, "mimo")
 }
 
 // openCodeDir is the folder OpenCode reads its user config from:
@@ -523,7 +548,7 @@ func mimocode(home, cfg string) *Agent {
 	if h := os.Getenv("MIMOCODE_HOME"); filepath.IsAbs(h) {
 		dir = filepath.Join(h, "config")
 	}
-	return openCodeLike("mimocode", "MiMo Code", "mimocode", "mimo",
+	return openCodeLike(here(home), "mimocode", "MiMo Code", "mimocode", "mimo",
 		dir, filepath.Join(home, ".local", "share", "mimocode", "auth.json"),
 		[]string{"mimocode"}, "mimo")
 }
@@ -772,6 +797,18 @@ func crush(home, cfg string) *Agent {
 			path = filepath.Join(app, "crush", "crush.json")
 		}
 	}
+	return crushAt(here(home), path)
+}
+
+// crushIn is Crush in a WSL distro: ~/.config/crush/crush.json, Linux's
+// place for it.
+func crushIn(at place) *Agent {
+	return crushAt(at, filepath.Join(at.home, ".config", "crush", "crush.json"))
+}
+
+// crushAt is Crush with its config at path, reaching the gateway as at does.
+func crushAt(at place, path string) *Agent {
+	provider := func() any { return magpieProviderJSONAt("crush", "crush", at.gw()) }
 	get := func(k string) (string, bool) { return edit.GetJSON(path, k) }
 	set := func(kvs ...edit.KV) error { return edit.SetJSON(path, kvs...) }
 	opts := func(key string) func(map[string]string) []Option {
@@ -807,7 +844,7 @@ func crush(home, cfg string) *Agent {
 				return edit.DelJSON(path, "providers."+magpieID)
 			}
 			if ref, ok := strings.CutPrefix(v, magpieID+"/"); ok && isMagpie(ref) {
-				if err := set(edit.KV{Path: "providers." + magpieID, Value: magpieProviderJSON("crush")}); err != nil {
+				if err := set(edit.KV{Path: "providers." + magpieID, Value: provider()}); err != nil {
 					return err
 				}
 			}
@@ -824,10 +861,10 @@ func crush(home, cfg string) *Agent {
 				return ""
 			}
 			return wiringOff("Crush", path, func(k string) (string, bool) { return get("providers." + magpieID + "." + k) },
-				"base_url", gatewayV1(), "api_key", gateway.Token)
+				"base_url", at.v1(), "api_key", gateway.Token)
 		},
 		Sync: func() error {
-			return syncJSON(path, "providers."+magpieID, func() any { return magpieProviderJSON("crush") })
+			return syncJSON(path, "providers."+magpieID, provider)
 		},
 		Fields: []Field{
 			{Key: "model", Label: "large", Get: pairGet(get, "models.large.provider", "models.large.model"), Set: setter("models.large.provider", "models.large.model"), Options: opts("model")},
