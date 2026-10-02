@@ -2,6 +2,7 @@ package library
 
 import (
 	"fmt"
+	"os"
 	"slices"
 )
 
@@ -185,6 +186,9 @@ type SkillView struct {
 	Missing     bool              `json:"missing,omitempty"` // its folder is gone
 	Problems    map[string]string `json:"problems,omitempty"`
 	Check       *SkillCheck       `json:"check,omitempty"` // what the last check for updates found
+	// Always are the agents that have it whatever the library gives them:
+	// it is kept in ~/.agents/skills, which they read themselves (#595)
+	Always []string `json:"always,omitempty"`
 }
 
 // View is the Library page.
@@ -262,6 +266,24 @@ func Read(problems []Problem) (*View, error) {
 		sv := SkillView{Name: s.Name, Agents: append([]string{}, s.Agents...), Icon: skillIcon(s), Problems: of("skill:" + s.Name)}
 		if s.Source != nil {
 			sv.Source, sv.Kind = s.Source.String(), s.Source.Kind
+		}
+		// linked from a folder elsewhere is what the library's entry is, not
+		// what was written down when it came in: a linked folder moved in by
+		// hand is the library's own now, and Remove moves it to the backups
+		// (#595)
+		if p := skillDir(s.Name); linked(p) {
+			if sv.Kind != "folder" || realDir(s.Source.Dir) != realDir(p) {
+				sv.Kind, sv.Source = "folder", realDir(p)
+			}
+		} else if _, err := os.Lstat(p); err == nil && sv.Kind == "folder" {
+			sv.Kind, sv.Source = "", ""
+		}
+		if sharedHas(s.Name) {
+			for _, t := range targets {
+				if t.Skills != "" && (slices.Contains(readsShared, t.Agent.ID) || realDir(t.Skills) == realDir(sharedSkillsDir())) {
+					sv.Always = append(sv.Always, t.Agent.ID)
+				}
+			}
 		}
 		if o, ok := ccSwitchOrigin(s); ok {
 			o.Path = ""

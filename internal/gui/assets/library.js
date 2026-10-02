@@ -215,18 +215,22 @@
   }
 
   // Agent chips for a server or a skill: each agent that could have it, lit
-  // when it does. A chip whose agent couldn't be given it says why.
+  // when it does. A chip whose agent couldn't be given it says why. One that
+  // has it whatever is ticked (opts.always: a skill kept in ~/.agents/skills,
+  // which the agent reads itself, #595) is lit, can't be clicked, and says
+  // why; it is left out of what a click sends, and keeps what it had.
   function agentChips(all, on, onChange, opts = {}) {
     on ||= [];
     const box = el("div", "lib-agents");
     for (const a of all) {
-      const has = on.includes(a.id);
-      const c = el("button", "lib-ag" + (has ? " on" : ""));
+      const always = opts.always?.(a) || "";
+      const has = on.includes(a.id) || !!always;
+      const c = el("button", "lib-ag" + (has ? " on" : "") + (always ? " always" : ""));
       c.dataset.agent = a.id;
       c.append(agentIcon(a.icon));
       if (opts.names) c.append(el("span", "n", a.name));
-      const problem = opts.problems?.[a.id];
-      const blocked = opts.blocked?.(a);
+      const problem = !always && opts.problems?.[a.id];
+      const blocked = always || opts.blocked?.(a);
       const via = !has && opts.via?.(a);
       let tip = has ? t("{agent} has it — click to take it away", { agent: a.name }) : t("Give it to {agent}", { agent: a.name });
       if (via) { c.classList.add("via"); tip = t("{agent} reads it through {other} — click to give it its own", { agent: a.name, other: via }); }
@@ -241,14 +245,26 @@
       c.onclick = (e) => {
         e.stopPropagation();
         const me = e.currentTarget;
-        const lit = [...me.parentElement.children].filter((x) => x.dataset.agent && x.getAttribute("aria-pressed") === "true").map((x) => x.dataset.agent);
-        const kept = on.filter((id) => !all.some((x) => x.id === id));
+        const lit = litOf(me.parentElement);
+        const kept = keptOf(me.parentElement, all, on);
         onChange([...kept, ...(lit.includes(a.id) ? lit.filter((x) => x !== a.id) : [...lit, a.id])], me);
       };
       box.append(c);
     }
     if (opts.all) allChip(box, all, on, onChange);
     return box;
+  }
+
+  // The agents a row's chips have lit by a click: not one lit because it
+  // has the item whatever is ticked.
+  function litOf(box) {
+    return [...box.children].filter((x) => x.dataset.agent && !x.classList.contains("always") && x.getAttribute("aria-pressed") === "true").map((x) => x.dataset.agent);
+  }
+  // What a click leaves as it was: an agent not shown, and one that has the
+  // item whatever is ticked, whose chip can't be clicked.
+  function keptOf(box, all, on) {
+    const fixed = [...box.children].filter((x) => x.classList.contains("always")).map((x) => x.dataset.agent);
+    return on.filter((id) => !all.some((x) => x.id === id) || fixed.includes(id));
   }
 
   // All, ahead of a row's chips: one click gives the item to every agent
@@ -263,9 +279,9 @@
     c.onclick = (e) => {
       e.stopPropagation();
       const me = e.currentTarget;
-      const lit = [...me.parentElement.children].filter((x) => x.dataset.agent && x.getAttribute("aria-pressed") === "true").map((x) => x.dataset.agent);
-      const kept = on.filter((id) => !all.some((x) => x.id === id));
-      onChange(can.every((id) => lit.includes(id)) ? kept : [...kept, ...new Set([...lit, ...can])], me);
+      const lit = litOf(me.parentElement);
+      const kept = keptOf(me.parentElement, all, on);
+      onChange(can.every((id) => lit.includes(id)) ? kept : [...new Set([...kept, ...lit, ...can])], me);
     };
     box.prepend(c);
     paintAll(box);
@@ -296,7 +312,7 @@
     return async (next, c) => {
       // All lights or darkens every chip of the row, a chip only itself
       const every = !!c.dataset.all;
-      for (const x of every ? [...c.parentElement.children].filter((y) => y.dataset.agent) : [c]) {
+      for (const x of every ? [...c.parentElement.children].filter((y) => y.dataset.agent && !y.classList.contains("always")) : [c]) {
         const on = next.includes(x.dataset.agent);
         x.classList.toggle("on", on);
         if (on || x === c) x.classList.remove("via");
@@ -2400,6 +2416,12 @@
 
   // Claude Code's skills are OpenCode's and Crush's too: a chip for one of
   // those says so while it has none of its own.
+  // the agents that have a skill kept in ~/.agents/skills whatever is
+  // ticked: they read that folder themselves (#595)
+  function alwaysFor(s) {
+    return (a) => s.always?.includes(a.id) ? t("{agent} reads ~/.agents/skills itself, where this skill is kept — it has it whatever is ticked here", { agent: a.name }) : "";
+  }
+
   function viaFor(s) {
     return (a) => {
       const also = lib.agents.find((x) => x.id === a.id)?.skillsAlso || [];
@@ -2560,7 +2582,7 @@
     rm.append(svg(GLYPH.trash, 13, 1.4));
     rm.title = t("Remove");
     acts.append(rm);
-    row.append(mark(s.icon, GLYPH.skill), who, acts, agentChips(all, s.agents, chipsChange("skills/agents", s.name, "skills", (x) => skillRow(x, all)), { problems: s.problems, via: viaFor(s), all: true }));
+    row.append(mark(s.icon, GLYPH.skill), who, acts, agentChips(all, s.agents, chipsChange("skills/agents", s.name, "skills", (x) => skillRow(x, all)), { problems: s.problems, via: viaFor(s), all: true, always: alwaysFor(s) }));
     row.onclick = () => viewSkill(s);
     row.title = t("Read {name}'s SKILL.md", { name: s.name });
     return row;
@@ -2608,6 +2630,8 @@
     const sub = el("div", "sub", f.description || "");
     sub.title = f.description || "";
     who.append(sub);
+    // put in the library's own folder by hand, not listed by it (#595)
+    if (f.library) { const src = el("div", "lib-src"); src.append(el("span", "", t("in the library's folder, not listed")), pathLink(f.library)); who.append(src); }
     if (f.shared) { const src = el("div", "lib-src"); src.append(el("span", "", t("shared in")), pathLink(f.shared)); who.append(src); }
     if (f.link) { const src = el("div", "lib-src"); src.append(el("span", "", t("linked from")), pathLink(f.link)); who.append(src); }
     const have = el("div", "lib-have");
@@ -2617,7 +2641,8 @@
     row.append(glyph(GLYPH.skill), who, have);
     if (f.others?.length) row.append(tag(t("differs in {agents}", { agents: f.others.map(nameOf).join(", ") }), "warn", t("{agents} has another skill by this name; bringing this one in leaves that one as it is", { agents: f.others.map(nameOf).join(", ") })));
     const b = button(t("Bring in"), "action", () => change("skills/import", { name: f.name }, t("{name} is in the library now", { name: f.name })));
-    b.title = f.shared ? t("Keeps it where it is in the shared skills folder and links to it: you can give it to any agent")
+    b.title = f.library ? t("Lists it in the library where it is, nothing moved: you can give it to any agent")
+      : f.shared ? t("Keeps it where it is in the shared skills folder and links to it: you can give it to any agent")
       : f.link ? t("Keeps a link to where it is: {agents} go on having it, and you can give it to the others", { agents: [...f.agents, ...(f.copies || [])].map(nameOf).join(", ") })
       : t("Moves it into the library and links it back: {agents} go on having it, and you can give it to the others", { agents: [...f.agents, ...(f.copies || [])].map(nameOf).join(", ") });
     row.append(b);

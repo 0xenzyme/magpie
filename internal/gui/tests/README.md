@@ -1107,6 +1107,15 @@ for all of them or, when one couldn't take it, "on for 1 of 2 agents" and
 which and why; a second click takes it from all; the click scrolls nothing
 and doesn't open the row. Chromium and WebKit, in English and Chinese.
 
+`library-own-folder.test.cjs` (#595) shows a skill put in the library's own
+folder by hand among the skills found, said to be "in the library's folder,
+not listed" with its path, and Bring in saying it is listed where it is; a
+library skill kept in ~/.agents/skills has Codex's and Gemini CLI's chips
+lit and disabled, each saying it reads that folder itself, and a click on
+Pi's chip or on All never sends them; Remove says a linked skill's folder
+stays and the library's own is moved to the backups. No click scrolls the
+page, and nothing has a left-border accent. In English and Chinese.
+
 `routing-auto-reset.test.cjs` checks the Routing page's story for a Codex
 reset used by itself: a try out of its week says whose reset was used and
 that the request was asked again, and Codex's own sign-in answering after
