@@ -682,6 +682,16 @@ var linkRest = regexp.MustCompile(`^[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$`)
 // and uuid: the rest of a value, or more params.
 var queryRest = regexp.MustCompile(`^[A-Za-z0-9\-_%&=]+$`)
 
+// AgentUser is who an agent is signed in to itself, as its own files say,
+// for an agent whose vendor a plugin serves too; "" when not known.
+func AgentUser(agent string) string {
+	if agent == "grok" {
+		u, _ := GrokUser(GrokHome())
+		return u
+	}
+	return ""
+}
+
 // GrokUser is who the grok with this home is signed in to.
 func GrokUser(home string) (string, bool) {
 	c, ok := readGrokCredential(home)

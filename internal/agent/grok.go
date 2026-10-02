@@ -194,7 +194,14 @@ func grokIn(at place) *Agent {
 					return edit.SetTOMLKey(path, "models", "default", v)
 				},
 				Options: func(cur map[string]string) []Option {
-					return append(grokOwnOptions(cur["model"]), viaMagpie("grok", magpieID+"/")...)
+					// magpie's rows for the account Grok Build is signed in
+					// to are its own models a second time: they fold into
+					// one row (Fate on Discord: grokbuild 在登录态下会加载重复的模型)
+					opts := viaMagpie("grok", magpieID+"/")
+					for i := range opts {
+						opts[i].Same = opts[i].own
+					}
+					return append(grokOwnOptions(cur["model"]), opts...)
 				},
 			},
 			{
