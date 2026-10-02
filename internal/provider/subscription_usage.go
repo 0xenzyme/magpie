@@ -543,7 +543,23 @@ func claudeWindows(ctx context.Context, user string, active bool) ([]QuotaWindow
 			return []QuotaWindow{}, errClaudeSaved
 		}
 	}
+	// /usage tells of the account Claude Code is signed in to as it runs:
+	// one it was moved off before or while it ran (a switch, "Make first")
+	// is another's, and kept as user's it showed an account nobody used as
+	// spent as the one it was moved to (nil_1024)
+	kept := func() ([]QuotaWindow, error) {
+		if e.ws != nil {
+			return elapsed(e.ws, now), nil
+		}
+		return []QuotaWindow{}, errClaudeNotAsked
+	}
+	if ClaudeCodeMovedOff(user) {
+		return kept()
+	}
 	ws, err := readClaudeUsage(ctx)
+	if ClaudeCodeMovedOff(user) {
+		return kept()
+	}
 	if err != nil {
 		c.Lock()
 		if f, ok := c.m[key]; ok && f.tried.Equal(now) {

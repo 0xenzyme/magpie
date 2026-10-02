@@ -812,8 +812,11 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			continue
 		}
 		if envelope.Type == "rate_limit_event" {
-			if _, user, ok := strings.Cut(r.owner, "\x00"); ok {
-				provider.NoteClaudeLimits(user, claudeLimits(envelope.RateLimitInfo))
+			// a run in Claude Code's own home is on whatever account
+			// Claude Code is signed in to by now: switched off the
+			// owner's, what it says is another's (nil_1024)
+			if f := strings.Split(r.owner, "\x00"); len(f) > 1 && !(len(f) > 2 && f[2] == ownHome && provider.ClaudeCodeMovedOff(f[1])) {
+				provider.NoteClaudeLimits(f[1], claudeLimits(envelope.RateLimitInfo))
 			}
 			continue
 		}
@@ -1430,10 +1433,23 @@ func (b *subscriptionBridge) removeRun(run *subscriptionRun) {
 	_ = os.RemoveAll(run.tmp)
 }
 
+// ownHome marks a run's owner as Claude Code's own sign-in, run in its
+// own home.
+const ownHome = "own"
+
 func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request, from provider.Protocol, p provider.Provider, model string, body []byte, usage *Usage) (int, string) {
 	start := func(ctx context.Context, req *Request) (*subscriptionRun, <-chan Event, error) {
 		ctx = p.Via(ctx) // the account's own proxy, its CLI run's too
 		owner := p.ID + "\x00" + p.Account.User
+		if p.Account.AgentsOwn() {
+			// Claude Code's own sign-in, which a switch moves to another
+			// account: a run kept from before goes on as that one (it
+			// reads its keychain again), so the account, once saved and
+			// run in a config directory of its own, never resumes it
+			// (nil_1024: made first, a saved account's turns went on as
+			// the spent one in its Claude Code)
+			owner += "\x00" + ownHome
+		}
 		if run, events := s.subscription.resume(req, owner); run != nil {
 			return run, events, nil
 		}
