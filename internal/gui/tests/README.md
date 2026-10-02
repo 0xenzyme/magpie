@@ -840,9 +840,9 @@ leaves the page where it is. Chromium and WebKit, API faked.
 `routing-zcode-blocked.test.cjs` opens a request ZCode's Start Plan turned
 away (#425: 405 "request has been blocked due to unusual activity") on the
 Routing page: what the gateway made of it is given without the hint it adds,
-and the hint (ZCode takes only its own app's requests and magpie doesn't
-pretend to be it, or the network blocked this IP; use a GLM Coding Plan or
-another provider in the group) is on its own line in English and Chinese;
+and the hint (ZCode still turned it away though magpie sends it as the ZCode
+app does: the network blocked this IP, or ZCode checks something new; use a
+GLM Coding Plan or another provider in the group) is on its own line in English and Chinese;
 another 405 gets none, and picking the request leaves the page where it is.
 Chromium and WebKit, API faked.
 
