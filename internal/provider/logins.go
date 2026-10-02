@@ -90,6 +90,10 @@ type savedLogin struct {
 	// paused it in magpie (#263): the gateway passes over it while another
 	// of the agent's accounts is on, the agent staying signed in to it.
 	Paused bool `json:"paused,omitempty"`
+	// Held is the Claude account Claude Code itself was signed in to when
+	// magpie last looked: its saved copy is that very sign-in, which
+	// Claude Code's /logout revokes (claudeLoggedOut).
+	Held bool `json:"held,omitempty"`
 }
 
 var (
@@ -470,9 +474,18 @@ func rememberLogins(force bool) {
 		}
 		l, ok := liveLogin(agent)
 		if !ok {
+			if agent == "claude" && claudeLoggedOut(ls) {
+				changed = true
+			}
 			continue
 		}
 		l.Seen = time.Now().UTC().Truncate(time.Second)
+		if agent == "claude" {
+			for i := range ls {
+				ls[i].Held = false
+			}
+			l.Held = true
+		}
 		ls = upsertLogin(ls, l)
 		changed = true
 	}
