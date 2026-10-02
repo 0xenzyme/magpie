@@ -1954,6 +1954,15 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .eps .detect-acts .text { margin: 0; }
 .detect-acts .pick-api.on { background: var(--pill); }
 .detect-acts .hint { font-size: 11.5px; color: var(--faint); }
+.detect-row .detect-each { flex: none; }
+.detect-grid { display: grid; gap: 3px 10px; align-items: center; font-size: 11.5px; padding: 4px 0 2px; }
+.detect-grid .dg-head { color: var(--faint); font-size: 11px; }
+.detect-grid .dg-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
+.detect-grid .dg-cell { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--faint); }
+.detect-grid .dg-cell > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detect-grid .dg-cell svg { flex: none; }
+.detect-grid .dg-cell.ok { color: var(--green); }
+.detect-grid .dg-cell.bad svg { color: var(--red); }
 
 /* model chips: click to expose, click again to hide */
 .models { display: flex; flex-direction: column; gap: 6px; }

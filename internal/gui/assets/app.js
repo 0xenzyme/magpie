@@ -114,6 +114,7 @@ function svg(d, size = 12, stroke = 1.6) {
 const CHEV = "m5.5 6.5 2.5 2.5 2.5-2.5";
 const CHEV_R = "m6.5 4.5 3 3.5-3 3.5";
 const CHECK = "m3.5 8.5 3 3 6-7";
+const CROSS = "M4.5 4.5l7 7M11.5 4.5l-7 7";
 const PLUS = "M8 3.5v9M3.5 8h9";
 const OUT = "M6.5 3.5h-3v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5";
 const COPY_ICON = "M5.5 5.5V3.5h7v7h-2M3.5 5.5h7v7h-7z";
@@ -4928,6 +4929,8 @@ function slide(box, key) {
 }
 
 const PROTOS = [["chat", "OpenAI", "Chat Completions — most agents"], ["responses", "Responses", "OpenAI Responses — what Codex speaks"], ["anthropic", "Anthropic", "Anthropic Messages — what Claude Code speaks"], ["decide", "Jev", "Jev's decision API (TypeSafe's, or a gateway's) — what a routing group asks as a turn begins"]];
+// apiLabel: the name an API (a protocol) goes by in the editor
+const apiLabel = (proto) => (PROTOS.find(([k]) => k === proto) || [])[1] || proto;
 
 // draftOf is a saved provider as its editor's form holds it.
 function draftOf(p) {
@@ -5891,81 +5894,159 @@ function renderEndpoints(p, src) {
 // answered; "Use these" takes those that answered for the provider. With
 // a model typed for a saved provider and only some APIs answering, that
 // model alone can be asked on one of them (staged with Names & levels).
+// "Each picked model" asks every model picked on each API (01huadalang:
+// 应该能看出来选择的模型支持情况…有的仅支持 response 有的双协议), a few at
+// a time, and shows model by API; its "Use these" also gives each model
+// that answered on one API only that API, staged as Names & levels does.
+// DETECT_MAX: the most models one detection asks (provider.DetectMax)
+const DETECT_MAX = 30;
 function detectAPIs(p, base, use) {
   const box = el("div", "detect");
   const row = el("div", "detect-row");
   const go = el("button", "text action", t("Detect APIs"));
   go.title = t("Send the smallest request to each API (OpenAI chat completions, Responses, Anthropic messages) at this URL, to see which answer");
+  const each = el("button", "text action detect-each", t("Each picked model"));
+  each.title = t("Ask every model picked below on each API, to see which API serves which model (up to {n}, a few at a time)", { n: DETECT_MAX });
   const model = input(draft.detectModel || "", t("model to try · empty picks one from the vendor's list"));
   model.classList.add("detect-model");
   model.oninput = () => { draft.detectModel = model.value; };
   model.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") go.click(); else if (e.key === "Escape") cancelEdit(); };
-  row.append(go, model);
+  row.append(go, model, each);
   const out = el("div", "eps detect-out");
   out.hidden = true;
   box.append(row, out);
-  go.onclick = async () => {
+  // the APIs by row: each one's URL and how it answered
+  const byAPI = (results) => {
+    for (const x of results) {
+      const e = el("div", "ep");
+      e.dataset.api = x.protocol;
+      const [, label, hint] = PROTOS.find(([k]) => k === x.protocol) || [x.protocol, x.protocol, ""];
+      const pl = el("span", "pl", label);
+      pl.title = t(hint);
+      const res = el("span", "res " + (x.ok ? "ok" : "bad"));
+      res.append(svg(x.ok ? CHECK : CROSS, 10, 2));
+      const why = x.status ? `${x.status} · ${x.error}` : t(x.error || "");
+      res.append(el("span", "", x.ok ? ledTook(x.ms) : why));
+      res.title = (x.model ? t("model {model}", { model: x.model }) : "") + (x.ok ? "" : "\n" + why);
+      e.append(pl, el("code", "", x.base || "—"), res);
+      out.append(e);
+    }
+  };
+  const ask = async (btn, extra) => {
     const typedBase = (base() || "").trim();
-    if (!typedBase && !(draft.chat || draft.responses || draft.anthropic || "").trim()) { status(t("Type the base URL first"), "warn"); return; }
-    go.classList.add("busy");
+    if (!typedBase && !(draft.chat || draft.responses || draft.anthropic || "").trim()) { status(t("Type the base URL first"), "warn"); return null; }
+    btn.classList.add("busy");
     out.hidden = false;
     out.replaceChildren(el("span", "hint", t("Asking each API…")));
     try {
-      const m = model.value.trim();
       // the URL typed is asked as each API takes it, not as the field
       // holding it would send it; URLs given under More endpoints as they are
-      const body = { ...asTyped(), id: p?.id, base: typedBase, model: m };
+      const body = { ...asTyped(), id: p?.id, base: typedBase, ...extra };
       for (const k of ["chat", "responses", "anthropic"]) if (body[k] === typedBase) body[k] = "";
       const r = await api("provider/detect", body);
       out.replaceChildren();
-      for (const x of r.results) {
-        const e = el("div", "ep");
-        e.dataset.api = x.protocol;
-        const [, label, hint] = PROTOS.find(([k]) => k === x.protocol) || [x.protocol, x.protocol, ""];
-        const pl = el("span", "pl", label);
-        pl.title = t(hint);
-        const res = el("span", "res " + (x.ok ? "ok" : "bad"));
-        res.append(svg(x.ok ? CHECK : "M4.5 4.5l7 7M11.5 4.5l-7 7", 10, 2));
-        const why = x.status ? `${x.status} · ${x.error}` : t(x.error || "");
-        res.append(el("span", "", x.ok ? ledTook(x.ms) : why));
-        res.title = (x.model ? t("model {model}", { model: x.model }) : "") + (x.ok ? "" : "\n" + why);
-        e.append(pl, el("code", "", x.base || "—"), res);
-        out.append(e);
-      }
-      const ok = r.results.filter((x) => x.ok);
-      const acts = el("div", "detect-acts");
-      if (!ok.length) acts.append(el("span", "hint", t("None answered: check the URL and the key, or type a model the vendor serves")));
-      else {
-        const take = el("button", "text action", t("Use these"));
-        take.title = t("Set the URLs of the APIs that answered; one not found there is cleared");
-        take.onclick = () => { use(r.results); take.disabled = true; take.textContent = t("Taken · save to keep"); };
-        acts.append(take);
-        // one model the provider serves, answering on some APIs only:
-        // it can be asked on one of them alone
-        const pm = p && m && p.models.find((x) => x.id === m);
-        if (pm && ok.length < r.results.filter((x) => x.base).length) {
-          for (const x of ok) {
-            const label = (PROTOS.find(([k]) => k === x.protocol) || [])[1] || x.protocol;
-            const b = el("button", "text action", t("Ask {model} on {api} only", { model: m, api: label }));
-            b.title = t("Staged in Names & levels and made with the Save; Auto there gives it back");
-            b.onclick = () => {
-              const prefs = draft.modelPrefs = draft.modelPrefs || {};
-              prefs[m] = prefs[m] || {};
-              if ((pm.api || "") === x.protocol) delete prefs[m].api; else prefs[m].api = x.protocol;
-              if (!Object.keys(prefs[m]).length) delete prefs[m];
-              if (!draft[x.protocol]) use(r.results);
-              for (const o of acts.querySelectorAll(".pick-api")) o.classList.toggle("on", o === b);
-              draft.onModelPrefs?.();
-              status(t("{model} is asked on {api} once saved", { model: m, api: label }), "ok");
-            };
-            b.classList.add("pick-api");
-            acts.append(b);
-          }
+      return r;
+    } catch (e) { out.replaceChildren(); out.hidden = true; status(e.message, "err"); return null; }
+    finally { btn.classList.remove("busy"); }
+  };
+  go.onclick = async () => {
+    const m = model.value.trim();
+    const r = await ask(go, { model: m });
+    if (!r) return;
+    byAPI(r.results);
+    const ok = r.results.filter((x) => x.ok);
+    const acts = el("div", "detect-acts");
+    if (!ok.length) acts.append(el("span", "hint", t("None answered: check the URL and the key, or type a model the vendor serves")));
+    else {
+      const take = el("button", "text action", t("Use these"));
+      take.title = t("Set the URLs of the APIs that answered; one not found there is cleared");
+      take.onclick = () => { use(r.results); take.disabled = true; take.textContent = t("Taken · save to keep"); };
+      acts.append(take);
+      // one model the provider serves, answering on some APIs only:
+      // it can be asked on one of them alone
+      const pm = p && m && p.models.find((x) => x.id === m);
+      if (pm && ok.length < r.results.filter((x) => x.base).length) {
+        for (const x of ok) {
+          const label = apiLabel(x.protocol);
+          const b = el("button", "text action", t("Ask {model} on {api} only", { model: m, api: label }));
+          b.title = t("Staged in Names & levels and made with the Save; Auto there gives it back");
+          b.onclick = () => {
+            stageAPI(pm, x.protocol);
+            if (!draft[x.protocol]) use(r.results);
+            for (const o of acts.querySelectorAll(".pick-api")) o.classList.toggle("on", o === b);
+            draft.onModelPrefs?.();
+            status(t("{model} is asked on {api} once saved", { model: m, api: label }), "ok");
+          };
+          b.classList.add("pick-api");
+          acts.append(b);
         }
       }
-      out.append(acts);
-    } catch (e) { out.replaceChildren(); out.hidden = true; status(e.message, "err"); }
-    go.classList.remove("busy");
+    }
+    out.append(acts);
+  };
+  // a model's API staged in Names & levels: the one it has saved stages nothing
+  const stageAPI = (pm, proto) => {
+    const prefs = draft.modelPrefs = draft.modelPrefs || {};
+    const id = pm.id;
+    prefs[id] = prefs[id] || {};
+    if ((pm.api || "") === proto) delete prefs[id].api; else prefs[id].api = proto;
+    if (!Object.keys(prefs[id]).length) delete prefs[id];
+  };
+  each.onclick = async () => {
+    const ids = chosenIds();
+    if (!ids.length) { status(t("Pick models first, or type one and press Detect APIs"), "warn"); return; }
+    const r = await ask(each, { detectModels: ids });
+    if (!r) return;
+    byAPI(r.results);
+    // the APIs asked: those with a URL
+    const asked = r.results.filter((x) => x.base).map((x) => x.protocol);
+    const grid = el("div", "detect-grid");
+    grid.style.gridTemplateColumns = `minmax(0, 1.3fr) repeat(${asked.length}, minmax(0, 1fr))`;
+    grid.append(el("span", "dg-head", t("Model")), ...asked.map((a) => el("span", "dg-head", apiLabel(a))));
+    // a model that answered on one API alone, of two or more asked, is
+    // given that one by the Use these
+    const only = {};
+    for (const md of r.models) {
+      const name = el("code", "dg-model", md.model);
+      name.title = md.model;
+      grid.append(name);
+      const okOn = [];
+      for (const a of asked) {
+        const x = md.results.find((y) => y.protocol === a) || {};
+        const cell = el("span", "dg-cell " + (x.ok ? "ok" : "bad"));
+        cell.dataset.model = md.model;
+        cell.dataset.api = a;
+        cell.append(svg(x.ok ? CHECK : CROSS, 10, 2));
+        const why = x.status ? `${x.status} · ${x.error || ""}` : t(x.error || "");
+        cell.append(el("span", "", x.ok ? ledTook(x.ms) : why));
+        cell.title = `${md.model} · ${apiLabel(a)}\n` + (x.ok ? t("Answered in {took}", { took: ledTook(x.ms) }) : why);
+        if (x.ok) okOn.push(a);
+        grid.append(cell);
+      }
+      if (okOn.length === 1 && asked.length > 1) only[md.model] = okOn[0];
+    }
+    out.append(grid);
+    if (ids.length > r.models.length) out.append(el("span", "hint", t("Only the first {n} of {all} models were asked", { n: r.models.length, all: ids.length })));
+    const acts = el("div", "detect-acts");
+    if (!r.results.some((x) => x.ok)) acts.append(el("span", "hint", t("None answered: check the URL and the key, or type a model the vendor serves")));
+    else {
+      const take = el("button", "text action", t("Use these"));
+      // only a saved provider's models are given an API; a new one's, in
+      // Names & levels once it is saved
+      const give = p ? Object.entries(only).map(([id, a]) => [p.models.find((x) => x.id === id), a]).filter(([pm]) => pm) : [];
+      take.title = give.length ? t("Set the URLs of the APIs that answered, and give each model that answered on one API only that API (staged in Names & levels, made with the Save)")
+        : t("Set the URLs of the APIs that answered; one not found there is cleared");
+      take.onclick = () => {
+        for (const [pm, a] of give) stageAPI(pm, a);
+        use(r.results);
+        take.disabled = true;
+        take.textContent = t("Taken · save to keep");
+        if (give.length) status(t("{n} models are asked on the one API that answered them once saved", { n: give.length }), "ok");
+      };
+      acts.append(take);
+      if (give.length) acts.append(el("span", "hint", give.map(([pm, a]) => t("{model}: {api} only", { model: pm.id, api: apiLabel(a) })).join(" · ")));
+    }
+    out.append(acts);
   };
   return box;
 }
@@ -5996,7 +6077,10 @@ function renderModels(p) {
     if (!got || !(id in got)) return;
     const x = got[id];
     c.append(el("span", "tdot " + (!x ? "wait" : x.ok ? "ok" : "bad")));
-    c.title = !x ? t("Testing…") : x.ok ? t("Answered in {took}", { took: ledTook(x.ms) }) : (x.status ? x.status + " · " : "") + x.error;
+    // the API it was asked on said, where the answer says (01huadalang:
+    // 右键选择测试只能测试出是不是通的，不能说什么协议是通的)
+    const via = x?.protocol ? apiLabel(x.protocol) : "";
+    c.title = !x ? t("Testing…") : x.ok ? (via ? t("Answered via {api} in {took}", { api: via, took: ledTook(x.ms) }) : t("Answered in {took}", { took: ledTook(x.ms) })) : (via ? via + " · " : "") + (x.status ? x.status + " · " : "") + x.error;
   };
   // a chip's right-click (or the menu key) tests that model alone: Test models
   // asks every one, and a list of many takes a while (yonghe, Discord). A
@@ -6290,7 +6374,10 @@ function renderModels(p) {
     try {
       const r = await api("provider/test", { ...asTyped(), id: p.id, test: [id] });
       const x = got[id] = r.results[0];
-      status(x.ok ? t("{model} answered in {took}", { model: id, took: ledTook(x.ms) }) : t("{model} didn't answer: {error}", { model: id, error: (x.status ? x.status + " · " : "") + x.error }), x.ok ? "ok" : "err");
+      const via = x.protocol ? apiLabel(x.protocol) : "";
+      const error = (x.status ? x.status + " · " : "") + x.error;
+      status(x.ok ? (via ? t("{model} answered via {api} in {took}", { model: id, api: via, took: ledTook(x.ms) }) : t("{model} answered in {took}", { model: id, took: ledTook(x.ms) }))
+        : via ? t("{model} didn't answer via {api}: {error}", { model: id, api: via, error }) : t("{model} didn't answer: {error}", { model: id, error }), x.ok ? "ok" : "err");
     } catch (e) { delete got[id]; status(e.message, "err"); }
     draw();
   };

@@ -657,6 +657,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// Test, for test: models to send a request each, in place of
 			// one per endpoint
 			Test []string `json:"test"`
+			// DetectModels, for detect: models to ask on each API, each
+			// answered on its own, in place of Model
+			DetectModels []string `json:"detectModels"`
 			// Account and Allow, for accountmodels: the account (its name)
 			// or key (its id) and the models it alone serves, none for all
 			// the provider's (#474)
@@ -950,6 +953,19 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				p = *saved
 			}
 			p = typed(p, in, req.Proxy)
+			if len(req.DetectModels) > 0 {
+				// model by model, a few at a time (01huadalang: 应该能
+				// 看出来选择的模型支持情况)
+				ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+				defer cancel()
+				each, sum, err := p.DetectModels(ctx, req.Base, req.DetectModels)
+				if err != nil {
+					fail(rw, err)
+					return
+				}
+				writeJSON(rw, map[string]any{"results": sum, "models": each})
+				return
+			}
 			ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 			defer cancel()
 			got, err := p.Detect(ctx, req.Base, req.Model)

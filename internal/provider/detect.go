@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yetone/magpie/internal/catalog"
 )
@@ -61,31 +62,9 @@ var ErrNoURL = errors.New("type the base URL first")
 // Only those URLs are asked, and only a key's provider: a sign-in's API
 // is its agent's.
 func (p Provider) Detect(ctx context.Context, base, model string) ([]Detection, error) {
-	if p.Account != nil {
-		return nil, errors.New("a sign-in is asked on its agent's own API; there is nothing to detect")
-	}
-	q := p
-	for _, proto := range Protocols {
-		u := strings.TrimSpace(p.Base(proto))
-		if u == "" {
-			u = DetectBase(base, proto)
-		}
-		if u != "" {
-			if pu, err := url.Parse(u); err != nil || (pu.Scheme != "http" && pu.Scheme != "https") || pu.Host == "" {
-				return nil, errors.New("the base URL must start with http:// or https://, not " + u)
-			}
-		}
-		switch proto {
-		case Chat:
-			q.Chat = u
-		case Responses:
-			q.Responses = u
-		case Anthropic:
-			q.Anthropic = u
-		}
-	}
-	if len(q.Speaks()) == 0 {
-		return nil, ErrNoURL
+	q, err := p.detecting(base)
+	if err != nil {
+		return nil, err
 	}
 	ctx = q.Via(ctx)
 	model = strings.TrimSpace(model)
@@ -100,29 +79,160 @@ func (p Provider) Detect(ctx context.Context, base, model string) ([]Detection, 
 		if m == "" {
 			m = detectModel(ids, proto)
 		}
-		out[i] = Detection{Result: Result{Protocol: proto, Model: m}, Base: q.Base(proto)}
-		if out[i].Base == "" {
-			out[i].Error = "no URL to ask"
-			continue
-		}
-		if m == "" {
-			out[i].Error = "no model to try: type one the vendor serves"
-			continue
-		}
-		k, ok := q.keyFor(proto)
-		if !ok {
-			out[i].Error = "no key is on for this endpoint"
+		var ask func(context.Context) Result
+		out[i], ask = q.detectOne(proto, m, testWait)
+		if ask == nil {
 			continue
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			u, body := tiny(k, proto, UpstreamName(q, m))
-			out[i].Result = probe(ctx, k, proto, u, k.Prepare([]byte(body)), m, testWait)
+			out[i].Result = ask(ctx)
 		}()
 	}
 	wg.Wait()
 	return out, nil
+}
+
+// detecting is p with the URL it would be asked at for each API: its own,
+// else base as that API takes it.
+func (p Provider) detecting(base string) (Provider, error) {
+	if p.Account != nil {
+		return p, errors.New("a sign-in is asked on its agent's own API; there is nothing to detect")
+	}
+	q := p
+	for _, proto := range Protocols {
+		u := strings.TrimSpace(p.Base(proto))
+		if u == "" {
+			u = DetectBase(base, proto)
+		}
+		if u != "" {
+			if pu, err := url.Parse(u); err != nil || (pu.Scheme != "http" && pu.Scheme != "https") || pu.Host == "" {
+				return p, errors.New("the base URL must start with http:// or https://, not " + u)
+			}
+		}
+		switch proto {
+		case Chat:
+			q.Chat = u
+		case Responses:
+			q.Responses = u
+		case Anthropic:
+			q.Anthropic = u
+		}
+	}
+	if len(q.Speaks()) == 0 {
+		return p, ErrNoURL
+	}
+	return q, nil
+}
+
+// detectOne is model's detection on proto as far as it can be told
+// without asking, and, when it can be asked, the ask (nil when not).
+func (q Provider) detectOne(proto Protocol, m string, wait time.Duration) (Detection, func(context.Context) Result) {
+	d := Detection{Result: Result{Protocol: proto, Model: m}, Base: q.Base(proto)}
+	if d.Base == "" {
+		d.Error = "no URL to ask"
+		return d, nil
+	}
+	if m == "" {
+		d.Error = "no model to try: type one the vendor serves"
+		return d, nil
+	}
+	k, ok := q.keyFor(proto)
+	if !ok {
+		d.Error = "no key is on for this endpoint"
+		return d, nil
+	}
+	return d, func(ctx context.Context) Result {
+		u, body := tiny(k, proto, UpstreamName(q, m))
+		return probe(ctx, k, proto, u, k.Prepare([]byte(body)), m, wait)
+	}
+}
+
+// ModelDetection is what each API answered for one model
+// (01huadalang on Discord: 应该能看出来选择的模型支持情况…有的仅支持
+// response 有的双协议).
+type ModelDetection struct {
+	Model   string      `json:"model"`
+	Results []Detection `json:"results"`
+}
+
+// A detection of many models asks at most DetectMax of them, DetectWide
+// requests at a time, each waiting detectWait for its answer.
+const (
+	DetectMax  = 30
+	DetectWide = 8
+	detectWait = 12 * time.Second
+)
+
+// DetectModels asks each of models (the first DetectMax, an image model
+// left out: it is asked on the images API) on each of Chat, Responses and
+// Anthropic at the URL p has for it, else at base as it takes it, and
+// says what each answered, model by model; and, by API, the first answer
+// from a model it served, else the first model's — what Detect says for
+// one. A probe not started before ctx ends says so, unasked.
+func (p Provider) DetectModels(ctx context.Context, base string, models []string) ([]ModelDetection, []Detection, error) {
+	q, err := p.detecting(base)
+	if err != nil {
+		return nil, nil, err
+	}
+	var ids []string
+	for _, m := range models {
+		if m = strings.TrimSpace(m); m != "" && !slices.Contains(ids, m) {
+			ids = append(ids, m)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil, errors.New("no model to try: type one the vendor serves")
+	}
+	if len(ids) > DetectMax {
+		ids = ids[:DetectMax]
+	}
+	ctx = q.Via(ctx)
+	out := make([]ModelDetection, len(ids))
+	sem := make(chan struct{}, DetectWide)
+	var wg sync.WaitGroup
+	for i, m := range ids {
+		out[i] = ModelDetection{Model: m, Results: make([]Detection, len(Protocols))}
+		for j, proto := range Protocols {
+			d, ask := q.detectOne(proto, m, detectWait)
+			if ask != nil && catalog.ImagesAPI(m) {
+				d.Error, ask = "an image model: asked on the images API, not here", nil
+			}
+			out[i].Results[j] = d
+			if ask == nil {
+				continue
+			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				select {
+				case sem <- struct{}{}:
+				case <-ctx.Done():
+					out[i].Results[j].Error = "not asked: out of time"
+					return
+				}
+				defer func() { <-sem }()
+				if ctx.Err() != nil {
+					out[i].Results[j].Error = "not asked: out of time"
+					return
+				}
+				out[i].Results[j].Result = ask(ctx)
+			}()
+		}
+	}
+	wg.Wait()
+	sum := make([]Detection, len(Protocols))
+	for j := range Protocols {
+		sum[j] = out[0].Results[j]
+		for _, md := range out {
+			if md.Results[j].OK {
+				sum[j] = md.Results[j]
+				break
+			}
+		}
+	}
+	return out, sum, nil
 }
 
 // detectModels are the models a detection may ask for: those p exposes and

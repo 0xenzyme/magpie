@@ -819,6 +819,17 @@ with none has no badge. The badge is the context badge's grey, not FREE's
 green, and no stripe. A click on it picks the chip and moves nothing. An
 agent's model picker shows the same badges. The API is faked.
 
+`provider-detect-models.test.cjs` asks which API serves which model, in
+Chromium and WebKit, English and Chinese: Detect APIs' "Each picked model"
+posts provider/detect with every model picked (detectModels) and shows model
+by API, each a ✓ with the time or a ✗ with why; "Use these" sets the URLs
+that answered and gives each model that answered on one API only that API in
+Names & levels, unsaved, sending nothing until the Save carries them as
+modelPrefs, while a model answering on two stays Auto. A chip's right-click
+Test says the API it was asked on ("answered via Responses"). No click moves
+the page, nothing has a left-border accent, and every string has its
+Chinese. The API is faked.
+
 `whats-new.test.cjs` shows what changed after an update (a Discord user:
 to see whether their issue was fixed): after an upgrade the window opens a
 dialog with every release's notes since the version last run, newest first,
