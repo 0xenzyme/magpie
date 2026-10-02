@@ -343,7 +343,7 @@ func (s *Server) systemOne(ctx context.Context, p provider.Provider, model strin
 		keyID, keyName = provider.KeyID(p.Key), p.KeyName
 	}
 	usage.Append(usage.Record{Time: start, Agent: usage.AgentOf(RouterAgent), Provider: p.ID, Host: p.Where(), Model: model, Requested: model, Served: use.Model,
-		ProviderKeyID: keyID, ProviderKeyName: keyName,
+		ProviderKeyID: keyID, ProviderKeyName: keyName, ProviderAccount: accountOf(p),
 		Input: use.Usage.Input, Output: use.Usage.Output, Millis: time.Since(start).Milliseconds(), Status: status})
 	return b, nil
 }
@@ -466,7 +466,7 @@ func (s *Server) serveSystemOne(w http.ResponseWriter, r *http.Request) {
 		keyID, keyName = provider.KeyID(p.Key), p.KeyName
 	}
 	appendUsage(r, usage.Record{RouteID: tr.ID, Time: start, Agent: agentOf(r), Provider: p.ID, Host: p.Where(), Model: model, Requested: asked, Served: use.Model,
-		ProviderKeyID: keyID, ProviderKeyName: keyName,
+		ProviderKeyID: keyID, ProviderKeyName: keyName, ProviderAccount: accountOf(p),
 		Input: use.Usage.Input, Output: use.Usage.Output, Millis: time.Since(start).Milliseconds(), Status: status})
 	end(status, errMsg, tokens)
 	if ctype == "" || status < 300 {

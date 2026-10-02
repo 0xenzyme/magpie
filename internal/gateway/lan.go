@@ -235,6 +235,16 @@ func identifyCaller(w http.ResponseWriter, r *http.Request) (*http.Request, bool
 	return r, true
 }
 
+// accountOf is the subscription account p answers as, named as the Routing
+// trace names it (Account.User: an email, a login), never by a token; ""
+// for a key or a provider without an account (#557).
+func accountOf(p provider.Provider) string {
+	if p.Account == nil {
+		return ""
+	}
+	return p.Account.User
+}
+
 func appendUsage(r *http.Request, rec usage.Record) {
 	who := access.Caller(r.Context())
 	rec.CallerKeyID, rec.CallerKeyName = who.KeyID, who.KeyName

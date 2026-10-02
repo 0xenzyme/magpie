@@ -30,8 +30,14 @@ type Record struct {
 	Host            string    `json:"host,omitempty"`          // where the call went: provider.Where then
 	ProviderKeyID   string    `json:"providerKeyId,omitempty"` // fingerprint of the API key actually used
 	ProviderKeyName string    `json:"providerKeyName,omitempty"`
-	CallerKeyID     string    `json:"callerKeyId,omitempty"`
-	CallerKeyName   string    `json:"callerKeyName,omitempty"`
+	// ProviderAccount is the subscription account that answered the call,
+	// as the Routing trace names it (provider.Account.User: an email, a
+	// login): the one that took over after a failover, the one pinned by
+	// X-Magpie-Account. Never a token. "" for a key or a provider without
+	// an account, and in a record written before it was kept (#557).
+	ProviderAccount string `json:"providerAccount,omitempty"`
+	CallerKeyID     string `json:"callerKeyId,omitempty"`
+	CallerKeyName   string `json:"callerKeyName,omitempty"`
 	// SessionProvider is the provider ID recorded by the agent. SessionAccount
 	// identifies the session's creator, not the account used for an API request.
 	// Neither field establishes an upstream route from today's configuration.
@@ -312,8 +318,11 @@ type Group struct {
 	Model           string `json:"model,omitempty"`
 	ProviderKeyID   string `json:"providerKeyId,omitempty"`
 	ProviderKeyName string `json:"providerKeyName,omitempty"`
-	CallerKeyID     string `json:"callerKeyId,omitempty"`
-	CallerKeyName   string `json:"callerKeyName,omitempty"`
+	// Account is the subscription account of an Accounts group: "" for
+	// the calls of an account's provider whose record names none
+	Account       string `json:"account,omitempty"`
+	CallerKeyID   string `json:"callerKeyId,omitempty"`
+	CallerKeyName string `json:"callerKeyName,omitempty"`
 	// Host is where the calls went, when the provider's id has gone to
 	// more than one place, or elsewhere than the provider goes now: its
 	// calls are then told apart by it, not summed under the id.
@@ -335,6 +344,21 @@ func who(where string) string {
 	return where
 }
 
+// Account is the subscription account that answered the call: the one the
+// record names, or, in a record written before it named one, the account
+// its Host said the call went out as then ("chatgpt.com as dee@example.com")
+// — what the record itself says, never today's sign-in. "" when neither
+// tells (#557).
+func (r Record) Account() string {
+	if r.ProviderAccount != "" {
+		return r.ProviderAccount
+	}
+	if i := strings.LastIndex(r.Host, " as "); i >= 0 {
+		return r.Host[i+4:]
+	}
+	return ""
+}
+
 // Point is one bar of the timeline.
 type Point struct {
 	Label string    `json:"label"`
@@ -352,7 +376,10 @@ type Summary struct {
 	Agents       []Group `json:"agents"`
 	Models       []Group `json:"models"`
 	ProviderKeys []Group `json:"providerKeys"`
-	CallerKeys   []Group `json:"callerKeys"`
+	// Accounts are the subscription accounts' calls, by provider and the
+	// account that answered (#557)
+	Accounts   []Group `json:"accounts"`
+	CallerKeys []Group `json:"callerKeys"`
 	// Sessions are the calls that named their session, by session.
 	Sessions []Group `json:"sessions"`
 }
@@ -399,7 +426,7 @@ func summarizeFrom(p Period, now time.Time, first time.Time, historicalKeys map[
 			fn(r)
 		})
 	}
-	s := Summary{Period: p, Bucket: "day", Agents: []Group{}, Models: []Group{}, ProviderKeys: []Group{}, CallerKeys: []Group{}, Sessions: []Group{}, Series: []Point{}}
+	s := Summary{Period: p, Bucket: "day", Agents: []Group{}, Models: []Group{}, ProviderKeys: []Group{}, Accounts: []Group{}, CallerKeys: []Group{}, Sessions: []Group{}, Series: []Point{}}
 	s.Since, s.Bucket, s.Series = timeline(p, now, first)
 	if p != Today && p != Week && p != Month {
 		s.Period = All
@@ -408,9 +435,15 @@ func summarizeFrom(p Period, now time.Time, first time.Time, historicalKeys map[
 	priceOf := pricer()
 	// the places each provider id went in the period, and goes now
 	hosts := map[string]map[string]bool{}
+	// the providers whose calls are told apart by account: those an
+	// account answered for in the period, and those signed in now
+	accountProviders := map[string]bool{}
 	visit(func(r Record) {
 		if r.IsRejected() {
 			return
+		}
+		if r.Account() != "" && !r.Time.Before(s.Since) {
+			accountProviders[r.Provider] = true
 		}
 		if r.Host != "" && !r.Time.Before(s.Since) {
 			if hosts[r.Provider] == nil {
@@ -424,6 +457,9 @@ func summarizeFrom(p Period, now time.Time, first time.Time, historicalKeys map[
 	for _, p := range provider.All() {
 		goesNow[p.ID] = who(p.Where())
 		keyProviders[p.ID] = p.Account == nil && p.Key != ""
+		if p.Account != nil {
+			accountProviders[p.ID] = true
+		}
 	}
 	for id := range historicalKeys {
 		keyProviders[id] = true
@@ -431,6 +467,7 @@ func summarizeFrom(p Period, now time.Time, first time.Time, historicalKeys map[
 	agents := map[string]*Group{}
 	models := map[string]*Group{}
 	keys := map[string]*Group{}
+	accounts := map[string]*Group{}
 	callerKeys := map[string]*Group{}
 	sessions := map[string]*Group{}
 	visit(func(r Record) {
@@ -483,6 +520,16 @@ func summarizeFrom(p Period, now time.Time, first time.Time, historicalKeys map[
 			g.ProviderKeyName = r.ProviderKeyName
 			g.add(r, pr)
 		}
+		if accountProviders[r.Provider] {
+			who := r.Account()
+			id := r.Provider + "@" + who
+			g := accounts[id]
+			if g == nil {
+				g = &Group{ID: id, Provider: r.Provider, Account: who}
+				accounts[id] = g
+			}
+			g.add(r, pr)
+		}
 		if r.Session != "" {
 			g := sessions[id+"|"+r.Session]
 			if g == nil {
@@ -515,6 +562,10 @@ func summarizeFrom(p Period, now time.Time, first time.Time, historicalKeys map[
 		s.ProviderKeys = append(s.ProviderKeys, *g)
 	}
 	byTokens(s.ProviderKeys)
+	for _, g := range accounts {
+		s.Accounts = append(s.Accounts, *g)
+	}
+	byTokens(s.Accounts)
 	for _, g := range callerKeys {
 		s.CallerKeys = append(s.CallerKeys, *g)
 	}

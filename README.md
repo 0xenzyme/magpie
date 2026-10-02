@@ -143,6 +143,17 @@ deleted keys keep their historical identity. Older records appear as
 **key not recorded**, never inferred from today's configured key.
 These are upstream credentials, not keys clients use to call Magpie.
 
+It lists **accounts** too: each Codex, Claude or other subscription account's
+tokens and cost, by the account that actually answered — the one that took
+over after a failover, the one `X-Magpie-Account` pinned. The account is named
+as the Routing view names it (its email or login, never a token); the CSV
+adds `provider_account` (JSON `providerAccount`), `magpie usage --csv
+--account <name>` keeps one account's calls, and the app's Usage page has an
+Accounts list and an Account filter on Requests. An older record names the
+account its call went out as when its host says so (`chatgpt.com as
+dee@example.com`); otherwise it appears as **account not recorded**, never
+inferred from today's sign-in. OTLP export never carries the account.
+
 One magpie can serve several computers (an office one, a personal one):
 share it on the network (Settings → Share on local network), and on each
 other computer add it as a **Remote magpie** — in the app's Add sheet, or

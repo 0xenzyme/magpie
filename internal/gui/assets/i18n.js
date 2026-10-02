@@ -7,6 +7,8 @@ const I18N = {
     "Gateway keys": "网关密钥",
     "Gateway key": "网关密钥",
     "All gateway keys": "全部网关密钥",
+    "All accounts": "全部账号",
+    "account not recorded": "未记录账号",
     "Use a gateway key to track usage": "使用网关密钥统计用量",
     "Choose a gateway key to use as {env}; usage is tracked by key.": "选择填入 {env} 的网关密钥，用量按密钥统计。",
     "This computer": "本机",
