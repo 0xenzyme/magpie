@@ -128,6 +128,10 @@ func cursorAccount() (Provider, bool) {
 		if err != nil {
 			return nil, err
 		}
+		// and the picker's models `cursor-agent models` leaves out
+		if tok, err := cursorToken(); err == nil {
+			ms = append(ms, cursorPickerModels(ctx, tok, ms)...)
+		}
 		return ms, catalog.SaveLive("cursor", "", ms)
 	}
 	return Provider{ID: "cursor", Name: "Cursor", Icon: "cursor", Website: "https://cursor.com", Account: acct}, true

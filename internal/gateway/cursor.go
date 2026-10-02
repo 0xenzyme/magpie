@@ -239,24 +239,45 @@ func (s *Server) askCursor(model string) round {
 			id = "default"
 		}
 		base := s.cursorAgentURL(ctx, tok, false)
-		events, status, msg := s.cursorRun(ctx, req, model, id, tok, base)
+		_, maxMode := cursorMaxOnly.Load(id)
+		events, status, msg := s.cursorRun(ctx, req, model, id, tok, base, maxMode)
 		if events == nil && cursorRegional(msg) {
 			// the team moved, or the config was kept from before: once more
 			// with what the config says now
 			if fresh := s.cursorAgentURL(ctx, tok, true); fresh != base {
-				events, status, msg = s.cursorRun(ctx, req, model, id, tok, fresh)
+				base = fresh
+				events, status, msg = s.cursorRun(ctx, req, model, id, tok, base, maxMode)
 			}
+		}
+		if events == nil && !maxMode && cursorMaxRequired(msg) {
+			// a model Cursor serves only in Max Mode: in Max Mode, as
+			// cursor-agent turns it on for such a model, and so from now
+			// on. An account Max Mode isn't open to gets Cursor's answer.
+			cursorMaxOnly.Store(id, true)
+			events, status, msg = s.cursorRun(ctx, req, model, id, tok, base, true)
 		}
 		return events, status, msg
 	}
 }
 
-// cursorRun is one Run of the request on the agent API at base.
-func (s *Server) cursorRun(ctx context.Context, req *Request, model, id, tok, base string) (<-chan Event, int, string) {
+// cursorMaxOnly are the ids Cursor said it serves in Max Mode only.
+var cursorMaxOnly sync.Map
+
+// cursorMaxRequired is Cursor's refusal of a model asked for without Max
+// Mode (cursor-agent's MAX_MODE_REQUIRED): "Max Mode Required: The model
+// "gpt-5.6-luna-low" requires Max Mode to be enabled. …" (ARNO on Discord).
+func cursorMaxRequired(msg string) bool {
+	low := strings.ToLower(msg)
+	return strings.Contains(low, "max mode required") || strings.Contains(low, "max_mode_required") || strings.Contains(low, "requires max mode")
+}
+
+// cursorRun is one Run of the request on the agent API at base, in Max
+// Mode when maxMode is set.
+func (s *Server) cursorRun(ctx context.Context, req *Request, model, id, tok, base string, maxMode bool) (<-chan Event, int, string) {
 	tools := bridgeTools(req)
 	msgs := cursorMessages(req, tools)
 	conv, _ := ctx.Value(cursorConvKey{}).(string)
-	run, blobs := buildCursorRun(msgs, cursorLastUser(req), tools, id, conv)
+	run, blobs := buildCursorRun(msgs, cursorLastUser(req), tools, id, conv, maxMode)
 
 	// the Run ends with the turn, or once the calls are made
 	rctx, cancel := context.WithCancel(ctx)
@@ -615,7 +636,10 @@ func cursorConversation(in http.Header, cacheKey string, body []byte) string {
 // run_request, and the blobs it names. The conversation state is the
 // messages and one turn, which the server wants there to sample at all.
 // conv is the conversation_id (cursorConversation), a new one when "".
-func buildCursorRun(msgs [][]byte, lastUser string, tools []bridgeTool, model, conv string) ([]byte, map[string][]byte) {
+// maxMode asks for the model in Max Mode, as cursor-agent does for a model
+// Cursor serves only that way: ModelDetails' max_mode (7) and
+// RequestedModel's (2).
+func buildCursorRun(msgs [][]byte, lastUser string, tools []bridgeTool, model, conv string, maxMode bool) ([]byte, map[string][]byte) {
 	if conv == "" {
 		conv = cursorUUID()
 	}
@@ -646,10 +670,14 @@ func buildCursorRun(msgs [][]byte, lastUser string, tools []bridgeTool, model, c
 		mcp = mcp.bytes(1, d)
 	}
 	action := pb{}.bytes(2, pb{}.bytes(2, rc)) // resume_action
+	details, requested := pb{}.str(1, model).str(3, model).str(4, model), pb{}.str(1, model)
+	if maxMode {
+		details, requested = details.varint(7, 1), requested.varint(2, 1)
+	}
 	rr := pb{}.bytes(1, state).bytes(2, action).
-		bytes(3, pb{}.str(1, model).str(3, model).str(4, model)).
+		bytes(3, details).
 		bytes(4, mcp).str(5, conv).
-		bytes(9, pb{}.str(1, model)).
+		bytes(9, requested).
 		varint(19, 1) // inline images
 	return pb{}.bytes(1, rr), blobs
 }
