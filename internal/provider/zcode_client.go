@@ -3,17 +3,17 @@ package provider
 // ZCode's Start Plan serves only what looks like ZCode's own request: one
 // without ZCode's system prompt is turned away with 405 "request has been
 // blocked due to unusual activity", code 3012 (#425), and one dressed as
-// the desktop app still was for some, where what the ZCode CLI sends got
-// through. So a Start Plan request goes as the ZCode 3.14.3 CLI sends it:
-// its system prompt first, three blocks (its opening line; its identity,
-// without the desktop context only the app adds; "\n\n" and its dynamic
-// sections around the environment), each cached, the agent's own system
-// prompt after them; the day in a <system-reminder> before the first user
-// turn; and the CLI's headers (zcodeSourceHeaders). The text
-// (zcode_prompt.json) and how it is put together are ZCode's own source
-// (github.com/zai-org/ZCode, apps/zcode-cli/packages/core/src/context).
-// The GLM Coding Plan, and every other provider, get the agent's request
-// as it is.
+// the desktop app, or as ZCode 3.14.3's CLI source has it, still was for
+// some, while the OpenCode plugin ARNO sent ("Freeflow", provider
+// zcode-start) got through on the same account. So a Start Plan request
+// goes as that plugin sends it: three cached system blocks (its opening
+// line; its identity and harness, then the desktop context; "\n\n" and its
+// dynamic sections around the environment), the agent's own system text
+// after them uncached; the day in a <system-reminder> as a user turn of
+// its own before the agent's; one cache mark in the turns, on the last;
+// metadata.user_id naming the device; and its headers
+// (zcodeSourceHeaders). The text is zcode_prompt.json. The GLM Coding
+// Plan, and every other provider, get the agent's request as it is.
 
 import (
 	_ "embed"
@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -32,6 +33,7 @@ var zcodePromptJSON []byte
 var zcodePrompt = func() (p struct {
 	Prefix            string `json:"prefix"`
 	Stable            string `json:"stable"`
+	Desktop           string `json:"desktop"`
 	BeforeEnvironment string `json:"beforeEnvironment"`
 	AfterEnvironment  string `json:"afterEnvironment"`
 	Environment       struct {
@@ -87,33 +89,56 @@ func zcodeOSVersion() string {
 	return strings.Join(append(parts, zcodeArch()), " ")
 }
 
-// zcodeStartProvider is ZCode's id for the Start Plan of an account on
-// base, as the powered-by line names it.
+// zcodeStartProvider is the provider the powered-by line names for the
+// Start Plan of an account on base, as the plugin the Start Plan serves
+// names it: zai-api, or bigmodel-api on BigModel.
 func zcodeStartProvider(base string) string {
 	if base == ZCodeBigModelBase {
-		return "account:bigmodel-start-plan"
+		return "bigmodel-api"
 	}
-	return "account:zai-start-plan"
+	return "zai-api"
+}
+
+// zcodeCwdRe finds the working directory an agent names in its own prompt
+// (Claude Code's "Primary working directory: …", Codex's <cwd>…</cwd>).
+var zcodeCwdRe = regexp.MustCompile(`(?m)(?:^\s*-?\s*(?:Primary working directory|Working directory):[ \t]*([^\r\n]+?)[ \t]*$|<cwd>([^<\r\n]+)</cwd>)`)
+
+// zcodeCwd is the agent's working directory, as the environment section's
+// process.cwd(): the one its request names, else the user's home.
+func zcodeCwd(texts []string) string {
+	for _, t := range texts {
+		if m := zcodeCwdRe.FindStringSubmatch(t); m != nil {
+			return strings.TrimSpace(m[1] + m[2])
+		}
+	}
+	if h, err := os.UserHomeDir(); err == nil && h != "" {
+		return h
+	}
+	return "unknown"
+}
+
+// zcodeShell is the shell as the environment section names it: the
+// basename of $SHELL, or of %ComSpec% on Windows (cmd.exe).
+func zcodeShell() string {
+	for _, k := range []string{"SHELL", "ComSpec"} {
+		if s := os.Getenv(k); s != "" {
+			return filepath.Base(s)
+		}
+	}
+	return "unknown"
 }
 
 // zcodeEnvironment is the prompt's environment section for model on
-// provider. Where the agent runs isn't magpie's to say, so that is left
-// unknown.
-func zcodeEnvironment(provider, model string) string {
+// provider, cwd being where the agent runs.
+func zcodeEnvironment(provider, model, cwd string) string {
 	e := zcodePrompt.Environment
-	shell := "unknown"
-	if s := os.Getenv("SHELL"); s != "" {
-		shell = filepath.Base(s)
-	} else if runtime.GOOS == "windows" {
-		shell = "cmd"
-	}
 	lines := []string{
 		e.Heading,
 		e.InvokedLine,
-		"- " + e.CwdLabel + ": unknown",
+		"- " + e.CwdLabel + ": " + cwd,
 		"- " + e.GitLabel + ": " + e.GitNo,
 		"- " + e.PlatformLabel + ": " + zcodePlatform(),
-		"- " + e.ShellLabel + ": " + shell,
+		"- " + e.ShellLabel + ": " + zcodeShell(),
 		"- " + e.OSVersionLabel + ": " + zcodeOSVersion(),
 	}
 	if model != "" {
@@ -122,30 +147,45 @@ func zcodeEnvironment(provider, model string) string {
 	return strings.Join(lines, "\n")
 }
 
+// zcodeStable is the stable system block: the identity and harness
+// section, then the desktop context, as the plugin joins them.
+func zcodeStable() string { return zcodePrompt.Stable + "\n\n" + zcodePrompt.Desktop }
+
 // zcodeSystem is ZCode's three system blocks for model on provider.
-func zcodeSystem(provider, model string) []any {
+func zcodeSystem(provider, model, cwd string) []any {
 	cached := func(text string) map[string]any {
 		return map[string]any{"type": "text", "text": text, "cache_control": map[string]any{"type": "ephemeral"}}
 	}
-	dynamic := strings.Join([]string{zcodePrompt.BeforeEnvironment, zcodeEnvironment(provider, model), zcodePrompt.AfterEnvironment}, "\n\n")
-	return []any{cached(zcodePrompt.Prefix), cached(zcodePrompt.Stable), cached("\n\n" + dynamic)}
+	dynamic := strings.Join([]string{zcodePrompt.BeforeEnvironment, zcodeEnvironment(provider, model, cwd), zcodePrompt.AfterEnvironment}, "\n\n")
+	return []any{cached(zcodePrompt.Prefix), cached(zcodeStable()), cached("\n\n" + dynamic)}
 }
 
-// zcodeDateReminder is what ZCode puts before the first user turn, wrapped
-// as its context prefix is: each tag on a line of its own, a newline after.
+// zcodeDateReminder is the context prefix, a user turn of its own before
+// the agent's: the day in a <system-reminder>, the tags hugging the text.
 func zcodeDateReminder(now time.Time) map[string]any {
 	c := zcodePrompt.Context
 	text := strings.Join([]string{c.Intro, c.CurrentDateHeading + "\n" + strings.ReplaceAll(c.CurrentDateLine, "{date}", now.Format("2006-01-02")), "", c.Outro}, "\n")
-	return map[string]any{"type": "text", "text": "<system-reminder>\n" + text + "\n</system-reminder>\n"}
+	return map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "<system-reminder>" + text + "</system-reminder>"}}}
 }
 
-// zcodeStartBody is an Anthropic messages request as ZCode would send it
-// to the Start Plan, provider (zcodeStartProvider) serving it: ZCode's system blocks before the agent's, the date
-// before the first user turn when nothing is reminded there already. As
-// ZCode's blocks take three of the four cache breakpoints Anthropic's API
-// allows, the agent's are dropped from its system and tools, and only its
-// last in the messages is kept. A body that isn't one, or already starts
-// with ZCode's prompt, is left as it is.
+// zcodeUserID is metadata.user_id as the plugin sends it: this machine's
+// device id, no account or session, as JSON.
+func zcodeUserID() string {
+	b, _ := json.Marshal(struct {
+		DeviceID    string `json:"device_id"`
+		AccountUUID string `json:"account_uuid"`
+		SessionID   string `json:"session_id"`
+	}{zcodeDeviceMid(), "", ""})
+	return string(b)
+}
+
+// zcodeStartBody is an Anthropic messages request as the plugin the Start
+// Plan serves sends it, provider (zcodeStartProvider) serving it: ZCode's
+// three cached system blocks, then the agent's own system text uncached;
+// the context prefix as the first turn; no cache mark in the turns but one
+// on the last block of the last; none on the tools; and metadata.user_id
+// naming the device. A body that isn't one, or already starts with
+// ZCode's prompt, is left as it is.
 func zcodeStartBody(body []byte, provider string, now time.Time) []byte {
 	var m map[string]json.RawMessage
 	if json.Unmarshal(body, &m) != nil || m["messages"] == nil {
@@ -155,62 +195,77 @@ func zcodeStartBody(body []byte, provider string, now time.Time) []byte {
 	json.Unmarshal(m["model"], &model)
 
 	var own []any
+	var texts []string
 	if raw := m["system"]; raw != nil {
 		var s string
+		var blocks []any
 		if json.Unmarshal(raw, &s) == nil {
 			if strings.TrimSpace(s) != "" {
 				own = []any{map[string]any{"type": "text", "text": s}}
+				texts = append(texts, s)
 			}
-		} else if zcodeDecode(raw, &own) != nil {
+		} else if zcodeDecode(raw, &blocks) == nil {
+			for _, b := range blocks {
+				b, _ := b.(map[string]any)
+				t, _ := b["text"].(string)
+				if b["type"] == "text" && t != "" {
+					if t == zcodePrompt.Prefix && len(own) == 0 {
+						return body
+					}
+					own = append(own, map[string]any{"type": "text", "text": t})
+					texts = append(texts, t)
+				}
+			}
+		} else if string(raw) != "null" {
 			return body
 		}
 	}
-	if len(own) > 0 {
-		if b, ok := own[0].(map[string]any); ok && b["text"] == zcodePrompt.Prefix {
-			return body
-		}
-	}
-	for _, b := range own {
-		if b, ok := b.(map[string]any); ok {
-			delete(b, "cache_control")
-		}
-	}
-	system, _ := zcodeEncode(append(zcodeSystem(provider, model), own...))
 
 	var msgs []map[string]any
 	if zcodeDecode(m["messages"], &msgs) != nil {
 		return body
 	}
-	last := true
-	for i := len(msgs) - 1; i >= 0; i-- {
-		blocks, _ := msgs[i]["content"].([]any)
-		for j := len(blocks) - 1; j >= 0; j-- {
-			if b, ok := blocks[j].(map[string]any); ok && b["cache_control"] != nil {
-				if !last {
-					delete(b, "cache_control")
+	if len(msgs) > 0 {
+		switch c := msgs[0]["content"].(type) {
+		case string:
+			texts = append(texts, c)
+		case []any:
+			for _, b := range c {
+				if b, ok := b.(map[string]any); ok {
+					if t, ok := b["text"].(string); ok {
+						texts = append(texts, t)
+					}
 				}
-				last = false
 			}
 		}
 	}
-	if len(msgs) > 0 && msgs[0]["role"] == "user" {
-		var blocks []any
-		switch c := msgs[0]["content"].(type) {
-		case string:
-			blocks = []any{map[string]any{"type": "text", "text": c}}
-		case []any:
-			blocks = c
+	system, _ := zcodeEncode(append(zcodeSystem(provider, model, zcodeCwd(texts)), own...))
+
+	msgs = append([]map[string]any{zcodeDateReminder(now)}, msgs...)
+	lastAt := -1
+	for i, msg := range msgs {
+		if msg["role"] == "system" {
+			continue
 		}
-		reminded := false
-		for _, b := range blocks {
-			if b, ok := b.(map[string]any); ok {
-				if t, _ := b["text"].(string); b["type"] == "text" && strings.HasPrefix(t, "<system-reminder>") {
-					reminded = true
+		lastAt = i
+		if blocks, ok := msg["content"].([]any); ok {
+			for _, b := range blocks {
+				if b, ok := b.(map[string]any); ok {
+					delete(b, "cache_control")
 				}
 			}
 		}
-		if !reminded {
-			msgs[0]["content"] = append([]any{zcodeDateReminder(now)}, blocks...)
+	}
+	if lastAt >= 0 {
+		switch c := msgs[lastAt]["content"].(type) {
+		case string:
+			msgs[lastAt]["content"] = []any{map[string]any{"type": "text", "text": c, "cache_control": map[string]any{"type": "ephemeral"}}}
+		case []any:
+			if len(c) > 0 {
+				if b, ok := c[len(c)-1].(map[string]any); ok {
+					b["cache_control"] = map[string]any{"type": "ephemeral"}
+				}
+			}
 		}
 	}
 	messages, err := zcodeEncode(msgs)
@@ -227,6 +282,15 @@ func zcodeStartBody(body []byte, provider string, now time.Time) []byte {
 			m["tools"], _ = zcodeEncode(tools)
 		}
 	}
+	meta := map[string]any{}
+	if raw := m["metadata"]; raw != nil {
+		zcodeDecode(raw, &meta)
+		if meta == nil {
+			meta = map[string]any{}
+		}
+	}
+	meta["user_id"] = zcodeUserID()
+	m["metadata"], _ = zcodeEncode(meta)
 	m["system"], m["messages"] = system, messages
 	out, err := zcodeEncode(m)
 	if err != nil {

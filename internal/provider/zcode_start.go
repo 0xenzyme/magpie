@@ -144,54 +144,66 @@ func zcodeRebase(req *http.Request, from, to string) {
 	}
 }
 
-// zcodeSourceHeaders are the headers the ZCode CLI names itself with on a
-// model request to the Start Plan (zcode_client.go), as its source has
-// them (apps/zcode-cli/packages/bootstrap/src/model-config.ts,
-// runtime-platform-headers.ts; adapters/src/model/runner-attribution.ts):
-// the CLI ("Z Code@cli", the app's own agent being "@electron") and its
-// SDK, its agent and release, the machine and its OS release, the
+// zcodeSourceHeaders are the headers the plugin the Start Plan serves sends
+// with a model request (zcode_client.go): ZCode's app version and SDK,
+// the CLI's title, its agent and release, the machine (X-Os-Version being
+// "<platform> <release> <arch>", as the environment section has it), the
 // language and time zone, a new request and trace id, and no query or
-// session id. No X-Device-Mid: ZCode sends that to its own APIs, never
-// with a model request.
+// session id, X-Device-Mid or anthropic-beta.
 func zcodeSourceHeaders(req *http.Request) {
 	platform := zcodePlatform()
 	category := map[string]string{"darwin": "macos", "win32": "windows"}[platform]
 	if category == "" {
 		category = "linux"
 	}
+	req.Header.Del("anthropic-beta")
+	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("User-Agent", "ZCode/"+zcodeAppVersion+" ai-sdk/anthropic/3.0.81")
 	req.Header.Set("X-ZCode-App-Version", zcodeAppVersion)
 	req.Header.Set("X-Title", "Z Code@cli")
 	req.Header.Set("X-ZCode-Agent", "glm")
-	req.Header.Set("HTTP-Referer", zcodeAPI)
+	req.Header.Set("HTTP-Referer", "https://zcode.z.ai") // as the plugin has it, wherever zcodeAPI points
 	req.Header.Set("X-Platform", platform+"-"+zcodeArch())
 	req.Header.Set("X-Os-Category", category)
-	if r := zcodeOSRelease(); r != "" {
-		req.Header.Set("X-Os-Version", r)
-	}
+	req.Header.Set("X-Os-Version", zcodeOSVersion())
 	req.Header.Set("X-Release-Channel", "production")
 	req.Header.Set("X-Client-Language", zcodeLanguage())
-	if tz := zcodeTimezone(); tz != "" {
-		req.Header.Set("X-Client-Timezone", tz)
-	}
+	req.Header.Set("X-Client-Timezone", zcodeTimezone())
 	req.Header.Set("X-Request-Id", randomUUID())
 	req.Header.Set("X-ZCode-Session-Type", "main")
 	req.Header.Set("X-ZCode-Trace-Id", randomUUID())
 }
 
-// zcodeLanguage is the user's language as ZCode gives it (zh-CN, en-US).
+// zcodeLanguage is the user's locale as Node's Intl gives it (zh-CN,
+// en-US): the environment's, else the system's (zcodeSystemLocale), else
+// en-US, ICU's own default.
 func zcodeLanguage() string {
 	for _, k := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
-		v, _, _ := strings.Cut(os.Getenv(k), ".")
-		if v != "" && v != "C" && v != "POSIX" {
-			return strings.ReplaceAll(v, "_", "-")
+		if l := zcodeBCP47(os.Getenv(k)); l != "" {
+			return l
 		}
+	}
+	if l := zcodeBCP47(zcodeSystemLocale()); l != "" {
+		return l
 	}
 	return "en-US"
 }
 
-// zcodeTimezone is the IANA name of the local time zone, "" when it can't
-// be told.
+// zcodeBCP47 turns a POSIX locale (zh_CN.UTF-8, en_US@euro) into a BCP 47
+// tag (zh-CN), "" for none or C/POSIX.
+func zcodeBCP47(v string) string {
+	v, _, _ = strings.Cut(v, ".")
+	v, _, _ = strings.Cut(v, "@")
+	v = strings.TrimSpace(v)
+	if v == "" || v == "C" || v == "POSIX" {
+		return ""
+	}
+	return strings.ReplaceAll(v, "_", "-")
+}
+
+// zcodeTimezone is the IANA name of the local time zone, as Node's Intl
+// gives it: TZ, the zone /etc/localtime links to, else one at the local
+// offset (Asia/Shanghai at +8, Etc/GMT∓n otherwise, UTC at 0).
 func zcodeTimezone() string {
 	if tz := os.Getenv("TZ"); tz != "" && !strings.HasPrefix(tz, ":") {
 		return tz
@@ -201,7 +213,21 @@ func zcodeTimezone() string {
 			return name
 		}
 	}
-	return ""
+	if name := time.Local.String(); name != "Local" && name != "" && strings.Contains(name, "/") {
+		return name
+	}
+	_, off := time.Now().Zone()
+	switch {
+	case off == 8*3600:
+		return "Asia/Shanghai"
+	case off == 0:
+		return "UTC"
+	case off%3600 == 0 && off > 0:
+		return "Etc/GMT-" + strconv.Itoa(off/3600)
+	case off%3600 == 0:
+		return "Etc/GMT+" + strconv.Itoa(-off/3600)
+	}
+	return "UTC"
 }
 
 // zcodeStartRequest makes req, a request to the Start Plan, ZCode's own:
