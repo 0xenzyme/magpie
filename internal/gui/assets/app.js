@@ -11,7 +11,7 @@ if (web) document.body.classList.add("web");
 // iOS zooms the page into a field it focuses whose text is under 16px, and
 // leaves it zoomed; at most 1 stops that, and Safari still lets a pinch zoom
 if (web && (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1))) {
-  document.querySelector('meta[name="viewport"]')?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1");
+  document.querySelector('meta[name="viewport"]')?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
 }
 // The Mac window draws its title bar inside the page (the traffic lights);
 // on Linux the page's header is the whole title bar (plainTitlebar), so it
@@ -1841,6 +1841,8 @@ function score(q, o) {
 function placePop(anchor, w, h) {
   const pop = $("#pop");
   const r = anchor.getBoundingClientRect(), pad = 8;
+  w = Math.min(w, innerWidth - pad * 2);
+  h = Math.min(h, innerHeight - pad * 2);
   pop.style.width = w + "px";
   let x = Math.max(pad, Math.min(r.left, innerWidth - w - pad));
   let y = r.bottom + 5;
@@ -1930,7 +1932,9 @@ function openPicker(agent, field, anchor, ev, only) {
   q.value = "";
   q.placeholder = modelPicker && extra(field) ? t("{field} — filter, or type any model id…", { field: t(field.label) }) : modelPicker ? t("Filter, or type any model id…") : t("Filter {field}…", { field: t(field.label) });
   filter();
-  q.focus();
+  // On touch screens leave the keyboard closed until the filter is tapped,
+  // so opening a model list leaves room to browse its choices.
+  if (!web || !matchMedia("(pointer: coarse)").matches) q.focus();
 }
 
 function effortName(option) {
@@ -8448,6 +8452,28 @@ function quotaWindows(sub) {
   return windows;
 }
 
+// Keep the last date and as many earlier dates as fit, without clipping their
+// text. Visibility keeps each label aligned to its bar; resizing restores them.
+function fitChartLabels() {
+  const narrow = web && matchMedia("(max-width: 760px), (pointer: coarse) and (max-width: 1024px)").matches;
+  for (const labels of document.querySelectorAll(".chart .labels")) {
+    const spans = [...labels.children];
+    for (const span of spans) span.style.visibility = "";
+    if (!narrow || !labels.offsetWidth) continue;
+    const box = labels.getBoundingClientRect();
+    let right = box.right + 8;
+    for (const span of spans.reverse()) {
+      if (!span.textContent) continue;
+      const range = document.createRange();
+      range.selectNodeContents(span);
+      const r = range.getBoundingClientRect();
+      if (r.right + 8 > right + 1 || r.left < box.left - 1) span.style.visibility = "hidden";
+      else right = r.left;
+    }
+  }
+}
+new ResizeObserver(fitChartLabels).observe($("#view-usage"));
+
 function renderUsage() {
   const u = usage;
   const view = $("#view-usage");
@@ -8518,6 +8544,7 @@ function renderUsage() {
     labels.append(el("span", "", i % every === 0 || last ? p.label : ""));
   });
   chart.append(el("div", "peak", fmtN(peak)), bars, labels);
+  fitChartLabels();
 
   const total = Math.max(1, tokensOf(u));
   const list = (id, groups) => {
@@ -10152,6 +10179,7 @@ function renderSessChart(chart, st, used, ov, acts) {
     labels.append(el("span", "", i % every === 0 || end ? label : ""));
   });
   chart.append(bars, labels);
+  fitChartLabels();
 
   function drawHead() {
     const head = el("div", "sess-chart-head");
@@ -12347,7 +12375,7 @@ setTimeout(wag, 250);
 // magpie web on a phone, or a browser as narrow: the header is two rows,
 // the magpie and the icons over the tabs, which scroll sideways when they
 // don't fit, the one open kept in sight
-function phoneWeb() { return document.body.classList.contains("web") && matchMedia("(max-width: 600px)").matches; }
+function phoneWeb() { return document.body.classList.contains("web") && matchMedia("(max-width: 760px), (pointer: coarse) and (max-width: 1024px)").matches; }
 function navInSight() {
   const nav = $("#nav"), on = nav?.querySelector("button.on");
   if (!phoneWeb() || !on || nav.scrollWidth <= nav.clientWidth) return;
@@ -12355,7 +12383,7 @@ function navInSight() {
   if (nav.scrollLeft > l) nav.scrollLeft = l;
   else if (nav.scrollLeft < r) nav.scrollLeft = r;
 }
-matchMedia("(max-width: 600px)").addEventListener?.("change", () => { fitTop(); navInSight(); });
+matchMedia("(max-width: 760px), (pointer: coarse) and (max-width: 1024px)").addEventListener?.("change", () => { fitTop(); navInSight(); });
 
 // A narrow window has no room for the whole header: the name goes, leaving
 // the magpie, and Update becomes its arrow; narrower still, the tabs stop

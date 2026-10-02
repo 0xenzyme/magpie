@@ -269,15 +269,20 @@ body.window .top.inrow .actions { margin-left: 0; }
    the icons in a row, the tabs at their size in a row of their own under
    them, sliding sideways when they don't fit (they were squeezed into the
    room between, too small to read or tap) */
-@media (max-width: 600px) {
-  body.web .top { flex-wrap: wrap; height: auto; row-gap: 4px; padding: 6px 10px 8px 14px; }
-  body.web .top .brand, body.web .top .actions { height: 30px; align-items: center; }
-  body.web .top .seg {
-    position: relative; left: auto; top: auto; transform: none; order: 3; flex: 1 0 100%; max-width: 100%;
-    overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain;
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1024px) {
+  body.web .top {
+    height: auto; min-height: 48px; flex-wrap: wrap; gap: 4px 8px;
+    padding: calc(6px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
   }
-  body.web .top .seg::-webkit-scrollbar { display: none; }
-  body.web .top .seg button { flex: 1 0 auto; height: 30px; padding: 0 12px; font-size: 13px; }
+  body.web .top .brand, body.web .top .actions { min-height: 40px; align-items: center; }
+  body.web .top #nav {
+    position: relative; left: auto; top: auto; transform: none;
+    order: 3; flex: 0 0 100%; min-width: 0; max-width: 100%;
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none;
+  }
+  body.web .top #nav::-webkit-scrollbar { display: none; }
+  body.web .top #nav button { flex: none; height: 40px; padding: 0 14px; font-size: 14px; }
+  body.web .top .actions { gap: 4px; }
 }
 @keyframes update-in { from { opacity: 0; transform: translateY(-3px) scale(.94); } }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -2013,12 +2018,6 @@ input.words.search-key, input.words.search-url { flex: 1 1 120px; width: auto; m
 .row.pref.lan-container .sub { white-space: normal; }
 .pop.proto-menu.lan-address-menu { width: min(320px, calc(100vw - 16px)); max-height: min(360px, 70vh); overflow-y: auto; }
 .lan-address-menu .pm-name { font: 12px var(--code); }
-/* a phone: a control too wide for the row beside its name goes under it
-   rather than cut the name to a few letters */
-@media (max-width: 600px) {
-  body.web .row.pref:not(.lan-address-row) { flex-wrap: wrap; row-gap: 8px; }
-  body.web .row.pref:not(.lan-address-row) .who { flex: 1 1 150px; }
-}
 @media (max-width: 600px) {
   .row.pref.lan-address-row { height: 76px; }
   .lan-address-controls .segs { right: 12px; }
@@ -2131,6 +2130,75 @@ body.panel .modal { padding: 16px 12px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
   .skeleton { animation: none !important; }
+}
+
+/* A browser on a phone: keep the desktop and tray's layout independent.
+   Tabs scroll on their own row, content keeps the available height, and
+   form controls are large enough to use without zooming the page. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1024px) {
+  body.web { height: 100%; font-size: 14px; }
+  body.web .icon { width: 44px; height: 44px; }
+  body.web .update { min-height: 36px; }
+  body.web .view {
+    --view-left: max(12px, env(safe-area-inset-left));
+    --view-right: max(12px, env(safe-area-inset-right));
+    padding: 2px var(--view-right) 12px var(--view-left);
+  }
+  body.web .foot { padding-bottom: max(8px, env(safe-area-inset-bottom)); min-width: 0; }
+  body.web .foot .status { min-width: 0; overflow-wrap: anywhere; }
+  body.web .row-head { height: auto; min-height: 40px; flex-wrap: wrap; gap: 4px; }
+  body.web .text, body.web .field, body.web .segs .opt, body.web .copy { min-height: 44px; }
+  body.web .text { padding: 8px 10px; }
+  body.web .copy { min-width: 44px; }
+  body.web .fields { width: 100%; grid-template-columns: minmax(0, 1fr) minmax(0, 124px); }
+  body.web .row.agent { flex-wrap: wrap; }
+  body.web .row.agent > .fields { flex-basis: 100%; }
+  /* Extra controls must not keep the desktop's fixed grid width. The model
+     gets the full row; effort and squares wrap below it without clipping. */
+  body.web #agents .row.agent > .fields,
+  body.web #agents.extras .row.agent > .fields {
+    display: flex; flex-wrap: wrap; width: 100%; min-width: 0; margin-left: 0;
+  }
+  body.web #agents .fields > .field.main,
+  body.web #agents .fields > .field.solo { flex: 1 0 100%; }
+  body.web #agents .fields > .field.side { flex: 1 0 124px; }
+  body.web #agents .extras-cell { flex-wrap: wrap; max-width: 100%; }
+  body.web #agents .field.extra { width: 44px; min-width: 44px; }
+  body.web .row.pref { flex-wrap: wrap; gap: 8px; padding: 12px; }
+  body.web .row.pref > .who { flex-basis: 100%; }
+  body.web .row.pref .sub { white-space: normal; }
+  body.web .row.pref .segs { margin-left: 0; max-width: 100%; flex-wrap: wrap; }
+  body.web .proxy-segs { margin-left: 0; flex-wrap: wrap; justify-content: flex-start; }
+  body.web .usage-head { height: auto; min-height: 44px; flex-wrap: wrap; gap: 8px; }
+  body.web .usage-head > .segs { max-width: 100%; flex-wrap: wrap; }
+  body.web .usage-head > .grow, body.web .sess-tools > .grow { display: none; }
+  body.web .sess-filter { order: 1; flex: 1 1 100%; width: 100%; }
+  body.web .sess-pick { min-height: 44px; max-width: 100%; font-size: 14px; }
+  body.web .stats, body.web .stats.six { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body.web .kpi small { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+  body.web .row.stat { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 6px 8px; }
+  body.web .row.stat .who { grid-column: 2; grid-row: 1; }
+  body.web .row.stat .who .sub { white-space: normal; }
+  body.web .row.stat .cost { grid-column: 3; grid-row: 1; }
+  body.web .row.stat .num { grid-column: 2 / 4; grid-row: 2; min-width: 0; align-items: flex-start; }
+  body.web .row.stat .num small { max-width: 100%; white-space: normal; }
+  body.web .row.stat .share { grid-column: 2 / 4; grid-row: 3; margin: 0; }
+  body.web .connect { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  body.web .connect label { text-align: left; margin-top: 6px; }
+  body.web .connect .segs { flex-wrap: wrap; }
+  body.web .connect .val { height: auto; min-height: 44px; }
+  body.web input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+  body.web textarea, body.web select { font-size: 16px; min-height: 44px; }
+  body.web .modal { padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+  body.web .modal .editor.framed > .ebody, body.web .editor { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 12px; }
+  body.web .editor label { text-align: left; padding-top: 8px; }
+  body.web .editor .segs { max-width: 100%; flex-wrap: wrap; }
+  body.web .editor .proxy-row { flex-wrap: wrap; }
+  body.web .editor .proxy-row input.proxy-url { flex-basis: 100%; }
+  body.web .editor .bar { flex-wrap: wrap; }
+  body.web .pop { max-width: calc(100vw - 16px); max-height: calc(100% - 16px); }
+  body.web .pop .picker-body { min-height: 0; }
+  body.web .pop #list li { min-height: 44px; }
 }
 
 /* Import from other apps: a checklist per app */

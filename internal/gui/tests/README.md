@@ -1351,3 +1351,32 @@ Install and the installed plugin's "v… out". It runs in Chromium and
 WebKit, in English and Chinese:
 node --test internal/gui/tests/plugin-progressive.test.cjs
 ```
+
+## Mobile Web
+
+`mobile-web.test.cjs` checks all eight web pages and their navigation in
+Chromium and WebKit, English and Chinese, at touch widths 360/390/430/820.
+Agent fixtures include model/effort controls, Codex's subagent/sign-in squares
+and omp's three role squares. Every phone field must stay inside its row, model
+names must be readable, and each picker must open; desktop comparisons use
+those same populated rows.
+It checks that Library's folder button is reachable, Usage tokens, costs and
+stat explanations are readable, and chart dates do not overlap. A released
+touch's continuous scroll can outlast the input window, while scripts cannot
+move an idle page, including after momentum stops. This uses Settings → Allowances
+at 390×600, where the real settings rows leave room to scroll. The API is faked;
+no user configuration is read or changed.
+
+At desktop widths 900/1280, screenshots are compared with the same pages from
+`origin/main`. Dimensions must match; a pixel counts as different only when
+any RGBA channel differs by more than 48, and more than 300 such pixels fails.
+This tolerates Chromium's small antialiasing differences while still detecting
+layout changes. Fetch that branch before running; set `BASE_REF` to another
+local Git ref (`HEAD` for a self-comparison) to select a particular baseline.
+PNG decoding uses the copy bundled with Playwright, without another dependency.
+The empty allowance fixture completes after usage totals render, so both pages
+compare the same completed API state rather than a loading-order difference.
+
+```sh
+node --test internal/gui/tests/mobile-web.test.cjs internal/gui/tests/old-webkit.test.cjs
+```
