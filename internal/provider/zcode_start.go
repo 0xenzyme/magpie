@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/netproxy"
 )
 
 // zcodeStartBase is where the Start Plan is served.
@@ -242,6 +243,39 @@ func zcodeStartRequest(req *http.Request, base string, body []byte) {
 	req.Body = io.NopCloser(bytes.NewReader(nb))
 	req.ContentLength = int64(len(nb))
 	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(nb)), nil }
+}
+
+// zcodeStartTransport carries the Start Plan's model requests over
+// HTTP/1.1 only. The gateway's client speaks HTTP/2 wherever the server
+// offers it, and zcode.z.ai does; every client the Start Plan is known to
+// serve speaks HTTP/1.1 to it: ZCode itself (Node's fetch), an OpenCode
+// plugin run in magpie's plugin host (Bun's fetch: ARNO's "Freeflow",
+// provider zcode-start, served on the same machine and account where
+// magpie's own request, its headers and body the same, was turned away
+// with 405 / code 3012) and zcode2api-plus (Go, a transport of its own
+// with HTTP/2 off). Otherwise as the gateway's: the proxy in force for
+// the request (netproxy), and as long a wait for the answer's head.
+var zcodeStartTransport = func() *http.Transport {
+	var h1 http.Protocols
+	h1.SetHTTP1(true)
+	return &http.Transport{
+		Proxy:                 netproxy.Func,
+		ResponseHeaderTimeout: 10 * time.Minute,
+		MaxIdleConnsPerHost:   8,
+		IdleConnTimeout:       90 * time.Second,
+		Protocols:             &h1,
+	}
+}()
+
+var zcodeStartClient = &http.Client{Transport: netproxy.Dispatch(zcodeStartTransport)}
+
+// zcodeStartClientFor is zcodeStartClient for a request to the Start
+// Plan's endpoint (where sign put it), nil for any other.
+func zcodeStartClientFor(req *http.Request) *http.Client {
+	if strings.HasPrefix(req.URL.String(), zcodeStartBase()+"/") {
+		return zcodeStartClient
+	}
+	return nil
 }
 
 // zcodeJWTExpired says whether ZCode's token has run out; ZCode then asks

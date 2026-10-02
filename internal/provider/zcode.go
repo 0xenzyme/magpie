@@ -329,6 +329,7 @@ func zcodeProvider(who, plan string, k zcodeKey) Provider {
 		req.Header.Set("Authorization", "Bearer "+key)
 		return nil
 	}
+	acct.clientFor = zcodeStartClientFor
 	acct.explain = func(status int, body []byte) string {
 		if zcodeOnStart(nil, k) {
 			return zcodeStartExplain(status, body)
