@@ -21,8 +21,8 @@ func TestOpenCodeClientHeaders(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	for _, p := range []provider.Provider{
-		{ID: "zen", Name: "Zen", Key: "public", Chat: "https://opencode.ai/zen/v1", Models: []string{"mimo-v2.6-flash-free"}},
-		{ID: "other", Name: "Other", Key: "k", Chat: "https://other.test/v1", Models: []string{"mimo-v2.6-flash-free"}},
+		{ID: "zen", Name: "Zen", Key: "public", Chat: "https://opencode.ai/zen/v1", Models: []string{"kimi-k2.6"}},
+		{ID: "other", Name: "Other", Key: "k", Chat: "https://other.test/v1", Models: []string{"kimi-k2.6"}},
 	} {
 		if err := provider.Save(p); err != nil {
 			t.Fatal(err)
@@ -55,10 +55,10 @@ func TestOpenCodeClientHeaders(t *testing.T) {
 			t.Fatalf("%s: %d %s", model, rec.Code, rec.Body)
 		}
 	}
-	send("zen/mimo-v2.6-flash-free", "")
-	send("zen/mimo-v2.6-flash-free", "")
-	send("zen/mimo-v2.6-flash-free", "ses_0f9e921e8001MExXod3RWVP3aU") // OpenCode's own goes as it is
-	send("other/mimo-v2.6-flash-free", "")
+	send("zen/kimi-k2.6", "")
+	send("zen/kimi-k2.6", "")
+	send("zen/kimi-k2.6", "ses_0f9e921e8001MExXod3RWVP3aU") // OpenCode's own goes as it is
+	send("other/kimi-k2.6", "")
 
 	zen, other := got["opencode.ai"], got["other.test"]
 	if len(zen) != 3 || len(other) != 1 {

@@ -1494,6 +1494,10 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	if relay && searchAsked(from, body) && (from == provider.Chat || !searchesItself(p, from)) {
 		relay = false
 	}
+	// Zen's free models are asked as OpenCode asks them (zenfree.go)
+	if p.OpenCodeFree(model) {
+		relay = false
+	}
 	if relay {
 		call.To = from
 		if status, msg, done := s.passthrough(w, r, p, from, model, body, &call.Usage); done {
@@ -2389,6 +2393,10 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 		// whatever it is told (#250)
 		fitAutoModeClassifier(p, model, request)
 	}
+	var zen *zenReply
+	if p.OpenCodeFree(model) {
+		zen = &zenReply{z: zenFreeTools(request)}
+	}
 	if request.WebSearch && !searching(r.Context()) {
 		// an API on which the provider searches by itself comes first;
 		// without one, its model is given magpie's search
@@ -2399,7 +2407,11 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 			}
 		}
 		if canSearch() && !searchesItself(p, to) {
-			return s.searchReply(w, r, from, p.Name, request, u, s.askTranslated(p, to, model, r.Header, w.Header()))
+			ask := s.askTranslated(p, to, model, r.Header, w.Header())
+			if zen != nil {
+				ask = zenRound(zen.z, ask)
+			}
+			return s.searchReply(w, r, from, p.Name, request, u, ask)
 		}
 	}
 	stream := request.Stream
@@ -2433,17 +2445,18 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 		sw := newSSEWriter(w)
 		enc := encoder(from, sw, request)
 		var failed string
+		see := zenSee(zen, func(ev Event) {
+			switch ev.Kind {
+			case KError:
+				failed = ev.Text
+			case KStart, KUsage:
+				u.add(ev.Usage)
+				u.add(Usage{Served: ev.Model}) // the model the vendor says answered
+			}
+			enc.event(ev)
+		})
 		serr := readSSEAlive(rd, func(_, data string) error {
-			return dec(data, func(ev Event) {
-				switch ev.Kind {
-				case KError:
-					failed = ev.Text
-				case KStart, KUsage:
-					u.add(ev.Usage)
-					u.add(Usage{Served: ev.Model}) // the model the vendor says answered
-				}
-				enc.event(ev)
-			})
+			return dec(data, see)
 		}, func() {
 			// the provider's keepalives aren't events to translate: while
 			// it is heard from, the client hears from magpie (#436)
@@ -2458,13 +2471,17 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 			enc.event(Event{Kind: KError, Text: failed})
 		}
 		if failed == "" {
+			if zen != nil {
+				zen.end(enc.event)
+			}
 			enc.finish()
 		}
 		return 200, failed
 	}
 	var col collector
+	see := zenSee(zen, col.add)
 	if err := readSSE(rd, func(_, data string) error {
-		return dec(data, col.add)
+		return dec(data, see)
 	}); err != nil {
 		// a partial answer is not an answer
 		msg := p.Name + ": " + err.Error()
@@ -2472,6 +2489,9 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 	}
 	if col.err != "" && len(col.res.Parts) == 0 {
 		return writeError(w, from, 502, p.Name+": "+col.err), col.err
+	}
+	if zen != nil {
+		zen.end(col.add)
 	}
 	res2 := col.finish()
 	u.add(res2.Usage)

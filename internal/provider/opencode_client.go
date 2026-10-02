@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strings"
@@ -30,6 +31,51 @@ func OpenCodeClient(h http.Header, session string) {
 	h.Set("x-opencode-client", "cli")
 	// OpenCode's project outside a git repository
 	h.Set("x-opencode-project", "global")
+}
+
+// OpenCodeFree says whether model is one of OpenCode Zen's free ones on p,
+// which Zen serves only to what looks like OpenCode: besides the headers
+// OpenCodeClient sets, a streamed request offering tools named bash and
+// read (lowercase, by name alone; checked against Zen, October 2026). The
+// gateway asks them so whoever the client is (gateway/zenfree.go), and the
+// Test button's probe so (zenFreeProbe).
+func (p Provider) OpenCodeFree(model string) bool {
+	return p.IsOpenCode() && strings.HasSuffix(model, "-free")
+}
+
+// OpenCodeTools are the tools Zen's free tier wants offered, by name.
+var OpenCodeTools = []string{"bash", "read"}
+
+// OpenCodeStub describes a tool offered only for Zen's free tier to see,
+// which the client doesn't have.
+const OpenCodeStub = "Not available in this session. Never call this tool."
+
+// zenFreeProbe is the Test button's smallest request, body, asked as Zen's
+// free tier wants it: streamed, offering bash and read, which say they
+// aren't to be called.
+func zenFreeProbe(proto Protocol, body string) string {
+	var m map[string]any
+	if json.Unmarshal([]byte(body), &m) != nil {
+		return body
+	}
+	var tools []any
+	for _, n := range OpenCodeTools {
+		schema := map[string]any{"type": "object", "properties": map[string]any{}}
+		switch proto {
+		case Chat:
+			tools = append(tools, map[string]any{"type": "function", "function": map[string]any{"name": n, "description": OpenCodeStub, "parameters": schema}})
+		case Responses:
+			tools = append(tools, map[string]any{"type": "function", "name": n, "description": OpenCodeStub, "parameters": schema})
+		default:
+			tools = append(tools, map[string]any{"name": n, "description": OpenCodeStub, "input_schema": schema})
+		}
+	}
+	m["stream"], m["tools"] = true, tools
+	b, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return string(b)
 }
 
 var openCodeIDRe = regexp.MustCompile(`^[a-z]{3}_[0-9a-f]{12}[0-9A-Za-z]{14}$`)

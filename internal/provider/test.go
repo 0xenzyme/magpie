@@ -61,6 +61,9 @@ func tiny(q Provider, proto Protocol, model string) (url, body string) {
 	if q.Account != nil && q.Account.Stream && body != "" {
 		body = strings.TrimSuffix(body, "}") + `,"stream":true}`
 	}
+	if q.OpenCodeFree(model) && body != "" {
+		body = zenFreeProbe(proto, body)
+	}
 	return url, body
 }
 
