@@ -210,7 +210,7 @@ func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
 			q.Windows, err = claudeWindows(ctx, l.User, true)
 		} else {
 			var plan string
-			if plan, q.Windows, q.Resets, err = codexWindows(ctx, tok, accountID); plan != "" {
+			if plan, q.Windows, q.Resets, q.Balance, err = codexWindows(ctx, tok, accountID); plan != "" {
 				q.Plan = plan
 			}
 			q.Until = codexUntil(codexLoginAuth(l), time.Now())

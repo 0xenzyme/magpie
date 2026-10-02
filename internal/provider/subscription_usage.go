@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"os"
@@ -641,7 +642,7 @@ func codexSubscriptionUsage(ctx context.Context, path string) SubscriptionQuota 
 		q.Error = err.Error()
 		return q
 	}
-	q.Plan, q.Windows, q.Resets, err = codexWindows(ctx, token, accountID)
+	q.Plan, q.Windows, q.Resets, q.Balance, err = codexWindows(ctx, token, accountID)
 	if b, rerr := os.ReadFile(path); rerr == nil {
 		q.Until = codexUntil(b, time.Now())
 	}
@@ -667,11 +668,20 @@ func codexUntil(auth []byte, now time.Time) *time.Time {
 	return &t
 }
 
-// codexWindows is the plan, allowance and rate-limit resets of the
-// ChatGPT account token signs in to.
-func codexWindows(ctx context.Context, token, accountID string) (plan string, out []QuotaWindow, resets *ResetCredits, err error) {
+// codexWindows is the plan, allowance, rate-limit resets and credits of
+// the ChatGPT account token signs in to. credits is what is left of the
+// credits the account bought or was given (#571), which Codex spends once
+// a window is used up, "" when it holds none or they are unlimited.
+func codexWindows(ctx context.Context, token, accountID string) (plan string, out []QuotaWindow, resets *ResetCredits, credits string, err error) {
 	var data struct {
-		PlanType  string `json:"plan_type"`
+		PlanType string `json:"plan_type"`
+		// as Codex's /status reads it: {"has_credits":true,
+		// "unlimited":false,"balance":"1234.5"}
+		Credits *struct {
+			Has       bool   `json:"has_credits"`
+			Unlimited bool   `json:"unlimited"`
+			Balance   string `json:"balance"`
+		} `json:"credits"`
 		RateLimit struct {
 			Primary   *codexWindow `json:"primary_window"`
 			Secondary *codexWindow `json:"secondary_window"`
@@ -683,7 +693,12 @@ func codexWindows(ctx context.Context, token, accountID string) (plan string, ou
 	base := strings.TrimSuffix(CodexBase, "/codex")
 	out = []QuotaWindow{}
 	if err = accountJSON(ctx, base+"/wham/usage", token, map[string]string{"chatgpt-account-id": accountID}, &data); err != nil {
-		return "", out, nil, err
+		return "", out, nil, "", err
+	}
+	if c := data.Credits; c != nil && c.Has && !c.Unlimited {
+		if n, perr := strconv.ParseFloat(strings.TrimSpace(c.Balance), 64); perr == nil && n > 0 {
+			credits = fmt.Sprintf("%s credits", compactNumber(math.Round(n*100)/100))
+		}
 	}
 	if data.Resets != nil {
 		resets = codexResets(ctx, base, token, accountID, data.Resets.Available)
@@ -694,7 +709,7 @@ func codexWindows(ctx context.Context, token, accountID string) (plan string, ou
 	if data.RateLimit.Secondary != nil {
 		out = append(out, data.RateLimit.Secondary.window())
 	}
-	return data.PlanType, out, resets, nil
+	return data.PlanType, out, resets, credits, nil
 }
 
 type codexWindow struct {
