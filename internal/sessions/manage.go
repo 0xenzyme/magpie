@@ -386,6 +386,13 @@ func copyAll(from, to string) error {
 		if d.IsDir() {
 			return os.MkdirAll(dst, fi.Mode().Perm()|0o700)
 		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(p)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(target, dst)
+		}
 		if !fi.Mode().IsRegular() {
 			return nil
 		}
