@@ -102,6 +102,7 @@ func quotaCmd(args []string) error {
 		if q.Error != "" {
 			line += "  " + muted.Render(q.Error)
 		}
+		line += quotaReadingCell(q.AsOf, q.Windows)
 		fmt.Println(line)
 	}
 	fmt.Println(faint.Render("  % is how much of a window is used · ↻ when it starts again · --json for scripts, or GET /v1/magpie/quotas on the gateway"))

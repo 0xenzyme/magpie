@@ -29,6 +29,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -105,7 +106,16 @@ func NextLogin(ctx context.Context, agent string) (from, to string, back, ok boo
 			return from, first.User, true, true
 		}
 	}
-	if q, known := u[from]; !known || q.Error != "" || !spent(q) {
+	q, known := u[from]
+	if q.Provider == "claude" && q.AsOf != nil {
+		// An expired cached window cannot say whether this account is spent
+		// now. Keep other windows and the stored historical reading intact.
+		now := time.Now()
+		q.Windows = slices.DeleteFunc(slices.Clone(q.Windows), func(w QuotaWindow) bool {
+			return w.ResetsAt != nil && !w.ResetsAt.After(now)
+		})
+	}
+	if !known || q.Error != "" || !spent(q) {
 		return "", "", false, false
 	}
 	for _, l := range spares {
