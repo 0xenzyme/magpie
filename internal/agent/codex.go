@@ -127,6 +127,20 @@ func codexIn(at place) *Agent {
 		os.Remove(catalogPath)
 		return nil
 	}
+	// isCCSwitchMirror reports whether a model_providers table is CC Switch's
+	// official OpenAI mirror: name = "OpenAI", requires_openai_auth = true, and no
+	// base_url (or magpie's codexURL while failing over).
+	isCCSwitchMirror := func(p string) bool {
+		if p == "" || p == "openai" || p == magpieID {
+			return false
+		}
+		t, err := edit.GetTOMLTable(path, "model_providers."+p)
+		if err != nil || t["name"] != "OpenAI" || t["requires_openai_auth"] != "true" {
+			return false
+		}
+		u := t["base_url"]
+		return u == "" || (u == at.codexURL() && stashLoad()[at.key("codex.mirror_failover")] == p)
+	}
 	// CC Switch's provider tables in Codex's config, each one's base URL
 	// by its id. A thread keeps the provider it was
 	// started on, and CC Switch moves every third-party thread onto its
@@ -147,7 +161,7 @@ func codexIn(at place) *Agent {
 		out := map[string]string{}
 		for _, n := range names {
 			id, ok := strings.CutPrefix(n, "model_providers.")
-			if !ok || !ccSwitchProvider.MatchString(id) || named[id] {
+			if !ok || !ccSwitchProvider.MatchString(id) || named[id] || isCCSwitchMirror(id) {
 				continue
 			}
 			if t, _ := edit.GetTOMLTable(path, n); t["base_url"] != "" {
@@ -204,6 +218,18 @@ func codexIn(at place) *Agent {
 		}
 		return edit.DelTOMLTop(path, "openai_base_url")
 	}
+	dropMirrorFailover := func() error {
+		p := stashLoad()[at.key("codex.mirror_failover")]
+		if p == "" {
+			return nil
+		}
+		forget(at.key("codex.mirror_failover"))
+		t, _ := edit.GetTOMLTable(path, "model_providers."+p)
+		if t["base_url"] == at.codexURL() {
+			return edit.DelTOMLKey(path, "model_providers."+p, "base_url")
+		}
+		return nil
+	}
 	// the model spawned subagents start on, when not the parent's; one of
 	// magpie's goes when magpie steps out, as Codex could no longer find it
 	subagent := func() (string, error) {
@@ -252,10 +278,32 @@ func codexIn(at place) *Agent {
 		if isMagpie(get("model")) || asProvider() {
 			return nil
 		}
-		if p := get("model_provider"); p != "" && p != "openai" {
+		p := get("model_provider")
+		mirror := isCCSwitchMirror(p)
+		if !mirror {
+			_ = dropMirrorFailover()
+		}
+		if p != "" && p != "openai" && !mirror {
 			return nil
 		}
 		on := codexFailover()
+		if mirror {
+			t, _ := edit.GetTOMLTable(path, "model_providers."+p)
+			hasGateway := t["base_url"] == at.codexURL()
+			switch {
+			case on && !hasGateway:
+				if err := edit.SetTOMLKey(path, "model_providers."+p, "base_url", at.codexURL()); err != nil {
+					return err
+				}
+				stash(map[string]string{at.key("codex.mirror_failover"): p})
+			case !on && hasGateway:
+				if err := edit.DelTOMLKey(path, "model_providers."+p, "base_url"); err != nil {
+					return err
+				}
+				forget(at.key("codex.mirror_failover"))
+			}
+			return nil
+		}
 		switch {
 		case on && !viaBase():
 			return edit.SetTOMLTop(path, edit.KV{Path: "openai_base_url", Value: at.codexURL()})
@@ -266,7 +314,7 @@ func codexIn(at place) *Agent {
 	}
 	modelOptions := func(withMagpie bool) []Option {
 		var own []Option
-		if p := get("model_provider"); p != "" && p != magpieID {
+		if p := get("model_provider"); p != "" && p != magpieID && !isCCSwitchMirror(p) {
 			own = group(p, options(catalog.Codex(), ""))
 		} else {
 			own = group("OpenAI", options(ownCodex(), ""))
@@ -323,6 +371,9 @@ func codexIn(at place) *Agent {
 			if err := giveTables(); err != nil {
 				return err
 			}
+			if err := dropMirrorFailover(); err != nil {
+				return err
+			}
 			// Codex as installed: OpenAI, its own catalog, its default model
 			if err := dropBase(); err != nil {
 				return err
@@ -335,6 +386,9 @@ func codexIn(at place) *Agent {
 			return nil
 		}
 		if isMagpie(v) {
+			if err := dropMirrorFailover(); err != nil {
+				return err
+			}
 			if !routed() {
 				stash(map[string]string{at.key("codex.model"): get("model"), at.key("codex.effort"): get("model_reasoning_effort"),
 					at.key("codex.provider"): get("model_provider"), at.key("codex.catalog"): get("model_catalog_json")})
