@@ -14,9 +14,9 @@
 //   /download/linux        the Linux app (x86-64); /download/linux-arm64
 //   /download/<file>       any file of the newest release, by name
 //   /docs, /docs/zh        the getting-started guide: /docs/start, /docs/zh/start
-//   /zh/                   the home page in Chinese (i18n.js); / sends a browser
-//                          that prefers Chinese there, until a language is
-//                          picked on the page (the lang cookie)
+//   /zh/, /ja/             the home page in Chinese, Japanese (i18n.js); / sends
+//                          a browser that prefers one of them there, until a
+//                          language is picked on the page (the lang cookie)
 //
 // Everything else is the static site in public/.
 
@@ -119,10 +119,10 @@ export function preferred(req) {
 // inner HTML of each data-i18n element, the attributes data-i18n-attr names,
 // <html lang>, and links to the docs and home made the language's own.
 function translate(res, lang) {
-  const { dict, html } = LANGS[lang];
+  const { dict, html, docs } = LANGS[lang];
   const out = new Response(res.body, res);
   out.headers.delete("ETag");
-  return new HTMLRewriter()
+  const rw = new HTMLRewriter()
     .on("html", { element: (el) => el.setAttribute("lang", html) })
     .on("[data-i18n]", {
       element: (el) => {
@@ -138,14 +138,16 @@ function translate(res, lang) {
         }
       },
     })
-    .on('a[href^="/docs/"]', {
+    .on("a.brand", { element: (el) => el.setAttribute("href", `/${lang}/`) });
+  // the docs in the language where there are any, else the English ones
+  if (docs)
+    rw.on('a[href^="/docs/"]', {
       element: (el) => {
         const href = el.getAttribute("href");
         if (!href.startsWith(`/docs/${lang}/`)) el.setAttribute("href", `/docs/${lang}/` + href.slice(6));
       },
-    })
-    .on("a.brand", { element: (el) => el.setAttribute("href", `/${lang}/`) })
-    .transform(out);
+    });
+  return rw.transform(out);
 }
 
 // beacon adds Cloudflare Web Analytics to a page. The dashboard's automatic

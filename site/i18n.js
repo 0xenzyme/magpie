@@ -6,8 +6,9 @@
 // misses, so the two stay in step. Links inside a string point at the
 // language's own pages.
 //
-// A language is added here and in LANGS: its dictionary, the name of the
-// page's link to the English, and "<html lang>".
+// A language is added here and in LANGS (its dictionary, "<html lang>", and
+// whether /docs/<lang>/ exists), in the page's language menu and hreflang
+// links, and in the demo's T() calls.
 
 const zh = {
   "meta.desc": "一个地方给每个 Agent 选模型。Codex 用 DeepSeek，Claude Code 用 Kimi，Gemini CLI 用 GLM——在菜单栏里点一下，经由同一个本地网关。",
@@ -23,10 +24,7 @@ const zh = {
   "nav.providers": "供应商",
   "nav.docs": "文档",
   "nav.releases": "版本发布",
-  "nav.lang": "EN",
-  "nav.lang.href": "/",
-  "nav.lang.code": "en",
-  "nav.lang.title": "English",
+  "nav.language": "语言",
   "nav.menu": "菜单",
   "nav.download": "下载",
 
@@ -137,4 +135,132 @@ const zh = {
   "foot.feed": "更新源",
 };
 
-export const LANGS = { zh: { dict: zh, html: "zh-CN" } };
+const ja = {
+  "meta.desc": "すべてのエージェントのモデルを一か所で。Codex で DeepSeek、Claude Code で Kimi、Gemini CLI で GLM を、メニューバーから、ひとつのローカルゲートウェイ経由で。",
+  "meta.tagline": "すべてのエージェントのモデルを、一か所で。",
+  "meta.ogalt": "magpie：すべてのエージェントのモデルを、一か所で",
+  "meta.url": "https://usemagpie.ai/ja/",
+  "alt.picker": "magpie を通した Codex のモデル選択。DeepSeek、Kimi、GLM のモデルが並ぶ",
+  "alt.panel": "magpie のメニューバーパネル：エージェントごとに別のベンダーのモデル",
+  "alt.providers": "magpie のプロバイダ画面：DeepSeek、Kimi、GLM、Qwen、MiniMax、OpenRouter、Anthropic、Gemini と、それぞれを使っているエージェント",
+
+  "nav.how": "仕組み",
+  "nav.routing": "ルーティング",
+  "nav.providers": "プロバイダ",
+  "nav.docs": "ドキュメント",
+  "nav.releases": "リリース",
+  "nav.language": "言語",
+  "nav.menu": "メニュー",
+  "nav.download": "ダウンロード",
+
+  "hero.h1": "すべてのエージェントのモデルを、<span>一か所で。</span>",
+  "hero.lede": "magpie は、すべてのエージェントにすべてのモデルを。プロバイダを一度追加すれば——DeepSeek、Kimi、GLM、Qwen、OpenRouter、Ollama、あるいは契約済みの Claude や ChatGPT のプランも——Codex、Claude Code、Gemini CLI など、どのエージェントからもワンクリックで選べます。",
+  "dl.mac": "Mac 版をダウンロード",
+  "hero.term": "ターミナルからインストール",
+  "hero.free": "無料",
+  "hero.oss": "オープンソース",
+  "hero.other": "Windows と Linux",
+
+  "sponsor.by": "スポンサー",
+  "sponsor.yylx": "Claude と GPT をまとめた API ゲートウェイ。Claude Code 向けに調整済み。",
+  "sponsor.become": "スポンサーになる",
+  "agents.agents": "対応エージェント",
+  "agents.models": "対応モデル",
+
+  "how.eyebrow": "仕組み",
+  "how.h2": "ひとつのゲートウェイが、すべての API を話す。",
+  "how.sub": "Codex が話すのは OpenAI Responses だけ、Claude Code が話すのは Anthropic Messages だけ。magpie はあなたのマシン上でそのすべてを話すゲートウェイを動かし、双方向に変換します——ストリーミングもツール呼び出しも推論も含めて。だから、どのエージェントでも、どのベンダーのモデルでも使えます。",
+  "how.agents": "あなたのエージェント",
+  "how.gateway": "magpie ゲートウェイ",
+  "how.providers": "あらゆるプロバイダ",
+  "how.claude": "あなたの Claude プラン",
+  "how.chatgpt": "あなたの ChatGPT プラン",
+
+  "bar.eyebrow": "メニューバー",
+  "bar.h2": "エージェントごとに、それぞれのモデル。",
+  "bar.sub": "各エージェントが何で動いているか、ひと目でわかります。クリックすれば切り替え。magpie はそのエージェントの設定のうち、変えた項目だけを書き換え、次のセッションから反映されます。",
+  "bar.l1": "<b>Codex</b> の <code>/model</code> 一覧に DeepSeek が並び、推論レベルも正しく選べます。",
+  "bar.l2": "<b>Claude Code</b> の <code>opus</code>、<code>sonnet</code>、<code>haiku</code> の裏で Kimi、GLM、GPT が動きます。",
+  "bar.l3": "<b>純正のモデルを選び直せば</b>、magpie は設定を元どおりに戻します。",
+  "bar.l4": "<b>プロファイル</b>で全エージェントを一度に切り替え——「節約」「集中」など、保存は自由。",
+
+  "subs.eyebrow": "サブスクリプションを共有",
+  "subs.h2": "契約中のプランを、すべてのエージェントで。",
+  "subs.sub": "どこかのエージェントでサインイン済み？ そのログインがプロバイダになり、モデルがほかのすべてのエージェントの選択肢に現れます。何もコピーせず、キーの貼り付けも不要。トークンはそのエージェントと同じやり方で更新されます。",
+  "subs.claude": "Claude Code のサインインで OpenCode、Pi、Goose を動かす：<code>claude/claude-sonnet-5</code>。",
+  "subs.codex": "Codex のサインインで Claude Code に GPT を：<code>codex/gpt-5.5</code>。",
+  "subs.copilot": "Copilot のシートを、どのエージェントにも：<code>copilot/claude-sonnet-4.5</code>。",
+
+  "rt.eyebrow": "スマートルーティング",
+  "rt.h2": "ターンごとに最適なモデルを。枠切れで止まらない。",
+  "rt.sub": "各モデルの用途を書いておけば——「ちょっとした質問」「テストの作成や修正」——ターンの始めに小さく速いモデルがどれにあたるかを magpie に伝え、そのターンはそのモデルへ。ツールの往復もそこに留まります。<a href=\"/docs/intent\">仕組み（英語）</a>。さらに、手持ちのキーとサブスクリプションをすべて追加して——複数の Claude、ChatGPT、Copilot、Grok アカウントや、同じベンダーの複数のキーも——全部オンに。リクエストごとに magpie が応答すべきアカウントを選び、応答できないときは、エージェントにエラーが届く前に次のアカウントが応答します。",
+  "rt.intent": "インテント別",
+  "rt.smart": "スマート",
+  "rt.order": "優先順",
+  "rt.turn": "持ち回り",
+  "rt.least": "使用量の少ない順",
+  "rt.mode.smart": "スマート（既定）：リセットが最も早いアカウントから使うので、枠を無駄にしません。応答できないアカウントは飛ばします。（デモでは1リクエストを1時間とします。）",
+  "rt.agent": "あなたのエージェント",
+  "rt.cap": "Claude Code はすべてのリクエストを magpie に送り、どのアカウントが応答するかは magpie が決めます。",
+  "rt.s1": "リクエスト",
+  "rt.s2": "振り替え",
+  "rt.s3": "エージェントが見たエラー",
+  "rt.reset": "リセットを見て選ぶ",
+  "rt.reset.p": "リセットが最も早いアカウントから使います——残りの枠はリセットで消えてしまうからです。枠に余裕があるうちはリクエストを任せ続けるので、プロンプトキャッシュも温かいまま。",
+  "rt.credit": "クレジット切れ",
+  "rt.credit.p": "残高が尽きたキーは30分休ませ、まだ支払えるキーにリクエストを回します。",
+  "rt.limits": "レート制限とクォータ",
+  "rt.limits.p": "ベンダーに制限されたアカウントは、ベンダーが求める間だけ飛ばします——Retry-After とリセットのヘッダーに従い、推測も連打もしません。",
+  "rt.failover": "フェイルオーバー",
+  "rt.failover.p": "失敗したアカウントは1分間外し、失敗が続くたびに長く外します。リクエストは、応答の最初の1バイトがエージェントに届く前に次のアカウントで再試行されます。",
+
+  "prov.eyebrow": "プロバイダ",
+  "prov.h2": "キーを貼るだけ。設定はそれで完了。",
+  "prov.sub": "20のプリセット——モデルベンダー、中継サービス、ローカルサーバー。magpie は各ベンダーに提供中のモデルを問い合わせるので、今朝出たモデルも次の更新でどの選択肢にも現れます。キーは magpie の中だけにあり、エージェントからは見えません。",
+
+  "det.eyebrow": "細部",
+  "det.h2": "小さく、丁寧に、邪魔をしない。",
+  "det.edits": "設定は必要な所だけ編集",
+  "det.edits.p": "<code>settings.json</code>、<code>config.toml</code>、<code>config.yaml</code> のコメント、順序、インデントはそのまま。書き込みはアトミックです。",
+  "det.tiny": "小さく、ネイティブ、オープン",
+  "det.tiny.p": "15 MB 未満、システムの WebView で動作。Electron もランタイムも不要。MIT ライセンス、<a href=\"https://github.com/yetone/magpie\">ソースは GitHub に</a>。",
+  "det.env": "シェルのキーは読まない",
+  "det.env.p": "magpie は環境変数から API キーを読みません。使うのは、あなたが追加したものだけ。",
+  "det.client": "どんなクライアントでも",
+  "det.client.p": "ベース URL を設定できるものなら何でも使えます：<code>OPENAI_BASE_URL</code>、<code>ANTHROPIC_BASE_URL</code>、<code>GOOGLE_GEMINI_BASE_URL</code>。",
+  "det.usage": "エージェントごとの使用量",
+  "det.usage.p": "ゲートウェイを通ったエージェントとモデルごとのトークン数、キャッシュヒット、コスト。",
+  "det.update": "自動アップデート",
+  "det.update.p": "新しいバージョンは裏で静かにダウンロードされ、再起動時にインストールされます。Mac 版は署名・公証済み。",
+
+  "cli.eyebrow": "ターミナル",
+  "cli.h2": "TUI と CLI も。",
+  "cli.sub": "同じアプリを、ターミナルから。インストーラーは <code>magpie</code> コマンドを <code>~/.local/bin</code> に、アプリを本来の場所に置きます：Mac なら <code>/Applications</code>、Linux ならアプリメニュー。",
+  "copy": "コピー",
+  "cli.win": "Windows では <code>magpie.exe</code> が同じコマンドを受け付けます。<a href=\"https://github.com/yetone/magpie-releases/releases/latest\">最新リリース</a>の <code>magpie-cli-windows-amd64.exe</code> はターミナル専用版です。",
+  "cli.c.add": "# プロバイダを追加",
+  "cli.c.preset": "# プリセットはキーだけ",
+  "cli.c.local": "# ローカルサーバーは不要",
+  "cli.c.give": "# エージェントにサードパーティのモデルを",
+  "cli.c.plan": "# Claude のプランを OpenCode で",
+  "cli.c.group": "# ひとつのモデルを複数のプロバイダで",
+  "cli.c.ls": "# 各エージェントとそのモデル",
+  "cli.c.prof": "# プロファイル",
+  "cli.c.tui": "# アプリ全体をターミナルで",
+
+  "comm.h": "magpie コミュニティに参加",
+  "comm.p": "質問、設定の共有、次に作ってほしいもの——Discord でどうぞ。",
+
+  "fin.h2": "すべてのエージェント。すべてのモデル。",
+  "fin.sub": "無料、オープンソース、ネイティブ。macOS、Windows、Linux に対応。",
+  "fin.gh": "GitHub で見る",
+  "plat.mac": "11 以降",
+  "plat.win": "10 以降",
+  "foot.start": "はじめに",
+  "foot.feed": "更新フィード",
+};
+
+export const LANGS = {
+  zh: { dict: zh, html: "zh-CN", docs: true },
+  ja: { dict: ja, html: "ja" },
+};
