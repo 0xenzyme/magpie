@@ -2777,9 +2777,10 @@ function renderFileError() {
 }
 
 // renderMovable: one quiet line over the list naming the built-in
-// subscriptions a community plugin can run, and Review, which opens the
-// first one's editor at its Runs on. Hidden, it stays hidden until another
-// built-in can move.
+// subscriptions a community plugin can run, and Review: for one, its editor
+// at its Runs on; for several, the Plugins tab, where each has its own Move
+// (opening the first one's editor read as if the line were about it alone).
+// Hidden, it stays hidden until another built-in can move.
 function renderMovable() {
   const box = $("#movable");
   if (!box) return;
@@ -2795,7 +2796,10 @@ function renderMovable() {
   line.append(el("span", "dot"), el("span", "", t("{names} can run on community plugins, with the same accounts.", { names }) + " "));
   const review = el("button", "link", t("Take a look"));
   // the editor opens over the list: the page itself doesn't move
-  review.onclick = () => { editing = ps[0].id; draft = null; renderProviders(); };
+  review.onclick = () => {
+    if (ps.length > 1) { openPlugins(); return; }
+    editing = ps[0].id; draft = null; renderProviders();
+  };
   const hide = el("button", "link", t("Not now"));
   hide.title = t("Hide this line until another built-in can move");
   hide.onclick = () => { try { localStorage.setItem("magpie.movableHidden", ids); } catch {} renderMovable(); };
