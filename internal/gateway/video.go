@@ -23,6 +23,7 @@ import (
 
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/redact"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/usage"
 )
@@ -525,6 +526,9 @@ func (s *Server) videosCreate(w http.ResponseWriter, r *http.Request) {
 		fail(400, fmt.Sprintf("%s/%s can't make videos: magpie makes videos with a Grok subscription's grok-imagine-video", p.ID, model))
 		return
 	}
+	var unmask func()
+	w, f.Prompt, unmask = redactedPrompt(w, f.Prompt)
+	defer unmask()
 	// another magpie is asked at its videos API, which says itself what
 	// it can't make
 	at, field := strings.TrimRight(p.Base(provider.Responses), "/")+"/videos/generations", "request_id"
@@ -567,6 +571,10 @@ func (s *Server) videosCreate(w http.ResponseWriter, r *http.Request) {
 
 // videosGet answers how a video is going.
 func (s *Server) videosGet(w http.ResponseWriter, r *http.Request) {
+	// A later poll can echo the prompt masked when the video was created.
+	rw := redact.NewWriter(w)
+	defer rw.Finish()
+	w = rw
 	id := r.PathValue("id")
 	p, vendorID, started, err := videoMaker(id)
 	if err != nil {

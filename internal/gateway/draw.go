@@ -239,6 +239,9 @@ func (s *Server) images(edit bool) http.HandlerFunc {
 			fail(404, fmt.Sprintf("magpie knows no model %q to draw with", d.Model))
 			return
 		}
+		var unmask func()
+		w, d.Prompt, unmask = redactedPrompt(w, d.Prompt)
+		defer unmask()
 		call.Provider, call.To = p.ID, provider.Chat
 		ctx, cancel := context.WithTimeout(r.Context(), drawTimeout)
 		defer cancel()
