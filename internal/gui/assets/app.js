@@ -12453,10 +12453,17 @@ $("#sync").onclick = async () => {
   } catch (e) {
     status(t("Sync failed: {e}", { e: e.message }), "err");
   } finally {
-    // stop at the end of a turn, not wherever the reply caught it (#16)
-    const svg = b.querySelector("svg");
-    if (svg.getAnimations().length) svg.addEventListener("animationiteration", () => b.classList.remove("spin"), { once: true });
-    else b.classList.remove("spin");
+    // stop at the end of a turn, not wherever the reply caught it (#16).
+    // The turn itself is told to be the last, so it ends on the compositor's
+    // clock: waiting for animationiteration and then dropping the class
+    // jumped the icon back by however far it had turned while the page was
+    // busy drawing the reply — the twitch at the end of every refresh.
+    const spin = b.querySelector("svg").getAnimations()[0];
+    const stop = () => b.classList.remove("spin");
+    if (spin?.effect?.updateTiming) {
+      spin.effect.updateTiming({ iterations: (spin.effect.getComputedTiming().currentIteration || 0) + 1 });
+      spin.finished.then(stop, stop);
+    } else stop();
   }
 };
 $("#open").onclick = () => api("window/main", {});
