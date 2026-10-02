@@ -91,6 +91,9 @@ type host struct {
 	// lightweight mode (#580): see lightweight.go
 	winMu sync.Mutex
 	gone  atomic.Pointer[application.WebviewWindow] // the main window let go
+	// windows made again whose page hasn't come yet, shown by whenLoaded's
+	// fn; on the main thread
+	loading map[*application.WebviewWindow]bool
 }
 
 // whenReady runs fn once the main window can be shown safely.
@@ -597,6 +600,9 @@ var Started func()
 func (h *host) togglePanel() { application.InvokeSync(h.togglePanelNow) }
 
 func (h *host) togglePanelNow() {
+	if h.loading[h.panel] {
+		return // made again, it is shown once its page has come
+	}
 	if _, again := h.panelWin(); again {
 		// made again, with its page to come: shown once it can be
 		h.whenLoaded(h.panel, h.togglePanel)

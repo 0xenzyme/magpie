@@ -134,9 +134,21 @@ func (h *host) whenLoaded(w *application.WebviewWindow, fn func()) {
 		fn()
 		return
 	}
+	// until then it isn't shown by anything else (openMain, togglePanelNow):
+	// a WebView2 window shown before its page has come is drawn black, and
+	// on a slow start can crash
+	if h.loading == nil {
+		h.loading = map[*application.WebviewWindow]bool{}
+	}
+	h.loading[w] = true
 	var once sync.Once
 	w.OnWindowEvent(events.Windows.WebViewNavigationCompleted, func(*application.WindowEvent) {
-		once.Do(func() { application.InvokeAsync(fn) })
+		once.Do(func() {
+			application.InvokeAsync(func() {
+				delete(h.loading, w)
+				fn()
+			})
+		})
 	})
 }
 
@@ -152,7 +164,7 @@ func (h *host) lighten() {
 		application.InvokeSync(func() {
 			for i, wp := range []**application.WebviewWindow{&h.main, &h.panel} {
 				w := *wp
-				if w == nil {
+				if w == nil || h.loading[w] {
 					ticks[i] = 0
 					continue
 				}
@@ -216,6 +228,9 @@ func (h *host) openMain(url string) {
 	}
 	if url != "" {
 		h.main.SetURL(url)
+	}
+	if h.loading[h.main] {
+		return // made again, it is shown once its page has come
 	}
 	h.main.Show()
 	h.main.Focus()
