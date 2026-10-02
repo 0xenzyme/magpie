@@ -8,8 +8,10 @@
 // the browser through the app, as markdown links do; a javascript: link is
 // text, and HTML in the notes is shown as text, never run. Settings' What's new
 // row, under Version, opens them again, the waiting update's first. No click moves the
-// page, no left-border accent. In English and Chinese, Chromium and WebKit;
-// the API is faked.
+// page, no left-border accent. The notes and the waiting update are asked
+// for in the page's language (freecss on Discord: the notes should follow
+// Settings' language). In English and Chinese, Chromium and WebKit; the API
+// is faked.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -58,6 +60,9 @@ function serve(lang, ctl) {
     if (url.pathname === "/api/plugins") return json({ plugins: [] });
     if (url.pathname === "/api/groups") return json({ groups: [], models: [] });
     if (url.pathname === "/api/usage/quotas") return json([]);
+    if (url.pathname === "/api/update" || url.pathname === "/api/whatsnew" || url.pathname === "/api/update/check") {
+      (ctl.langs ||= []).push(url.pathname + " " + url.searchParams.get("lang"));
+    }
     if (url.pathname === "/api/update") return json(ctl.update);
     if (url.pathname === "/api/whatsnew") {
       const all = url.searchParams.has("all");
@@ -211,6 +216,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await dialog(page).locator(".wn-rel").first().locator(".badge").textContent(), w.pending);
       assert.equal(ctl.asked.at(-1), "all");
       assert.equal(ctl.seen, 1, "asking again isn't a first showing");
+      // every ask names the page's language
+      assert(ctl.langs.some((l) => l.startsWith("/api/whatsnew ")) && ctl.langs.some((l) => l.startsWith("/api/update ")), ctl.langs.join());
+      assert.deepEqual(ctl.langs.filter((l) => !l.endsWith(" " + lang)), [], "asked without the page's language");
       await page.keyboard.press("Escape");
       await page.locator("#modal").waitFor({ state: "hidden" });
 

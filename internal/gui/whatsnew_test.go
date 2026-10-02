@@ -40,7 +40,7 @@ func TestWhatsNewAfterUpgrade(t *testing.T) {
 		Version = v
 		n := &whatsNew{}
 		n.start()
-		return n, n.get(context.Background(), false)
+		return n, n.get(context.Background(), false, "en")
 	}
 
 	// a fresh install: nothing shown, the version kept
@@ -64,10 +64,10 @@ func TestWhatsNewAfterUpgrade(t *testing.T) {
 	}
 	// shown once; Settings still opens them
 	n.seen()
-	if j := n.get(context.Background(), false); j.Show || len(j.Releases) != 0 {
+	if j := n.get(context.Background(), false, "en"); j.Show || len(j.Releases) != 0 {
 		t.Fatalf("after seen: %+v", j)
 	}
-	if j := n.get(context.Background(), true); j.Show || len(j.Releases) != 2 {
+	if j := n.get(context.Background(), true, "en"); j.Show || len(j.Releases) != 2 {
 		t.Fatalf("asked again: %+v", j)
 	}
 	// a downgrade: nothing
@@ -114,7 +114,7 @@ func TestWhatsNewFromBefore(t *testing.T) {
 	Version = "0.1.604"
 	n := &whatsNew{}
 	n.start()
-	if j := n.get(context.Background(), false); !j.Show || len(j.Releases) != 1 || j.Releases[0].Notes != "## Bug Fixes\n\n- four" {
+	if j := n.get(context.Background(), false, "en"); !j.Show || len(j.Releases) != 1 || j.Releases[0].Notes != "## Bug Fixes\n\n- four" {
 		t.Fatalf("%+v", j)
 	}
 }

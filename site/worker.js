@@ -5,6 +5,9 @@
 //   /api/latest            {version, notes, url, published, assets: {name: {url, size, sha256}}}
 //   /api/notes?after=&upto= {releases: [{version, notes, url, published}]}, newest
 //                          first: what changed since the version an app last ran
+//                          Both take ?lang=zh for the notes in Chinese, where a
+//                          release has them (below its <!-- lang:zh --> marker);
+//                          any other lang, or none, is the English alone.
 //   /download              the Apple Silicon dmg
 //   /download/mac-arm64    the same;  /download/mac-intel  the Intel dmg
 //   /download/windows      the Windows app (x64);  /download/windows-arm64
@@ -42,13 +45,17 @@ export default {
     if (url.pathname === "/api/latest") {
       const rel = await latest(ctx);
       if (!rel) return json({ error: "no release yet" }, 503);
-      return json(rel, 200, { "Cache-Control": `public, max-age=${TTL}` });
+      const lang = url.searchParams.get("lang");
+      return json({ ...rel, notes: inLang(rel.notes, lang) }, 200, { "Cache-Control": `public, max-age=${TTL}` });
     }
     if (url.pathname === "/api/notes") {
       const list = await releases(ctx);
       if (!list) return json({ error: "no releases" }, 503);
       const after = url.searchParams.get("after"), upto = url.searchParams.get("upto");
-      const pick = list.filter((r) => (!after || newer(r.version, after)) && (!upto || !newer(r.version, upto)));
+      const lang = url.searchParams.get("lang");
+      const pick = list
+        .filter((r) => (!after || newer(r.version, after)) && (!upto || !newer(r.version, upto)))
+        .map((r) => ({ ...r, notes: inLang(r.notes, lang) }));
       return json({ releases: pick }, 200, { "Cache-Control": `public, max-age=${TTL}` });
     }
     if (url.pathname === "/download" || url.pathname.startsWith("/download/")) {
@@ -149,6 +156,26 @@ async function releases(ctx) {
     .map((r) => ({ version: r.tag_name.replace(/^v/, ""), notes: r.body || "", url: r.html_url, published: r.published_at }));
   ctx.waitUntil(cache.put(key, json(list, 200, { "Cache-Control": `max-age=${TTL}` })));
   return list;
+}
+
+// A release's notes are in English, then (since the release workflow
+// translates them) in Chinese below this marker. The edge keeps the notes
+// whole; each answer is cut to one language, and the browser's and the
+// edge's caches tell answers apart by their URL, lang and all.
+const ZH = "<!-- lang:zh -->";
+
+// inLang is the notes in lang: zh (zh-CN, zh-Hans, ...) the Chinese when
+// there is some, else the English, which is everything above the marker.
+// An app from before lang asks with none, and gets the English alone.
+function inLang(notes, lang) {
+  notes = notes || "";
+  const i = notes.indexOf(ZH);
+  if (i < 0) return notes;
+  if (/^zh($|[-_])/i.test(lang || "")) {
+    const zh = notes.slice(i + ZH.length).trim();
+    if (zh) return zh;
+  }
+  return notes.slice(0, i).trim();
 }
 
 // newer says whether version a comes after b (x.y.z, a pre-release before

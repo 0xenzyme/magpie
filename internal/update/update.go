@@ -69,9 +69,13 @@ func proxied() http.RoundTripper {
 	return netproxy.Dispatch(t)
 }
 
-// Latest asks the feed for the newest release.
-func Latest(ctx context.Context) (*Release, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", Feed(), nil)
+// Latest asks the feed for the newest release, its notes in English.
+func Latest(ctx context.Context) (*Release, error) { return LatestIn(ctx, "") }
+
+// LatestIn asks the feed for the newest release, its notes in lang (see
+// InLang): the app's language, which What's new follows.
+func LatestIn(ctx context.Context, lang string) (*Release, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", withLang(Feed(), lang), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +94,7 @@ func Latest(ctx context.Context) (*Release, error) {
 	if parse(r.Version) == nil {
 		return nil, fmt.Errorf("update feed: no version")
 	}
+	r.Notes = InLang(r.Notes, lang)
 	return &r, nil
 }
 

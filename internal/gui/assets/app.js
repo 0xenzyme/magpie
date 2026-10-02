@@ -1610,6 +1610,13 @@ function installFrom() {
   return mode === "window" ? { view } : {};
 }
 
+// updatePath asks for the update's state or the release notes in the
+// page's language: the notes follow Settings' language, Chinese where a
+// release has it (freecss on Discord).
+function updatePath(p) {
+  return p + (p.includes("?") ? "&" : "?") + "lang=" + encodeURIComponent(locale);
+}
+
 // renderUpdateBadge shows the header's Update pill once a newer magpie is
 // downloaded (a click restarts into it) or, where magpie can't replace
 // itself, out (a click opens the release page). The user may keep it away:
@@ -1617,7 +1624,7 @@ function installFrom() {
 // a newer one is out. magpie still downloads it and puts it in on quitting.
 async function renderUpdateBadge() {
   const b = $("#update"), label = b.querySelector("span");
-  const u = await api("update").catch(() => null);
+  const u = await api(updatePath("update")).catch(() => null);
   // pulling: a click is downloading it again, and restarts once it's in
   const pulling = !!u && !!b.dataset.pulling && ["checking", "downloading", "ready"].includes(u.state);
   if (b.dataset.pulling && !pulling) {
@@ -1727,7 +1734,7 @@ let whatsNewAsked = false;
 async function whatsNewOnce() {
   if (whatsNewAsked || mode === "panel" || document.hidden || !$("#modal").hidden) return;
   whatsNewAsked = true;
-  const w = await api("whatsnew").catch(() => null);
+  const w = await api(updatePath("whatsnew")).catch(() => null);
   // something else opened meanwhile: the notes wait for the next load
   if (!w?.show || !w.releases?.length || !$("#modal").hidden) { if (w?.show) whatsNewAsked = false; return; }
   api("whatsnew/seen", {}).catch(() => {});
@@ -1738,7 +1745,7 @@ async function whatsNewOnce() {
 // those since the last update), after the waiting update's when u has one.
 async function openWhatsNew(u, b) {
   if (b) { b.disabled = true; b.classList.add("busy"); }
-  const w = await api("whatsnew?all=1").catch(() => null);
+  const w = await api(updatePath("whatsnew?all=1")).catch(() => null);
   if (b) { b.disabled = false; b.classList.remove("busy"); }
   const list = [...(w?.releases || [])];
   if (u?.notes && u.latest && ["ready", "available", "downloading"].includes(u.state) && !list.some((r) => r.version === u.latest)) {
@@ -11215,7 +11222,7 @@ function renderSettings() {
   // has no notes
   if (/^v?\d+\.\d+\.\d+$/.test(s.version || "")) {
     const notes = el("button", "text", t("Open"));
-    notes.onclick = async () => openWhatsNew(await api("update").catch(() => null), notes);
+    notes.onclick = async () => openWhatsNew(await api(updatePath("update")).catch(() => null), notes);
     row(t("What's new"), t("The release notes since the last update"), "", notes).classList.add("whatsnew-row");
   }
   // the header's Update pill, kept away for good or for one version; the
@@ -11224,7 +11231,7 @@ function renderSettings() {
     "", segs([["off", t("Off")], ["on", t("On")]], s.noUpdatePill ? "off" : "on", (v) => savePrefs({ ...keep, noUpdatePill: v === "off" }).then(renderUpdateBadge)));
   pill.classList.add("update-pill-row");
   if (s.updateSkip && !s.noUpdatePill) {
-    api("update").then((u) => {
+    api(updatePath("update")).then((u) => {
       if (!pill.isConnected || !u || u.latest !== s.updateSkip) return;
       pill.querySelector(".sub").textContent = t("Hidden for {v} until a newer version is out", { v: u.latest });
       const back = el("button", "text", t("Show again"));
@@ -12106,7 +12113,7 @@ const updateSeq = new WeakMap();
 async function renderUpdate(r, u) {
   const seq = updateSeq.get(r) || 0;
   if (u == null) {
-    u = await api("update").catch(() => null);
+    u = await api(updatePath("update")).catch(() => null);
     if (!u || !r.isConnected || (updateSeq.get(r) || 0) !== seq) return;
   } else if (!r.isConnected) return;
   const who = r.querySelector(".who"), val = r.querySelector(".val");
@@ -12133,7 +12140,7 @@ async function renderUpdate(r, u) {
       b.classList.add("busy");
     }
     let next;
-    try { next = await api("update/check", {}); }
+    try { next = await api(updatePath("update/check"), {}); }
     catch (e) { next = { state: "error", error: e.message }; }
     updateBusy = false;
     if (!r.isConnected || (updateSeq.get(r) || 0) !== mine) return;
@@ -12520,7 +12527,7 @@ $("#sync").onclick = async () => {
   b.classList.add("spin");
   // a newer magpie is looked for too: the Update pill beside it shows once
   // it's in (inaction on Discord looked for it here, not in Settings)
-  api("update/check", {}).then(renderUpdateBadge, () => {});
+  api(updatePath("update/check"), {}).then(renderUpdateBadge, () => {});
   try {
     state = await api("sync", {});
     renderAgents();

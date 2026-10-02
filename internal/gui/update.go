@@ -38,6 +38,11 @@ type updater struct {
 	done    int64     // downloading: bytes so far, of total (0 when unknown)
 	total   int64
 	onReady func(version string)
+	// the waiting update's notes follow the pages' language (freecss on
+	// Discord): the one they last asked in, else the app's
+	lang     string    // the pages' language, "" before one asked
+	notesIn  string    // the language latest's notes are in
+	relangAt time.Time // when they were last asked for in another
 }
 
 type updateJSON struct {
@@ -131,7 +136,13 @@ func (u *updater) begin() bool {
 func (u *updater) run() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	rel, err := update.Latest(ctx)
+	u.mu.Lock()
+	lang := u.lang
+	u.mu.Unlock()
+	if lang == "" {
+		lang = trayLang(settings.Load().Lang, systemLang)
+	}
+	rel, err := update.LatestIn(ctx, lang)
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.staged != "" && u.latest != nil && (err != nil || !update.Newer(rel.Version, u.latest.Version)) {
@@ -142,7 +153,7 @@ func (u *updater) run() {
 		u.state, u.err = "error", err.Error()
 		return
 	}
-	u.latest = rel
+	u.latest, u.notesIn = rel, lang
 	switch {
 	case !update.Released(Version):
 		u.state = "source"
@@ -235,9 +246,21 @@ func (u *updater) replaced() bool {
 	return u.exe != "" && update.Replaced(u.exe, u.self)
 }
 
-func (u *updater) json() updateJSON {
+func (u *updater) json() updateJSON { return u.jsonIn("") }
+
+// jsonIn is the state as a page in lang ("" when it doesn't say) shows it.
+// Notes held in another language are asked for again in lang, at most
+// once a minute; the page's next look has them.
+func (u *updater) jsonIn(lang string) updateJSON {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	if lang != "" {
+		u.lang = lang
+		if u.latest != nil && u.notesIn != lang && u.state != "checking" && time.Since(u.relangAt) >= time.Minute {
+			u.relangAt = time.Now()
+			go u.relang(u.latest.Version, lang)
+		}
+	}
 	j := updateJSON{State: u.state, Current: Version, Error: u.err, Retry: u.retry}
 	if u.state == "checking" && u.staged != "" {
 		j.State = "ready" // what was downloaded can still be restarted into
@@ -255,13 +278,44 @@ func (u *updater) json() updateJSON {
 	return j
 }
 
+// inLang has the next checks ask for the notes in lang ("" leaves it).
+func (u *updater) inLang(lang string) {
+	if lang == "" {
+		return
+	}
+	u.mu.Lock()
+	u.lang = lang
+	u.mu.Unlock()
+}
+
+// relang asks the feed again for version's notes in lang, the pages'
+// language not being the one they were asked in.
+func (u *updater) relang(version, lang string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	rel, err := update.LatestIn(ctx, lang)
+	if err != nil {
+		return
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.latest == nil || u.latest.Version != version || rel.Version != version {
+		return // a check since has its own
+	}
+	c := *u.latest // the download may still be reading the one held
+	c.Notes = rel.Notes
+	u.latest, u.notesIn = &c, lang
+}
+
 func updateRoutes(mux *http.ServeMux, w Windows) {
 	mux.HandleFunc("GET /api/update", func(rw http.ResponseWriter, r *http.Request) {
-		writeJSON(rw, updates.json())
+		writeJSON(rw, updates.jsonIn(askedLang(r)))
 	})
 	mux.HandleFunc("POST /api/update/check", func(rw http.ResponseWriter, r *http.Request) {
+		lang := askedLang(r)
+		updates.inLang(lang) // the check's notes are in the page's language
 		updates.check()
-		writeJSON(rw, updates.json())
+		writeJSON(rw, updates.jsonIn(lang))
 	})
 	// install restarts into the staged version; after a failed download it
 	// downloads it again, and the page restarts once it's in. Only an app
