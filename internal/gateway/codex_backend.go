@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -590,9 +591,17 @@ func copyHeaders(dst, src http.Header) {
 	}
 }
 
+// codexModelsWait is how long the ChatGPT backend is given for its model
+// list. Codex gives the whole request 5 s (MODELS_REFRESH_TIMEOUT in its
+// models endpoint) and then keeps the list it was built with, magpie's
+// models nowhere in it; a backend slow to answer, or not reachable at all
+// on a network that drops chatgpt.com's packets rather than refusing
+// them, held magpie's answer past that (#539). A var so tests can say.
+var codexModelsWait = 3 * time.Second
+
 // codexModels is the ChatGPT backend's model list for this sign-in, with
-// magpie's models after it. Should the backend not answer, Codex's last
-// list of its own stands in.
+// magpie's models after it. Should the backend not answer, or not in
+// time, Codex's last list of its own stands in.
 func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 	var own []any
 	etag := ""
@@ -600,7 +609,9 @@ func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawQuery != "" {
 		u += "?" + r.URL.RawQuery
 	}
-	if req, err := http.NewRequestWithContext(provider.ViaSignedIn(r.Context(), "codex"), http.MethodGet, u, nil); err == nil {
+	ctx, cancel := context.WithTimeout(provider.ViaSignedIn(r.Context(), "codex"), codexModelsWait)
+	defer cancel()
+	if req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil); err == nil {
 		copyHeaders(req.Header, r.Header)
 		req.Header.Del("Accept-Encoding")
 		if res, err := s.client.Do(req); err == nil {
