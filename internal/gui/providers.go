@@ -17,6 +17,7 @@ import (
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
+	"github.com/yetone/magpie/internal/update"
 )
 
 // The providers page: the vendors the user added, the presets they can add
@@ -174,6 +175,11 @@ type gatewayJSON struct {
 	Running bool           `json:"running"`
 	Mine    bool           `json:"mine"`   // this process serves it
 	Window  bool           `json:"window"` // the magpie serving it shows its routing
+	// Version is another magpie's, serving it, and Older says it is older
+	// than this one: agents' requests are then sent as that version sends
+	// them, without this one's fixes (#506)
+	Version string         `json:"version,omitempty"`
+	Older   bool           `json:"older,omitempty"`
 	Models  int            `json:"models"`
 	Calls   []gateway.Call `json:"calls"`
 	Groups  []gwGroupJSON  `json:"groups"`  // the catalog's routing groups, listed before the models
@@ -472,7 +478,9 @@ func providersState() providersJSON {
 		s.Gateway.Running, s.Gateway.Mine, s.Gateway.Window = true, true, true
 		s.Gateway.Calls = gw.Recent()
 	} else {
-		s.Gateway.Running, s.Gateway.Window = gateway.Serving()
+		o := gateway.ServedBy()
+		s.Gateway.Running, s.Gateway.Window, s.Gateway.Version = o.Running, o.Window, o.Version
+		s.Gateway.Older = o.Running && update.Newer(gateway.Version, o.Version)
 	}
 	s.Gateway.Archive = archiveState()
 	s.CodexDaemon = provider.CodexDaemonStale()
@@ -1104,6 +1112,11 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// ChatGPT and Claude sign-ins: CLIProxyAPI's auth files, Codex
 			// CLI's auth.json, Claude Code's .credentials.json
 			imp = provider.ImportLogins
+		} else if in.Agent == "factory" {
+			// Factory API keys (fk-…), as droid takes FACTORY_API_KEY (#506)
+			imp = func(ctx context.Context, _ string, files []string) ([]provider.ImportedAccount, error) {
+				return provider.ImportFactoryKeys(ctx, files)
+			}
 		}
 		res, err := imp(ctx, in.Agent, in.Files)
 		if err != nil {

@@ -172,14 +172,41 @@ func Running() bool {
 // does, and whether the magpie serving it has a window its routing can be
 // watched in (#110).
 func Serving() (running, window bool) {
+	s := ServedBy()
+	return s.Running, s.Window
+}
+
+// Served is what the magpie answering at the gateway's address says of
+// itself.
+type Served struct {
+	Running bool   // a magpie gateway answers
+	Window  bool   // its routing can be watched in its window (#110)
+	Version string // its version; "" from one that doesn't say
+}
+
+// ServedBy asks the address which magpie answers there. Another magpie can
+// keep the port after this one is updated (a magpie serve left running, a
+// second copy, one that didn't quit), and every agent's request is then
+// still that one's to send: in #506 a Factory 403 came worded as v0.1.550
+// and earlier word it to two people whose magpie said v0.1.630, so none of
+// the fixes since reached their requests. Its version tells it apart.
+func ServedBy() Served {
 	c := &http.Client{Timeout: 700 * time.Millisecond}
 	res, err := c.Get(URL() + "/")
 	if err != nil {
-		return false, false
+		return Served{}
 	}
 	defer res.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
-	return bytes.Contains(b, []byte(`"magpie"`)), bytes.Contains(b, []byte(`"window":true`))
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
+	var info struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+		Window  bool   `json:"window"`
+	}
+	if json.Unmarshal(b, &info) != nil || info.Name != "magpie" {
+		return Served{Running: bytes.Contains(b, []byte(`"magpie"`)), Window: bytes.Contains(b, []byte(`"window":true`))}
+	}
+	return Served{Running: true, Window: info.Window, Version: info.Version}
 }
 
 // Call is one request the gateway handled, for the status views.

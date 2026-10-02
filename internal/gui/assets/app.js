@@ -3187,14 +3187,21 @@ function renderGateway() {
   const g = providers.gateway;
   const box = $("#gateway");
   box.replaceChildren();
-  const dot = el("span", "dot " + (g.running ? "on" : ""));
+  // an older magpie keeping the port sends every agent's request its own
+  // way, without this version's fixes (#506): said in place of the counts
+  const older = g.running && !g.mine && g.older;
+  const dot = el("span", "dot " + (older ? "old" : g.running ? "on" : ""));
   const who = el("div", "who");
   const name = el("div", "name", t("Gateway"));
-  name.append(el("span", "state", t(g.running ? (g.mine ? "running" : "running · served by another magpie") : "not running")));
+  name.append(el("span", "state", older
+    ? t("running · served by magpie {v}, older than this one", { v: g.version })
+    : t(g.running ? (g.mine ? "running" : "running · served by another magpie") : "not running")));
   const routed = new Set();
   for (const p of providers.providers) for (const a of p.agents) if (a.current) routed.add(a.id);
   const n = routed.size;
-  who.append(name, el("div", "sub", g.running
+  if (older) {
+    who.append(name, el("div", "sub old", t("Agents' requests go through magpie {v} and are sent as it sends them, without this version's fixes. Quit that magpie (a magpie serve, another copy) and this one takes the gateway over within 15 seconds.", { v: g.version })));
+  } else who.append(name, el("div", "sub", g.running
     ? [t(g.models === 1 ? "{n} model" : "{n} models", { n: g.models }), n ? t(n === 1 ? "{n} agent routed through it" : "{n} agents routed through it", { n }) : t("no agent routed through it yet"), t("four APIs, one URL")].join(" · ")
     : t("start it with magpie serve, or open magpie at login")));
   const url = el("button", "url");
@@ -6187,7 +6194,8 @@ const SUBS = [
   { agent: "zed", name: "Zed", icon: "zed", plans: "Pro · Student · Business", own: true, risk: true,
     riskNote: "Zed serves these models to its own editor; magpie signs requests as the editor would, which Zed may treat as third-party use and act on. Use an account you can afford to lose." },
   // Factory's plans (Droid's account), signed in with WorkOS's device code as droid does; droid's own login stays its own
-  { agent: "factory", name: "Factory", icon: "factory", plans: "Pro · Plus · Max", own: true, risk: true,
+  // or added by an API key (fk-…), as droid takes FACTORY_API_KEY (the import box)
+  { agent: "factory", name: "Factory", icon: "factory", plans: "Pro · Plus · Max", own: true, risk: true, importable: true,
     riskNote: "Factory serves these models to its own Droid CLI; magpie signs requests as Droid would, which Factory may treat as third-party use and act on. Use an account you can afford to lose." },
   // Xiaomi MiMo's models (its free offer, MiMo plans), signed in at account.xiaomi.com as MiMo's app is
   { agent: "mimo-app", name: "Xiaomi MiMo", icon: "mimocode", plans: "Free · Starter · Plus · Pro · Ultra", own: true, risk: true,
@@ -6208,7 +6216,8 @@ const subOf = (agent) => {
   const pl = pluginSubs().find((x) => x.agent === agent);
   if (own && pl && movedSub(agent)) {
     const { name, icon, plans, risk, riskNote, hint, sites, importable } = own;
-    return { ...pl, name, icon, plans, risk, riskNote, hint, sites, importable, moved: true };
+    // a Factory API key is kept by the built-in, which the plugin replaces
+    return { ...pl, name, icon, plans, risk, riskNote, hint, sites, importable: importable && agent !== "factory", moved: true };
   }
   return own || pl;
 };
@@ -6239,6 +6248,17 @@ function pluginSubs() {
 // come from, and who they are checked with. A ChatGPT or Claude sign-in is
 // refreshed as it comes in, which spends the file's refresh token.
 function importSay(agent) {
+  if (agent === "factory") {
+    return {
+      from: t("Add accounts by their Factory API keys (fk-…), as Droid takes FACTORY_API_KEY"),
+      title: t("Add Factory accounts by API key"),
+      intro: t("Paste one or more Factory API keys (fk-…, from app.factory.ai/settings/api-keys), one a line, or choose a file with them. Each key is checked with Factory before it is added."),
+      checking: t("Checking the keys with Factory…"),
+      checks: t("Each key is asked whose account it is, as Droid does with FACTORY_API_KEY."),
+      instead: t("Use an API key instead…"),
+      row: t("Add an account by API key…"),
+    };
+  }
   if (agent === "codex" || agent === "claude") {
     const vendor = agent === "codex" ? "ChatGPT" : "Claude";
     const own = agent === "codex" ? "Codex's auth.json" : "Claude Code's .credentials.json";
@@ -6547,7 +6567,7 @@ function renderSigning(sub) {
     const close = el("button", "text", t("Cancel"));
     close.onclick = cancelSignIn;
     if (sub.importable) {
-      const imp = el("button", "text", t("Import instead…"));
+      const imp = el("button", "text", importSay(sub.agent).instead || t("Import instead…"));
       imp.title = importSay(sub.agent).from;
       imp.onclick = () => startImport(sub.agent);
       box.append(close, imp, go);
@@ -6689,7 +6709,7 @@ function renderSigning(sub) {
   }
   if (sub.importable) {
     // an account another tool is signed in to comes in from its file
-    const imp = el("button", "link", t("Import from a file instead…"));
+    const imp = el("button", "link", importSay(sub.agent).instead || t("Import from a file instead…"));
     imp.title = importSay(sub.agent).from;
     imp.onclick = () => startImport(sub.agent);
     const acts = tt.querySelector(".acts") || tt.appendChild(el("span", "acts"));
@@ -6861,7 +6881,7 @@ function renderAccounts(a, p) {
       const imp = el("button", "acc add");
       const ic2 = el("span", "dot");
       ic2.append(svg(PLUS, 10, 1.8));
-      imp.append(ic2, el("span", "n", t("Import accounts from a file…")));
+      imp.append(ic2, el("span", "n", importSay(a.agent).row || t("Import accounts from a file…")));
       imp.title = importSay(a.agent).from;
       imp.onclick = () => startImport(a.agent);
       list.append(imp);
@@ -6964,7 +6984,7 @@ function renderLoginImport(sub) {
   }
   box.append(el("span", "mark", "↑"));
   const say = importSay(sub.agent);
-  tt.append(el("span", "n", t("Import {name} accounts", { name: sub.name })), el("span", "s", say.intro));
+  tt.append(el("span", "n", say.title || t("Import {name} accounts", { name: sub.name })), el("span", "s", say.intro));
   if (say.spent) tt.append(el("span", "s", say.spent));
   if (sub.risk) tt.append(el("span", "s", t(sub.riskNote || "Google may suspend an Antigravity account it sees used outside Antigravity. Use one you can afford to lose.")));
   const area = el("textarea");

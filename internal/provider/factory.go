@@ -78,6 +78,10 @@ type factoryCreds struct {
 	// Prem is whoami's premBaseHostV2: an org Factory serves from a host
 	// of its own, where droid sends its model requests instead.
 	Prem string `json:"premBaseHost,omitempty"`
+	// Key: Access is a Factory API key (fk-…), as droid takes from
+	// FACTORY_API_KEY: sent as it is, never renewed, with no active org
+	// (droid's comes from a sign-in) — see factory_key.go.
+	Key bool `json:"apiKey,omitempty"`
 }
 
 // base is the Factory API the account's org is served from.
@@ -295,6 +299,9 @@ func factoryFresh(ctx context.Context, user string) (factoryCreds, error) {
 	if !valid {
 		return factoryCreds{}, errors.New("Factory: unreadable sign-in")
 	}
+	if c.Key {
+		return c, nil // an API key: nothing to renew, and no org with it
+	}
 	if c.ExpiresAt > 0 && time.Now().UnixMilli() < c.ExpiresAt-factoryRefreshLead.Milliseconds() {
 		return factoryOrgOf(ctx, l.User, c), nil
 	}
@@ -444,8 +451,8 @@ func factoryMendOrg(ctx context.Context, user string, status int, body []byte) b
 		return false
 	}
 	c, valid := factorySaved(l)
-	if !valid {
-		return false
+	if !valid || c.Key {
+		return false // an API key carries no org droid would send
 	}
 	if c.Active != "" {
 		if !refused {
