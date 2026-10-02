@@ -12,9 +12,12 @@ package provider
 // key in the keychain and its refresh token rotates, so magpie never reads
 // or shares it; each account magpie signs in is its own.
 //
-// Read from droid 0.229.0 (the npm package @factory/cli-darwin-arm64).
+// Read from droid 0.229.0 (the npm package @factory/cli-darwin-arm64); the
+// model table, the headers and the system prompt's opening line
+// (factory_client.go) checked against droid 0.231.0's binary.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -41,7 +44,7 @@ const (
 	// factoryClientID is droid's WorkOS client, production.
 	factoryClientID = "client_01HNM792M5G5G1A2THWPXKFMXB"
 	// factoryVersion is the droid release magpie's requests say they are.
-	factoryVersion = "0.229.0"
+	factoryVersion = "0.231.0"
 	// factoryRefreshLead is how long before an access token lapses it is
 	// renewed; droid renews a minute ahead, magpie a little more.
 	factoryRefreshLead = 2 * time.Minute
@@ -487,9 +490,12 @@ func factoryMendOrg(ctx context.Context, user string, status int, body []byte) b
 // GLM models answered droid through magpie every time, with magpie's
 // headers, and refused Grok Build's and Claude Code's every time, on the
 // same models and efforts, a request's body (droid's system prompt opens
-// with its own "You are Droid…") the only difference. So the first thing to
-// say is to use the models from Droid; an org's model policy or the plan is
-// what is left when Droid is refused too.
+// with its own "You are Droid…") the only difference. Other agents'
+// requests on /api/llm/o now open so too (factoryDroidBody), which no real
+// account has tried; Claude's on /api/llm/a don't. So a 403 left says the
+// line may not be all Factory checks, to use the model from Droid, and that
+// an org's model policy or the plan is what is left when Droid is refused
+// too.
 func factoryExplain(status int, body []byte) string {
 	if status != http.StatusForbidden {
 		return ""
@@ -497,7 +503,7 @@ func factoryExplain(status int, body []byte) string {
 	if factoryOrgRefused(status, body) {
 		return "the Factory account's organization changed; remove the account in magpie and sign in to it again"
 	}
-	return "Factory takes a Factory subscription's requests only from Droid itself: other agents' (Claude Code, Grok Build…) are refused even on models Droid runs through magpie, so use the Factory models from Droid; if Droid is refused too, the organization's model policy or the plan doesn't allow this model"
+	return "Factory takes a Factory subscription's requests only from Droid itself. magpie opens other agents' requests to Factory's GPT, Grok and open models (GLM, Kimi…) as Droid's do, but Factory may still tell them apart, and Claude models (and MiniMax M2.7) are sent as the agent sent them, so Claude Code's and other agents' are refused there; use the model from Droid, and if Droid is refused it too, the organization's model policy or the plan doesn't allow this model"
 }
 
 // factoryFirstOrg is the first WorkOS org /api/cli/org says the account is
@@ -577,7 +583,7 @@ var factoryModels = []factoryModel{
 	{"grok-4.7", "Grok 4.7", Responses, "xai", 500000, 63356, []string{"low", "medium", "high", "xhigh"}, true},
 	{"grok-4.6", "Grok 4.6", Responses, "xai", 200000, 63356, []string{"low", "medium", "high", "xhigh"}, true},
 	{"glm-5.3", "GLM-5.3", Chat, "fireworks", 1040000, 131072, []string{"low", "high", "max"}, false},
-	{"glm-5.3-flash", "GLM-5.3-Flash", Chat, "fireworks", 1048576, 131072, []string{"low", "high", "max"}, false},
+	{"glm-5.3-flash", "GLM-5.3-Flash", Chat, "fireworks", 1048576, 131072, []string{"low", "high", "max"}, true},
 	{"glm-5.2", "GLM-5.2", Chat, "baseten", 1040000, 131072, []string{"high", "max"}, false},
 	{"kimi-k3", "Kimi K3", Chat, "fireworks", 262144, 65536, []string{"low", "high", "max"}, true},
 	{"deepseek-v4.1-flash", "DeepSeek V4.1 Flash", Chat, "fireworks", 1040000, 131072, []string{"low", "high", "max"}, true},
@@ -661,6 +667,12 @@ func factoryProvider(a factoryLogin) Provider {
 			// droid's Anthropic client is made with the key "placeholder",
 			// which Anthropic's SDK sends beside the bearer token
 			req.Header.Set("X-Api-Key", "placeholder")
+		}
+		// another agent's request opens as droid's does (factoryDroidBody)
+		if nb := factoryDroidBody(req.URL.Path, body); !bytes.Equal(nb, body) {
+			req.Body = io.NopCloser(bytes.NewReader(nb))
+			req.ContentLength = int64(len(nb))
+			req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(nb)), nil }
 		}
 		return nil
 	}
