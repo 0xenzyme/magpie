@@ -646,8 +646,9 @@ place of time: every 5 s to begin with and no read before that, the picker's
 five (off, 5 s, 10 s, 30 s, a minute), off reading no more, a minute reading at
 its end and not at half of it, the button beside it reading at once, turning
 while it does and saying when in its title, on Overview the summary and the
-allowances too, and the choice remembered by the next window; in English and
-Chinese.
+allowances too, asked for (`usage/quotas?asked=1`) as the allowances' own
+Refresh did, with no second Refresh on the page and a title saying so (#486),
+and the choice remembered by the next window; in English and Chinese.
 
 `usage-ledger-content.test.cjs` opens the rows of the Requests tab on what was
 said in them, read from the agent's session file when the row is opened: loading,
@@ -981,8 +982,8 @@ until "Sign in anyway"; the click moves nothing, no left-border accent.
 English and Chinese, Chromium and WebKit.
 
 `claude-usage-asked.test.cjs` checks a Claude account's usage is only asked
-for when the reader opens Usage or presses Refresh: opening the page and
-Refresh load `usage/quotas?asked=1`, the timed reload and the window coming
+for when the reader opens Usage or presses Refresh (the header's, the only
+one since #486): opening the page and Refresh load `usage/quotas?asked=1`, the timed reload and the window coming
 back don't; an asked load isn't swallowed by one already on its way.
 Chromium and WebKit.
 `panel-effort.test.cjs` opens a row in the tray panel whose effort is not one

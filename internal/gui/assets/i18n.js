@@ -1626,7 +1626,7 @@ const I18N = {
     "In turn: each conversation's next turn goes to the next member's account or key, spreading the load.": "轮流：会话的每一轮交给下一个成员的账号或 Key，均摊负载。",
     "Least used first: the account or key with the most of its allowance left goes first.": "最少使用优先：剩余额度最多的账号或 Key 排第一。",
     "Mask the email addresses on this page, for a screenshot to share": "给本页的邮箱地址打码，方便截图分享",
-    "Read the allowances again; a Claude account's is read by running Claude Code's own /usage": "重新读取额度；Claude 账号的额度通过运行 Claude Code 自带的 /usage 读取",
+    "Refresh now, the allowances too; a Claude account's is read by running Claude Code's own /usage": "立即刷新，额度也一并重新读取；Claude 账号的额度通过运行 Claude Code 自带的 /usage 读取",
     "Least used": "最少使用",
     "requests": "请求",
     "rerouted": "改道",
