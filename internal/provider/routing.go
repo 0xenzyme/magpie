@@ -8,6 +8,8 @@ package provider
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -29,6 +31,20 @@ func SetRouting(id, routing string) error {
 		return err
 	}
 	p.Routing = routing
+	return Save(*p)
+}
+
+// SetKeepLogin keeps Codex or Claude Code signed in to the account the
+// user made first (Provider.KeepLogin), or lets magpie move it on again.
+func SetKeepLogin(id string, keep bool) error {
+	p, err := Find(id)
+	if err != nil {
+		return err
+	}
+	if p.Account == nil || p.Account.Agent != p.ID || !slices.Contains(switchedAgents, p.ID) {
+		return fmt.Errorf("magpie doesn't sign %s in to another of its accounts", p.Name)
+	}
+	p.KeepLogin = keep
 	return Save(*p)
 }
 

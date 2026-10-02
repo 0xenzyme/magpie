@@ -365,12 +365,15 @@ func (s *Server) restAfterMarked(c candidate, status int, header http.Header, bo
 }
 
 // full is when a subscription whose allowance, as last known, has a window
-// used up for the candidate's model renews; zero otherwise.
+// used up for the candidate's model renews; zero otherwise. Used up is
+// all but (usedShare), except In order: there an account at 98% is still
+// tried in its turn, and one that fails then isn't benched until its week
+// renews unless the vendor said it was out (#530).
 func (c candidate) full(now time.Time) time.Time {
 	if c.p.Account == nil {
 		return time.Time{}
 	}
-	return allowances(c.p.Account.UsageAgent())[c.p.Account.User].Full(c.model, usedShare, now)
+	return allowances(c.p.Account.UsageAgent())[c.p.Account.User].Full(c.model, provider.SpentShareOf(c.p.Routing), now)
 }
 
 // keepRetry passes on, with a vendor's error, what it said about when to

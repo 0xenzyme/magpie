@@ -6079,9 +6079,13 @@ function renderRouting(p) {
   // and back once the first has room (provider.KeepOnAnAccountWithRoom,
   // #209, #408)
   const a = p.account;
-  const own = a && (a.agent === "codex" || a.agent === "claude")
-    ? " " + t("Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is 98% used, and back to the first once that has room again.", { agent: a.agentName })
-    : "";
+  // — at 98%, In order once used up (#530), never when kept on the first (#524)
+  const own = !a || (a.agent !== "codex" && a.agent !== "claude") ? ""
+    : " " + (p.keepLogin
+      ? t("Routing picks the account for each request through magpie; {agent} on its own stays signed in to the first account, whatever it has left.", { agent: a.agentName })
+      : cur[0] === "order"
+        ? t("Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is used up, and back to the first once that has room again.", { agent: a.agentName })
+        : t("Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is 98% used, and back to the first once that has room again.", { agent: a.agentName }));
   return field(t("Routing"), pick, t(cur[2]) + own);
 }
 
@@ -6867,6 +6871,17 @@ function renderAccounts(a, p) {
     row.classList.add("with-aq"); // not :has(.aq), which Safari 15.0 lacks (#220)
     if (amBox) row.append(amBox);
     list.append(row);
+  }
+  // magpie signs Codex or Claude Code in to the next account when the
+  // first runs low (#209, #408); this keeps it on the first instead, the
+  // gateway still spreading requests over the ticked ones (#524)
+  if ((a.agent === "codex" || a.agent === "claude") && several && p) {
+    const [keep, cb] = tick(t("Keep {agent} signed in to the first account", { agent: a.agentName }), !!p.keepLogin);
+    keep.classList.add("keep-login");
+    keep.title = t("magpie won't sign {agent} in to another account when the first runs low; requests through magpie still go to the other ticked accounts as Routing says", { agent: a.agentName });
+    cb.onchange = () => accountAction("provider/keeplogin", { id: p.id, keepLogin: cb.checked },
+      cb.checked ? t("{agent} stays signed in to the first account", { agent: a.agentName }) : t("magpie moves {agent} to an account with room again", { agent: a.agentName }));
+    list.append(keep);
   }
   if (a.agent === "codex" && providers?.codexDaemon) list.append(renderCodexDaemon(providers.codexDaemon));
   if (signing?.agent === a.agent) list.append(renderSigning(sub));

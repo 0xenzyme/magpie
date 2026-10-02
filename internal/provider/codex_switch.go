@@ -16,12 +16,14 @@ package provider
 // It moves at the share Smart routing counts an account spent at, so the
 // account the agent is signed in to and the one the gateway goes to agree
 // on which is out (#209): the sign-in follows Smart; Smart doesn't follow
-// the sign-in.
+// the sign-in. In order, the gateway goes to the first until it is used
+// up or refused, so the sign-in moves only once it is used up (#530).
 //
 // The account it moved from is the one the user made first, and it stays
 // that: once it is no longer low (backShare) the agent is signed back in
 // to it, as Smart gives it requests again then (#408). A switch the user
-// makes meanwhile ends that.
+// makes meanwhile ends that. With KeepLogin on the subscription, the agent
+// stays signed in to the first, whatever it has left (#524).
 
 import (
 	"context"
@@ -45,6 +47,29 @@ const loginSwitchEvery = 5 * time.Minute
 // request, and the agent signed in to it is signed in to another.
 const SpentShare = 98
 
+// SpentShareOf is the share past which routing counts an account spent:
+// SpentShare, but In order sends requests to the first until a window of it
+// is used up or the vendor refuses it, so there an account at 98% is still
+// tried in its turn (#530).
+func SpentShareOf(routing string) float64 {
+	if routing == Ordered {
+		return 100
+	}
+	return SpentShare
+}
+
+// loginSwitching is how magpie moves agent's sign-in, as its subscription
+// says: the share the account it is on is moved off at, and whether it is
+// kept on the first instead (KeepLogin).
+func loginSwitching(agent string) (share float64, keep bool) {
+	for _, p := range load().Providers {
+		if p.ID == agent {
+			return SpentShareOf(p.Routing), p.KeepLogin
+		}
+	}
+	return SpentShare, false
+}
+
 // backShare is the share below which the account magpie moved the agent
 // off is signed back in to: no longer low, as Smart counts it (the
 // gateway's lowShare), so it doesn't go back and forth at the edge.
@@ -57,12 +82,6 @@ var switchedAgents = []string{"codex", "claude"}
 // window that stops the account, for every model, at 100%.
 func usedUp(q SubscriptionQuota) bool {
 	return usedPast(q, 100)
-}
-
-// spent reports whether an account's allowance is all but used up, as
-// Smart routing counts it: a window for every model at SpentShare.
-func spent(q SubscriptionQuota) bool {
-	return usedPast(q, SpentShare)
 }
 
 func usedPast(q SubscriptionQuota, share float64) bool {
@@ -100,6 +119,12 @@ func NextLogin(ctx context.Context, agent string) (from, to string, back, ok boo
 	if from == "" || len(spares) == 0 {
 		return "", "", false, false
 	}
+	// kept on the first, the agent goes back to it at once, however little
+	// that has left (#524)
+	share, keep := loginSwitching(agent)
+	if keep && first != nil && first.On && first.Lapsed == "" {
+		return from, first.User, true, true
+	}
 	u := LoginUsage(ctx, agent)
 	if first != nil && first.On && first.Lapsed == "" {
 		if q, known := u[first.User]; known && q.Error == "" && !usedPast(q, backShare) {
@@ -115,11 +140,13 @@ func NextLogin(ctx context.Context, agent string) (from, to string, back, ok boo
 			return w.ResetsAt != nil && !w.ResetsAt.After(now)
 		})
 	}
-	if !known || q.Error != "" || !spent(q) {
+	// kept on the first, it stays there however little that has left; and
+	// it moves on at the share its routing counts the account spent at
+	if keep || !known || q.Error != "" || !usedPast(q, share) {
 		return "", "", false, false
 	}
 	for _, l := range spares {
-		if q, known := u[l.User]; known && q.Error == "" && !spent(q) {
+		if q, known := u[l.User]; known && q.Error == "" && !usedPast(q, share) {
 			return from, l.User, false, true
 		}
 	}
@@ -149,7 +176,8 @@ func SwitchWhenSpent(ctx context.Context, agent string) (string, error) {
 		}
 		r.To = to
 		setLoginReturn(agent, r)
-		log.Printf("%s: %s has used %d%% or more of its allowance; signed it in to %s", agent, from, SpentShare, to)
+		share, _ := loginSwitching(agent)
+		log.Printf("%s: %s has used %g%% or more of its allowance; signed it in to %s", agent, from, share, to)
 	}
 	// the models the agent is offered are the new account's plan's
 	catalog.Touched()

@@ -94,6 +94,9 @@ type providerJSON struct {
 	Fallback []string    `json:"fallback"`          // where requests go when this one can't take them
 	Routing  string      `json:"routing"`           // how requests spread over its keys or accounts
 	Affinity string      `json:"affinity"`          // how long a conversation stays with who answered it
+	// KeepLogin: magpie keeps Codex or Claude Code signed in to the first
+	// account rather than moving it on when that runs low (#524)
+	KeepLogin bool `json:"keepLogin,omitempty"`
 	// how many requests each of its keys or accounts has out at once, the
 	// rest queued: the user's (null: not set), and what its plugin says
 	// when the user set none (provider.Concurrency)
@@ -268,7 +271,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		Catalog: p.Catalog, Website: p.Website, KeysURL: p.KeysURL,
 		Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, Headers: p.Headers, Searches: p.Searches, BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, ModelsURL: p.ModelsURL,
 		Ready: p.Ready(), Chosen: p.Models, Models: []modelJSON{}, Agents: []providerAgent{},
-		Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
+		Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, KeepLogin: p.KeepLogin, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
 		MaxConcurrency: p.MaxConcurrency, PluginConcurrency: p.PluginConcurrency(),
 	}
 	if out.Fallback == nil {
@@ -750,8 +753,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				if old != nil {
 					// the other keys are kept apart, in the Accounts list
 					in.Keys = old.Keys
-					in.Routing = old.Routing // set on its own, with route
-					in.Off = old.Off         // and this with off and on
+					in.Routing = old.Routing     // set on its own, with route
+					in.KeepLogin = old.KeepLogin // and this with keeplogin
+					in.Off = old.Off             // and this with off and on
 					if in.Contexts == nil {
 						in.Contexts = old.Contexts // a save that doesn't say
 					}
@@ -840,6 +844,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				return
 			}
 			provider.ForgetBalances()
+		case "keeplogin":
+			// Codex or Claude Code stays signed in to the first account (#524)
+			if err := provider.SetKeepLogin(in.ID, in.KeepLogin); err != nil {
+				fail(rw, err)
+				return
+			}
 		case "affinity":
 			if err := provider.SetAffinity(in.ID, in.Affinity); err != nil {
 				fail(rw, err)
