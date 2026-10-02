@@ -5,7 +5,9 @@
 // magpie keeps and ~/.cache/magpie ($XDG_CACHE_HOME/magpie) for what it
 // can fetch again, as it always was. Portable, when a folder named "data"
 // (or a file named ".portable") sits beside magpie, everything magpie
-// keeps goes into that data folder and its caches into data/cache, and
+// keeps goes into that data folder, its caches into data/cache and the
+// Windows webview's profile into data/webview2 (no Start-menu shortcut or
+// App Paths entry is made either), and
 // nothing of magpie's own is written to the user's profile, the way VS
 // Code's portable mode works. "Beside magpie" is the folder holding the
 // executable, with links followed; for a Mac app it is the folder holding
@@ -134,6 +136,18 @@ func Cache() string {
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".cache", "magpie")
+}
+
+// WebView is the folder the Windows webview (WebView2) keeps its profile
+// in — its cache, cookies and the pages' storage — or "" for its own
+// default. Installed, that default is %APPDATA%\<exe name>, as it always
+// was, so nothing kept there is lost; portable, it is data\webview2, so a
+// portable magpie leaves no magpie.exe folder in the user's AppData (#508).
+func WebView() string {
+	if p := Portable(); p != "" {
+		return filepath.Join(p, "webview2")
+	}
+	return ""
 }
 
 // SystemCache is the cache folder the OS names for magpie

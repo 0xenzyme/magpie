@@ -20,6 +20,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/autostart"
 	"github.com/yetone/magpie/internal/library"
 	"github.com/yetone/magpie/internal/omarchy"
@@ -223,6 +224,17 @@ func (h *host) applyZoom() {
 	}
 }
 
+// windowsOptions are the app's Windows options. Portable, WebView2 keeps
+// its profile in data\webview2: left to Wails it is %APPDATA%\magpie.exe,
+// a folder a portable magpie must not leave behind (#508). Installed, it
+// stays there, so what the pages kept isn't lost.
+func windowsOptions() application.WindowsOptions {
+	return application.WindowsOptions{
+		DisableQuitOnLastWindowClosed: true,
+		WebviewUserDataPath:           appdir.WebView(),
+	}
+}
+
 // panelStart is the panel's height before its page first asks for one.
 const panelStart = 520
 
@@ -278,7 +290,7 @@ func Run(version string, showMain bool, link string) error {
 		Icon:           appIconFor(),
 		Assets:         application.AssetOptions{Handler: handler},
 		Mac:            application.MacOptions{ActivationPolicy: dockPolicy(settings.Load().Dock)},
-		Windows:        application.WindowsOptions{DisableQuitOnLastWindowClosed: true},
+		Windows:        windowsOptions(),
 		// A version downloaded but not restarted into is installed on the
 		// way out, so the next launch is the new one.
 		// Quitting doesn't come back to main on a Mac (NSApp terminate:

@@ -139,3 +139,22 @@ func TestFolders(t *testing.T) {
 		t.Errorf("portable system cache %q", d)
 	}
 }
+
+// #508: portable, WebView2's profile goes into the data folder, not
+// %APPDATA%\magpie.exe; installed, it is left at WebView2's default.
+func TestWebView(t *testing.T) {
+	t.Setenv("APPIMAGE", "")
+	r := root(t)
+	t.Cleanup(func() { UseExecutable("") })
+
+	UseExecutable("")
+	if got := WebView(); got != "" {
+		t.Errorf("installed: WebView() = %q, want the default", got)
+	}
+	exe := touch(t, filepath.Join(r, "port", "magpie.exe"))
+	touch(t, filepath.Join(r, "port", ".portable"))
+	UseExecutable(exe)
+	if got, want := WebView(), filepath.Join(r, "port", "data", "webview2"); got != want {
+		t.Errorf("portable: WebView() = %q, want %q", got, want)
+	}
+}
