@@ -168,6 +168,33 @@ func (p Provider) Fetch(ctx context.Context) ([]catalog.Model, error) {
 	return catalog.Chat(ms), catalog.SaveLive(p.ID, base, ms)
 }
 
+// List asks the vendor which models it serves, as Fetch does, and keeps
+// nothing: a provider still being added (#578, the add form's Fetch models)
+// is shown its vendor's list to pick from before it is saved.
+func (p Provider) List(ctx context.Context) ([]catalog.Model, error) {
+	ctx = p.Via(ctx)
+	if pr := Preset(p.Preset); pr != nil && pr.NoList && strings.TrimSpace(p.ModelsURL) == "" && !p.listRegion(pr) {
+		return catalog.Chat(p.planModels(nil)), nil
+	}
+	if p.IsCline() && strings.TrimSpace(p.ModelsURL) == "" {
+		if ms, _, err := p.clineFeed(ctx); err == nil {
+			return catalog.Chat(ms), nil
+		}
+	}
+	if p.IsKilo() && strings.TrimSpace(p.ModelsURL) == "" {
+		ms, _, err := p.kiloModels(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return catalog.Chat(ms), nil
+	}
+	ms, _, err := p.fetchOne(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return catalog.Chat(ms), nil
+}
+
 // newFetches is when each account with no list from its vendor yet was
 // last asked for one by FetchNew.
 var newFetches = struct {

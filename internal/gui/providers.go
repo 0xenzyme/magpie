@@ -1049,6 +1049,39 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				fail(rw, err)
 				return
 			}
+		case "list":
+			// the vendor's list for the form as it stands, nothing saved:
+			// the add form's Fetch models, picked from before the provider
+			// is (#578: 添加供应商的时候，希望添加可以获取全模型的按钮)
+			var p provider.Provider
+			if pr, err := provider.FromPreset(in.Preset); err == nil {
+				p = pr
+			}
+			if p.Name == "" {
+				p.Name = cmp.Or(strings.TrimSpace(in.Name), "the vendor")
+			}
+			p = typed(p, in, req.Proxy)
+			ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+			defer cancel()
+			ms, err := p.List(ctx)
+			if err != nil {
+				fail(rw, err)
+				return
+			}
+			type listed struct {
+				ID   string `json:"id"`
+				Name string `json:"name,omitempty"`
+			}
+			out := make([]listed, 0, len(ms))
+			for _, m := range ms {
+				x := listed{ID: m.ID}
+				if m.Name != m.ID {
+					x.Name = m.Name
+				}
+				out = append(out, x)
+			}
+			writeJSON(rw, map[string]any{"models": out})
+			return
 		case "models":
 			p, err := provider.Find(in.ID)
 			if err != nil {

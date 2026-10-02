@@ -846,6 +846,18 @@ Test says the API it was asked on ("answered via Responses"). No click moves
 the page, nothing has a left-border accent, and every string has its
 Chinese. The API is faked.
 
+`provider-add-models.test.cjs` picks a provider's models from its vendor's
+list while it is added (#578: 添加供应商的时候，希望添加可以获取全模型的按钮),
+in Chromium and WebKit, English and Chinese: the custom provider's add form
+has Fetch models beside its Models field, which asks nothing without a URL,
+then posts provider/list with the URL and key typed and no id; a vendor
+refusing says why in the form; the list comes as chips, a model's name with
+its id in the title, filtered when long; a chip ticked is in the field and
+an id typed ticks its chip; Pick those shown, Pick none (one typed by hand
+stays) and Pick all; the Add sends the models picked. No click moves the
+page, nothing has a left-border accent, and every string has its Chinese.
+The API is faked.
+
 `whats-new.test.cjs` shows what changed after an update (a Discord user:
 to see whether their issue was fixed): after an upgrade the window opens a
 dialog with every release's notes since the version last run, newest first,

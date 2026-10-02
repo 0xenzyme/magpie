@@ -5373,8 +5373,9 @@ function drawEditor(p, presetID) {
   if (p && !decides) ed.append(...field(t("Fallback"), renderFallback(p), fallbackHint(p)));
   else if (custom) {
     const ex = input(draft.extra.join(", "), t("model ids, comma separated · e.g. gpt-5.5, claude-sonnet-5"));
-    ex.oninput = () => { draft.extra = ex.value.split(/[,\s]+/).filter(Boolean); };
-    ed.append(...field(t("Models"), ex, t("Optional: magpie asks the vendor for its list after saving.")));
+    const pick = addFormModels(ex);
+    ex.oninput = () => { draft.extra = ex.value.split(/[,\s]+/).filter(Boolean); pick.draw(); };
+    ed.append(...field(t("Models"), pick.box, t("Optional: Fetch models to pick from the vendor's list, or type ids; none picked, magpie asks for the list after saving.")));
   }
 
   // Jev's endpoint can be the one its gateway's docs give — Cloudflare's
@@ -5933,6 +5934,77 @@ function renderEndpoints(p, src) {
 // that answered on one API only that API, staged as Names & levels does.
 // DETECT_MAX: the most models one detection asks (provider.DetectMax)
 const DETECT_MAX = 30;
+// addFormModels: the add form's models, typed in (ex) or picked from the
+// vendor's list, asked with the form as it stands before anything is saved
+// (#578: 添加供应商的时候，希望添加可以获取全模型的按钮或者下拉框). A chip
+// ticked or unticked is in draft.extra, which the Save sends as the models.
+function addFormModels(ex) {
+  const box = el("div", "stack add-models");
+  const row = el("div", "detect-row");
+  const go = el("button", "text action fetch-models", t("Fetch models"));
+  go.title = t("Ask the vendor for its model list with the URL and key typed, to pick from; nothing is saved");
+  row.append(ex, go);
+  const out = el("div", "models add-models-list");
+  out.hidden = true;
+  box.append(row, out);
+  let listed = [];
+  const q = input("", "");
+  q.classList.add("add-models-filter");
+  q.oninput = () => draw();
+  q.onkeydown = (e) => e.stopPropagation();
+  const chips = el("div", "mchips");
+  const acts = el("div", "detect-acts");
+  const sync = () => { ex.value = draft.extra.join(", "); };
+  const draw = () => {
+    if (!listed.length) return;
+    chips.replaceChildren();
+    const f = q.value.trim().toLowerCase();
+    let shown = 0;
+    const match = listed.filter((m) => !f || m.id.toLowerCase().includes(f) || (m.name || "").toLowerCase().includes(f));
+    for (const m of match) {
+      const on = draft.extra.includes(m.id);
+      const c = el("button", "mchip" + (on ? " on" : ""));
+      c.append(el("span", "", m.name || m.id));
+      if (m.name) c.title = m.id;
+      c.dataset.model = m.id;
+      c.onclick = (e) => { e.preventDefault(); draft.extra = on ? draft.extra.filter((x) => x !== m.id) : [...draft.extra, m.id]; sync(); draw(); };
+      chips.append(c);
+      if (++shown >= 120 && !f) { chips.append(el("span", "hint", t("… {n} more, filter to find them", { n: match.length - shown }))); break; }
+    }
+    if (f && !match.length) chips.append(el("span", "hint", t("No model here matches “{q}”.", { q: q.value.trim() })));
+    acts.replaceChildren();
+    const picked = draft.extra.filter((id) => listed.some((m) => m.id === id)).length;
+    acts.append(el("span", "hint", t("{n} of {all} picked", { n: picked, all: listed.length })));
+    const all = el("button", "text action", t(f ? "Pick those shown" : "Pick all"));
+    all.onclick = (e) => { e.preventDefault(); draft.extra = [...draft.extra, ...match.map((m) => m.id).filter((id) => !draft.extra.includes(id))]; sync(); draw(); };
+    const none = el("button", "text action", t("Pick none"));
+    none.onclick = (e) => { e.preventDefault(); const ids = new Set(listed.map((m) => m.id)); draft.extra = draft.extra.filter((id) => !ids.has(id)); sync(); draw(); };
+    acts.append(all, none);
+  };
+  go.onclick = async (e) => {
+    e.preventDefault();
+    const body = { ...asTyped(), preset: draft.preset || "", name: draft.name || "" };
+    if (!body.chat && !body.responses && !body.anthropic && !body.modelsURL) { status(t("Type the base URL first"), "warn"); return; }
+    go.classList.add("busy");
+    out.hidden = false;
+    out.replaceChildren(el("span", "hint", t("Asking the vendor…")));
+    try {
+      const r = await api("provider/list", body);
+      listed = r?.models || [];
+      out.replaceChildren();
+      if (!listed.length) { out.append(el("span", "hint", t("The vendor's list is empty. Type the model ids instead."))); return; }
+      q.placeholder = t("filter {n} models…", { n: listed.length });
+      // the picks' count and Pick all / none above the chips, which a pick
+      // can make a line longer or shorter, so they stay where they are
+      if (listed.length > 24) out.append(q);
+      out.append(acts, chips);
+      draw();
+    } catch (err) { out.replaceChildren(el("span", "hint err", err.message)); }
+    finally { go.classList.remove("busy"); }
+  };
+  return { box, draw };
+}
+
 function detectAPIs(p, base, use) {
   const box = el("div", "detect");
   const row = el("div", "detect-row");
