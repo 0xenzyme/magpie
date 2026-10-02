@@ -354,9 +354,16 @@ func updateRoutes(mux *http.ServeMux, w Windows) {
 // only the tray icon when not; the Mac's always opens its window.
 func restartToUpdate(web, window bool, view string) bool {
 	bundle, exe := updates.bundle, updates.exe
+	updates.mu.Lock()
+	version := ""
+	if updates.latest != nil {
+		version = updates.latest.Version
+	}
+	updates.mu.Unlock()
 	if !updates.install(true) {
 		return false
 	}
+	updatedInApp(version) // its first start leaves the notes to Settings (#525)
 	if web {
 		webReexec.Store(true)
 		return true

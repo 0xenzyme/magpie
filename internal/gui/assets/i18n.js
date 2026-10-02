@@ -1471,6 +1471,7 @@ const I18N = {
     "The release notes since the last update": "上次更新以来的更新说明",
     "What's new in {v}": "{v} 更新内容",
     "Not installed yet": "尚未安装",
+    "Don't show again today": "今天不再弹出",
     "Couldn't load the release notes": "无法获取更新说明",
     "Check": "检查",
     "Couldn't check for updates": "检查更新失败",

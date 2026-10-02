@@ -809,7 +809,11 @@ issue and, like a markdown link, opens in the browser through the app (in a
 tab in magpie web) without moving the page; a javascript: link stays text and
 HTML in the notes is shown as text, never run. Settings' What's new row (under
 Version) opens them again, the waiting update's notes first, marked Not installed
-yet. No left-border accent, every string in Chinese. Chromium and WebKit,
+yet. The dialog shown by itself has "Don't show again today" (#525), told
+to the app (whatsnew/today) as it is ticked or unticked, without moving the
+page; Settings' notes have no such box. Whether it shows at all after a
+restart to update is the app's (TestWhatsNewQuietAfterRestartToUpdate). No
+left-border accent, every string in Chinese. Chromium and WebKit,
 English and Chinese, API faked.
 
 `sessions-manage.test.cjs` opens the Sessions page (TJHHHH on Discord): an

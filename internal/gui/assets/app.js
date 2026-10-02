@@ -1740,7 +1740,7 @@ async function whatsNewOnce() {
   // something else opened meanwhile: the notes wait for the next load
   if (!w?.show || !w.releases?.length || !$("#modal").hidden) { if (w?.show) whatsNewAsked = false; return; }
   api("whatsnew/seen", {}).catch(() => {});
-  showWhatsNew(w.releases);
+  showWhatsNew(w.releases, true);
 }
 
 // openWhatsNew is Settings' way back to the notes: the current version's (or
@@ -1757,7 +1757,9 @@ async function openWhatsNew(u, b) {
   showWhatsNew(list);
 }
 
-function showWhatsNew(releases) {
+// auto: shown by itself after an update, with "Don't show again today"
+// (#525: releases come many a day); Settings' row opens it without one.
+function showWhatsNew(releases, auto) {
   const ed = el("div", "editor whatsnew");
   const head = el("div", "ehead");
   head.append(el("b", "", t("What's new in {v}", { v: "v" + releases[0].version })));
@@ -1773,6 +1775,13 @@ function showWhatsNew(releases) {
   const bar = el("div", "bar");
   const ok = el("button", "text primary", t("Close"));
   ok.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); };
+  if (auto) {
+    // told at once, so Escape or a click outside keeps it as well as Close
+    const [quiet, box] = tick(t("Don't show again today"), false);
+    quiet.classList.add("wn-quiet");
+    box.onchange = () => api("whatsnew/today", { on: box.checked }).catch((e) => status(e.message, "err"));
+    bar.append(quiet);
+  }
   bar.append(el("span", "grow"), ok);
   ed.append(bar);
   confirmAsk = ed;
