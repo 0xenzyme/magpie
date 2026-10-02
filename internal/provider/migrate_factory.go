@@ -13,7 +13,7 @@ import (
 func init() {
 	movers["factory"] = &mover{
 		pkg:    "@magpie-community/opencode-factory-auth",
-		min:    "0.1.8", // a failure's status and its sign-in mark as the built-in's; Claude 5's system-role metadata as Factory takes it
+		min:    "0.1.9", // a failure's status and its sign-in mark as the built-in's; Claude 5's system-role metadata as Factory takes it; Claude Code's standalone model-switch system updates
 		agents: []string{"factory"},
 		out: func() ([]Moving, error) {
 			ls := factoryLogins()
