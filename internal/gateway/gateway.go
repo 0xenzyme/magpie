@@ -269,7 +269,8 @@ type Server struct {
 	sightOrder []string
 	// the requests out at each key or account with a MaxConcurrency, and
 	// those waiting their turn (concurrency.go)
-	lanes lanes
+	lanes         lanes
+	requestLimits requestLimits
 }
 
 // New makes a gateway.
@@ -646,11 +647,11 @@ var estimatedMoved = []string{"cursor", "grok", "devin", "kiro", "qoder", "zed",
 // it implements counting, else a rough estimate. A failed connection or
 // limited key yields to the next key; other failures reach the client.
 func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		writeError(w, provider.Anthropic, 400, err.Error())
+	body, ok := s.requestBody(w, r, provider.Anthropic)
+	if !ok {
 		return
 	}
+	var err error
 	var model string
 	body, model, err = requestModel(body)
 	if err != nil {
@@ -771,11 +772,11 @@ func unsupportedCount(status int, body []byte) bool {
 // handle is the request path of one client API.
 func (s *Server) handle(from provider.Protocol) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			writeError(w, from, 400, err.Error())
+		body, ok := s.requestBody(w, r, from)
+		if !ok {
 			return
 		}
+		var err error
 		body, _, err = requestModel(body)
 		if err != nil {
 			writeError(w, from, 400, err.Error())
@@ -799,11 +800,11 @@ func (s *Server) gemini(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model, method := call[:i], call[i+1:]
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		writeError(w, provider.Gemini, 400, err.Error())
+	body, ok := s.requestBody(w, r, provider.Gemini)
+	if !ok {
 		return
 	}
+	var err error
 	if err := decodeRequest(body, &struct{}{}); err != nil {
 		writeError(w, provider.Gemini, 400, err.Error())
 		return
@@ -1270,7 +1271,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		s.trace.update(tr, func(t *Route) {
 			t.Tries = append(t.Tries, Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: fixed, Fast: fast, Start: began})
 		})
-		held := false // answered as its vendor did a moment ago, without asking
+		held := false    // answered as its vendor did a moment ago, without asking
 		var queued int64 // ms it waited for a slot of its key's or account's
 		if said, ok := verifyHeld(c.restKey()); ok && last {
 			// the account must be verified first (#152): the agent's
@@ -3341,6 +3342,8 @@ func writeError(w http.ResponseWriter, proto provider.Protocol, status int, msg 
 		typ = "permission_error"
 	case status == 404:
 		typ = "not_found_error"
+	case status == 413 && proto == provider.Anthropic:
+		typ = "request_too_large"
 	case status == 429:
 		typ = "rate_limit_error"
 	case status == 529:
@@ -3360,7 +3363,7 @@ func writeError(w http.ResponseWriter, proto provider.Protocol, status int, msg 
 	case provider.Anthropic:
 		v = map[string]any{"type": "error", "error": map[string]any{"type": typ, "message": msg}}
 	case provider.Gemini:
-		st := map[int]string{400: "INVALID_ARGUMENT", 401: "UNAUTHENTICATED", 403: "PERMISSION_DENIED", 404: "NOT_FOUND",
+		st := map[int]string{400: "INVALID_ARGUMENT", 408: "DEADLINE_EXCEEDED", 413: "INVALID_ARGUMENT", 401: "UNAUTHENTICATED", 403: "PERMISSION_DENIED", 404: "NOT_FOUND",
 			429: "RESOURCE_EXHAUSTED", 500: "INTERNAL", 502: "UNAVAILABLE", 503: "UNAVAILABLE", 529: "UNAVAILABLE"}[status]
 		if st == "" {
 			st = "UNKNOWN"

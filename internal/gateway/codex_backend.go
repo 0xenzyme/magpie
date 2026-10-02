@@ -65,11 +65,11 @@ func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 	// newer: the backend serves a model only to a client that knows it
 	provider.SawCodexClient(r.Header)
 	rest := strings.TrimPrefix(r.URL.Path, CodexPath)
-	body, err := codexBody(r)
-	if err != nil {
-		writeError(w, provider.Responses, 400, err.Error())
+	body, ok := s.readRequestBody(w, r, provider.Responses, codexReader, 0)
+	if !ok {
 		return
 	}
+	var err error
 	switch {
 	case r.Method == http.MethodGet && rest == "/models":
 		s.codexModels(w, r)
@@ -150,19 +150,16 @@ func hasSealedAgentMessage(body []byte) bool {
 	return false
 }
 
-// codexBody reads a request's body as it was before Codex compressed it
-// (zstd, for the ChatGPT backend), so it can be read and passed on plain.
-func codexBody(r *http.Request) ([]byte, error) {
-	var rd io.Reader = r.Body
+func codexReader(r *http.Request) (io.ReadCloser, error) {
+	var rd io.ReadCloser = io.NopCloser(r.Body)
 	switch enc := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding"))); enc {
 	case "", "identity":
 	case "zstd":
-		d, err := zstd.NewReader(r.Body)
+		d, err := zstd.NewReader(r.Body, zstd.WithDecoderMaxMemory(defaultBodyLimit))
 		if err != nil {
 			return nil, err
 		}
-		defer d.Close()
-		rd = d
+		rd = d.IOReadCloser()
 	case "gzip":
 		g, err := gzip.NewReader(r.Body)
 		if err != nil {
@@ -173,7 +170,7 @@ func codexBody(r *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("magpie can't read a %s body", enc)
 	}
 	r.Header.Del("Content-Encoding")
-	return io.ReadAll(rd)
+	return rd, nil
 }
 
 // codexAccounts is what a request for one of Codex's own models is served

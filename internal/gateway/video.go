@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/sha256"
@@ -161,7 +162,7 @@ func readFilming(r *http.Request) (filming, error) {
 			}
 		}
 	} else {
-		body, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			return f, err
 		}
@@ -473,6 +474,16 @@ func (s *Server) videoStatus(ctx context.Context, p provider.Provider, vendorID 
 
 // videosCreate starts a video and answers with its id.
 func (s *Server) videosCreate(w http.ResponseWriter, r *http.Request) {
+	inputBody, admitted := s.requestBody(w, r, provider.Chat)
+	if !admitted {
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(inputBody))
+	defer func() {
+		if r.MultipartForm != nil {
+			r.MultipartForm.RemoveAll()
+		}
+	}()
 	start := time.Now()
 	f, err := readFilming(r)
 	if err != nil {
