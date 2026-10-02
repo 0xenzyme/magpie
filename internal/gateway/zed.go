@@ -77,7 +77,10 @@ func zedRequest(req *Request, vendor, model string) (json.RawMessage, provider.P
 		b, err := json.Marshal(m)
 		return b, provider.Anthropic, err
 	case "responses":
-		return buildResponses(&q, model, "api.openai.com", false), provider.Responses, nil
+		// fitted to the Responses types Zed's cloud reads (a web_search
+		// tool, or include's web_search_call.action.sources, would have it
+		// turn the request away)
+		return provider.ZedBody(buildResponses(&q, model, "api.openai.com", false)), provider.Responses, nil
 	case "chat":
 		var m map[string]json.RawMessage
 		if err := json.Unmarshal(buildChat(&q, model, "api.x.ai", false), &m); err != nil {

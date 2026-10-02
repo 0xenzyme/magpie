@@ -1768,9 +1768,10 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		body = s.withoutRefused(p.ID, proto, body)
 	}
 	// a Grok subscription is given Codex's namespaced functions flat
-	// (grokBody); a call to one goes back under its namespace (#404)
+	// (grokBody), and Zed's plugin likewise (ZedBody); a call to one goes
+	// back under its namespace (#404)
 	var named map[string]nsTool
-	if proto == provider.Responses && p.Account != nil && (p.Account.Agent == "grok" || p.PluginProvider() == "grok") {
+	if proto == provider.Responses && p.Account != nil && (p.Account.Agent == "grok" || p.PluginProvider() == "grok" || p.PluginProvider() == "zed") {
 		named = namespacedIn(body)
 	}
 	res, err := s.forward(r.Context(), p, proto, path, p.Prepare(body), r.Header)

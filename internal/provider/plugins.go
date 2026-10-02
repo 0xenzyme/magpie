@@ -232,6 +232,11 @@ func pluginProvider(pp plugin.Provider, l pluginLogin) Provider {
 		// them (#404): the plugin's own rewrite would leave them out
 		a.body = grokBody
 	}
+	if pp.ID == "zed" {
+		// an OpenAI model's request as Zed's cloud reads it: Codex's
+		// developer messages as system ones, its namespaced tools flat
+		a.body = ZedBody
+	}
 	a.models = func() []catalog.Model {
 		if cur, ok := PluginOf(id); ok {
 			return pluginAccountCatalog(cur, acct.Key)
