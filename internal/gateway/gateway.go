@@ -104,6 +104,38 @@ func standIn(agent, asked string) string {
 	return m
 }
 
+// claudeFamily is a full id of one of the model families Claude Code has a
+// tier for, as Claude Code or a wrapper of it names one: claude-sonnet-4-6,
+// claude-fable-5-1, claude-haiku-4-5-20251001, claude-3-5-sonnet-20241022,
+// whatever the version, matched by family so a release magpie has never
+// heard of is one too. A provider's "a/claude-…" is not one.
+var claudeFamily = regexp.MustCompile(`^claude-(?:[0-9][0-9.-]*-)?(?:opus|sonnet|haiku|fable)(?:[-.@:]|$)`)
+
+// claudeTierStandIn is the model Claude Code is set to use for the tier of
+// a full Claude id it names (StandIn), even one magpie serves: Claude Code
+// asks for claude-haiku-… by name for its small tasks, and a wrapper (T3
+// Code, KevinXC on Discord) asks for every model by its full id, so
+// claude-sonnet-5 went to the Claude account magpie serves it on, spent,
+// while claude-sonnet-4-6, which no provider of the user's listed, went to
+// the sonnet tier. Every id of a family now goes to its tier, as Claude
+// Code's own aliases do. A routing group of the user's own named by the id
+// still has it; one magpie found (auto-…) was never picked for it. "" when
+// the id is no such one, the agent isn't Claude Code, or Claude Code isn't
+// routed through magpie (StandIn says nothing).
+func claudeTierStandIn(agent, asked string) string {
+	if StandIn == nil || agent != "claude" || !claudeFamily.MatchString(strings.ToLower(strings.TrimSuffix(asked, "[1m]"))) {
+		return ""
+	}
+	if gid, ok := provider.GroupFor(asked); ok && !strings.HasPrefix(gid, provider.GroupPrefix+"auto-") {
+		return ""
+	}
+	m := StandIn(agent, asked)
+	if m == asked {
+		return ""
+	}
+	return m
+}
+
 // unserved: magpie shows no entry for the model — not a catalog id or
 // model, nor the "provider/model" of a provider that is on (a routing
 // group's id is taken as served). A switched-off provider's is unserved: a
@@ -676,6 +708,9 @@ func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 	// Count the same masked prompt that generation sends to the vendor.
 	w, body, unmask := redacted(w, body)
 	defer unmask()
+	if m := claudeTierStandIn(agentOf(r), model); m != "" {
+		model = m // counted on the model the request will go to
+	}
 	model, _ = askedAt(model) // counted as the model, whatever its effort
 	id := unprefixed(model)
 	if sid, ok := provider.AutoStandIn(id); ok {
@@ -954,14 +989,28 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	if agent == "claude-desktop" {
 		asked = desktopTurn(asked, body)
 	}
-	if id, ok := provider.GroupFor(asked); ok {
+	// a stand-in that is a tier at an effort of its own ("<model>:<level>",
+	// #536) is that model at that level, as were it asked for so
+	at := func(m string) string {
+		m, e := askedAt(m)
+		if askedEffort == "" {
+			askedEffort = e
+		}
+		return m
+	}
+	if m := claudeTierStandIn(agent, asked); m != "" {
+		// Claude Code (or a wrapper, T3 Code) naming one of Anthropic's
+		// models by its full id: the model it is set to use for that tier,
+		// whether or not magpie serves the id too
+		asked = at(m)
+	} else if id, ok := provider.GroupFor(asked); ok {
 		asked = id
 	} else if id, ok := provider.AutoStandIn(asked); ok {
 		// a group magpie found, while the user has those off: its model
 		// from one provider, rather than refused
 		asked = id
 	} else if m := standIn(agent, asked); m != "" {
-		asked = m
+		asked = at(m)
 	}
 	p, model, ok := provider.Resolve(asked)
 	if !ok {

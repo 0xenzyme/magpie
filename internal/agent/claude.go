@@ -1097,6 +1097,12 @@ func claudeStandInAt(path, model, gw string) string {
 	if env("ANTHROPIC_BASE_URL") != gw {
 		return ""
 	}
+	// the model Claude Code is set to itself, by that id, is its own pick
+	// rather than a tier's
+	bare := func(v string) string { m, _ := tierAt(v); return strings.TrimSuffix(m, "[1m]") }
+	if main := env("ANTHROPIC_MODEL"); main != "" && bare(main) == bare(model) {
+		return main
+	}
 	m := strings.ToLower(model)
 	for _, t := range claudeTiers {
 		if strings.Contains(m, t) {
