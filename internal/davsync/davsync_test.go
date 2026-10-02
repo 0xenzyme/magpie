@@ -33,6 +33,18 @@ type fakeDAV struct {
 	// nutstore: a file read in a folder that isn't there is a 409, as
 	// 坚果云 (Nutstore) answers, not a 404
 	nutstore bool
+	// cond: a read sent with the version last seen is answered 304 when
+	// it is still that one; putETag: a write's answer says its ETag;
+	// lastModified: files have a Last-Modified, a second apart for each
+	// write, and no ETag; tooMany: every request is answered 429, with
+	// retryAfter as its Retry-After
+	cond, putETag, lastModified bool
+	tooMany                     bool
+	retryAfter                  string
+	mtimes                      map[string]time.Time
+	// gets are the reads, full those answered with the file, of bytes
+	// bytes in all, and notModified those answered 304
+	gets, full, bytes, notModified int
 }
 
 func (f *fakeDAV) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -42,8 +54,16 @@ func (f *fakeDAV) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+	if f.tooMany {
+		if f.retryAfter != "" {
+			w.Header().Set("Retry-After", f.retryAfter)
+		}
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
+		f.gets++
 		b, ok := f.files[r.URL.Path]
 		if !ok && f.nutstore && !f.dirs[urlDir(r.URL.Path)] {
 			w.WriteHeader(http.StatusConflict)
@@ -53,7 +73,24 @@ func (f *fakeDAV) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		w.Header().Set("ETag", f.etags[r.URL.Path])
+		if f.lastModified {
+			mt := f.mtimes[r.URL.Path]
+			w.Header().Set("Last-Modified", mt.Format(http.TimeFormat))
+			if ims, err := http.ParseTime(r.Header.Get("If-Modified-Since")); f.cond && err == nil && !mt.After(ims) {
+				f.notModified++
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		} else {
+			w.Header().Set("ETag", f.etags[r.URL.Path])
+			if f.cond && r.Header.Get("If-None-Match") == f.etags[r.URL.Path] {
+				f.notModified++
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
+		f.full++
+		f.bytes += len(b)
 		w.Write(b)
 	case http.MethodPut:
 		if !f.dirs[urlDir(r.URL.Path)] {
@@ -68,6 +105,14 @@ func (f *fakeDAV) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.n++
 		f.puts++
 		f.files[r.URL.Path], f.etags[r.URL.Path] = b, fmt.Sprintf(`"%d"`, f.n)
+		if f.mtimes == nil {
+			f.mtimes = map[string]time.Time{}
+		}
+		// long before now, and a second later for each write
+		f.mtimes[r.URL.Path] = time.Date(2026, 1, 1, 0, 0, f.n, 0, time.UTC)
+		if f.putETag && !f.lastModified {
+			w.Header().Set("ETag", f.etags[r.URL.Path])
+		}
 		w.WriteHeader(http.StatusCreated)
 	case "MKCOL":
 		p := strings.TrimSuffix(r.URL.Path, "/")

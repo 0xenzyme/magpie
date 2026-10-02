@@ -42,9 +42,9 @@ func TestDAVForbidden(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _, err = d.get(ctx)
+		_, _, err = d.get(ctx, version{})
 		if err == nil {
-			err = d.put(ctx, []byte("x"), "")
+			_, err = d.put(ctx, []byte("x"), "")
 		}
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v, want %q", c.dir, err, c.want)
@@ -77,7 +77,7 @@ func TestDAVStorageRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = d.put(context.Background(), []byte("x"), "")
+	_, err = d.put(context.Background(), []byte("x"), "")
 	if err == nil || !strings.Contains(err.Error(), "(local, aliyun), like "+srv.URL+"/dav/local") {
 		t.Fatalf("%v", err)
 	}
@@ -121,13 +121,13 @@ func TestDAVForbiddenUntilMade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data, _, err := d.get(ctx); err != nil || data != nil {
+	if data, _, err := d.get(ctx, version{}); err != nil || data != nil {
 		t.Fatalf("before the first sync: %q %v", data, err)
 	}
-	if err := d.put(ctx, []byte("x"), ""); err != nil {
+	if _, err := d.put(ctx, []byte("x"), ""); err != nil {
 		t.Fatal(err)
 	}
-	if data, _, err := d.get(ctx); err != nil || string(data) != "x" {
+	if data, _, err := d.get(ctx, version{}); err != nil || string(data) != "x" {
 		t.Fatalf("after: %q %v", data, err)
 	}
 }

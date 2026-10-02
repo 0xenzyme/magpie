@@ -126,11 +126,14 @@ type Notice struct {
 // state is what the last sync saw: the parts here and on the server, by
 // hash, and the server's file.
 type state struct {
-	Key    string            `json:"key"` // the address, user and passphrase it was for
-	Last   time.Time         `json:"last,omitzero"`
-	Error  string            `json:"error,omitempty"`
-	Notice *Notice           `json:"notice,omitempty"`
-	Sum    string            `json:"sum,omitempty"` // the server's file, hashed
+	Key    string    `json:"key"` // the address, user and passphrase it was for
+	Last   time.Time `json:"last,omitzero"`
+	Error  string    `json:"error,omitempty"`
+	Notice *Notice   `json:"notice,omitempty"`
+	Sum    string    `json:"sum,omitempty"` // the server's file, hashed
+	// Server is that file's version, as the server tells it: the next sync
+	// asks for the file only if it isn't still this one
+	Server version           `json:"server,omitzero"`
 	Local  map[string]string `json:"local,omitempty"`
 	Remote map[string]string `json:"remote,omitempty"`
 }
@@ -291,6 +294,7 @@ func (c Config) sameAccount(o Config) bool {
 func Off() error {
 	return locked(func() error {
 		os.Remove(path("sync-state.json"))
+		os.Remove(path(cacheName))
 		if err := os.Remove(path("sync.json")); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -383,6 +387,32 @@ func stateKey(c Config) string {
 	return sum([]byte(k + "\x00" + c.User + "\x00" + c.Passphrase))
 }
 
+// cacheName is the copy of the server's file as last read or written, kept
+// readable by the user alone: a sync that finds it unchanged on the server
+// but something changed here merges with it, rather than reading it again.
+const cacheName = "sync-server" + backup.Ext
+
+// remember keeps data as the server's file last seen.
+func remember(data []byte) {
+	if b, err := os.ReadFile(path(cacheName)); err == nil && sum(b) == sum(data) {
+		return
+	}
+	os.MkdirAll(settings.Dir(), 0o755)
+	if edit.WriteAtomic(path(cacheName), data) == nil {
+		os.Chmod(path(cacheName), 0o600)
+	}
+}
+
+// cached is the server's file as last seen, when it is the one hashed to
+// want; nil when it isn't kept.
+func cached(want string) []byte {
+	b, err := os.ReadFile(path(cacheName))
+	if err != nil || want == "" || sum(b) != want {
+		return nil
+	}
+	return b
+}
+
 func sum(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
@@ -426,12 +456,36 @@ func Now(ctx context.Context) error {
 	return err
 }
 
+// maxWait is the longest Run waits for a server that is limiting requests
+// and didn't say for how long; one that says is waited for as long as it
+// asks, up to limitWait.
+const (
+	maxWait   = 30 * time.Minute
+	limitWait = 6 * time.Hour
+)
+
+// backoff is how long Run waits after a sync that ended with err, the last
+// wait having been prev: Every, but longer for a server limiting requests
+// (429, 503) — as long as its Retry-After says, or else twice the last
+// wait, up to maxWait — so that a limit is not run into again and again.
+func backoff(err error, prev time.Duration) time.Duration {
+	var rl *rateLimited
+	if !errors.As(err, &rl) {
+		return Every
+	}
+	if rl.after > 0 {
+		return min(max(rl.after, Every), limitWait)
+	}
+	return min(max(2*prev, 2*Every), maxWait)
+}
+
 // Run syncs a little after it starts and every Every after that, until
-// ctx ends. A failure is logged once, not on every try.
+// ctx ends — less often while the server is limiting requests. A failure
+// is logged once, not on every try.
 func Run(ctx context.Context) {
 	t := time.NewTimer(20 * time.Second)
 	defer t.Stop()
-	last := ""
+	last, next := "", Every
 	for {
 		select {
 		case <-ctx.Done():
@@ -451,7 +505,8 @@ func Run(ctx context.Context) {
 		} else if err == nil {
 			last = ""
 		}
-		t.Reset(Every)
+		next = backoff(err, next)
+		t.Reset(next)
 	}
 }
 
@@ -628,8 +683,11 @@ func syncOnce(ctx context.Context, c Config, st *state) error {
 	if err != nil {
 		return err
 	}
-	data, etag, err := d.get(ctx)
-	if err != nil {
+	// the file only if it changed since the last sync: one unchanged costs
+	// a request, not a download
+	data, ver, err := d.get(ctx, st.Server)
+	unchanged := errors.Is(err, errNotModified)
+	if err != nil && !unchanged {
 		return err
 	}
 	local, err := collect(c)
@@ -637,16 +695,31 @@ func syncOnce(ctx context.Context, c Config, st *state) error {
 		return err
 	}
 	L := hashes(local)
+	if unchanged {
+		if maps.Equal(L, st.Local) {
+			return nil // nothing changed on either side
+		}
+		// changed here: merged with the server's file as last seen, or,
+		// when that copy is gone, with the file read again
+		if data = cached(st.Sum); data == nil {
+			if data, ver, err = d.get(ctx, version{}); err != nil {
+				return err
+			}
+		}
+	}
+	etag := ver.ETag
 	push := func(b backup.Bundle, etag string) error {
 		b.Created, b.App = time.Now().UTC(), "magpie"
 		sealed, err := backup.Seal(b, c.Passphrase)
 		if err != nil {
 			return err
 		}
-		if err := d.put(ctx, sealed, etag); err != nil {
+		v, err := d.put(ctx, sealed, etag)
+		if err != nil {
 			return err
 		}
-		st.Sum, st.Remote = sum(sealed), hashes(b)
+		st.Sum, st.Server, st.Remote = sum(sealed), v, hashes(b)
+		remember(sealed)
 		return nil
 	}
 	if data == nil { // nothing there yet: this computer's setup is the first
@@ -657,6 +730,8 @@ func syncOnce(ctx context.Context, c Config, st *state) error {
 		return nil
 	}
 	if sum(data) == st.Sum && maps.Equal(L, st.Local) {
+		st.Server = ver
+		remember(data)
 		return nil // nothing changed on either side
 	}
 	remote, err := backup.Open(data, c.Passphrase)
@@ -734,7 +809,8 @@ func syncOnce(ctx context.Context, c Config, st *state) error {
 			pending[p] = st.Local[p]
 		}
 	}
-	st.Local, st.Sum, st.Remote = pending, sum(data), R
+	st.Local, st.Sum, st.Server, st.Remote = pending, sum(data), ver, R
+	remember(data)
 	if len(here)+len(there) > 0 {
 		st.Notice = &Notice{At: time.Now(), Here: here, There: there, Saved: saved}
 	}
