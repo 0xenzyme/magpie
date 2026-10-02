@@ -138,6 +138,22 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await p.locator("#panelUsage .pu-tot").waitFor();
       assert(await p.locator("#panelUsage").isVisible());
       assert.equal(await p.locator("#panelUsage > .usage-note").textContent(), lang === "zh" ? "统计网关调用与会话日志调用；本地拒绝的请求不计入汇总。" : "Gateway and session-log calls; local rejections excluded from totals.");
+      // read again on asking (#546), and as the panel is opened again
+      const refresh = p.locator("#panelUsage .pu-again");
+      assert.equal(await refresh.getAttribute("aria-label"), lang === "zh" ? "立即刷新" : "Refresh now");
+      let n = asked.length;
+      await refresh.click();
+      for (let i = 0; i < 60 && asked.length === n; i++) await new Promise((r) => setTimeout(r, 40));
+      assert.equal(asked.length, n + 1, "Refresh reads the usage again");
+      await new Promise((r) => setTimeout(r, 2100));
+      n = asked.length;
+      await p.evaluate(() => window.dispatchEvent(new Event("focus")));
+      for (let i = 0; i < 60 && asked.length === n; i++) await new Promise((r) => setTimeout(r, 40));
+      assert.equal(asked.length, n + 1, "the panel focused reads the usage again");
+      n = asked.length;
+      await p.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await new Promise((r) => setTimeout(r, 300));
+      assert.equal(asked.length, n, "not again at once");
       assert(!(await p.locator("#agents").isVisible()) && !(await p.locator("#panelRouting").isVisible()), "the others are other tabs");
       assert.equal(asked[0].get("period"), "today");
       assert.equal(asked[0].get("limit"), "1", "a page of one row is all it asks for");

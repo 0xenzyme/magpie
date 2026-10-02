@@ -8440,6 +8440,10 @@ function panelUseShown() {
 if (mode === "panel") {
   // requests come while it is looked at
   setInterval(() => { if (panelTab === "stats" && !document.hidden) loadPanelUse().catch(() => {}); }, 10e3);
+  // and the panel opened again reads them at once, not at the next tick
+  const again = () => { if (panelTab === "stats" && !document.hidden && performance.now() - panelUseAt > 2e3) loadPanelUse().catch(() => {}); };
+  window.addEventListener("focus", again);
+  document.addEventListener("visibilitychange", again);
 }
 
 function renderPanelUse() {
@@ -8472,7 +8476,19 @@ function renderPanelUse() {
     api("window/main?" + new URLSearchParams({ view: "usage", tab: "requests", ...(panelUseProvider ? { provider: panelUseProvider } : {}) }), {});
     e.currentTarget.blur();
   };
-  bar.append(per, pick, el("span", "grow"), open);
+  // as the window's Usage has it: what is shown read again now
+  const again = el("button", "icon pu-again");
+  again.type = "button";
+  again.title = t("Refresh now");
+  again.setAttribute("aria-label", t("Refresh now"));
+  again.append(svg("M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3", 13));
+  again.onclick = (e) => {
+    const b = e.currentTarget;
+    b.blur();
+    b.classList.add("spin");
+    loadPanelUse().catch(() => {}).finally(() => setTimeout(() => $("#panelUsage .pu-again")?.classList.remove("spin"), 300));
+  };
+  bar.append(per, pick, el("span", "grow"), again, open);
   const out = [bar, el("p", "usage-note", t("Gateway and session-log calls; local rejections excluded from totals."))];
   if (!l) {
     out.push(el("span", "skeleton pu-sk"), el("span", "skeleton pu-sk"));
