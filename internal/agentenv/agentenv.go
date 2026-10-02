@@ -46,6 +46,8 @@ var Vars = []string{
 	// MiMo Code, MiniMax Code, OpenHanako, Hermes, dsh, WorkBuddy
 	"MIMOCODE_HOME", "MINIMAX_DATA_DIR", "HANA_HOME", "HERMES_HOME", "DSH_HOME",
 	"WORKBUDDY_CONFIG_DIR",
+	// Cursor's CLI: its config folder (its chats) and its data folder
+	"CURSOR_CONFIG_DIR", "CURSOR_DATA_DIR",
 	// OpenCode and OpenChamber
 	"OPENCODE_CONFIG_DIR", "OPENCODE_DB", "OPENCHAMBER_DATA_DIR",
 	// Droid's home, Windsurf's API server, ZCode's credential seed: what
