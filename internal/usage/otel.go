@@ -21,6 +21,7 @@ import (
 
 const otelQueueSize = 128
 const otelBatchSize = 32
+const otelBodiesBatch = 4
 
 var otel atomic.Pointer[otelExporter]
 
@@ -85,7 +86,20 @@ func offerOTel(r Record) {
 	if err != nil || !config.Enabled {
 		return
 	}
+	if !config.Bodies {
+		r.BodyIn, r.BodyOut = "", ""
+	}
 	e.offer(otelItem{record: r, config: config})
+}
+
+// OTelBodies is whether calls' request and reply bodies go with their
+// spans (#538): the gateway fills Record.BodyIn/BodyOut only then
+func OTelBodies() bool {
+	if otel.Load() == nil {
+		return false
+	}
+	config, err := settings.OTelExport()
+	return err == nil && config.Enabled && config.Bodies
 }
 
 func (e *otelExporter) offer(item otelItem) {
@@ -149,7 +163,15 @@ func (e *otelExporter) flush(batch []otelItem) {
 		return
 	}
 	now := time.Now()
-	e.send(config, "traces", e.traces(records))
+	// spans carrying bodies (up to 256 KiB each way) go a few at a time,
+	// so one request stays well inside a collector's size limit
+	step := len(records)
+	if config.Bodies {
+		step = otelBodiesBatch
+	}
+	for i := 0; i < len(records); i += step {
+		e.send(config, "traces", e.traces(records[i:min(i+step, len(records))]))
+	}
 	if config.Metrics {
 		e.send(config, "metrics", otelMetrics(records, e.last, now))
 	}

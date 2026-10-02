@@ -858,6 +858,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		rec := usage.Record{Time: start, Agent: call.Agent, Via: call.Via, Provider: call.Provider, Model: call.Model, Requested: call.Model,
 			Millis: call.Millis, Status: call.Status, Rejected: true, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind, Endpoint: endpointOf(r, from, ""), Archive: call.archiveName()}
 		failedWith(&rec, call.Status, call.Error, "")
+		withBodies(&rec, &call)
 		appendUsage(r, rec)
 	}
 	// a model's id without a provider in it that names a routing group is
@@ -1310,6 +1311,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 					TTFT: try.TTFT, FirstText: try.FirstText, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind,
 					RequestID: call.Usage.RequestID, Endpoint: endpointOf(r, from, call.To), Archive: call.archiveName()}
 				failedWith(&rec, call.Status, call.Error, call.Usage.ErrType)
+				// what this account answered is its refusal, the reply
+				// captured so far being no one's yet
+				withBodies(&rec, &Call{RequestBody: call.RequestBody, RequestTruncated: call.RequestTruncated, ResponseBody: string(hw.errBody())})
 				appendUsage(r, rec)
 			}
 			continue
@@ -1486,6 +1490,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			TTFT: call.TTFT, FirstText: call.FirstText, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind,
 			RequestID: call.Usage.RequestID, Endpoint: endpointOf(r, from, call.To), Archive: call.archiveName()}
 		failedWith(&rec, call.Status, call.Error, call.Usage.ErrType)
+		withBodies(&rec, &call)
 		appendUsage(r, rec)
 	}
 }

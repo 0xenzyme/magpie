@@ -12261,7 +12261,7 @@ function renderOTel(s, keep) {
     config = { ...config, ...change };
     savePrefs({ ...keep, otel: { ...config } });
   };
-  row("otelExportRow", "OTLP export", "Send model, token, status and timing metadata to your collector. Prompts, replies and account credentials stay local",
+  row("otelExportRow", "OTLP export", "Send model, token, status and timing metadata to your collector. Account credentials stay local, and prompts and replies too unless bodies are included below",
     segs([["off", t("Off")], ["on", t("On")]], config.enabled ? "on" : "off", (v) => save({ enabled: v === "on" })));
   const endpoint = input(config.endpoint || "", "http://localhost:4318", "url");
   endpoint.className = "words";
@@ -12288,6 +12288,8 @@ function renderOTel(s, keep) {
   row("otelHeadersRow", "OTLP headers", "Comma-separated name=value pairs; percent-encode spaces and commas in values", headers);
   row("otelMetricsRow", "Export metrics", "Also send duration and token histograms. Leave off for a traces-only service such as Langfuse",
     segs([["off", t("Off")], ["on", t("On")]], config.metrics ? "on" : "off", (v) => save({ metrics: v === "on" })));
+  row("otelBodiesRow", "Include request and response bodies", "Attach each call's request and reply to its trace, as Langfuse's input and output. Secrets are masked and each body is cut at 256 KB",
+    segs([["off", t("Off")], ["on", t("On")]], config.bodies ? "on" : "off", (v) => save({ bodies: v === "on" })));
   if (s.otelEnv) box.append(el("div", "sub", t("Environment variables override these saved OTLP preferences")));
 }
 

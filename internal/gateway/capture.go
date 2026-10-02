@@ -5,6 +5,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/yetone/magpie/internal/redact"
+	"github.com/yetone/magpie/internal/usage"
 )
 
 // Recent-call bodies are diagnostics, not an unbounded traffic log. Keeping the
@@ -113,4 +116,27 @@ func (w *captureResponseWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// withBodies hands a call's captured request and reply to its usage
+// record when the OTLP export sends them (#538) — their secrets scrubbed
+// as the request archive's are, on top of the placeholders Mask secrets
+// puts in — and leaves the record without them otherwise
+func withBodies(rec *usage.Record, c *Call) {
+	if !usage.OTelBodies() {
+		return
+	}
+	rec.BodyIn = bodyForExport(c.RequestBody, c.RequestTruncated)
+	rec.BodyOut = bodyForExport(c.ResponseBody, c.ResponseTruncated)
+}
+
+func bodyForExport(body string, cut bool) string {
+	if body == "" {
+		return ""
+	}
+	body = string(redact.ScrubJSON([]byte(body)))
+	if cut {
+		body += usage.BodyCut
+	}
+	return body
 }

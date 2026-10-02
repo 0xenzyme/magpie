@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -304,5 +305,28 @@ func TestOTelRetryAfterBound(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+// a call's bodies go only to the OTLP export (#538), never to usage.jsonl
+func TestBodiesStayOutOfTheLog(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	Append(Record{Time: time.Now(), Model: "m1", Status: 200, BodyIn: "PRIVATE-PROMPT", BodyOut: "PRIVATE-REPLY"})
+	b, err := os.ReadFile(Path())
+	if err != nil || !strings.Contains(string(b), `"model":"m1"`) || strings.Contains(string(b), "PRIVATE-") {
+		t.Fatalf("usage.jsonl: %s %v", b, err)
+	}
+}
+
+func TestOTelReplyText(t *testing.T) {
+	for _, c := range []struct{ body, want string }{
+		{`{"choices":[{"message":{"content":"hi"}}]}`, `{"choices":[{"message":{"content":"hi"}}]}`},
+		{"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"he\"}}\n\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"llo\"}}\n\n", "hello"},
+		{"data: {\"type\":\"response.output_text.delta\",\"delta\":\"he\"}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"llo\"}\n\n" + BodyCut, "hello" + BodyCut},
+		{"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"t\"}]}}]}\n\n", "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"t\"}]}}]}\n\n"},
+	} {
+		if got := otelReplyText(c.body); got != c.want {
+			t.Errorf("otelReplyText(%q) = %q, want %q", c.body, got, c.want)
+		}
 	}
 }

@@ -16,6 +16,10 @@ type OTel struct {
 	Endpoint string            `json:"endpoint,omitempty"`
 	Headers  map[string]string `json:"headers,omitempty"`
 	Metrics  bool              `json:"metrics,omitempty"`
+	// Bodies adds each call's request and reply, as the gateway captured
+	// them (secrets masked, cut at 256 KiB), to its span as Langfuse's
+	// observation input and output (#538); off, only metadata leaves
+	Bodies bool `json:"bodies,omitempty"`
 }
 
 var otelHeaderName = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
@@ -50,7 +54,7 @@ func OTelExport() (OTel, error) {
 	for _, x := range []struct {
 		name string
 		dst  *bool
-	}{{"MAGPIE_OTEL_ENABLED", &o.Enabled}, {"MAGPIE_OTEL_METRICS", &o.Metrics}} {
+	}{{"MAGPIE_OTEL_ENABLED", &o.Enabled}, {"MAGPIE_OTEL_METRICS", &o.Metrics}, {"MAGPIE_OTEL_BODIES", &o.Bodies}} {
 		if v, ok := os.LookupEnv(x.name); ok {
 			b, err := strconv.ParseBool(v)
 			if err != nil {

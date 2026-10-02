@@ -91,6 +91,11 @@ type Record struct {
 	// (gateway/archive.go), when it was on: the Usage page reads it back
 	// by it long after Recent calls has let the call go (#447)
 	Archive string `json:"archive,omitempty"`
+	// BodyIn and BodyOut are the request and reply as the gateway
+	// captured them, filled only for an OTLP export with bodies on (#538)
+	// and never written to usage.jsonl
+	BodyIn  string `json:"-"`
+	BodyOut string `json:"-"`
 }
 
 // Path is the log file: ~/.config/magpie/usage.jsonl (XDG-aware).
