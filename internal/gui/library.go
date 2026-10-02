@@ -266,6 +266,7 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 			Values map[string]string // what a market server needs
 			Dir    string            // a project's folder
 			Copy   bool              // a project gets copies, not links
+			Keep   bool              // a project removed keeps what magpie put in it
 			On     bool              // every skill or server given to the agents, or taken from them
 			library.InstructionsChange
 		}
@@ -323,7 +324,7 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 		case "projects/add":
 			res, err = library.AddProject(in.Dir)
 		case "projects/remove":
-			res, err = library.RemoveProject(in.Dir)
+			res, err = library.RemoveProject(in.Dir, in.Keep)
 		case "projects/skill":
 			res, err = library.ProjectSkill(in.Dir, in.Name, in.Agents)
 		case "projects/server":

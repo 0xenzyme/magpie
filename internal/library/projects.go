@@ -354,11 +354,19 @@ func notGlobal(dir string) error {
 
 // RemoveProject takes every skill magpie placed out of a project, and the
 // project off the list; what's left, it couldn't take away and says why.
-func RemoveProject(dir string) (*Result, error) {
+// keep takes the project off the list alone (#514: a project given a few
+// skills or servers once, to keep them): everything magpie put in the
+// folder — skills, servers in the agents' files, its lines in the
+// .gitignore — stays as it is, the user's from then on.
+func RemoveProject(dir string, keep bool) (*Result, error) {
 	return change(func(l *Library) error {
 		p := l.project(dir)
 		if p == nil {
 			return fmt.Errorf("no project %s", dir)
+		}
+		if keep {
+			l.Projects = slices.DeleteFunc(l.Projects, func(x *Project) bool { return x == p })
+			return nil
 		}
 		p.Skills, p.Servers = nil, nil
 		l.syncProject(p, &Result{})

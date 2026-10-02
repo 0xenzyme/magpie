@@ -155,12 +155,14 @@ type AgentView struct {
 	// ProjectSkills is the folder in a project it reads skills from
 	ProjectSkills string `json:"projectSkills,omitempty"`
 	// ProjectMCP is the file, in a project, it reads MCP servers from
-	ProjectMCP string   `json:"projectMCP,omitempty"`
-	SkillsAlso []string `json:"skillsAlso,omitempty"`
-	Note       string   `json:"note,omitempty"`
-	NoSSE      bool     `json:"noSSE,omitempty"`
-	NoRemote   bool     `json:"noRemote,omitempty"`
-	MCPVia     string   `json:"mcpVia,omitempty"`
+	ProjectMCP string `json:"projectMCP,omitempty"`
+	// ProjectNoSSE: its project file can't take a server over SSE
+	ProjectNoSSE bool     `json:"projectNoSSE,omitempty"`
+	SkillsAlso   []string `json:"skillsAlso,omitempty"`
+	Note         string   `json:"note,omitempty"`
+	NoSSE        bool     `json:"noSSE,omitempty"`
+	NoRemote     bool     `json:"noRemote,omitempty"`
+	MCPVia       string   `json:"mcpVia,omitempty"`
 }
 
 // ServerView is a library server, and what each agent it's on made of it.
@@ -215,7 +217,8 @@ func Read(problems []Problem) (*View, error) {
 	targets := Targets()
 	for _, t := range targets {
 		av := AgentView{ID: t.Agent.ID, Name: t.Agent.Name, Icon: t.Agent.Icon, Instructions: t.Instructions, Skills: t.Skills,
-			SkillsAlso: t.SkillsAlso, Note: t.Note, MCPVia: t.MCPVia, ProjectSkills: ProjectSkillsDir(t.Agent.ID), ProjectMCP: ProjectMCPFile(t.Agent.ID)}
+			SkillsAlso: t.SkillsAlso, Note: t.Note, MCPVia: t.MCPVia, ProjectSkills: ProjectSkillsDir(t.Agent.ID), ProjectMCP: ProjectMCPFile(t.Agent.ID),
+			ProjectNoSSE: ProjectNoSSE(t.Agent.ID)}
 		if t.MCP != nil {
 			av.MCP = t.MCP.Path
 			av.NoSSE = t.MCP.supports(&Server{Transport: "sse"}) != nil

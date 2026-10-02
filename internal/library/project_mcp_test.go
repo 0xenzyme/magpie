@@ -111,7 +111,7 @@ func TestProjectServers(t *testing.T) {
 	}
 
 	// removing the project takes out only magpie's entries
-	ok(t)(RemoveProject(proj))
+	ok(t)(RemoveProject(proj, false))
 	s = servers(t, mcp, "mcpServers")
 	if len(s) != 1 || s["team"] == nil {
 		t.Errorf(".mcp.json after: %v", s)
@@ -197,4 +197,126 @@ func TestProjectServerOpenCodeJSONC(t *testing.T) {
 	if o := servers(t, filepath.Join(proj, "opencode.jsonc"), "mcp"); o["fs"] == nil {
 		t.Errorf("opencode.jsonc:\n%s", read(t, filepath.Join(proj, "opencode.jsonc")))
 	}
+}
+
+// #514: ZCode reads a project's servers from .zcode/config.json's
+// mcp.servers, Pi from .pi/mcp.json's mcpServers; each is written beside
+// what's in the file, as its user-wide file has them.
+func TestProjectServersZCodePi(t *testing.T) {
+	h, proj := mcpProject(t)
+	zc := filepath.Join(proj, ".zcode", "config.json")
+	write(t, zc, `{
+  "model": "glm-5.3",
+  "mcp": {"servers": {"team": {"command": "team-mcp", "enable": false}}, "other": true}
+}
+`)
+	userZC := filepath.Join(h, ".zcode", "cli", "config.json")
+	userWas, _ := os.ReadFile(userZC)
+	ok(t)(SaveServer("", Server{Name: "events", Transport: "sse", URL: "https://x.example/sse"}))
+
+	ok(t)(ProjectServer(proj, "fs", []string{"zcode", "pi"}))
+	ok(t)(ProjectServer(proj, "docs", []string{"zcode", "pi"}))
+	r, err := ProjectServer(proj, "events", []string{"zcode", "pi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Problems) != 1 || !strings.Contains(r.Problems[0].Error, ".pi/mcp.json can't reach a server over SSE") {
+		t.Errorf("problems: %+v", r.Problems)
+	}
+
+	// ZCode: the user's model, server and key stay, magpie's beside them
+	doc := jsonOf(t, zc)
+	if doc["model"] != "glm-5.3" {
+		t.Errorf("model lost:\n%s", read(t, zc))
+	}
+	m, _ := doc["mcp"].(map[string]any)
+	s, _ := m["servers"].(map[string]any)
+	if m["other"] != true || s["team"] == nil || s["team"].(map[string]any)["enable"] != false {
+		t.Fatalf("the user's lost:\n%s", read(t, zc))
+	}
+	if fs, _ := s["fs"].(map[string]any); fs["type"] != "stdio" || fs["command"] != "npx" || len(fs["args"].([]any)) != 2 {
+		t.Errorf("zcode fs: %v", fs)
+	}
+	if d, _ := s["docs"].(map[string]any); d["type"] != "http" || d["url"] != "https://docs.example/mcp" {
+		t.Errorf("zcode docs: %v", d)
+	}
+	if e, _ := s["events"].(map[string]any); e["type"] != "sse" {
+		t.Errorf("zcode events: %v", e)
+	}
+
+	// Pi: a file magpie made, in Pi's own shape, kept out of git
+	pi := filepath.Join(proj, ".pi", "mcp.json")
+	ps := servers(t, pi, "mcpServers")
+	if fs, _ := ps["fs"].(map[string]any); fs["command"] != "npx" || fs["type"] != nil {
+		t.Errorf("pi fs: %v", fs)
+	}
+	if d, _ := ps["docs"].(map[string]any); d["url"] != "https://docs.example/mcp" || d["type"] != nil {
+		t.Errorf("pi docs: %v", d)
+	}
+	if ps["events"] != nil {
+		t.Errorf("pi got an SSE server: %v", ps)
+	}
+	g := read(t, filepath.Join(proj, ".gitignore"))
+	if !strings.Contains(g, "/.pi/mcp.json\n") || strings.Contains(g, ".zcode") {
+		t.Errorf(".gitignore:\n%s", g)
+	}
+	if now, _ := os.ReadFile(userZC); string(now) != string(userWas) {
+		t.Errorf("ZCode's own file was written:\n%s", now)
+	}
+	v, _ := Read(nil)
+	if !slices.Equal(v.Projects[0].Wrote[".zcode/config.json"], []string{"docs", "events", "fs"}) || !slices.Equal(v.Projects[0].Wrote[".pi/mcp.json"], []string{"docs", "fs"}) {
+		t.Errorf("wrote: %v", v.Projects[0].Wrote)
+	}
+	if ProjectMCPFile("pi") != ".pi/mcp.json" || !ProjectNoSSE("pi") || ProjectMCPFile("zcode") != ".zcode/config.json" || ProjectNoSSE("zcode") {
+		t.Error("ProjectMCPFile/ProjectNoSSE")
+	}
+
+	// taken out: only magpie's go, and the file it made with them
+	ok(t)(RemoveProject(proj, false))
+	s, _ = jsonOf(t, zc)["mcp"].(map[string]any)["servers"].(map[string]any)
+	if len(s) != 1 || s["team"] == nil || jsonOf(t, zc)["model"] != "glm-5.3" {
+		t.Errorf("zcode after:\n%s", read(t, zc))
+	}
+	gone(t, filepath.Join(proj, ".pi"))
+	if g := read(t, filepath.Join(proj, ".gitignore")); g != "node_modules/\n" {
+		t.Errorf(".gitignore after: %q", g)
+	}
+}
+
+// #514: a project removed with keep goes off magpie's list alone; the
+// skills and servers magpie put in it, and its .gitignore lines, stay.
+func TestRemoveProjectKeep(t *testing.T) {
+	h, proj := mcpProject(t)
+	src := filepath.Join(h, "src")
+	skill(t, filepath.Join(src, "pdf"), "pdf", "Read PDFs")
+	ok(t)(InstallSkills(src, []string{"pdf"}, nil))
+	ok(t)(ProjectSkill(proj, "pdf", []string{"claude", "codex"}))
+	ok(t)(ProjectServer(proj, "fs", []string{"claude", "pi"}))
+	files := map[string]string{}
+	for _, f := range []string{".mcp.json", ".pi/mcp.json", ".gitignore"} {
+		files[f] = read(t, filepath.Join(proj, f))
+	}
+
+	ok(t)(RemoveProject(proj, true))
+	if v, _ := Read(nil); len(v.Projects) != 0 {
+		t.Errorf("projects: %+v", v.Projects)
+	}
+	check := func(when string) {
+		t.Helper()
+		for f, was := range files {
+			if got := read(t, filepath.Join(proj, f)); got != was {
+				t.Errorf("%s: %s changed:\n%s\nwas:\n%s", when, f, got, was)
+			}
+		}
+		for _, e := range []string{".claude/skills/pdf", ".agents/skills/pdf"} {
+			if _, err := os.Stat(filepath.Join(proj, e, "SKILL.md")); err != nil {
+				t.Errorf("%s: %s: %v", when, e, err)
+			}
+		}
+	}
+	check("removed")
+	// nothing magpie does later takes them out
+	ok(t)(Sync())
+	ok(t)(RemoveServer("fs"))
+	check("later")
 }

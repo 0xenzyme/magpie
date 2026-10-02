@@ -1904,7 +1904,9 @@
   let addingProject = null;       // the folder being added: { dir, error, busy }
   const openProjects = new Set(); // projects whose skills (or servers) are shown
   const projectAgents = () => shownAgents().filter((a) => a.projectSkills);
-  const projectMCPAgents = () => shownAgents().filter((a) => a.projectMCP);
+  // a project's file may take less than the agent's own: Pi's .pi/mcp.json
+  // no SSE, whatever extension its user-wide file is for
+  const projectMCPAgents = () => shownAgents().filter((a) => a.projectMCP).map((a) => (a.projectNoSSE ? { ...a, noSSE: true } : a));
   const projectFiles = () => [...new Set(projectMCPAgents().map((a) => a.projectMCP))].join(", ");
 
   function renderProjects(body, kind) {
@@ -2098,7 +2100,7 @@
     }
     if (!lib.servers.length) card.append(el("p", "lib-aside lib-projfoot", t("No servers in the library yet")));
     card.append(el("p", "lib-aside lib-projfoot", t("Written into {files} of the project, beside what's in them; a file magpie makes is listed in its .gitignore. A server there by the same name that isn't magpie's is left as it is.", { files: projectFiles() })));
-    card.append(el("p", "lib-aside lib-projfoot", t("Claude Code asks before it starts a project's servers, and Codex reads .codex/config.toml only in a project you trust.")));
+    card.append(el("p", "lib-aside lib-projfoot", t("Claude Code asks before it starts a project's servers; Codex reads .codex/config.toml, and Pi .pi/mcp.json, only in a project you trust.")));
     const skip = shownAgents().filter((a) => a.mcp && !a.projectMCP);
     if (skip.length) card.append(el("p", "lib-aside lib-projfoot", t("{agents} reads no project MCP file magpie knows of.", { agents: skip.map((a) => a.name).join(", ") })));
     return card;
@@ -2109,10 +2111,31 @@
     const head = el("div", "ehead");
     head.append(glyph(GLYPH.trash), el("b", "", t("Remove {name}?", { name: p.name })));
     ed.append(head);
-    ed.append(el("p", "lib-confirm", t("The skills and MCP servers magpie put in it are taken away, with their lines in its .gitignore. Nothing else in the folder is touched.")));
+    const say = el("p", "lib-confirm");
+    ed.append(say);
+    // #514: skills or servers given to a project once are often to stay
+    // there; magpie can forget the project and leave them as they are
+    const has = p.placed?.length || Object.values(p.wrote || {}).some((x) => x.length);
+    const keep = el("input");
+    keep.type = "checkbox";
+    const tell = () => {
+      say.textContent = keep.checked
+        ? t("magpie forgets the project. The skills and MCP servers it put in the folder stay there as they are, with their lines in its .gitignore, and are yours from then on; a linked skill still follows the library's.")
+        : t("The skills and MCP servers magpie put in it are taken away, with their lines in its .gitignore. Nothing else in the folder is touched.");
+    };
+    keep.onchange = tell;
+    if (has) {
+      const r = el("label", "lib-pick lib-keep");
+      const w = el("span", "who");
+      w.append(el("span", "name", t("Keep its skills and MCP servers")), el("span", "sub", t("Remove the project from magpie only, leaving what magpie wrote into it")));
+      r.append(keep, w);
+      ed.append(r);
+    }
+    tell();
     const bar = el("div", "bar");
     const go = button(t("Remove"), "primary danger-fill", async () => {
-      if (await change("projects/remove", { dir: p.dir }, t("{name} removed", { name: p.name }))) { openProjects.delete(p.dir); closeLibModal(); }
+      const body = keep.checked ? { dir: p.dir, keep: true } : { dir: p.dir };
+      if (await change("projects/remove", body, t(keep.checked ? "{name} removed, its skills and servers kept" : "{name} removed", { name: p.name }))) { openProjects.delete(p.dir); closeLibModal(); }
     });
     bar.append(el("span", "grow"), button(t("Cancel"), "", closeLibModal), go);
     ed.append(bar);

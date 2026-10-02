@@ -18,9 +18,14 @@ import (
 // own MCP servers from — only those whose docs say so: Claude Code's
 // .mcp.json (its project scope), Codex's .codex/config.toml (read in a
 // trusted project only), Gemini CLI's .gemini/settings.json (its workspace
-// settings), Cursor's .cursor/mcp.json and OpenCode's opencode.json at the
-// project's root. Each is written in the shape the agent's user-wide file
-// has.
+// settings), Cursor's .cursor/mcp.json, OpenCode's opencode.json at the
+// project's root, ZCode's .zcode/config.json (its workspace scope:
+// mcp.servers, as its user-wide cli/config.json has them; zcode.z.ai/en/docs/
+// mcp-services, "Configuration Files and Default Load Paths") and Pi's
+// .pi/mcp.json (mcpServers, read once the project is trusted; pi.dev/docs/
+// latest/mcp, "Configure servers" — Pi's own MCP, 0.99 on, whatever
+// extension the user's file is written for). Each is written in the shape
+// the agent's user-wide file has.
 var projectMCPFiles = map[string]struct {
 	rel    string
 	format mcpFormat
@@ -30,11 +35,20 @@ var projectMCPFiles = map[string]struct {
 	"gemini":   {".gemini/settings.json", fmtGemini},
 	"cursor":   {".cursor/mcp.json", fmtCursor},
 	"opencode": {"opencode.json", fmtOpenCode},
+	"zcode":    {".zcode/config.json", fmtZCode},
+	"pi":       {".pi/mcp.json", fmtPiNative},
 }
 
 // ProjectMCPFile is the file, in a project, an agent reads the project's
 // MCP servers from: "" for one magpie can't give a project's servers to.
 func ProjectMCPFile(agent string) string { return projectMCPFiles[agent].rel }
+
+// ProjectNoSSE says whether an agent's project file can't take a server
+// over SSE (Codex's, Pi's), whatever its user-wide one can.
+func ProjectNoSSE(agent string) bool {
+	f, ok := projectMCPFiles[agent]
+	return ok && errors.Is((&mcpFile{Format: f.format}).supports(&Server{Transport: "sse"}), errNoSSE)
+}
 
 // mcpRel is the agent's file in this project: OpenCode's opencode.jsonc
 // when that is the one the project has.
