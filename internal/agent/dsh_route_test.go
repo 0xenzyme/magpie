@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
 )
 
@@ -501,5 +502,50 @@ func TestDshSaidOnceSaysATroubleOnce(t *testing.T) {
 	}
 	if !said.first(trouble) {
 		t.Fatal("trouble after a quiet round was not said")
+	}
+}
+
+// Discord (01huadalang): 这些协议怎么改 responses，在 dsh 改了一会就会被
+// magpie 接管. The route was switched to OpenAI Responses in dsh's Models
+// page, and the next round wrote Chat Completions back. A protocol the
+// gateway speaks stays, at the address the vendor's SDK wants for it; one it
+// has no endpoint for goes back to Chat Completions.
+func TestDshRouteKeepsTheAPIPickedInDsh(t *testing.T) {
+	home, dir, web := dshRouteHome(t)
+	os.WriteFile(filepath.Join(dir, ".env"), []byte(dshKeyRef+"=magpie\n"), 0o600)
+	route := func(api, base string) string {
+		return "# Your patch layer for this dsh profile.\n" +
+			"- id: llm-pi-ai\n  name: \"@deepseek-ai/dsh-llm-pi-ai\"\n  config:\n    providers:\n" +
+			"      magpie:\n        displayName: Magpie\n        apiKeyEnv: " + dshKeyRef + "\n        api: " + api + "\n        baseURL: " + base + "\n        models:\n          - id: deepseek/pro\n" +
+			"- id: agent-default-model\n  config:\n    provider: magpie\n    model: deepseek/pro\n"
+	}
+	a := dsh(home)
+	for _, c := range []struct{ api, base, want, wantBase string }{
+		{"openai-responses", gatewayV1(), "openai-responses", gatewayV1()},
+		// dsh's Models page keeps the base as it was; Anthropic's SDK adds
+		// /v1/messages to it
+		{"anthropic-messages", gatewayV1(), "anthropic-messages", gateway.URL()},
+		{"google-generative-ai", gatewayV1(), "openai-completions", gatewayV1()},
+		{`""`, gatewayV1(), "openai-completions", gatewayV1()},
+	} {
+		os.WriteFile(web, []byte(route(c.api, c.base)), 0o644)
+		// a round of the loop, then a catalog sync
+		dshWiredOnce()
+		if err := a.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		b, _ := os.ReadFile(web)
+		s := string(b)
+		if !strings.Contains(s, "        api: "+c.want+"\n        baseURL: "+c.wantBase+"\n") || !strings.Contains(s, "- id: deepseek/flash") {
+			t.Fatalf("api %s: want %s at %s:\n%s", c.api, c.want, c.wantBase, s)
+		}
+		if d := a.Check(); d != "" {
+			t.Fatalf("api %s: %s", c.api, d)
+		}
+		// and the round after leaves it as it is
+		dshWiredOnce()
+		if again, _ := os.ReadFile(web); string(again) != s {
+			t.Fatalf("api %s written again:\n%s", c.api, again)
+		}
 	}
 }
