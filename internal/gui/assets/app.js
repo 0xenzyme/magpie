@@ -6680,6 +6680,8 @@ function renderFallback(p) {
       c.onclick = () => add(x.id);
       sugg.append(c);
     }
+    // only the first dozen are drawn: the rest are said to be there
+    if (hits.length > 12) sugg.append(el("span", "hint", t("{n} more — type to narrow", { n: hits.length - 12 })));
     if (!hits.length && f) sugg.append(el("span", "hint", f.includes("/") ? t("Enter adds {id}", { id: q.value.trim() }) : t("No model matches")));
   };
   q.onfocus = () => { open = true; draw(); };
