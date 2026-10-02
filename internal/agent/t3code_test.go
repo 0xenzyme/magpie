@@ -46,8 +46,20 @@ type t3Envelope struct {
 		BinaryPath   string `json:"binaryPath"`
 		HomePath     string `json:"homePath"`
 		CustomModels []struct {
-			Slug string `json:"slug"`
-			Name string `json:"name"`
+			Slug         string `json:"slug"`
+			Name         string `json:"name"`
+			Capabilities *struct {
+				OptionDescriptors []struct {
+					ID      string `json:"id"`
+					Label   string `json:"label"`
+					Type    string `json:"type"`
+					Options []struct {
+						ID        string `json:"id"`
+						Label     string `json:"label"`
+						IsDefault *bool  `json:"isDefault"`
+					} `json:"options"`
+				} `json:"optionDescriptors"`
+			} `json:"capabilities"`
 		} `json:"customModels"`
 	} `json:"config"`
 }
@@ -77,6 +89,23 @@ func t3Format(t *testing.T, raw []byte) t3Envelope {
 	for _, m := range e.Config.CustomModels {
 		if m.Slug == "" || m.Name == "" {
 			t.Errorf("custom model: %s", raw)
+		}
+		if m.Capabilities == nil {
+			continue
+		}
+		for _, d := range m.Capabilities.OptionDescriptors {
+			defaults := 0
+			for _, o := range d.Options {
+				if o.ID == "" || o.Label == "" {
+					t.Errorf("option: %s", raw)
+				}
+				if o.IsDefault != nil && *o.IsDefault {
+					defaults++
+				}
+			}
+			if d.ID == "" || d.Label == "" || d.Type != "select" || len(d.Options) == 0 || defaults != 1 {
+				t.Errorf("descriptor: %s", raw)
+			}
 		}
 	}
 	return e
@@ -228,5 +257,60 @@ func TestT3CodeHomeAndInstance(t *testing.T) {
 	}
 	if _, ok := file["providerInstances"]["claudeAgent"]; !ok {
 		t.Error("the user's Claude instance is gone")
+	}
+}
+
+// Each magpie model in T3 Code has a Reasoning pick of the levels it takes
+// that Claude Code can send, medium chosen first, else the lowest (KevinXC
+// on Discord: every model ran at medium with no way to change it); none
+// for a model with no such level.
+func TestT3CodeEfforts(t *testing.T) {
+	type opt struct {
+		id  string
+		def bool
+	}
+	pick := func(id string, efforts []string) []opt {
+		c := t3Capabilities(id, efforts)
+		if c == nil {
+			return nil
+		}
+		raw, _ := json.Marshal(c)
+		var caps struct {
+			OptionDescriptors []struct {
+				ID, Label, Type string
+				Options         []struct {
+					ID, Label string
+					IsDefault bool
+				}
+			}
+		}
+		json.Unmarshal(raw, &caps)
+		if len(caps.OptionDescriptors) != 1 || caps.OptionDescriptors[0].ID != "effort" || caps.OptionDescriptors[0].Type != "select" {
+			t.Fatalf("%s: %s", id, raw)
+		}
+		var out []opt
+		for _, o := range caps.OptionDescriptors[0].Options {
+			if o.Label == "" {
+				t.Errorf("%s: no label: %s", id, raw)
+			}
+			out = append(out, opt{o.ID, o.IsDefault})
+		}
+		return out
+	}
+	for _, c := range []struct {
+		id      string
+		efforts []string
+		want    []opt
+	}{
+		{"codex/gpt-6", []string{"none", "minimal", "low", "medium", "high", "xhigh"}, []opt{{"low", false}, {"medium", true}, {"high", false}, {"xhigh", false}}},
+		{"ds/deepseek-v4", []string{"high", "max"}, []opt{{"high", true}, {"max", false}}},
+		{"claude/claude-opus-4-6", []string{"low", "medium", "high", "xhigh", "max"}, []opt{{"low", false}, {"medium", true}, {"high", false}, {"max", false}}},
+		{"claude/claude-haiku-4-5", []string{"low", "medium", "high"}, nil},
+		{"glm/glm-4.6", []string{"none", "minimal"}, nil},
+		{"glm/glm-4.6", nil, nil},
+	} {
+		if got := pick(c.id, c.efforts); !slices.Equal(got, c.want) {
+			t.Errorf("%s %v: %v, want %v", c.id, c.efforts, got, c.want)
+		}
 	}
 }

@@ -9,7 +9,8 @@ package agent
 //
 //	{"providerInstances":{"<id>":{"driver":"claudeAgent","displayName":…,
 //	  "enabled":true,"environment":[{"name":…,"value":…,"sensitive":false}],
-//	  "config":{"customModels":[{"slug":…,"name":…}]}}}}
+//	  "config":{"customModels":[{"slug":…,"name":…,"capabilities":
+//	    {"optionDescriptors":[{"id":"effort","type":"select",…}]}}]}}}}
 //
 // A claudeAgent instance runs Claude Code (Anthropic's Agent SDK, the
 // user's ~/.claude settings read as Claude Code reads them) with the
@@ -18,7 +19,8 @@ package agent
 // own, "magpie": Claude Code pointed at the gateway (ANTHROPIC_BASE_URL and
 // the token Claude Code is routed with, so its requests are Claude Code's
 // to the gateway, tiers and all), every magpie model one of its custom
-// models, a 1M one marked [1m] as magpie marks it for Claude Code. It is
+// models, a 1M one marked [1m] as magpie marks it for Claude Code, with
+// a Reasoning pick of the levels it takes (t3Capabilities). It is
 // magpie's alone: the user's own instances, their custom models and T3's
 // other keys stay as they are, and off takes only it out. A binary path or
 // Claude home the user gave T3's own Claude is carried over, so it runs the
@@ -107,7 +109,11 @@ func t3InstanceJSON(path, gw string) map[string]any {
 	mark := claude1MFor("t3code")
 	models := []map[string]any{}
 	for _, m := range magpieModels("t3code") {
-		models = append(models, map[string]any{"slug": mark(m.ID), "name": m.Name})
+		e := map[string]any{"slug": mark(m.ID), "name": m.Name}
+		if c := t3Capabilities(m.ID, m.Efforts); c != nil {
+			e["capabilities"] = c
+		}
+		models = append(models, e)
 	}
 	config := map[string]any{"customModels": models}
 	for _, k := range []string{"binaryPath", "homePath"} {
@@ -129,4 +135,37 @@ func t3InstanceJSON(path, gw string) map[string]any {
 		},
 		"config": config,
 	}
+}
+
+// t3EffortLabels are T3 Code's names for Claude Code's levels, as its own
+// Claude models show them.
+var t3EffortLabels = map[string]string{"low": "Low", "medium": "Medium", "high": "High", "xhigh": "Extra High", "max": "Max"}
+
+// t3Capabilities is the pick T3 Code shows beside a custom model: without
+// one it shows none and sends no effort, so every magpie model ran at
+// whatever Claude Code took (KevinXC on Discord). It is Reasoning, the
+// levels of Claude Code's the model takes, medium chosen first as on T3's
+// own Claude models (else the lowest); T3 hands the level to Claude Code
+// as it is, which sends it to the gateway. nil for a model with no level
+// Claude Code can send.
+func t3Capabilities(id string, efforts []string) map[string]any {
+	var options []map[string]any
+	for _, l := range claudeEffortsFor(id) {
+		if contains(efforts, l) {
+			options = append(options, map[string]any{"id": l, "label": t3EffortLabels[l]})
+		}
+	}
+	if len(options) == 0 {
+		return nil
+	}
+	def := options[0]
+	for _, o := range options {
+		if o["id"] == "medium" {
+			def = o
+		}
+	}
+	def["isDefault"] = true
+	return map[string]any{"optionDescriptors": []map[string]any{
+		{"id": "effort", "label": "Reasoning", "type": "select", "options": options},
+	}}
 }
