@@ -431,6 +431,10 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.info)
+	// an OpenAI-compatible base URL answers too: Empryo lists a provider with
+	// no key of its own only when its baseURL does
+	mux.HandleFunc("GET /v1", s.info)
+	mux.HandleFunc("GET /v1/{$}", s.info)
 	mux.HandleFunc("GET /v1/models", s.models)
 	mux.HandleFunc("GET /models", s.models)
 	mux.HandleFunc("GET /v1/models/{id...}", s.model)
