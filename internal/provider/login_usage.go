@@ -221,11 +221,11 @@ func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
 // CodexUsedUp reports whether the ChatGPT account Codex is signed in to has
 // used up its allowance for now; false when that isn't known.
 func CodexUsedUp(ctx context.Context) bool {
+	// read as LoginUsage has it, fetched at most once a minute: the agent
+	// package asks on every catalog sync
+	u := LoginUsage(ctx, "codex")
 	for _, l := range Logins("codex") {
-		if !l.Active {
-			continue
-		}
-		if usedUp(loginQuota(ctx, l)) {
+		if q, ok := u[l.User]; l.Active && ok && q.Error == "" && usedUp(q) {
 			return true
 		}
 	}

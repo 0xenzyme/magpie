@@ -33,6 +33,9 @@ func TestMain(m *testing.M) {
 	} {
 		os.Unsetenv(k)
 	}
+	// whether Codex's ChatGPT account is out of its allowance is asked of
+	// OpenAI; never from here
+	codexUsedUp = func() bool { return false }
 	code := m.Run()
 	os.RemoveAll(home)
 	os.Exit(code)
