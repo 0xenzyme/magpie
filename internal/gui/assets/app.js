@@ -3452,7 +3452,12 @@ function gatewayModels() {
   // the routing groups first, as the agents' pickers list them
   const out = (providers.gateway.groups || []).map((g) => ({ id: g.id, name: g.name, icons: g.icons, group: true,
     provider: { name: [t("routing group"), g.providers.join(", ")].filter(Boolean).join(" · ") } }));
-  for (const p of providers.providers) for (const m of p.models) if (m.on) out.push({ id: `${p.id}/${m.id}`, name: m.name, provider: p, context: m.context });
+  // a provider switched off is skipped: the gateway refuses its models, so
+  // they are not ids an agent can use, and listing them here would show a
+  // model the picker's own list, the Gateway count and the Connect example
+  // all say works but a request to it turns away (the same off gate the
+  // backend's providerEntries and the fallback picker already honour).
+  for (const p of providers.providers) { if (p.off) continue; for (const m of p.models) if (m.on) out.push({ id: `${p.id}/${m.id}`, name: m.name, provider: p, context: m.context }); }
   return out;
 }
 
@@ -6635,7 +6640,7 @@ function renderFallback(p) {
   const q = input("", t("add a model: filter, or type provider/model…"));
   const all = [];
   for (const o of providers.providers) {
-    if (!o.ready) continue;
+    if (!o.ready || o.off) continue;
     for (const m of o.models) if (m.on) all.push({ id: o.id + "/" + m.id, label: o.name + " · " + (m.name || m.id), icon: o.icon });
   }
   let open = false;
