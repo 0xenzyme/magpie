@@ -23,6 +23,9 @@ type usageSniffer struct {
 	// ended: the stream's last event went by (message_stop, [DONE],
 	// response.completed …) or an error that ends it
 	ended bool
+	// failed: what an explicit error event said; a terminal event can end
+	// the stream successfully or with a failure despite its HTTP 200.
+	failed string
 }
 
 func newSniffer(proto provider.Protocol, contentType string) *usageSniffer {
@@ -60,6 +63,10 @@ func (s *usageSniffer) line(line []byte) {
 	}
 	if rest, ok := bytes.CutPrefix(line, []byte("event:")); ok && lastEvent(string(bytes.TrimSpace(rest))) {
 		s.ended = true // the name says so even when the data is too big to read
+		switch string(bytes.TrimSpace(rest)) {
+		case "error", "response.failed":
+			s.failed = "upstream stream failed"
+		}
 	}
 	if rest, ok := bytes.CutPrefix(line, []byte("data:")); ok {
 		rest = bytes.TrimPrefix(rest, []byte{' '})
@@ -92,8 +99,11 @@ func (s *usageSniffer) parse(b []byte) {
 		return
 	}
 	var t struct {
-		Type  string `json:"type"`
-		Error any    `json:"error"`
+		Type     string `json:"type"`
+		Error    any    `json:"error"`
+		Response struct {
+			Error any `json:"error"`
+		} `json:"response"`
 	}
 	if s.sse && json.Unmarshal(b, &t) == nil {
 		switch {
@@ -101,6 +111,17 @@ func (s *usageSniffer) parse(b []byte) {
 			s.ended = true
 		case t.Type == "":
 			s.ended = s.ended || t.Error != nil // a Chat stream's error
+		}
+		if t.Type == "error" || t.Type == "response.failed" || t.Type == "" && t.Error != nil {
+			body := b
+			if t.Type == "response.failed" {
+				body = nil
+				if t.Response.Error != nil {
+					body, _ = json.Marshal(map[string]any{"error": t.Response.Error})
+				}
+			}
+			s.failed = provider.APIError(body, "upstream stream failed")
+			s.u.ErrType = provider.ErrorType(body)
 		}
 	}
 	switch s.proto {

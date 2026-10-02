@@ -36,8 +36,12 @@ func otelAttributes(r Record) []otelAttribute {
 	if r.Served != "" {
 		a = append(a, otelString("gen_ai.response.model", r.Served))
 	}
-	if r.Status >= 400 {
-		a = append(a, otelString("error.type", strconv.Itoa(r.Status)))
+	if r.Failed() {
+		errType := "stream_error"
+		if r.Status >= 400 {
+			errType = strconv.Itoa(r.Status)
+		}
+		a = append(a, otelString("error.type", errType))
 	}
 	return a
 }
@@ -81,7 +85,7 @@ func (e *otelExporter) traces(records []Record) any {
 			a = append(a, otelString("langfuse.observation.output", otelReplyText(r.BodyOut)))
 		}
 		status := 0
-		if r.Status >= 400 {
+		if r.Failed() {
 			status = 2
 		}
 		op := r.Operation

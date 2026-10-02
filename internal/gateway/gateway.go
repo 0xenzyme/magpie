@@ -2128,6 +2128,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	if spaces != nil {
 		w.Write(spaces.flush())
 	}
+	if sse {
+		sniff.drain()
+	}
 	if sse && r.Context().Err() == nil && !sniff.whole() {
 		// the upstream died mid-reply, or ended it short of its last
 		// event: say so in the stream rather than end it as if whole,
@@ -2150,7 +2153,7 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			return res.StatusCode, failed, true
 		}
 	}
-	return res.StatusCode, "", true
+	return res.StatusCode, sniff.failed, true
 }
 
 // cutMidReply is what a stream whose read failed mid-reply is ended with:

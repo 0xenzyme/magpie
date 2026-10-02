@@ -355,7 +355,7 @@ func (t *trace) update(r *Route, f func(r *Route)) {
 				t.totals.Rerouted++
 			}
 		}
-		if r.Status >= 400 {
+		if r.Status >= 400 || r.Error != "" {
 			t.totals.Errors++
 		}
 		if keepRoutes {
