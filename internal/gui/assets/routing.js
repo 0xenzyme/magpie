@@ -1026,6 +1026,28 @@
     }
     renderSteps(r);
   }
+  // logoed puts the provider's logo before the first account, key or
+  // provider a line of the story names, so who it is about reads at a
+  // glance (the owner: 这里在前面显示对应的 provider 图标会不会更直观一点)
+  const logoOf = (w) => w.icon || w.preset || "generic";
+  function logoed(s, r) {
+    const word = /[A-Za-z0-9_]/;
+    let hit = null;
+    for (const w of r.order) {
+      for (const n of new Set([who(w), w.name].filter(Boolean))) {
+        for (let i = s.indexOf(n); i >= 0; i = s.indexOf(n, i + 1)) {
+          if (word.test(s[i - 1] || "") || word.test(s[i + n.length] || "")) continue;
+          if (!hit || i < hit.i || (i === hit.i && n.length > hit.n.length)) hit = { i, n, w };
+          break;
+        }
+      }
+    }
+    if (!hit) return [s];
+    const name = el("span", "rt-named");
+    name.append(icon(logoOf(hit.w)), hit.n);
+    return [s.slice(0, hit.i), name, s.slice(hit.i + hit.n.length)].filter((x) => x !== "");
+  }
+
   function renderSteps(r) {
     const items = [];
     const main = r.order.find((x) => !x.fallback);
@@ -1053,11 +1075,12 @@
       else if (tr.done && tr.status < 400 && tr.routed) items.push([routedWhy(tr), "aside", tr]);
     });
     if (r.done && !r.tries.length) items.push([t("Nothing was tried: {error}", { error: r.error || r.status }), "bad"]);
-    const key = JSON.stringify([r.kind, items.map(([s, c, tr]) => [s, c, tr?.model, tr?.served])]);
+    const key = JSON.stringify([r.kind, items.map(([s, c, tr]) => [s, c, tr?.model, tr?.served]), r.order.map(logoOf)]);
     if (stepsKey === key) return;
     stepsKey = key;
     steps.replaceChildren(...items.map(([s, c, tr]) => {
-      const li = el("li", c, s);
+      const li = el("li", c);
+      li.append(...(/^(why|ok|bad|wait|aside)$/.test(c) ? logoed(s, r) : [s]));
       if (c === "aside kind") li.prepend(kindTag(r), " ");
       if (c === "swap") li.prepend(swapTag(tr), " ");
       return li;

@@ -188,6 +188,8 @@
 /* what a call was for (a Codex guardian review, a title…): a quiet grey tag by the model */
 .rt-req .asked .kind, .rp-req .kind, .rt-steps li .kind { flex: none; font-size: 10.5px; line-height: 16px; padding: 0 5px; border-radius: 5px; color: var(--muted); background: var(--card-2); border: 1px solid var(--line); white-space: nowrap; }
 .rt-steps li .kind { display: inline-block; vertical-align: 1px; }
+.rt-steps li .rt-named { white-space: nowrap; }
+.rt-steps li .rt-named > .ic { width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px; }
 /* in a narrow row the model keeps its room first: the tag gives way, to an ellipsis */
 .rt-req .asked .kind { flex: 0 100 auto; min-width: 3.2em; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
 .rt-req .asked.kinded .m { flex: none; max-width: calc(100% - 3.2em - 40px); }
