@@ -224,6 +224,10 @@ type mover struct {
 	served func(model string, listed []string) bool
 }
 
+// movers are the deprecated built-ins and their plugins, by id. Once one
+// is moved, its plugin serves it and the built-in's code no longer does:
+// each built-in's files say so (PLUGIN-SERVED, AGENTS.md), and
+// TestMovedBuiltinsSayTheirPlugin fails for a mover added without that.
 var movers = map[string]*mover{}
 
 // errStays is a back's answer for a sign-in the built-in has nowhere to

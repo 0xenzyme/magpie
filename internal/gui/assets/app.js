@@ -6249,6 +6249,12 @@ function fallbackHint(p) {
 // opens the vendor's own sign-in in the browser, takes the account when it
 // comes back, and lists it with the others — any of them one click from
 // being the one in use.
+//
+// Some of these are deprecated: once moved onto their community plugin
+// (providers.onPlugins, the default for a new sign-in), the plugin signs in
+// and serves them, and subOf hands back the plugin's sign-in. A change to
+// such a built-in's sign-in on the Go side doesn't reach those users; see
+// AGENTS.md (PLUGIN-SERVED).
 
 const SUBS = [
   // both can also come from CLIProxyAPI's auth files or the agent's own (importing below)
