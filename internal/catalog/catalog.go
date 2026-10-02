@@ -485,6 +485,12 @@ func Thinks(id string) bool {
 	return thinks[bareID(id)]
 }
 
+// Knows reports whether models.dev lists a model of this id at all, under
+// any provider, as ContextOf and EffortsOf match it.
+func Knows(id string) bool {
+	return ContextOf(id) > 0 || len(EffortsOf(id)) > 0 || Thinks(id)
+}
+
 // SeesImages reports whether models.dev says a model of this id takes
 // images, as most of the providers it lists serving it do; for a vendor it
 // doesn't list, serving a model it knows from others ("z-ai/glm-5.3" is

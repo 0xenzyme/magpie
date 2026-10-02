@@ -551,7 +551,10 @@ func (p Provider) Exposed() []catalog.Model {
 			if m, ok := byID[id]; ok {
 				out = append(out, m)
 			} else {
-				out = append(out, catalog.Model{ID: id, Name: id, Provider: p.firstCatalog()})
+				// with the levels the gateway fits an effort to (Known),
+				// not the none effortsOf takes a vendor's word for: the
+				// vendor's list doesn't have it, so it gave no word (#597)
+				out = append(out, catalog.Model{ID: id, Name: id, Provider: p.firstCatalog(), Efforts: p.knownElsewhere(id)})
 			}
 		}
 		return out
@@ -617,8 +620,13 @@ func (p Provider) Known(model string) []string {
 			return []string{l}
 		}
 	}
-	// one of the vendor's own its list leaves out (a preview) or typed in:
-	// the vendor's word on it, before the others'
+	return p.knownElsewhere(model)
+}
+
+// knownElsewhere are the reasoning levels of a model the provider's list
+// doesn't have — one of the vendor's own its list leaves out (a preview),
+// or typed in: the vendor's word on it, before the others'.
+func (p Provider) knownElsewhere(model string) []string {
 	if e, ok := catalog.ListedBy(p.Catalogs(), model); ok {
 		return e
 	}

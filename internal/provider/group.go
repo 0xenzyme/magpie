@@ -26,6 +26,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/settings"
 )
 
@@ -497,7 +498,8 @@ func membersIn(entries []Entry, all []Group, g Group) []Member {
 // as the user named it, answering for its first member when an agent asks
 // what the model can do, and offering only the reasoning levels every
 // member has — but for those fixed at an effort of their own, which take
-// whatever the agent asks. With every member fixed, the group offers the
+// whatever the agent asks, and those whose levels nothing magpie reads
+// knows (levelsUnknown), which are sent it as asked. With every member fixed, the group offers the
 // levels they are fixed at, so that an agent still asks it to reason.
 // A group that names its own levels (Group.Levels) offers those, and so
 // does a group in it for its models.
@@ -527,9 +529,11 @@ func groupEntries(entries []Entry) []Entry {
 			var efforts []string
 			images, thinks, ctx, output := false, false, 0, 0
 			var imageInput *bool
+			unknown := false
 			for _, x := range entries {
 				if x.Provider.ID == m.Provider.ID && x.Model == m.Model {
 					efforts, images, thinks, ctx, output, imageInput = x.Efforts, x.Images, x.Reasoning, x.Context, x.Output, x.ImageInput
+					unknown = levelsUnknown(x)
 				}
 			}
 			e.Reasoning = e.Reasoning && thinks
@@ -553,6 +557,14 @@ func groupEntries(entries []Entry) []Entry {
 				if !slices.Contains(fixed, m.Effort) {
 					fixed = append(fixed, m.Effort)
 				}
+				continue
+			} else if unknown {
+				// nothing magpie reads says which levels it takes, or that
+				// it takes none: the gateway sends it the effort asked as
+				// it is (fitEffort), so it doesn't take the others' away —
+				// a Token Plan's deepseek-v4-pro-202606 beside a TokenHub
+				// deepseek-v4-pro left the group none, and Pi only off
+				// (#597)
 				continue
 			}
 			ultra = ultra || slices.Contains(efforts, "ultra")
@@ -584,6 +596,23 @@ func groupEntries(entries []Entry) []Entry {
 		out = append(out, e)
 	}
 	return out
+}
+
+// levelsUnknown reports whether nothing magpie reads says which reasoning
+// levels the model of x takes, or that it takes none: it has none in the
+// catalog, no account's list gives it, its vendor and its maker don't list
+// it, and models.dev lists no model of its id at all.
+func levelsUnknown(x Entry) bool {
+	if len(x.Efforts) > 0 || x.Provider.Account != nil && x.Provider.Account.models != nil {
+		return false
+	}
+	if _, ok := catalog.ListedBy(x.Provider.Catalogs(), x.Model); ok {
+		return false
+	}
+	if _, ok := catalog.ListedBy(makerCatalogs(), x.Model); ok {
+		return false
+	}
+	return !catalog.Knows(x.Model)
 }
 
 // SaveGroup adds or replaces a group of the user's. Changing one magpie
