@@ -85,6 +85,7 @@
         <li><code>auth</code> gives the sign-in methods, plus a <code>loader</code> whose <code>fetch</code> makes each request.</li>
         <li><code>provider.models</code> lists the models one account has.</li>
         <li><code>auth.usage</code> says how much of the plan is used. It is magpie’s own hook, and OpenCode ignores it.</li>
+        <li><code>auth.refresh</code> renews an account’s token before it runs out, once at a time. It is magpie’s own hook too.</li>
       </ul>
       An agent can send in any API. The gateway translates the request into the API the model speaks (chat completions, Responses, Anthropic Messages or Gemini), hands it to the plugin’s <code>fetch</code>, and streams the answer back.</div>
 
@@ -333,7 +334,7 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
     <p>If what failed was the sign-in, throw an error with <code>signIn: "expired"</code> on it. The account is then marked as needing a new sign-in (see <a href="#signin-state">Sign-in state</a>).</p>
 
     <h2 id="signin"><a class="anchor" href="#signin">Signing in</a></h2>
-    <p>The <code>auth</code> hook is <code>{ provider, methods, loader, usage?, icon?, maxConcurrency? }</code>. Each method is a way to sign in that the user can pick. In the app the methods are buttons; in a terminal, <code>magpie plugin login &lt;id&gt; [&lt;method&gt;]</code> asks which one.</p>
+    <p>The <code>auth</code> hook is <code>{ provider, methods, loader, usage?, refresh?, refreshLead?, icon?, maxConcurrency? }</code>. Each method is a way to sign in that the user can pick. In the app the methods are buttons; in a terminal, <code>magpie plugin login &lt;id&gt; [&lt;method&gt;]</code> asks which one.</p>
     <h3>An API key</h3>
     <div class="code">
       <span class="lang">api method</span>
@@ -397,7 +398,33 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
           <li><code>client.auth.set({ path: { id: "acme" }, body })</code> saves to that account.</li>
         </ul>
         So keep per-account state by the auth you were given, not in a module variable keyed by the provider.</li>
-      <li><b>Refreshing.</b> When a token runs out, refresh it in <code>fetch</code> and save the whole object with <code>client.auth.set</code>. What you give replaces what was kept; nothing is merged.</li>
+      <li><b>Refreshing.</b> Give <code>auth.refresh</code> and magpie renews the token for you (see <a href="#renew">Renewing a sign-in</a>). Otherwise, when a token runs out, refresh it in <code>fetch</code> and save the whole object with <code>client.auth.set</code>. What you give replaces what was kept; nothing is merged.</li>
+    </ul>
+    <h3 id="renew">Renewing a sign-in</h3>
+    <p>From magpie 0.1.684, a plugin can leave renewing its tokens to magpie with <code>auth.refresh</code>, magpie’s own hook (OpenCode ignores it):</p>
+    <div class="code">
+      <span class="lang">auth hook</span>
+      <pre>auth: {
+  provider: <span class="s">"acme"</span>,
+  methods: [ … ],
+  <span class="c">// optional: how long before expires to renew (ms), 5 minutes by default</span>
+  refreshLead: 5 * 60 * 1000,
+  async refresh(auth, provider) {  <span class="c">// auth is the account's saved sign-in</span>
+    const t = await exchange(auth.refresh)
+    if (t.error === <span class="s">"invalid_grant"</span>)
+      throw Object.assign(new Error(<span class="s">"Acme refused the sign-in"</span>), { signIn: <span class="s">"expired"</span> })
+    return { access: t.access_token, refresh: t.refresh_token ?? auth.refresh,
+             expires: Date.now() + t.expires_in * 1000 }
+  },
+  loader: async (getAuth) =&gt; ({ … }),  <span class="c">// getAuth() already gives the renewed token</span>
+}</pre>
+    </div>
+    <ul>
+      <li><b>When it runs.</b> For an OAuth account whose <code>expires</code> is less than <code>refreshLead</code> away, before the account’s loader, <code>provider.models</code>, <code>auth.usage</code> or a request. An account with <code>expires</code> 0 or none is never renewed.</li>
+      <li><b>Once at a time.</b> Requests that find the token due wait for one renewal, so a vendor that spends a refresh token once never sees it twice. They wait up to 15 seconds; a renewal that takes longer is still saved when it ends.</li>
+      <li><b>What is saved.</b> The fields you return are kept over the account’s old ones (merged, unlike <code>client.auth.set</code>), and the account’s mark is cleared. Return nothing when there is nothing to renew.</li>
+      <li><b>When it fails.</b> The account is left as it was and the request goes on with the old token, for the vendor’s answer to tell. An error with <code>signIn: "expired"</code> marks the account (see <a href="#signin-state">Sign-in state</a>), and magpie doesn’t try again until it is signed in again. Any other error is tried again after 30 seconds.</li>
+      <li><b>OpenCode and older magpie.</b> They ignore the hook. Keep the check in your <code>fetch</code> too if the plugin runs there: under magpie it finds the token fresh and does nothing.</li>
     </ul>
 
     <h2 id="requests"><a class="anchor" href="#requests">Requests</a></h2>
@@ -567,7 +594,7 @@ m plugin logout acme</pre>
 
     <h2 id="faq"><a class="anchor" href="#faq">FAQ</a></h2>
     <h3>Does my OpenCode plugin work in magpie unchanged?</h3>
-    <p>Yes, as long as it signs in and makes requests through <code>auth</code>, <code>config</code>, <code>provider</code> and <code>chat.headers</code>. What magpie adds (<code>auth.usage</code>, <code>magpie.icon</code>, <code>maxConcurrency</code>, <code>free</code>, <code>rate</code>, <code>X-Magpie-Sign-In</code>) is ignored by OpenCode, so one package serves both.</p>
+    <p>Yes, as long as it signs in and makes requests through <code>auth</code>, <code>config</code>, <code>provider</code> and <code>chat.headers</code>. What magpie adds (<code>auth.usage</code>, <code>auth.refresh</code>, <code>magpie.icon</code>, <code>maxConcurrency</code>, <code>free</code>, <code>rate</code>, <code>X-Magpie-Sign-In</code>) is ignored by OpenCode, so one package serves both.</p>
     <h3>Why is my provider called <code>…-plugin</code>?</h3>
     <p>Its id is one magpie already has. See <a href="#ids">Provider ids</a>.</p>
     <h3>Some of my helper functions run as plugins.</h3>

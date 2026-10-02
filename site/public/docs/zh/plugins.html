@@ -85,6 +85,7 @@
         <li><code>auth</code> 给出登录方式，以及一个 <code>loader</code>，由它的 <code>fetch</code> 发出每个请求。</li>
         <li><code>provider.models</code> 列出某个账号有哪些模型。</li>
         <li><code>auth.usage</code> 说明套餐用了多少。这是 magpie 自己的钩子，OpenCode 会忽略它。</li>
+        <li><code>auth.refresh</code> 在账号的 token 过期前续期，同一时间只续一次。它也是 magpie 自己的钩子。</li>
       </ul>
       agent 用什么 API 发来都可以。网关把请求转成模型使用的 API（chat completions、Responses、Anthropic Messages 或 Gemini），交给插件的 <code>fetch</code>，再把回答流式传回去。</div>
 
@@ -333,7 +334,7 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
     <p>如果失败的原因是登录失效，就抛出带 <code>signIn: "expired"</code> 的错误，这个账号会被标记为需要重新登录（见<a href="#signin-state">登录状态</a>）。</p>
 
     <h2 id="signin"><a class="anchor" href="#signin">登录</a></h2>
-    <p><code>auth</code> 钩子的形式是 <code>{ provider, methods, loader, usage?, icon?, maxConcurrency? }</code>。每个 method 是用户可选的一种登录方式。在应用里它们是按钮；在终端里，<code>magpie plugin login &lt;id&gt; [&lt;method&gt;]</code> 会询问选哪个。</p>
+    <p><code>auth</code> 钩子的形式是 <code>{ provider, methods, loader, usage?, refresh?, refreshLead?, icon?, maxConcurrency? }</code>。每个 method 是用户可选的一种登录方式。在应用里它们是按钮；在终端里，<code>magpie plugin login &lt;id&gt; [&lt;method&gt;]</code> 会询问选哪个。</p>
     <h3>API key</h3>
     <div class="code">
       <span class="lang">api 方式</span>
@@ -397,7 +398,33 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
           <li><code>client.auth.set({ path: { id: "acme" }, body })</code> 保存到这个账号。</li>
         </ul>
         所以每个账号的状态要按拿到的 auth 来保存，不要放进以供应商为键的模块变量。</li>
-      <li><b>刷新。</b>token 过期时，在 <code>fetch</code> 里刷新，再用 <code>client.auth.set</code> 保存完整对象。你给的内容会替换原有内容，不做合并。</li>
+      <li><b>刷新。</b>提供 <code>auth.refresh</code>，magpie 就会替你续期（见<a href="#renew">续期登录</a>）。否则 token 过期时，在 <code>fetch</code> 里刷新，再用 <code>client.auth.set</code> 保存完整对象。你给的内容会替换原有内容，不做合并。</li>
+    </ul>
+    <h3 id="renew">续期登录</h3>
+    <p>从 magpie 0.1.684 起，插件可以用 <code>auth.refresh</code> 把 token 续期交给 magpie。这是 magpie 自己的钩子（OpenCode 会忽略它）：</p>
+    <div class="code">
+      <span class="lang">auth 钩子</span>
+      <pre>auth: {
+  provider: <span class="s">"acme"</span>,
+  methods: [ … ],
+  <span class="c">// 可选：在 expires 之前多久续期（毫秒），默认 5 分钟</span>
+  refreshLead: 5 * 60 * 1000,
+  async refresh(auth, provider) {  <span class="c">// auth 是这个账号保存的登录信息</span>
+    const t = await exchange(auth.refresh)
+    if (t.error === <span class="s">"invalid_grant"</span>)
+      throw Object.assign(new Error(<span class="s">"Acme 拒绝了登录"</span>), { signIn: <span class="s">"expired"</span> })
+    return { access: t.access_token, refresh: t.refresh_token ?? auth.refresh,
+             expires: Date.now() + t.expires_in * 1000 }
+  },
+  loader: async (getAuth) =&gt; ({ … }),  <span class="c">// getAuth() 拿到的已经是续期后的 token</span>
+}</pre>
+    </div>
+    <ul>
+      <li><b>什么时候运行。</b>OAuth 账号的 <code>expires</code> 距现在不到 <code>refreshLead</code> 时，在这个账号的 loader、<code>provider.models</code>、<code>auth.usage</code> 或请求之前运行。<code>expires</code> 为 0 或没有的账号不会续期。</li>
+      <li><b>同一时间只续一次。</b>发现 token 快过期的请求会一起等同一次续期，所以只允许 refresh token 用一次的厂商不会收到两次。最多等 15 秒；超时的续期在完成时照样保存。</li>
+      <li><b>保存什么。</b>你返回的字段会覆盖账号原有的同名字段（会合并，这点和 <code>client.auth.set</code> 不同），账号的标记也会清除。没什么可续的就什么都不返回。</li>
+      <li><b>失败时。</b>账号保持原样，请求带着旧 token 继续发，由厂商的回答来说明结果。带 <code>signIn: "expired"</code> 的错误会标记账号（见<a href="#signin-state">登录状态</a>），重新登录之前 magpie 不再尝试。其他错误 30 秒后再试。</li>
+      <li><b>OpenCode 和旧版 magpie。</b>它们会忽略这个钩子。如果插件也要在那里运行，<code>fetch</code> 里的检查请保留：在 magpie 下它会发现 token 是新的，什么也不做。</li>
     </ul>
 
     <h2 id="requests"><a class="anchor" href="#requests">请求</a></h2>
@@ -567,7 +594,7 @@ m plugin logout acme</pre>
 
     <h2 id="faq"><a class="anchor" href="#faq">答疑</a></h2>
     <h3>我的 OpenCode 插件不改就能在 magpie 里用吗？</h3>
-    <p>可以，只要它通过 <code>auth</code>、<code>config</code>、<code>provider</code> 和 <code>chat.headers</code> 来登录和发请求。magpie 增加的部分（<code>auth.usage</code>、<code>magpie.icon</code>、<code>maxConcurrency</code>、<code>free</code>、<code>rate</code>、<code>X-Magpie-Sign-In</code>）OpenCode 都会忽略，所以一个包能同时服务两边。</p>
+    <p>可以，只要它通过 <code>auth</code>、<code>config</code>、<code>provider</code> 和 <code>chat.headers</code> 来登录和发请求。magpie 增加的部分（<code>auth.usage</code>、<code>auth.refresh</code>、<code>magpie.icon</code>、<code>maxConcurrency</code>、<code>free</code>、<code>rate</code>、<code>X-Magpie-Sign-In</code>）OpenCode 都会忽略，所以一个包能同时服务两边。</p>
     <h3>为什么我的供应商叫 <code>…-plugin</code>？</h3>
     <p>它的 id 在 magpie 里已经有了。见<a href="#ids">供应商 id</a>。</p>
     <h3>我的一些辅助函数被当成插件运行了。</h3>

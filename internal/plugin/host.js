@@ -46,6 +46,8 @@ const loaded = [] // {spec, id, error}
 const loaders = new Map() // account → options the auth loader returned
 const sessions = new Map() // oauth sign-in in progress → its authorize result
 const inflight = new Map() // fetch id → AbortController
+const renewing = new Map() // account → its sign-in's renewal under way
+const unrenewed = new Map() // account → its last renewal that failed: {at, secret, gone}
 let config = { provider: {} } // what the plugins' config hooks made of it
 
 // ---- a provider's own proxy ---------------------------------------------------
@@ -616,8 +618,9 @@ async function info(id, key, strict) {
   for (const h of hooks) {
     const ph = h.hooks.provider
     if (ph?.id !== id || typeof ph.models !== "function") continue
+    const k = key ?? accountsOf(readAuth(), id)[0] ?? id
+    await fresh(id, k)
     const all = readAuth()
-    const k = key ?? accountsOf(all, id)[0] ?? id
     try {
       const given = JSON.parse(JSON.stringify(out))
       const l = { tried: false, lastOk: false }
@@ -877,12 +880,96 @@ async function apiKey({ provider, method, inputs, key, account }) {
   return { ok: true, ...save(provider, at, r, inputs, key) }
 }
 
+// ---- renewing a sign-in ------------------------------------------------------
+
+// A plugin may leave renewing its accounts' tokens to magpie (magpie's own
+// hook, which OpenCode ignores):
+//   auth.refresh(auth, provider) → the account's sign-in renewed: the
+//     fields to keep over the old ({ access, refresh, expires, … }), or
+//     nothing when there is nothing to renew. It throws when it can't; an
+//     error with signIn "expired" says the vendor turned the sign-in away
+//     for good, and the account is marked.
+//   auth.refreshLead: how long (ms) before expires a token is renewed,
+//     5 minutes when not said.
+// An OAuth sign-in whose expires is that close is renewed before its
+// loader, models, usage or a request runs, once at a time per account: the
+// requests that find it due wait for the one renewal (a vendor that spends
+// a refresh token once turns a second away). A renewal that fails leaves
+// the sign-in as it was, for the vendor's answer to tell, and isn't tried
+// again for RENEW_RETRY, or, turned away for good, till it is signed in
+// again.
+
+const RENEW_LEAD = 5 * 60 * 1000
+const RENEW_WAIT = 15 * 1000
+const RENEW_RETRY = 30 * 1000
+
+function leadOf(a) {
+  const v = a?.refreshLead
+  return Number.isFinite(v) && v >= 0 ? Math.min(v, 24 * 3600e3) : RENEW_LEAD
+}
+
+// renewAt is when the sign-in at key is due to be renewed, 0 for never: an
+// OAuth one with an expiry, of a plugin that renews through magpie.
+function renewAt(a, stored) {
+  if (typeof a?.refresh !== "function" || stored?.type !== "oauth") return 0
+  const exp = Number(stored.expires)
+  return Number.isFinite(exp) && exp > 0 ? Math.max(1, exp - leadOf(a)) : 0
+}
+
+// fresh renews the sign-in at key when it is due, waiting at most
+// RENEW_WAIT for it: a renewal that takes longer goes on, and is kept when
+// it ends, but what waits for it goes on with the sign-in as it is.
+async function fresh(provider, key) {
+  const a = auths().get(provider)?.auth
+  const stored = readAuth()[key]
+  const at = renewAt(a, stored)
+  if (!at || Date.now() < at) return
+  const f = unrenewed.get(key)
+  if (f && f.secret === secretOf(stored) && (f.gone || Date.now() - f.at < RENEW_RETRY)) return
+  let r = renewing.get(key)
+  if (!r) {
+    pending++ // the host doesn't leave in the middle of it
+    r = renew(provider, key, a).finally(() => {
+      renewing.delete(key)
+      done()
+    })
+    renewing.set(key, r)
+  }
+  let t
+  await Promise.race([r, new Promise((ok) => (t = setTimeout(ok, RENEW_WAIT)))])
+  clearTimeout(t)
+}
+
+async function renew(provider, key, a) {
+  const was = readAuth()[key]
+  const at = renewAt(a, was)
+  if (!at || Date.now() < at) return // renewed meanwhile
+  let got
+  try {
+    got = await inScope(provider, key, () => a.refresh(JSON.parse(JSON.stringify(was)), provider))
+  } catch (e) {
+    unrenewed.set(key, { at: Date.now(), secret: secretOf(was), gone: e?.signIn === "expired" })
+    if (e?.signIn === "expired") send({ event: "signIn", provider, account: key, said: "expired" })
+    send({ event: "log", level: "error", message: `${auths().get(provider)?.spec ?? provider}: auth.refresh: ${e?.message ?? e}` })
+    return
+  }
+  if (!got || typeof got !== "object") return
+  // signed out, or signed in again, while it ran: that one stands
+  const now = readAuth()[key]
+  if (!now || secretOf(now) !== secretOf(was) || now.access !== was.access) return
+  const { type: _t, ...fields } = got
+  unrenewed.delete(key)
+  setAuth(key, { ...was, ...fields, type: "oauth" })
+  send({ event: "signIn", provider, account: key, said: "renewed" })
+}
+
 // ---- requests ----------------------------------------------------------------
 
 // options is what the provider's auth loader returned for the account at
 // key, run once per sign-in as OpenCode runs it once per start. Run in
 // the account's scope, whatever the loader keeps (its fetch) saves to it.
 async function options(provider, key) {
+  await fresh(provider, key)
   if (loaders.has(key)) return loaders.get(key)
   const a = auths().get(provider)?.auth
   const stored = readAuth()[key]
@@ -936,6 +1023,7 @@ async function usageOf(provider, account) {
   if (typeof a?.usage !== "function") throw new Error(`${provider}'s plugin doesn't tell its usage`)
   const key = accountKey(provider, account)
   if (!readAuth()[key]) throw new Error("not signed in")
+  await fresh(provider, key)
   const p = await info(provider, key)
   const u = (await inScope(provider, key, () => a.usage(async () => readAuth()[key], JSON.parse(JSON.stringify(p))))) ?? {}
   const when = (v) => {
