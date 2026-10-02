@@ -4032,6 +4032,16 @@ function renderAdd() {
   const focusPick = hadFocus && active.closest("[data-pick]")?.dataset.pick;
   const selection = hadFocus && active.matches(".find") ? [active.selectionStart, active.selectionEnd] : null;
   sheet.replaceChildren();
+  // A sheet put away by a redraw rather than rolled up (a sign-in done
+  // opens its account's editor, an import or an action closes it) takes
+  // what it held with it, as closeAddSheet does: a click in it still held
+  // the page where the sheet had been, and the room made for that was left
+  // under a list now ending far above it — the page blank (#509).
+  if (!adding && !sheet.hidden) {
+    const view = $("#view-providers");
+    if (held?.v === view) held = null;
+    setRoom(view, 0);
+  }
   sheet.hidden = !adding;
   // Duplicate and Add another open a new provider's editor with no sheet
   if (!adding) return editing && typeof editing === "object" ? renderEditor(null, editing.preset) : null;
