@@ -4324,7 +4324,12 @@ function input(value, placeholder, type = "text") {
   i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") cancelEdit(); };
   return i;
 }
-function cancelEdit() { editing = null; draft = null; importing = null; importingApps = null; renderProviders(); }
+// keep: leaving the page, a sign-in under way in the editor goes on; the
+// editor put away (Cancel, Escape, a click outside) takes it with it (#526)
+function cancelEdit(keep) {
+  if (keep !== true) dropSigningIn(editing);
+  editing = null; draft = null; importing = null; importingApps = null; renderProviders();
+}
 
 // proxyPicker: the proxy one provider's requests go through (#237) — the
 // one in Settings, none, or its own — so Codex can go through a proxy
@@ -6564,6 +6569,17 @@ function cancelSignIn() {
   renderProviders();
 }
 
+// dropSigningIn: the editor of provider id closing (Cancel, Save, Remove)
+// leaves no sign-in of its account waiting behind it, to come back with the
+// editor (#526: 无论我点击底部的移除、取消、保存都没办法); an import being
+// read is left to finish.
+function dropSigningIn(id) {
+  const p = typeof id === "string" && providers?.providers?.find((x) => x.id === id);
+  if (!p?.account || !signing || signing.agent !== p.account.agent || signing.state === "importing") return;
+  if (signing.id) api("signin/" + signing.id + "/cancel", {}).catch(() => {});
+  signing = null;
+}
+
 // renderSigning: where a sign-in stands, in place of the button that
 // started it — waiting on the browser, or what went wrong.
 function renderSigning(sub) {
@@ -6652,7 +6668,11 @@ function renderSigning(sub) {
     const acts = el("span", "acts");
     const open = el("button", "link", t("Open again"));
     open.onclick = () => api("open", { url: signing.url }).catch(() => {});
-    acts.append(open);
+    // a sign-in left unfinished is put away from beside the link too (#526)
+    const close = el("button", "link", t("Close"));
+    close.title = t("Stop waiting for this sign-in");
+    close.onclick = cancelSignIn;
+    acts.append(open, close);
     tt.append(acts);
   }
   if (signing.pasteCallback || signing.pasteCode || signing.pasteKey) {
@@ -7747,7 +7767,9 @@ function renderMove(p) {
 
 async function providerAction(action, body, okMsg, base = "provider/") {
   try {
+    const was = editing;
     providers = await api(base + action, body);
+    dropSigningIn(was); // saved or removed, the editor takes its sign-in with it
     editing = null;
     draft = null;
     importing = null;
@@ -12725,7 +12747,7 @@ function show(v) {
   requestAnimationFrame(back);
   closePicker();
   closeAgentModels();
-  if (v !== "providers" && editing !== null) cancelEdit();
+  if (v !== "providers" && editing !== null) cancelEdit(true);
   if (v === "gateway") loadGatewayKeys();
   if (v === "providers" || v === "gateway" || v === "routing") loadProviders().then(back, (e) => status(e.message, "err"));
   if (v === "usage") loadUsage(true).then(back, (e) => status(e.message, "err"));

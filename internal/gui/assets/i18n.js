@@ -576,6 +576,7 @@ const I18N = {
     "{name} is used through its own CLI, which isn't on this computer yet. magpie is installing it with the official installer; the sign-in page opens as soon as it's done.": "{name} 需要通过它自己的 CLI 使用，这台电脑上还没有安装。magpie 正在用官方安装脚本安装，装好后会立即打开登录页面。",
     "magpie opened the sign-in page. The account shows up here as soon as you're done.": "magpie 已打开登录页面，完成后账号会立即出现在这里。",
     "Open again": "重新打开",
+    "Stop waiting for this sign-in": "不再等待这次登录",
     "Copy link": "复制链接",
     "Sign-in link": "登录链接",
     "Account in use": "正在使用的账号",

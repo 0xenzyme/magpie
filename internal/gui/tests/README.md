@@ -957,6 +957,16 @@ with a click, with no left-border accent. The copy button beside it
 says it was copied. Open again is still there, and nothing scrolls. The
 checks run in English and Chinese, in Chromium and WebKit.
 
+`signin-close.test.cjs` puts away a sign-in for another account left
+unfinished (#526). In Qoder's editor at the issue's window size, Add another
+→ Sign in anyway waits with Qoder's long device link: the box and every
+button in it stay inside the account list (the link is cut short, Cancel in
+sight), and Close sits beside Open again. Close posts signin/<id>/cancel,
+stops the polling and brings Add another back without moving the page; the
+box's Cancel does the same, and so do the editor's Cancel and Save, so the
+editor opened again has no box. English and Chinese, Chromium and WebKit;
+the API is faked.
+
 `signin-paste-codex.test.cjs` checks a ChatGPT sign-in finished from its
 pasted address, for a magpie the browser can't reach (on a server, in
 Docker). While the sign-in waits, the box says to copy the address of the
