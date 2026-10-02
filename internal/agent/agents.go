@@ -89,6 +89,7 @@ func All() []*Agent {
 		zcode(home),
 		workbuddy(home),
 		pencil(home),
+		t3code(home),
 		hanako(home),
 		alma(),
 		cindy(),

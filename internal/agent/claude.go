@@ -1012,10 +1012,14 @@ func claudeViaMagpie(fold bool) []Option {
 // or not, and compacts it, over and over, long before it runs out; a ref
 // written in bare (typed, or picked while the window wasn't known) was left
 // that way.
-func claude1M() func(ref string) string {
+func claude1M() func(ref string) string { return claude1MFor("claude") }
+
+// claude1MFor is claude1M for a Claude Code run by another agent, by the
+// models magpie shows that one (T3 Code's, t3code.go).
+func claude1MFor(agent string) func(ref string) string {
 	const mark = "[1m]"
 	window := map[string]int{}
-	for _, m := range magpieModels("claude") {
+	for _, m := range magpieModels(agent) {
 		window[m.ID] = m.Context
 	}
 	return func(ref string) string {

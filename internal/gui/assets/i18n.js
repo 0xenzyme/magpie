@@ -297,6 +297,7 @@ const I18N = {
     "{name} added back": "已加回 {name}",
     "auth": "认证",
     "agent default": "Agent 默认值",
+    "every magpie model as a provider in T3 Code, on Claude Code": "magpie 的全部模型作为 T3 Code 里的一个供应商（经 Claude Code 运行）",
     "default": "默认",
     "off": "关闭",
     "none": "不思考",
