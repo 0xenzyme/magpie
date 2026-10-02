@@ -1445,11 +1445,11 @@ WebKit, in English and Chinese:
 node --test internal/gui/tests/seg-contrast.test.cjs
 ```
 
-`agent-grip.test.cjs` checks that hiding an agent can be found without a
-right-click or hovering (#479, #537): every row in the Agents list draws a
-faint grip in its left margin, beside its logo, with the pointer away, and the
-row under the pointer draws it darker; the logo stays the logo on hover (no
-second grip over it); dragging the grip
+`agent-grip.test.cjs` checks an agent row's grip: with the pointer away no
+row in the Agents list draws it (always there it was clutter, the owner:
+一直出现太丑了), the row under the pointer draws it in its left margin, beside
+its logo, and it goes again when the pointer leaves; the logo stays the logo
+on hover (no second grip over it); dragging the grip
 moves the row, and clicking it opens the row's menu, whose Hide puts the row in the fold
 at the foot of the list. Opened, the fold's Show button is there without the
 pointer on its row, and brings the row back; no click moves the page. It runs
