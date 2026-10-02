@@ -583,6 +583,19 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get(provider.VideomakersHeader) != "" {
 		data = append(data, videomakerObjects()...)
 	}
+	// ?format=text: the ids one a line, to paste into a client that takes
+	// its models typed by hand, one a line, and asks no list of its own
+	// (ZCode's custom provider), from a browser on another computer with
+	// the gateway key as ?key=
+	if r.URL.Query().Get("format") == "text" {
+		var b strings.Builder
+		for _, m := range data {
+			fmt.Fprintln(&b, m["id"])
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		io.WriteString(w, b.String())
+		return
+	}
 	out := map[string]any{"object": "list", "data": data, "has_more": false}
 	if len(data) > 0 {
 		out["first_id"], out["last_id"] = data[0]["id"], data[len(data)-1]["id"]

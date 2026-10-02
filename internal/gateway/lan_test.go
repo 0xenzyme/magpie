@@ -1,10 +1,12 @@
 package gateway
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -239,5 +241,49 @@ func TestLANModelsWithKeyBesideAnotherToken(t *testing.T) {
 	// this computer is counted by the key beside a token too
 	if c, _ := list("127.0.0.1:50123", "/v1/models", "Authorization", "Bearer anything", "x-api-key", key); c != 200 || who != keys[0].ID {
 		t.Fatalf("loopback: %d, counted as %q", c, who)
+	}
+}
+
+// ZCode's custom provider asks no model list; its models are typed one a
+// line (悠悠哥 on Discord: from magpie on a NAS nothing filled it, while a
+// magpie on this computer writes its models into ZCode's own config).
+// /v1/models?format=text gives the ids one a line to paste there, opened
+// in a browser on another computer with the key as ?key=; without a key it
+// is refused as the list is.
+func TestLANModelsAsText(t *testing.T) {
+	setup(t, provider.Chat, &fake{t: t})
+	t.Setenv("MAGPIE_ADDR", "")
+	_, secrets := newCaller(t, "PC")
+	h := lanGuard(New().Handler())
+	get := func(path string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "http://192.168.0.200:3425"+path, nil)
+		r.RemoteAddr = "192.168.0.9:50123"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	w := get("/v1/models?format=text&key=" + secrets[0])
+	if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") {
+		t.Fatalf("%d %s", w.Code, w.Header().Get("Content-Type"))
+	}
+	lines := strings.Split(strings.TrimSuffix(w.Body.String(), "\n"), "\n")
+	if !slices.Contains(lines, "fake/m1") || slices.ContainsFunc(lines, func(l string) bool { return l == "" || strings.ContainsAny(l, "{\" ") }) {
+		t.Fatalf("lines %q", lines)
+	}
+	// the JSON list's ids, in its order
+	j := get("/v1/models?key=" + secrets[0])
+	var list struct{ Data []struct{ ID string } }
+	if err := json.Unmarshal(j.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, m := range list.Data {
+		ids = append(ids, m.ID)
+	}
+	if !slices.Equal(ids, lines) {
+		t.Fatalf("text %q, json %q", lines, ids)
+	}
+	if w := get("/v1/models?format=text"); w.Code != http.StatusUnauthorized {
+		t.Fatalf("no key: %d", w.Code)
 	}
 }
