@@ -487,7 +487,10 @@ after its name, a grey count only past one account (the Claude subscription's
 global and China presets one row with no tag, the regions' hosts in its
 title, its editor picking the region with the key typed kept; the custom provider a line at the foot,
 gone while searching; the dialog growing out of the row clicked on a spring
-and folding back into it on close; in English and Chinese.
+and folding back into it on close, the focus back on the row it came from;
+Duplicate and Add another opening a new editor with no sheet, cancelled back
+to the list; the search's Escape emptying it and never hiding the tray; in
+English and Chinese.
 
 `own-signin-remove.test.cjs` opens the Kiro subscription's accounts with
 kiro-cli's own sign-in behind one of magpie's, then alone and first: its
@@ -542,16 +545,17 @@ with those built-ins deleted, the panel's tabs and the window's pages are
 drawn with no page error. It cannot run an old engine, so syntax is judged
 by the parse, not by running it.
 
-`add-button.test.cjs` retains the background from Image #28: “添加供应商要固定在底栏底部，
-然后点击的时候要自动滚动到供应商列表。现在只有第二次点击的时候才会滚到供应商列表”.
-The overlay replaces that scrolling interaction. It also guards the logo flicker
-report: “每次打开或者关闭弹窗的时候，Provider的logo都会重新刷新一遍”.
-
-It keeps "Add provider" at the view's foot over a long
-list and checks that the sheet overlays it without changing row positions or
-scroll height. Repeated opening and closing, Escape, and backdrop dismissal
-leave no blank space. A nested editor keeps every logo. Runs in English and
-Chinese on Chromium and WebKit.
+`add-button.test.cjs` keeps the Providers page's "Add provider" at the
+view's foot over a long list, at the top and at the end alike; one click
+with the list scrolled to its end opens the sheet under the list and takes
+the view down to it (in WebKit too); the button steps aside while the sheet's
+head is in sight and, scrolled back up, takes the view to the sheet again; a
+dialog opened and closed over the page keeps every logo it drew rather than
+making them afresh; and the sheet closed by its Close, twice over, or by
+Escape leaves no blank under the list, the focus back on "Add provider"
+(#433 made it a dialog over the list for that blank; it unrolls under the
+list again, the editor being the only layer over the page); in English and
+Chinese.
 
 `usage-ledger.test.cjs` opens the Usage page's Requests, a row per request
 from a faked `/api/usage/requests`: the columns, the model asked for, the

@@ -83,10 +83,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await page.locator('#providers .row[data-id="anthropic"]').click();
           await page.locator("#modal .bar").getByRole("button", { name: label, exact: true }).click();
           await page.locator("#modal .editor.new").waitFor();
-          assert(await page.locator("#addBackdrop").isHidden(), "direct editor leaves sheet closed");
+          assert(await page.locator("#addSheet").isHidden(), "direct editor leaves sheet closed");
           await page.keyboard.press("Escape");
           await page.locator("#modal").waitFor({ state: "hidden" });
-          assert(await page.locator("#addBackdrop").isHidden(), "cancel returns to list");
+          assert(await page.locator("#addSheet").isHidden(), "cancel returns to list");
         }
         await page.locator("#addProvider").click();
         const sheet = page.locator("#addSheet");
@@ -193,20 +193,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator("#modal").waitFor({ state: "hidden" });
 
         assert(await row("Kimi").evaluate(e => e === document.activeElement), "return focus to the re-rendered option");
-        await page.keyboard.press("Tab");
-        assert(await sheet.evaluate(e => e.contains(document.activeElement)), "Tab remains in the sheet");
-        // Every control is reachable in both directions, including Safari's
-        // default mode where native Tab skips buttons.
-        const controls = sheet.locator("button, input, select, textarea, a[href], [tabindex]");
-        const count = await controls.count();
-        let focusIndex = await controls.evaluateAll(es => es.indexOf(document.activeElement));
-        for (const key of ["Tab", "Shift+Tab"]) {
-          for (let i = 0; i < count + 2; i++) {
-            focusIndex = (focusIndex + (key === "Tab" ? 1 : -1) + count) % count;
-            await page.keyboard.press(key);
-            assert.equal(await controls.evaluateAll(es => es.indexOf(document.activeElement)), focusIndex, key + " follows the explicit order");
-          }
-        }
         // Keyboard activation and a mouse close also restore the option.
         await row("Kimi").focus();
         await page.keyboard.press("Enter");
