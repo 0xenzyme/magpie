@@ -65,6 +65,7 @@ func served(rest, key string, tokens int) {
 // when it has one, the candidate's model-specific rest.
 func servedCandidate(c candidate, tokens int) {
 	served(c.restKey(), c.restKey(), tokens)
+	provider.NoteServed(c.p, time.Now())
 	if id := c.restID(); id != c.restKey() {
 		clearRest(id)
 	}

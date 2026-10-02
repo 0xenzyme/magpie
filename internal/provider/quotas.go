@@ -79,6 +79,11 @@ type Quota struct {
 	Renew string     `json:"renew,omitempty"`
 	// Resets are a Codex account's rate-limit resets, when it holds any.
 	Resets *ResetCredits `json:"resets,omitempty"`
+	// LastServedAt is when the account, plan or key last answered a
+	// request through the gateway, nil when it hasn't in the last 30 days
+	// (served.go); Last is on the latest of them (#570).
+	LastServedAt *time.Time `json:"lastServedAt,omitempty"`
+	Last         bool       `json:"last,omitempty"`
 }
 
 // QuotaSpan is one window of an allowance: how much of it is used and
@@ -114,7 +119,7 @@ func QuotaReport(ctx context.Context, now time.Time) []Quota {
 			out = append(out, r)
 		}
 	}
-	return out
+	return withServed(out, LastServed())
 }
 
 // ResetClock is when a window starts again, on the clock: "14:30" today,

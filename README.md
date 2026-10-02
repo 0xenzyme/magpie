@@ -588,6 +588,12 @@ so a UI can follow a turn with one request at a time. Only the session
 named is told; like `/v1/magpie/quotas`, it answers this machine, and
 another only with the key of a gateway shared on the local network.
 
+To show the one in use without a session, `GET /v1/magpie/quotas` (and
+`magpie quota --json`, the same list) has `lastServedAt` on each
+subscription account, plan and key that answered a request through the
+gateway in the last 30 days, and `last: true` on the latest. It is kept
+in `served.json` beside `providers.json`, so a restart keeps it.
+
 The *Gateway* tab in the app has this as copy buttons and ready-made
 snippets (shell, curl, Python, Node) for each API, the list of model ids,
 and the recent calls; `MAGPIE_DEBUG=1` logs every call to the terminal.
