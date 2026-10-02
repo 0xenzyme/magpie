@@ -2472,6 +2472,7 @@ document.addEventListener("mousedown", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || pick) return;
   if (editing !== null || importingApps) cancelEdit();
+  else if (adding && !$("#view-providers").hidden && providers.providers.length) closeAddSheet();
   else if (profileEscape()) e.preventDefault();
   else if (mode === "panel") api("window/hide", {});
 });
@@ -3824,16 +3825,38 @@ function pickForAgent(a, p, btn, ev) {
 }
 
 // The add sheet: presets first (a key is all they need), custom last.
-let presetQuery = "";
+let presetQuery = "", addReturnPick = null;
 function renderAdd() {
   const sheet = $("#addSheet");
+  const scrollTop = sheet.querySelector(".tiles")?.scrollTop || 0;
+  const active = document.activeElement;
+  const hadFocus = sheet.contains(active);
+  const focusPick = hadFocus && active.closest("[data-pick]")?.dataset.pick;
+  const selection = hadFocus && active.matches(".find") ? [active.selectionStart, active.selectionEnd] : null;
   sheet.replaceChildren();
   sheet.hidden = !adding;
-  if (!adding) return null;
+  const overlay = adding && providers.providers.length > 0;
+  const backdrop = $("#addBackdrop");
+  backdrop.hidden = !adding;
+  backdrop.classList.toggle("add-overlay", overlay);
+  sheet.setAttribute("role", overlay ? "dialog" : "region");
+  sheet.setAttribute("aria-label", t("Add a provider"));
+  if (overlay) sheet.setAttribute("aria-modal", "true");
+  else sheet.removeAttribute("aria-modal");
+  for (const node of $("#view-providers").children) if (node !== backdrop) node.inert = overlay;
+  // New-provider editors also open directly from Duplicate / Add another.
+  if (!adding) return editing && typeof editing === "object" ? renderEditor(null, editing.preset) : null;
   const head = el("div", "row-head");
   head.append(el("span", "label", t(providers.providers.length ? "Add a provider" : "Add your first provider")), el("span", "grow"));
   const q = input(presetQuery, t("Find a vendor…"));
   q.className = "find";
+  q.onkeydown = (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (overlay) closeAddSheet();
+    else { q.value = presetQuery = ""; drawTiles(); }
+  };
   q.oninput = () => { presetQuery = q.value; drawTiles(); };
   head.append(q);
   const imp = el("button", "text", t("Import…"));
@@ -3842,7 +3865,7 @@ function renderAdd() {
   head.append(imp);
   if (providers.providers.length) {
     const x = el("button", "text", t("Close"));
-    x.onclick = () => rollUpSheet(sheet, () => { adding = false; editing = null; draft = null; presetQuery = ""; renderProviders(); });
+    x.onclick = closeAddSheet;
     head.append(x);
   }
   sheet.append(head);
@@ -3921,6 +3944,12 @@ function renderAdd() {
     }
   };
   drawTiles();
+  tiles.scrollTop = scrollTop;
+  if (hadFocus && $("#modal").hidden) {
+    const target = focusPick && sheet.querySelector(`[data-pick="${CSS.escape(focusPick)}"]`);
+    focusAddControl(target || q);
+    if (selection) q.setSelectionRange(...selection);
+  }
   return editing && typeof editing === "object" ? renderEditor(null, editing.preset) : null;
 }
 
@@ -4483,6 +4512,11 @@ function closeModal() {
     d.replaceChildren();
     for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.cancel();
     d.style.opacity = d.style.transform = m.style.opacity = "";
+    const sheet = $("#addSheet");
+    if (adding && !sheet.hidden && !$("#view-providers").hidden) {
+      const option = addReturnPick && sheet.querySelector(`[data-pick="${CSS.escape(addReturnPick)}"]`);
+      focusAddControl(option || sheet.querySelector(".find"));
+    }
   }, () => {});
   return done;
 }
@@ -4536,7 +4570,6 @@ function draftOf(p) {
 // keys (copyOf). A signed-in account has no copy.
 function duplicateProvider(p) {
   const name = t("{name} copy", { name: p.name });
-  adding = true;
   editing = p.preset && providers.presets.some((x) => x.id === p.preset) ? { preset: p.preset } : { custom: true };
   const d = draftOf(p);
   draft = { ...d, id: slug(name), name, chosen: [], extra: d.chosen, copyOf: p.id };
@@ -5011,7 +5044,7 @@ function drawEditor(p, presetID) {
     // another key of the vendor, or the same key for another workspace
     const more = el("button", "text", t("Add another {name}", { name: pr.name }));
     more.title = t("One more {name} provider, with its own key, headers and models", { name: pr.name });
-    more.onclick = () => { adding = true; editing = { preset: pr.id }; draft = null; renderProviders(); };
+    more.onclick = () => { editing = { preset: pr.id }; draft = null; renderProviders(); };
     bar.append(more);
   }
   if (p) {
@@ -7436,76 +7469,56 @@ function editorError(msg, kind = "err") {
 function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
 function hostOf(u) { try { return new URL(u.includes("://") ? u : "https://" + u).host; } catch { return ""; } }
 
-// the sheet opens below the list: it unrolls on the rows' spring and the
-// view goes down with it. The button stays at the view's foot however long
-// the list is; with the sheet already open it takes the view down to it,
-// and it steps aside while the sheet's head is in sight.
-$("#addProvider").onclick = (e) => {
-  const view = $("#view-providers"), sheet = $("#addSheet");
-  if (!adding) {
-    adding = true; editing = null; draft = null; renderProviders();
-    return unrollSheet(view, sheet, e);
-  }
-  if (!scrollOnPurpose(e, 700)) return;
-  const from = view.scrollTop;
-  const to = Math.min(from + sheet.getBoundingClientRect().top - view.getBoundingClientRect().top - 12, view.scrollHeight - view.clientHeight);
-  if (calm()) { view.scrollTop = to; return; }
-  const t0 = performance.now(), ease = (x) => 1 - Math.pow(1 - x, 3);
-  let set = from;
-  const step = (now) => {
-    if (Math.abs(view.scrollTop - set) > 2) return; // the reader took it
-    const x = Math.min(1, (now - t0) / 520);
-    view.scrollTop = Math.round(from + (to - from) * ease(x));
-    set = view.scrollTop;
-    if (x < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
+// Float over the list without changing its height or the reader's position.
+$("#addProvider").onclick = () => {
+  adding = true; editing = null; draft = null;
+  renderAdd();
+  const sheet = $("#addSheet");
+  if (!calm()) sheet.animate([
+    { opacity: 0, transform: "translateY(24px)" },
+    { opacity: 1, transform: "none" },
+  ], { duration: 240, easing: "cubic-bezier(.22, 1, .36, 1)" });
+  sheet.querySelector(".find")?.focus({ preventScroll: true });
 };
-new IntersectionObserver(([en]) => {
-  $("#view-providers .after-list").classList.toggle("away", !en.target.hidden && en.isIntersecting);
-}, { root: $("#view-providers") }).observe($("#addSheet"));
-
-// unrollSheet opens a sheet just drawn at the foot of a view from nothing to
-// its height, what's in it easing down into place, and takes the view down
-// with it until the sheet's top is 12px under the view's. The scroll is led
-// by the height, frame by frame, from when the sheet reaches the view's foot
-// to when it is whole: it scrolls only into room the sheet has made, so it
-// never runs ahead to be held back and jump, nor stops short; and it is
-// the view's own scrollTop, which WebKit animates where it won't a smooth
-// scrollIntoView. The reader scrolling meanwhile has the view from then on.
-function unrollSheet(view, sheet, e) {
-  const from = view.scrollTop, room = view.scrollHeight - view.clientHeight;
-  const to = Math.max(from, Math.min(from + sheet.getBoundingClientRect().top - view.getBoundingClientRect().top - 12, room));
-  const h = sheet.offsetHeight;
-  // how tall the sheet is when it reaches the view's foot, where the view
-  // can start to move: from there the view goes down as it grows
-  const x0 = Math.max(0, h - (room - from));
-  const go = scrollOnPurpose(e, ROW_OPEN.ms + 300); // opened by a click, not by code
-  if (!h || matchMedia("(prefers-reduced-motion: reduce)").matches) { if (go) view.scrollTop = to; return; }
-  const pad = getComputedStyle(sheet);
-  sheet.style.overflow = "hidden";
-  const grow = sheet.animate([
-    { height: "0px", paddingTop: "0px", paddingBottom: "0px" },
-    { height: h + "px", paddingTop: pad.paddingTop, paddingBottom: pad.paddingBottom },
-  ], { duration: ROW_OPEN.ms + 60, easing: `cubic-bezier(${ROW_OPEN.ease})` });
-  for (const c of sheet.children) {
-    c.animate([{ opacity: 0, transform: "translateY(-6px)" }, { opacity: 1, transform: "none" }],
-      { duration: 340, delay: 60, easing: "cubic-bezier(.22, 1, .36, 1)", fill: "backwards" });
-  }
-  // what the view is at once the sheet starts at no height: a page that
-  // was scrolled to its end is clamped shorter (WebKit), not moved by the reader
-  let set = view.scrollTop;
-  const follow = () => {
-    if (!go || Math.abs(view.scrollTop - set) > 2) return; // the reader took it
-    const done = grow.playState === "finished";
-    view.scrollTop = Math.round(from + (to - from) * (done ? 1 : Math.min(1, Math.max(0, sheet.offsetHeight - x0) / (h - x0))));
-    set = view.scrollTop; // as far as there was room for
-    if (!done) requestAnimationFrame(follow);
-  };
-  const end = () => { sheet.style.overflow = ""; };
-  grow.finished.then(() => { end(); follow(); }, end);
-  requestAnimationFrame(follow);
+function closeAddSheet() {
+  adding = false; presetQuery = ""; addReturnPick = null;
+  renderAdd();
+  $("#addProvider").focus({ preventScroll: true });
 }
+$("#addBackdrop").onclick = (e) => {
+  if (e.target === e.currentTarget && e.currentTarget.classList.contains("add-overlay")) closeAddSheet();
+};
+$("#addBackdrop").addEventListener("wheel", (e) => {
+  if (!e.currentTarget.classList.contains("add-overlay")) return;
+  const tiles = $("#addSheet .tiles");
+  if (!tiles?.contains(e.target) || tiles.scrollHeight <= tiles.clientHeight) e.preventDefault();
+}, { passive: false });
+$("#addSheet").addEventListener("click", (e) => {
+  addReturnPick = e.target.closest("[data-pick]")?.dataset.pick || null;
+}, true);
+// Move only the sheet's options, never the background list, to reveal focus.
+function focusAddControl(control) {
+  if (!control) return;
+  control.focus({ preventScroll: true });
+  const tiles = $("#addSheet .tiles");
+  if (!tiles?.contains(control)) return;
+  const r = control.getBoundingClientRect(), b = tiles.getBoundingClientRect();
+  if (r.top < b.top) tiles.scrollTop += r.top - b.top;
+  else if (r.bottom > b.bottom) tiles.scrollTop += r.bottom - b.bottom;
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || $("#view-providers").hidden || !$("#modal").hidden || !$("#addBackdrop").classList.contains("add-overlay")) return;
+  const controls = [...$("#addSheet").querySelectorAll("button, input, select, textarea, a[href], [tabindex]")]
+    .filter((node) => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
+  // Safari may skip buttons in its native Tab order. Use the same explicit
+  // order in every engine, including when starting at a middle option.
+  e.preventDefault();
+  if (!controls.length) return;
+  const at = controls.indexOf(document.activeElement);
+  const next = at < 0 ? (e.shiftKey ? controls.length - 1 : 0)
+    : (at + (e.shiftKey ? -1 : 1) + controls.length) % controls.length;
+  focusAddControl(controls[next]);
+}, true);
 
 // unrollInView: the agents' scroll unrolls under the button clicked for it,
 // and in a view with no more room below (the panel at its tallest, the
@@ -7535,21 +7548,6 @@ function unrollInView(fold, button, e) {
     else grown.disconnect();
   };
   requestAnimationFrame(frame);
-}
-
-// rollUpSheet closes it the other way, quicker, and then does what closing
-// it does.
-function rollUpSheet(sheet, then) {
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return then();
-  const pad = getComputedStyle(sheet);
-  sheet.style.overflow = "hidden";
-  const a = sheet.animate([
-    { height: sheet.offsetHeight + "px", paddingTop: pad.paddingTop, paddingBottom: pad.paddingBottom, opacity: 1 },
-    { height: "0px", paddingTop: "0px", paddingBottom: "0px", opacity: 0 },
-  ], { duration: ROLLUP.ms - 80, easing: `cubic-bezier(${ROLLUP.ease})`, fill: "forwards" });
-  // held shut until it is hidden, then let go, so it is never seen whole again
-  const done = () => { then(); a.cancel(); sheet.style.overflow = ""; };
-  a.finished.then(done, done);
 }
 
 // ---------- usage ----------
@@ -12239,6 +12237,8 @@ function keepHeld() {
 }
 addEventListener("click", (e) => {
   purposeUntil = flingUntil = 0; // what came before the click (Space pressed on a button, a tremble, the lift of a tap) is no scroll
+  // Floating controls cannot anchor the list: scrolling it never moves them.
+  if (e.target.closest?.("#addBackdrop.add-overlay, #addProvider")) { held = null; return; }
   const v = e.target.closest?.(".view");
   if (!v || v.hidden) { held = null; return; }
   // a click before a frame has held the one before it (a tab list's keys
