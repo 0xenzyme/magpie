@@ -820,6 +820,8 @@ const I18N = {
     "Right-click to test just this model": "右键可单独测试这个模型",
     "Right-click a model to test just it": "右键点击某个模型可单独测试它",
     "Test this model": "测试此模型",
+    "A classifier's models aren't sent test requests: Test under Endpoints asks Jev's endpoint for them.": "分类器的模型不能单独发测试请求：用「端点」下的「测试」向 Jev 的端点获取它们。",
+    "{name} is reached through its own API, which magpie translates each agent request for, so a test request can't be sent to it on its own. Ask the model from an agent to try it.": "{name} 走的是它自己的接口，magpie 会为 Agent 的每个请求做转换，所以无法单独给它发测试请求。请在 Agent 里用这个模型试一下。",
     "{model} answered in {ms} ms": "{model} 在 {ms} 毫秒内响应",
     "{model} didn't answer: {error}": "{model} 没有响应：{error}",
     "Testing…": "测试中…",

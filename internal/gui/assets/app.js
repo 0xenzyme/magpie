@@ -1360,6 +1360,8 @@ function openRowMenu(anchor, acts) {
     b.disabled = !!o.off;
     b.append(svg(o.icon, 13, 1.5), el("span", "rm-name", t(o.name)));
     if (o.key) b.append(el("span", "rm-key", o.key));
+    // an item that is off can say why, under its name and as its title
+    if (o.why) { b.classList.add("has-why"); b.title = o.why; b.querySelector(".rm-name").append(el("span", "rm-why", o.why)); }
     b.onclick = (e) => { e.stopPropagation(); closeAgentMenu(); o.run(); };
     b.onmouseenter = () => b.focus({ preventScroll: true });
     box.append(b);
@@ -5745,6 +5747,14 @@ function renderEndpoints(p, src) {
   return eps;
 }
 
+// modelTestWhy: why a provider's models can't each be sent a test request
+// (the server's providerJSON.modelTest), in words, or "" when they can
+function modelTestWhy(p) {
+  if (p.modelTest === "decide") return t("A classifier's models aren't sent test requests: Test under Endpoints asks Jev's endpoint for them.");
+  if (p.modelTest === "own-api") return t("{name} is reached through its own API, which magpie translates each agent request for, so a test request can't be sent to it on its own. Ask the model from an agent to try it.", { name: p.name });
+  return "";
+}
+
 // modelTests: what each provider's models answered Test models, by id; a
 // model still being asked is null
 const modelTests = {};
@@ -5766,16 +5776,19 @@ function renderModels(p) {
     c.title = !x ? t("Testing…") : x.ok ? t("Answered in {ms} ms", { ms: x.ms }) : (x.status ? x.status + " · " : "") + x.error;
   };
   // a chip's right-click (or the menu key) tests that model alone: Test models
-  // asks every one, and a list of many takes a while (yonghe, Discord)
-  const testable = !p.decide && !p.account;
+  // asks every one, and a list of many takes a while (yonghe, Discord). A
+  // signed-in account is tested as a key is; where no test request can be
+  // sent the menu still opens, its item off and saying why (ARNO, Discord:
+  // 有些provider里的模型可以右击检测，有些却不可以)
+  const noTest = modelTestWhy(p);
   const menu = (c, id) => {
-    if (!testable) return;
-    c.title = (c.title ? c.title + "\n" : "") + t("Right-click to test just this model");
+    if (!noTest) c.title = (c.title ? c.title + "\n" : "") + t("Right-click to test just this model");
     c.oncontextmenu = (e) => {
       e.preventDefault();
       const again = agentMenu?.anchor === c;
       closeAgentMenu();
-      if (!again) openRowMenu(c, [{ name: "Test this model", icon: "M5.5 3.75v8.5L12.25 8z", run: () => testOne(id) }]);
+      if (!again) openRowMenu(c, [noTest ? { name: "Test this model", icon: "M5.5 3.75v8.5L12.25 8z", off: true, why: noTest, run() {} }
+        : { name: "Test this model", icon: "M5.5 3.75v8.5L12.25 8z", run: () => testOne(id) }]);
     };
   };
   const box = el("div", "models");
@@ -6002,7 +6015,8 @@ function renderModels(p) {
   rename.title = t("Rename the models agents see, or offer fewer of their reasoning levels");
   rename.onclick = () => { naming = naming === p.id ? null : p.id; rename.classList.toggle("on", naming === p.id); drawNames(); };
   foot.append(add, refresh);
-  if (!p.decide && !p.account) foot.append(testAll);
+  if (noTest) { testAll.disabled = true; testAll.title = noTest; }
+  foot.append(testAll);
   foot.append(rename);
   if (p.fetched) foot.append(el("span", "hint", t("vendor list · {when}", { when: ago(p.fetched) })));
   // a signed-in account's list, until the vendor gives one, is magpie's own
