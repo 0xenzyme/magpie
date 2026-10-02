@@ -134,6 +134,12 @@ type Settings struct {
 	// "off" turns the video a request that names no model gets off too
 	// (gateway.videomaker).
 	ImageGen string `json:"imageGen,omitempty"`
+	// Searcher is the provider that searches the web for a model that
+	// can't: "<provider>" with the small model magpie picks of it,
+	// "<provider>/<model>", or empty for the one magpie picks
+	// (gateway.searcher). One that is gone, off or can't search gives way
+	// to magpie's pick.
+	Searcher string `json:"searcher,omitempty"`
 	// TrayUsages are the subscriptions and plans whose windows are shown
 	// beside the tray icon, in the order shown, each by its provider and
 	// account ("claude|a@b.c"); none when empty.
@@ -581,6 +587,7 @@ func Save(s Settings) error {
 	if s.Vision != "" && s.Vision != "off" && !strings.Contains(s.Vision, "/") {
 		return fmt.Errorf("the vision model must be a model's id such as openai/gpt-5-mini, or off, not %q", s.Vision)
 	}
+	s.Searcher = strings.TrimSpace(s.Searcher)
 	s.ImageGen = strings.TrimSpace(s.ImageGen)
 	if s.ImageGen != "" && s.ImageGen != "off" && !strings.Contains(s.ImageGen, "/") {
 		return fmt.Errorf("the image generation model must be a model's id such as openai/gpt-image-1, or off, not %q", s.ImageGen)

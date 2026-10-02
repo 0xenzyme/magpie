@@ -6,6 +6,7 @@ package gui
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"embed"
@@ -223,6 +224,13 @@ type settingsJSON struct {
 	SearchAPIs     []searchAPIJSON    `json:"searchAPIs"`
 	SearchVendors  []searchVendorJSON `json:"searchVendors"`
 	SearchProvider string             `json:"searchProvider,omitempty"`
+	// the providers Settings' Searcher may name, the one magpie picks when
+	// it names none, why the one it names isn't used (gateway.Searcher*),
+	// and the relays said to search that are never asked to (#359)
+	SearchChoices []searchChoiceJSON `json:"searchChoices"`
+	SearchAuto    string             `json:"searchAuto,omitempty"`
+	SearchUnused  string             `json:"searchUnused,omitempty"`
+	SearchRelays  []string           `json:"searchRelays,omitempty"`
 	// the GitHub token the library asks GitHub with, masked, and where it
 	// is from ("settings", GITHUB_TOKEN or GH_TOKEN); never the token
 	GitHubTokenMask string `json:"githubTokenMask,omitempty"`
@@ -256,6 +264,16 @@ type searchAPIJSON struct {
 	Ready  bool   `json:"ready"`
 }
 
+// searchChoiceJSON is a provider that can search for a model that can't,
+// with the model it searches with when none is named, and its models.
+type searchChoiceJSON struct {
+	ID     string     `json:"id"`
+	Name   string     `json:"name"`
+	Icon   string     `json:"icon,omitempty"`
+	Small  string     `json:"small"`
+	Models []modelRef `json:"models"`
+}
+
 type searchVendorJSON struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
@@ -276,6 +294,19 @@ func searchState(s *settingsJSON) {
 		s.SearchVendors = append(s.SearchVendors, searchVendorJSON{ID: v.ID, Name: v.Name, KeysURL: v.KeysURL, NeedURL: v.Base == ""})
 	}
 	s.SearchProvider = gateway.Searcher()
+	s.SearchAuto, s.SearchUnused = gateway.AutoSearcher(), gateway.SearcherUnused()
+	s.SearchChoices = []searchChoiceJSON{}
+	for _, c := range gateway.Searchers() {
+		p := c.Provider
+		j := searchChoiceJSON{ID: p.ID, Name: p.Name, Icon: p.Icon, Small: c.Small, Models: []modelRef{}}
+		for _, m := range c.Models {
+			j.Models = append(j.Models, modelRef{ID: p.ID + "/" + m.ID, Name: cmp.Or(m.Name, m.ID), Provider: p.ID, PName: p.Name, Icon: p.Icon})
+		}
+		s.SearchChoices = append(s.SearchChoices, j)
+	}
+	for _, p := range gateway.RelaysSaidToSearch() {
+		s.SearchRelays = append(s.SearchRelays, p.Name)
+	}
 }
 
 func settingsState() settingsJSON {
@@ -668,6 +699,13 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		if v := strings.TrimSpace(in.ImageGen); v != "" && v != "off" && v != cur.ImageGen {
 			if _, _, ok := provider.Resolve(v); !ok {
 				fail(rw, fmt.Errorf("no model %s to generate images", v))
+				return
+			}
+		}
+		if v := strings.TrimSpace(in.Searcher); v != "" && v != cur.Searcher {
+			id, _, _ := strings.Cut(v, "/")
+			if !slices.ContainsFunc(gateway.Searchers(), func(c gateway.SearcherChoice) bool { return c.Provider.ID == id }) {
+				fail(rw, fmt.Errorf("%s can't search the web for other models", id))
 				return
 			}
 		}

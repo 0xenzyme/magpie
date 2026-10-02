@@ -12040,7 +12040,7 @@ function renderSettings() {
   renderProxy(s, keep);
   renderGitHubToken(s);
   renderImages(s, keep);
-  renderSearch(s);
+  renderSearch(s, keep);
   renderRedact(s, keep);
   renderOTel(s, keep);
   renderLAN(s);
@@ -12723,9 +12723,10 @@ function renderImageGen(s, keep, box) {
 // runs (SearXNG). They are set on their own; one magpie refuses is said in
 // the row, what was typed kept.
 let searchDraft = { vendor: "tavily", key: "", url: "", err: "" };
-function renderSearch(s) {
+function renderSearch(s, keep) {
   const box = $("#searchList");
   box.replaceChildren();
+  renderSearcher(s, keep, box);
   const row = (name, sub, ...tools) => {
     const r = el("div", "row pref");
     const who = el("div", "who");
@@ -12792,6 +12793,54 @@ function renderSearch(s) {
     const what = [a.key || (a.ready ? "" : t("needs its key")), a.url].filter(Boolean).join(" · ");
     row(`${n + 1}. ${a.name}`, what, x).classList.add("search-api");
   });
+}
+
+// renderSearcher: the provider that searches the web for a model that
+// can't — the one magpie picks, or one named, by itself (its small model)
+// or with a model of it. One named that is gone, off or can't search gives
+// way to magpie's pick, which the row says. Relays said to search aren't
+// offered (#359), and the row says why when there are some.
+function renderSearcher(s, keep, box) {
+  const choices = s.searchChoices || [];
+  const v = s.searcher || "";
+  const named = (id) => {
+    const [pid, ...rest] = id.split("/");
+    const c = choices.find((x) => x.id === pid);
+    if (!c) return id;
+    if (!rest.length) return `${c.name} · ${c.small}`;
+    const m = c.models.find((x) => x.id === id);
+    return `${m ? m.name : rest.join("/")} · ${c.name}`;
+  };
+  const icOf = (id) => choices.find((x) => x.id === id.split("/")[0])?.icon;
+  const r = el("div", "row pref searcher-row");
+  const who = el("div", "who");
+  const sub = el("div", "sub", t("When a model can't search the web, this provider searches for it, and gives it what it found"));
+  if (v && s.searchUnused) {
+    const why = { gone: t("it is no longer in magpie"), off: t("it is turned off"), cant: t("it can't search the web by itself"), nomodel: t("it lists no model") }[s.searchUnused] || s.searchUnused;
+    sub.append(" · ", el("span", "warn searcher-unused", t("{who} isn't used: {why}, so magpie picks one", { who: named(v), why })));
+  }
+  if (s.searchRelays?.length) sub.append(" · ", el("span", "searcher-relays",
+    t("Relays said to search ({names}) aren't offered: they would spend the relay's quota on other models' searches, and many refuse magpie's own requests", { names: s.searchRelays.join(", ") })));
+  who.append(el("div", "name", t("Searches for other models")), sub);
+  const b = el("button", "rt-cond on searcher-pick");
+  b.type = "button";
+  b.setAttribute("aria-label", t("Searches for other models"));
+  if (v && !s.searchUnused) b.append(icon(icOf(v) || "generic"), el("span", "", named(v)));
+  else {
+    if (s.searchAuto) b.append(icon(choices[0]?.icon || "generic"));
+    b.append(el("span", "", t("Automatic") + " · " + (s.searchAuto || t("no provider that searches"))));
+  }
+  const options = [{ value: "", label: t("Automatic"), note: s.searchAuto || t("no provider that searches"), reset: true }];
+  for (const c of choices) {
+    options.push({ value: c.id, label: t("{model}, its small model", { model: c.small }), note: c.name, icon: c.icon, group: c.name });
+    for (const m of c.models) options.push({ value: m.id, label: m.name || m.id, note: c.name, icon: c.icon, group: c.name, ref: m.id });
+  }
+  b.onclick = (ev) => openPicker({ id: "", name: "", fields: [] }, { key: "searcher", label: "model", value: v, options,
+    onPick: (id) => { if (id !== v) savePrefs({ ...keep, searcher: id }); } }, b, ev);
+  const val = el("div", "val");
+  val.append(b);
+  r.append(who, val);
+  box.append(r);
 }
 
 // renderRedact: what the gateway masks before a request goes to a vendor —
@@ -13129,7 +13178,7 @@ function prefsKeep(s) {
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, noStats: !!s.noStats,
     noUpdatePill: !!s.noUpdatePill, noAutoUpdate: !!s.noAutoUpdate, updateEvery: s.updateEvery || 360,
-    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, vision: s.vision || "", imageGen: s.imageGen || "", currency: s.currency || "usd",
+    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, vision: s.vision || "", imageGen: s.imageGen || "", searcher: s.searcher || "", currency: s.currency || "usd",
     westernUnits: !!s.westernUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };
 }
 
