@@ -1329,4 +1329,13 @@ pools' again, and back, without moving the page. Claude Code's windows are
 as they were. No left-border accent; English and Chinese, Chromium and
 WebKit, with `/api/plugins` faked:
 node --test internal/gui/tests/quota-pools.test.cjs
+
+`plugin-progressive.test.cjs` checks the Plugins page is drawn in parts
+(#488) while `/api/plugins/market` never answers: Installed from
+`/api/plugins` at once (no skeleton, no update chip yet), Discover's cards
+from `/api/plugins/listings` with their buttons waiting on npm, and once
+`/api/plugins/npm` answers (held until then) the downloads, the version,
+Install and the installed plugin's "v… out". It runs in Chromium and
+WebKit, in English and Chinese:
+node --test internal/gui/tests/plugin-progressive.test.cjs
 ```
