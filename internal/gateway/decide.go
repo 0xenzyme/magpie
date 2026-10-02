@@ -584,8 +584,7 @@ func withEffort(proto provider.Protocol, body []byte, effort string) []byte {
 	var v struct {
 		ReasoningEffort string `json:"reasoning_effort"`
 		Reasoning       *struct {
-			Effort  string `json:"effort"`
-			Summary string `json:"summary"`
+			Effort string `json:"effort"`
 		} `json:"reasoning"`
 		Thinking *struct {
 			Type string `json:"type"`
@@ -606,11 +605,12 @@ func withEffort(proto provider.Protocol, body []byte, effort string) []byte {
 		if v.Reasoning == nil || v.Reasoning.Effort == "" || v.Reasoning.Effort == "none" {
 			return body
 		}
-		r := map[string]any{"effort": effort}
-		if v.Reasoning.Summary != "" {
-			r["summary"] = v.Reasoning.Summary
-		}
-		return withFields(body, map[string]any{"reasoning": r})
+		// the effort alone: the rest of reasoning goes as the agent sent
+		// it — Codex's Responses Lite asks for context "all_turns", which
+		// the ChatGPT backend wants with its X-OpenAI-Internal-Codex-
+		// Responses-Lite header ("requires `reasoning.context` to be
+		// `all_turns`", #534)
+		return withBodyEffort(proto, body, effort)
 	case provider.Anthropic:
 		if v.Thinking == nil {
 			return body

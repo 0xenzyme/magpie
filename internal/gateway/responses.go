@@ -22,6 +22,7 @@ type rItem struct {
 	Name      string          `json:"name,omitempty"`
 	Namespace string          `json:"namespace,omitempty"`
 	Arguments rArgs           `json:"arguments,omitempty"`
+	Input     string          `json:"input,omitempty"` // custom_tool_call's
 	Output    json.RawMessage `json:"output,omitempty"`
 	Status    string          `json:"status,omitempty"`
 	// tool_search_output: the tools Codex's search found, which the model
@@ -66,6 +67,60 @@ type rTool struct {
 	Strict      *bool           `json:"strict,omitempty"`
 	Tools       []rTool         `json:"tools,omitempty"` // a namespace's
 	Execution   string          `json:"execution,omitempty"`
+	Format      *rFormat        `json:"format,omitempty"` // a custom tool's
+}
+
+// rFormat is what a custom (freeform) tool's input is: "text", or a
+// "grammar" in a syntax ("lark", "regex") with its definition.
+type rFormat struct {
+	Type       string `json:"type"`
+	Syntax     string `json:"syntax,omitempty"`
+	Definition string `json:"definition,omitempty"`
+}
+
+// A custom tool takes free text, not JSON: Codex's apply_patch and, for
+// the models its catalog puts in code mode (gpt-6.1-sol, gpt-6-luna…),
+// exec, through which every other tool of Codex's is called (#534: offered
+// none, the model said it had only the collaboration and wait tools). A
+// model magpie translates for is offered it as a function taking the text
+// as its one argument, and its call goes back to Codex as the
+// custom_tool_call Codex runs, the text as its input.
+
+// customSchema is the arguments a custom tool is offered as taking.
+var customSchema = json.RawMessage(`{"type":"object","properties":{"input":{"type":"string","description":"The tool's free-form input, the whole of it, exactly as it is to be run."}},"required":["input"],"additionalProperties":false}`)
+
+// customDescription is a custom tool's description as a function's: its
+// own, what its input is, and the grammar the input follows.
+func customDescription(t rTool) string {
+	d := strings.TrimSpace(t.Description)
+	if d != "" {
+		d += "\n\n"
+	}
+	d += "Put the tool's whole free-form input, as it is to be run, in the `input` string; it is passed on as written, so it is not itself JSON."
+	if f := t.Format; f != nil && f.Type == "grammar" && strings.TrimSpace(f.Definition) != "" {
+		syntax := f.Syntax
+		if syntax == "" {
+			syntax = "the"
+		}
+		d += "\n\nThe input follows this " + syntax + " grammar:\n" + strings.TrimSpace(f.Definition)
+	}
+	return d
+}
+
+// customInput is the free-form input of a call the model made to a custom
+// tool offered as a function: its input argument, else what it gave.
+func customInput(args string) string {
+	var a struct {
+		Input *string `json:"input"`
+	}
+	if json.Unmarshal([]byte(args), &a) == nil && a.Input != nil {
+		return *a.Input
+	}
+	var str string
+	if json.Unmarshal([]byte(args), &str) == nil {
+		return str
+	}
+	return args
 }
 
 // toolSearch is Codex's tool search. With it Codex names its MCP tools (the
@@ -167,7 +222,7 @@ func parseResponses(body []byte) (*Request, error) {
 		// first; a Claude subscription's waiting run is found by it) (#502)
 		replied := false
 		for _, it := range items {
-			if it.Role == "assistant" || strings.HasPrefix(it.Type, "function_call") || strings.HasPrefix(it.Type, "tool_search") || it.Type == "reasoning" {
+			if it.Role == "assistant" || strings.HasPrefix(it.Type, "function_call") || strings.HasPrefix(it.Type, "custom_tool_call") || strings.HasPrefix(it.Type, "tool_search") || it.Type == "reasoning" {
 				replied = true
 			}
 			switch {
@@ -207,12 +262,19 @@ func parseResponses(body []byte) (*Request, error) {
 					name = flatName(it.Namespace, it.Name)
 				}
 				r.Messages = append(r.Messages, Message{Role: "assistant", Parts: []Part{{Kind: ToolCall, ID: it.CallID, Name: name, Args: parseArgs(string(it.Arguments))}}})
+			case it.Type == "custom_tool_call":
+				name := it.Name
+				if it.Namespace != "" {
+					name = flatName(it.Namespace, it.Name)
+				}
+				args, _ := json.Marshal(map[string]string{"input": it.Input})
+				r.Messages = append(r.Messages, Message{Role: "assistant", Parts: []Part{{Kind: ToolCall, ID: it.CallID, Name: name, Args: args}}})
 			case it.Type == "tool_search_call":
 				r.Messages = append(r.Messages, Message{Role: "assistant", Parts: []Part{{Kind: ToolCall, ID: it.CallID, Name: toolSearch, Args: parseArgs(string(it.Arguments))}}})
 			case it.Type == "tool_search_output":
 				found = append(found, it.Tools...)
 				r.Messages = append(r.Messages, Message{Role: "user", Parts: []Part{{Kind: ToolResult, CallID: it.CallID, Text: searchFound(it.Tools)}}})
-			case it.Type == "function_call_output":
+			case it.Type == "function_call_output" || it.Type == "custom_tool_call_output":
 				out, images := toolOutput(it.Output)
 				r.Messages = append(r.Messages, Message{Role: "user", Parts: []Part{{Kind: ToolResult, CallID: it.CallID, Text: out, Images: images}}})
 			case it.Type == "reasoning":
@@ -261,15 +323,19 @@ func parseResponses(body []byte) (*Request, error) {
 		switch t.Type {
 		case "function":
 			offer(i, Tool{Name: t.Name, Description: t.Description, Schema: t.Parameters, Strict: t.Strict != nil && *t.Strict}, nsTool{})
+		case "custom":
+			offer(i, Tool{Name: t.Name, Description: customDescription(t), Schema: customSchema}, nsTool{Name: t.Name, Custom: true})
 		case "namespace":
 			// offered flat, as few models know namespaces; a call is given
 			// its namespace back on the way out
 			for _, nt := range t.Tools {
-				if nt.Type != "function" {
-					continue
-				}
 				flat := flatName(t.Name, nt.Name)
-				offer(i, Tool{Name: flat, Description: nt.Description, Schema: nt.Parameters, Strict: nt.Strict != nil && *nt.Strict}, nsTool{Namespace: t.Name, Name: nt.Name})
+				switch nt.Type {
+				case "function":
+					offer(i, Tool{Name: flat, Description: nt.Description, Schema: nt.Parameters, Strict: nt.Strict != nil && *nt.Strict}, nsTool{Namespace: t.Name, Name: nt.Name})
+				case "custom":
+					offer(i, Tool{Name: flat, Description: customDescription(nt), Schema: customSchema}, nsTool{Namespace: t.Name, Name: nt.Name, Custom: true})
+				}
 			}
 		case toolSearch:
 			if t.Execution == "client" {
@@ -302,7 +368,7 @@ func parseResponses(body []byte) (*Request, error) {
 				webSearch := false
 				for _, tool := range o.Tools {
 					switch {
-					case tool.Type == "function" && tool.Name != "":
+					case (tool.Type == "function" || tool.Type == "custom") && tool.Name != "":
 						if tool.Namespace != "" {
 							allowed[flatName(tool.Namespace, tool.Name)] = true
 						} else {
@@ -682,6 +748,17 @@ func callTo(item map[string]any, name string, named map[string]nsTool) map[strin
 		args, _ := item["arguments"].(string)
 		delete(item, "name")
 		item["type"], item["execution"], item["arguments"] = "tool_search_call", "client", parseArgs(args)
+	} else if q.Custom {
+		// a custom tool's call carries its free-form input, not arguments
+		args, _ := item["arguments"].(string)
+		delete(item, "arguments")
+		item["type"], item["name"], item["input"] = "custom_tool_call", q.Name, ""
+		if args != "" {
+			item["input"] = customInput(args)
+		}
+		if q.Namespace != "" {
+			item["namespace"] = q.Namespace
+		}
 	} else if q, ok := named[name]; ok {
 		item["name"], item["namespace"] = q.Name, q.Namespace
 		// Nothing magpie serves seals arguments. Codex reads a namespaced call
@@ -770,7 +847,7 @@ func (e *responsesEncoder) closeItem() {
 			args = "{}"
 		}
 		p := e.col.last(ToolCall)
-		if !e.named[p.Name].Search {
+		if q := e.named[p.Name]; !q.Search && !q.Custom {
 			e.send("response.function_call_arguments.done", callTo(map[string]any{"item_id": e.itemID, "output_index": e.item, "call_id": p.ID, "arguments": args}, p.Name, e.named))
 		}
 		item = callTo(map[string]any{"id": e.itemID, "type": "function_call", "status": "completed", "call_id": p.ID, "arguments": args}, p.Name, e.named)
@@ -831,7 +908,11 @@ func (e *responsesEncoder) event(ev Event) {
 	case KToolArgs:
 		if e.open == ToolCall && ev.Text != "" {
 			e.text.WriteString(ev.Text)
-			e.send("response.function_call_arguments.delta", map[string]any{"item_id": e.itemID, "output_index": e.item, "delta": ev.Text})
+			// a custom tool's input is whole only once its arguments are:
+			// it goes in the item when that is done
+			if !e.named[e.col.last(ToolCall).Name].Custom {
+				e.send("response.function_call_arguments.delta", map[string]any{"item_id": e.itemID, "output_index": e.item, "delta": ev.Text})
+			}
 		}
 	case KError:
 		e.closeItem()
