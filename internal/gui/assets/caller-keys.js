@@ -268,14 +268,17 @@ function gatewayLimitEditor(k) {
   const changed = () => d.period !== (kept.period || "day") || limitTokens(d.tokens) !== (kept.tokens || 0)
     || limitCost(d.cost) !== (kept.cost || 0) || d.cacheReads !== !!kept.cacheReads;
   const fields = el("div", "klf");
-  const period = el("select", "klf-period");
+  // the app's own menu, not a native select
+  const period = el("button", "sess-pick klf-period");
+  period.type = "button";
   period.setAttribute("aria-label", t("Limit window"));
-  for (const p of limitPeriods) {
-    const o = el("option", "", t(limitPer[p]));
-    o.value = p;
-    period.append(o);
-  }
-  period.value = d.period;
+  period.setAttribute("aria-haspopup", "menu");
+  period.setAttribute("aria-expanded", "false");
+  const paintPeriod = () => {
+    period.dataset.value = d.period;
+    period.replaceChildren(el("span", "", t(limitPer[d.period])), svg(CHEV, 11, 1.6));
+  };
+  paintPeriod();
   const tokens = input(d.tokens, t("No token cap"));
   tokens.setAttribute("aria-label", t("Token limit"));
   tokens.inputMode = "decimal";
@@ -307,7 +310,16 @@ function gatewayLimitEditor(k) {
     unsaved.hidden = !changed();
     save.disabled = !!bad || !changed();
   };
-  period.onchange = () => { d.period = period.value; update(); };
+  period.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (period.classList.contains("open")) return closeProtoMenu();
+    openProtoMenu(period, limitPeriods.map((p) => ({ v: p, name: t(limitPer[p]), note: "", literalName: true })), d.period, (v) => {
+      d.period = v;
+      paintPeriod();
+      update();
+    }, "Limit window", "sess-menu");
+  };
   tokens.oninput = () => { d.tokens = tokens.value; update(); };
   cost.oninput = () => { d.cost = cost.value; update(); };
   cb.onchange = () => { d.cacheReads = cb.checked; update(); };

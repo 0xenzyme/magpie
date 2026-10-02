@@ -12276,13 +12276,20 @@ function renderSessionTerminal(s, keep) {
   if (!options.some((app) => app.id === chosen)) {
     options.push({ id: chosen, name: t("Unavailable app ({id})", { id: chosen }) });
   }
-  select.replaceChildren(...options.map((app) => {
-    const option = el("option", "", app.name);
-    option.value = app.id;
-    return option;
-  }));
-  select.value = chosen;
-  select.onchange = () => savePrefs({ ...keep, sessionTerminal: select.value === "system" ? "" : select.value });
+  // the app's own menu, not a native select
+  select.dataset.value = chosen;
+  select.replaceChildren(el("span", "", options.find((app) => app.id === chosen).name), svg(CHEV, 11, 1.6));
+  select.onclick = (e) => {
+    e.stopPropagation();
+    if (select.classList.contains("open")) return closeProtoMenu();
+    openProtoMenu(select, options.map((app) => ({ v: app.id, name: app.name, note: "", literalName: true })), chosen, (v) => {
+      if (v === chosen) return;
+      // drawn at once; the save draws it again with what was kept
+      select.dataset.value = v;
+      select.firstChild.textContent = options.find((app) => app.id === v).name;
+      savePrefs({ ...keep, sessionTerminal: v === "system" ? "" : v });
+    }, "Session terminal", "sess-menu");
+  };
 }
 
 // renderSync: the Settings page's sync and backup — WebDAV keeping the

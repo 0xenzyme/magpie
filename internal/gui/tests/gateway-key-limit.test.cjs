@@ -63,7 +63,16 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.deepEqual(await scrolled(), at, "opening the editor moved the page");
       assert.equal(await ed.evaluate((e) => getComputedStyle(e).borderLeftStyle), "none");
       await ed.getByRole("textbox", { name: w.tokens, exact: true }).fill("2M");
-      await ed.getByRole("combobox", { name: w.window, exact: true }).selectOption("week");
+      // the window is the app's own menu, not a native select
+      assert.equal(await ed.locator("select").count(), 0, "no native select");
+      const win = ed.getByRole("button", { name: w.window, exact: true });
+      await win.click();
+      assert.equal((await page.locator(".proto-menu .pm-head").textContent()).trim(), w.window);
+      await page.locator(".proto-menu .pm-item", { hasText: w.week }).click();
+      assert.equal(await page.locator(".proto-menu").count(), 0, "a pick closes it");
+      assert.equal(await win.getAttribute("data-value"), "week");
+      assert.equal((await win.textContent()).trim(), w.week);
+      assert.equal(await ed.isVisible(), true, "a pick leaves the editor open");
       await ed.getByLabel(w.cache).check();
       assert.equal(await ed.locator(".munsaved").isVisible(), true);
       assert.equal(await ed.locator(".munsaved").textContent(), w.unsaved);
@@ -81,7 +90,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await ed.getByRole("button", { name: w.save, exact: true }).isDisabled(), true);
       await ed.getByRole("textbox", { name: w.tokens, exact: true }).fill(zh ? "200万" : "2M");
       await ed.getByRole("textbox", { name: w.cost, exact: true }).fill("5");
-      await ed.getByRole("combobox", { name: w.window, exact: true }).selectOption("week");
+      await ed.getByRole("button", { name: w.window, exact: true }).click();
+      await page.locator(".proto-menu .pm-item", { hasText: w.week }).click();
       await ed.getByLabel(w.cache).check();
       assert.equal(events.filter((e) => e.action === "limit-key").length, 0, "a pick was sent before Save");
       await ed.getByRole("button", { name: w.save, exact: true }).click();
