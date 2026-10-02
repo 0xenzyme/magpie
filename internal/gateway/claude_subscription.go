@@ -122,6 +122,10 @@ type subscriptionRun struct {
 	idleAt  time.Time
 	convKey string
 
+	// effort is the level its Claude Code thinks at, as it started (its
+	// --effort) or was told since (setEffort); "" is Claude Code's own
+	effort string
+
 	// told is the conversation as the client had it in its last request
 	// here (historyKey): tool results are the run's while the client's
 	// conversation goes on from that one.
@@ -313,7 +317,7 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 		return nil, nil, err
 	}
 
-	run := &subscriptionRun{bridge: b, token: token, model: model, cmd: cmd, tmp: tmp, pending: map[string]chan mcpToolResult{}, stdin: stdin, owner: owner}
+	run := &subscriptionRun{bridge: b, token: token, model: model, cmd: cmd, tmp: tmp, pending: map[string]chan mcpToolResult{}, stdin: stdin, owner: owner, effort: req.Effort}
 	// A caller may abandon a turn after receiving tool_use. Do not leave the
 	// parked Claude process and MCP request alive forever.
 	run.timer = time.AfterFunc(30*time.Minute, run.abort)
@@ -383,11 +387,35 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 	run.segment = ch
 	run.mu.Unlock()
 	run.timer.Reset(30 * time.Minute)
+	// a turn the router picked another effort for (#502) goes on in the
+	// same Claude Code, told the level first: it asks the next turn at it
+	// in output_config alone, the conversation it wrote to the cache
+	// untouched, where a run started anew is told it in one message, a
+	// prefix the cache has never seen
+	if req.Effort != run.effort {
+		if err := run.setEffort(req.Effort); err != nil {
+			run.abort()
+			return nil, nil
+		}
+	}
 	if _, err := run.stdin.Write(append(line, '\n')); err != nil {
 		run.abort()
 		return nil, nil
 	}
 	return run, ch
+}
+
+// setEffort tells the run's Claude Code to think at effort from its next
+// turn, as its SDK's applyFlagSettings does: a control request, answered
+// with a control_response its output is read past.
+func (r *subscriptionRun) setEffort(effort string) error {
+	line, _ := json.Marshal(map[string]any{"type": "control_request", "request_id": "effort-" + randomToken()[:12],
+		"request": map[string]any{"subtype": "apply_flag_settings", "settings": map[string]any{"effortLevel": effort}}})
+	if _, err := r.stdin.Write(append(line, '\n')); err != nil {
+		return err
+	}
+	r.effort = effort
+	return nil
 }
 
 // retire lets go of the runs left waiting at an earlier point of this
@@ -522,11 +550,13 @@ func (r *subscriptionRun) park() {
 // to be found again: whom it runs as, the model, its settings and tools,
 // and the messages' words, tool calls and results. Whitespace, thinking and
 // how a reply is split into messages are left out, as clients keep those
-// differently.
+// differently. Its effort is not in it, only whether it asked for one: a
+// run is told another level as its turn starts (setEffort), where one
+// started anew would write the whole conversation to the cache again (#502).
 func turnKey(owner string, req *Request, msgs []Message) string {
 	h := sha256.New()
 	tools, _ := json.Marshal(req.Tools)
-	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%t", owner, req.Model, req.Effort, req.ToolChoice, req.System, tools, req.WebSearch)
+	fmt.Fprintf(h, "%s\x00%s\x00%t\x00%s\x00%s\x00%s\x00%t", owner, req.Model, req.Effort != "", req.ToolChoice, req.System, tools, req.WebSearch)
 	hashMessages(h, msgs, nil)
 	return hex.EncodeToString(h.Sum(nil))
 }

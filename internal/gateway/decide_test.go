@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -376,6 +377,35 @@ func TestWithEffort(t *testing.T) {
 			if !strings.Contains(got, w) {
 				t.Errorf("%s %s at %s: %s, want %s", c.proto, c.in, c.effort, got, w)
 			}
+		}
+	}
+}
+
+// A turn at another effort changes nothing of what the vendor caches (#502):
+// for Claude thinking adaptively, output_config's effort alone, its thinking
+// as it was; for the Responses API, reasoning's effort alone — not the
+// instructions, tools, input or prompt_cache_key.
+func TestWithEffortKeepsTheCachedPrefix(t *testing.T) {
+	for _, c := range []struct {
+		proto provider.Protocol
+		in    string
+		field string
+	}{
+		{provider.Anthropic, `{"model":"claude-opus-5-5","max_tokens":32000,"thinking":{"type":"adaptive"},"output_config":{"effort":"max"},"system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral"}}],"tools":[{"name":"read","input_schema":{"type":"object"}}],"messages":[{"role":"user","content":[{"type":"text","text":"a <b> & c","cache_control":{"type":"ephemeral"}}]}]}`, "output_config"},
+		{provider.Responses, `{"model":"gpt-6-astra","instructions":"sys","prompt_cache_key":"thread","reasoning":{"effort":"xhigh","summary":"auto"},"tools":[{"type":"function","name":"read"}],"input":[{"role":"user","content":"a <b> & c"}]}`, "reasoning"},
+	} {
+		lo, hi := withEffort(c.proto, []byte(c.in), "low"), withEffort(c.proto, []byte(c.in), "high")
+		var a, b map[string]json.RawMessage
+		if json.Unmarshal(lo, &a) != nil || json.Unmarshal(hi, &b) != nil {
+			t.Fatalf("%s: %s / %s", c.proto, lo, hi)
+		}
+		for k := range a {
+			if k != c.field && !bytes.Equal(a[k], b[k]) {
+				t.Errorf("%s: %s changed with the effort: %s / %s", c.proto, k, a[k], b[k])
+			}
+		}
+		if bytes.Equal(a[c.field], b[c.field]) {
+			t.Errorf("%s: effort not changed: %s", c.proto, a[c.field])
 		}
 	}
 }
