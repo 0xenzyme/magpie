@@ -473,7 +473,8 @@ func CachePath() string { return filepath.Join(filepath.Dir(catalog.CachePath())
 // 8: keep only summaries here; request metadata has per-file shards.
 // 9: validate the previous full prefix before treating growth as an append.
 // 10: Pi's and omp's prompts, replies, tool calls and skills.
-const cacheVersion = 10
+// 11: Codex's input without what it wrote to the cache (#589).
+const cacheVersion = 11
 
 type cacheFile struct {
 	Version int               `json:"version"`

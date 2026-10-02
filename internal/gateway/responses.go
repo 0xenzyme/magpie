@@ -704,21 +704,26 @@ type rUsage struct {
 	TotalTokens        int `json:"total_tokens"`
 	InputTokensDetails struct {
 		CachedTokens int `json:"cached_tokens"`
+		// what was written to the cache, which Codex reads too (#589)
+		CacheWriteTokens int `json:"cache_write_tokens"`
 	} `json:"input_tokens_details"`
 	OutputTokensDetails struct {
 		ReasoningTokens int `json:"reasoning_tokens"`
 	} `json:"output_tokens_details"`
 }
 
+// usage: input_tokens is the whole prompt, what was read from the cache and
+// what was written to it among it.
 func (u rUsage) usage() Usage {
-	return Usage{Input: u.InputTokens - u.InputTokensDetails.CachedTokens, Output: u.OutputTokens,
-		CacheRead: u.InputTokensDetails.CachedTokens, Reasoning: u.OutputTokensDetails.ReasoningTokens}
+	d := u.InputTokensDetails
+	return Usage{Input: max(u.InputTokens-d.CachedTokens-d.CacheWriteTokens, 0), Output: u.OutputTokens,
+		CacheRead: d.CachedTokens, CacheWrite: d.CacheWriteTokens, Reasoning: u.OutputTokensDetails.ReasoningTokens}
 }
 
 func (u Usage) responses() map[string]any {
 	in := u.prompt()
 	return map[string]any{"input_tokens": in, "output_tokens": u.Output, "total_tokens": in + u.Output,
-		"input_tokens_details":  map[string]any{"cached_tokens": u.CacheRead},
+		"input_tokens_details":  map[string]any{"cached_tokens": u.CacheRead, "cache_write_tokens": u.CacheWrite},
 		"output_tokens_details": map[string]any{"reasoning_tokens": u.Reasoning}}
 }
 

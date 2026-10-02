@@ -534,9 +534,18 @@ func visibleLocal(chunks []*rowChunk) map[rowRef]bool {
 // are consumed first; fallback matching still requires uniqueness both ways.
 type matchKey struct {
 	session, agent string
-	tokens         [4]int64
+	tokens         [3]int64
 	failed, hasID  bool
 }
+
+// matchTokens is what a call's tokens are matched by: its input with what it
+// wrote to the cache in it, its output and what it read from the cache. The
+// two logs needn't split a cache write out of the input alike (#589): a
+// Codex that names cache_write_input_tokens beside a gateway record that
+// didn't, an older Codex that doesn't beside one that does; the sum is the
+// same either way.
+func matchTokens(t [5]int64) [3]int64 { return [3]int64{t[0] + t[3], t[1], t[2]} }
+
 type matchEnd struct {
 	at    time.Time
 	index rowRef
@@ -611,7 +620,7 @@ func matchedBlocks(gateways []*rowChunk, chunks []*rowChunk, skip map[rowRef]boo
 			if session == "" {
 				continue
 			}
-			key := matchKey{session, gateway.Strings[p.Text[0]], [4]int64(p.Tokens[:4]), p.Status >= 400 || p.Text[9] != 0, p.Text[11] != 0}
+			key := matchKey{session, gateway.Strings[p.Text[0]], matchTokens(p.Tokens), p.Status >= 400 || p.Text[9] != 0, p.Text[11] != 0}
 			g := groups[key]
 			if g == nil {
 				g = &matchGroup{}
@@ -635,7 +644,7 @@ func matchedBlocks(gateways []*rowChunk, chunks []*rowChunk, skip map[rowRef]boo
 			if p.Tokens[0]+p.Tokens[1]+p.Tokens[2]+p.Tokens[3] == 0 && !failed {
 				continue
 			}
-			key := matchKey{session: c.Strings[p.Text[13]], agent: c.Strings[p.Text[0]], tokens: [4]int64(p.Tokens[:4]), failed: failed}
+			key := matchKey{session: c.Strings[p.Text[13]], agent: c.Strings[p.Text[0]], tokens: matchTokens(p.Tokens), failed: failed}
 			count, candidate := 0, (rowRef{})
 			// Without a local ID either gateway partition can match. With an ID,
 			// only an unnamed gateway call can match (different IDs stay distinct).
