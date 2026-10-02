@@ -88,6 +88,8 @@ type agentJSON struct {
 	Fields []fieldJSON `json:"fields"`
 	// Drift: its config no longer does what magpie set, and how to set it again
 	Drift *agent.Drift `json:"drift,omitempty"`
+	// Wired: magpie is in its config, which its menu's Disconnect takes out
+	Wired bool `json:"wired,omitempty"`
 	// Import: an app that takes magpie by its own link (Cindy), and
 	// whether it has magpie already
 	Import string `json:"import,omitempty"`
@@ -568,6 +570,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			err = a.Reapply()
 		case "keep":
 			a.Keep()
+		case "disconnect":
+			err = a.Disconnect()
 		default:
 			http.NotFound(rw, r)
 			return
@@ -1004,6 +1008,7 @@ func state() stateJSON {
 		aj := agentJSON{ID: a.ID, Name: a.Name, Icon: a.Icon, Path: tilde(a.Path), Fields: agentFields(a, vals)}
 		aj.Models = agentModelCount(a.ID, aj.Fields)
 		aj.Drift = a.Drift()
+		aj.Wired = a.Wired()
 		if a.Import != nil {
 			aj.Import, aj.Added = a.Import(), a.Added != nil && a.Added()
 		}

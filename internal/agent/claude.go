@@ -370,6 +370,42 @@ func claudeIn(at place) *Agent {
 		}
 		return main, tiers
 	}
+	// unroute takes magpie's endpoint and models out of Claude Code's env
+	// and puts back the endpoint and token the stash kept from before magpie
+	// was wired in; it answers the model Claude Code was on then, for
+	// Unwire to go back to
+	unroute := func() (string, error) {
+		if err := dropWindow(); err != nil {
+			return "", err
+		}
+		if err := dropCaps(); err != nil {
+			return "", err
+		}
+		if !routed() {
+			return "", nil
+		}
+		keys := make([]string, len(claudeEnv))
+		for i, k := range claudeEnv {
+			keys[i] = "env." + k
+		}
+		if err := edit.DelJSON(path, keys...); err != nil {
+			return "", err
+		}
+		was := unstash(at.key("claude.model"))
+		var back []edit.KV
+		if u := unstash(at.key("claude.base_url")); u != "" {
+			back = append(back, edit.KV{Path: "env.ANTHROPIC_BASE_URL", Value: u})
+		}
+		if t := unstash(at.key("claude.auth_token")); t != "" {
+			back = append(back, edit.KV{Path: "env.ANTHROPIC_AUTH_TOKEN", Value: t})
+		}
+		if len(back) > 0 {
+			if err := edit.SetJSON(path, back...); err != nil {
+				return "", err
+			}
+		}
+		return was, nil
+	}
 	var writeTiers func(main string, tiers map[string]string) error
 	set := func(v string) error {
 		if v == "" {
@@ -425,33 +461,8 @@ func claudeIn(at place) *Agent {
 				return err
 			}
 		}
-		if err := dropWindow(); err != nil {
+		if _, err := unroute(); err != nil {
 			return err
-		}
-		if err := dropCaps(); err != nil {
-			return err
-		}
-		if routed() {
-			keys := make([]string, len(claudeEnv))
-			for i, k := range claudeEnv {
-				keys[i] = "env." + k
-			}
-			if err := edit.DelJSON(path, keys...); err != nil {
-				return err
-			}
-			unstash(at.key("claude.model"))
-			var back []edit.KV
-			if u := unstash(at.key("claude.base_url")); u != "" {
-				back = append(back, edit.KV{Path: "env.ANTHROPIC_BASE_URL", Value: u})
-			}
-			if t := unstash(at.key("claude.auth_token")); t != "" {
-				back = append(back, edit.KV{Path: "env.ANTHROPIC_AUTH_TOKEN", Value: t})
-			}
-			if len(back) > 0 {
-				if err := edit.SetJSON(path, back...); err != nil {
-					return err
-				}
-			}
 		}
 		return edit.SetJSON(path, edit.KV{Path: "model", Value: v})
 	}
@@ -778,6 +789,24 @@ func claudeIn(at place) *Agent {
 		UA:  []string{"claude-cli", "claude-code"},
 		Bin: "claude", Dir: filepath.Dir(path), Path: path,
 		Fields: fields,
+		// Claude Code as it was before magpie: its default puts it back as
+		// installed, on Anthropic's endpoint, where this brings back the
+		// endpoint, token and model the user had
+		Unwire: func() error {
+			was, err := unroute()
+			if err != nil {
+				return err
+			}
+			forget(at.key("claude.model"), at.key("claude.base_url"), at.key("claude.auth_token"))
+			// the model left alone where magpie had none to take over
+			switch {
+			case was != "" && !isMagpie(was):
+				return edit.SetJSON(path, edit.KV{Path: "model", Value: was})
+			case isMagpie(get()):
+				return edit.DelJSON(path, "model")
+			}
+			return nil
+		},
 		// the catalog's models, with their levels, as Claude Code is told
 		// them, while magpie's are the ones it has
 		Sync: func() error {

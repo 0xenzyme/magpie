@@ -276,6 +276,45 @@ func codexIn(at place) *Agent {
 		}
 		return append(own, viaMagpieFor("codex", "")...)
 	}
+	// unroute takes magpie out as the way Codex reaches its models and puts
+	// back what the stash kept from before magpie was wired in (its
+	// provider, catalog and effort); it answers the model Codex was on
+	// then, for Unwire to go back to
+	unroute := func() (string, error) {
+		forget(at.key("codex.out"))
+		if err := giveTables(); err != nil {
+			return "", err
+		}
+		if !routed() {
+			return "", nil
+		}
+		if err := dropSubagent(); err != nil {
+			return "", err
+		}
+		if err := dropBase(); err != nil {
+			return "", err
+		}
+		if err := dropProvider(); err != nil {
+			return "", err
+		}
+		was := unstash(at.key("codex.model"))
+		var back []edit.KV
+		if p := unstash(at.key("codex.provider")); p != "" && p != magpieID {
+			back = append(back, edit.KV{Path: "model_provider", Value: p})
+		}
+		if c := unstash(at.key("codex.catalog")); c != "" && c != at.native(catalogPath) {
+			back = append(back, edit.KV{Path: "model_catalog_json", Value: c})
+		}
+		if e := unstash(at.key("codex.effort")); e != "" {
+			back = append(back, edit.KV{Path: "model_reasoning_effort", Value: e})
+		}
+		if len(back) > 0 {
+			if err := edit.SetTOMLTop(path, back...); err != nil {
+				return "", err
+			}
+		}
+		return was, nil
+	}
 	set := func(v string) error {
 		if v == "" {
 			if err := dropSubagent(); err != nil {
@@ -363,36 +402,8 @@ func codexIn(at place) *Agent {
 			}
 			return settle()
 		}
-		forget(at.key("codex.out"))
-		if err := giveTables(); err != nil {
+		if _, err := unroute(); err != nil {
 			return err
-		}
-		if routed() {
-			if err := dropSubagent(); err != nil {
-				return err
-			}
-			if err := dropBase(); err != nil {
-				return err
-			}
-			if err := dropProvider(); err != nil {
-				return err
-			}
-			unstash(at.key("codex.model"))
-			var back []edit.KV
-			if p := unstash(at.key("codex.provider")); p != "" && p != magpieID {
-				back = append(back, edit.KV{Path: "model_provider", Value: p})
-			}
-			if c := unstash(at.key("codex.catalog")); c != "" && c != at.native(catalogPath) {
-				back = append(back, edit.KV{Path: "model_catalog_json", Value: c})
-			}
-			if e := unstash(at.key("codex.effort")); e != "" {
-				back = append(back, edit.KV{Path: "model_reasoning_effort", Value: e})
-			}
-			if len(back) > 0 {
-				if err := edit.SetTOMLTop(path, back...); err != nil {
-					return err
-				}
-			}
 		}
 		if err := edit.SetTOMLTop(path, edit.KV{Path: "model", Value: v}); err != nil {
 			return err
@@ -406,6 +417,31 @@ func codexIn(at place) *Agent {
 	return atomic(&Agent{
 		ID: "codex", Name: "Codex", Icon: "codex-color", Bin: "codex", Dir: dir, Path: path,
 		UA: []string{"codex"},
+		// Codex as it was before magpie: its default puts it back as
+		// installed, OpenAI and its default model, where this brings back
+		// the provider and model the user had
+		Unwire: func() error {
+			was, err := unroute()
+			if err != nil {
+				return err
+			}
+			if err := dropSubagent(); err != nil {
+				return err
+			}
+			// the model left alone where magpie had none to take over
+			switch {
+			case was != "" && !isMagpie(was):
+				err = edit.SetTOMLTop(path, edit.KV{Path: "model", Value: was})
+			case isMagpie(get("model")):
+				err = edit.DelTOMLTop(path, "model")
+			}
+			if err != nil {
+				return err
+			}
+			os.Remove(catalogPath)
+			forget(at.key("codex.model"), at.key("codex.effort"), at.key("codex.provider"), at.key("codex.catalog"))
+			return settle()
+		},
 		Sync: func() error {
 			if err := failover(); err != nil {
 				return err

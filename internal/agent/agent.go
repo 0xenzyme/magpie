@@ -94,6 +94,12 @@ type Agent struct {
 	// rather than asking the gateway, rewrites that list as the catalog is
 	// now — where magpie wrote one; nothing else changes (see SyncCatalog).
 	Sync func() error
+	// Unwire, for an agent whose fields' default is the agent as installed
+	// rather than what it had before magpie (Codex, Claude Code, Gemini
+	// CLI), takes magpie out of its config and puts back what the stash
+	// kept: the endpoint, provider and model the user had. Disconnect runs
+	// it before the fields' defaults.
+	Unwire func() error
 	// RenameRefs, for an agent whose config names magpie's models beyond
 	// its fields (omp's other roles and fallback chains), moves those names
 	// off provider from onto to, the rest of each kept; it answers whether
@@ -371,6 +377,9 @@ func atomic(a *Agent, paths ...string) *Agent {
 	}
 	if sync := a.Sync; sync != nil {
 		a.Sync = func() error { return edit.Atomically(sync, paths...) }
+	}
+	if unwire := a.Unwire; unwire != nil {
+		a.Unwire = func() error { return edit.Atomically(unwire, paths...) }
 	}
 	return a
 }
