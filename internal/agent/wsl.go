@@ -29,9 +29,10 @@ import (
 // stopped), and edits the files through \\wsl.localhost\<distro>. Each is
 // an agent of its own, <id>@wsl:<distro> (codex@wsl:Ubuntu,
 // pi@wsl:Ubuntu, claude@wsl:Ubuntu). The gateway it is pointed at is
-// 127.0.0.1 when WSL shares Windows' network (networkingMode=mirrored in
-// .wslconfig); under NAT it is Windows as WSL sees it, which reaches the
-// gateway only while that listens beyond loopback.
+// 127.0.0.1 when WSL shares Windows' network (mirrored networking, as the
+// distro's wslinfo says, or .wslconfig where there is no wslinfo); under
+// NAT it is Windows as WSL sees it, which reaches the gateway only while
+// that listens beyond loopback.
 
 // place is where an agent lives: its home as magpie opens it, how a path
 // there is spelt in the agent's own config, and the gateway as it reaches
@@ -113,15 +114,19 @@ func (p place) key(k string) string {
 
 // distro is one WSL distro, as probed.
 type distro struct {
-	Name     string            `json:"name"`
-	Home     string            `json:"home"`              // $HOME inside it, e.g. /home/me
-	Root     string            `json:"root"`              // where magpie opens its / from, e.g. \\wsl.localhost\Ubuntu
-	Has      map[string]bool   `json:"has"`               // "dir:.codex", "bin:pi": what the probe found
-	Probe    int               `json:"probe,omitempty"`   // the wslProbeVersion that found it
-	Gateway  string            `json:"gateway,omitempty"` // the Windows host as the distro reaches it, when not mirrored
-	Values   map[string]string `json:"values,omitempty"`  // its agents' fields as last read (wslKind.memo), shown while it is stopped
-	Mirrored bool              `json:"-"`
-	Running  bool              `json:"-"`
+	Name    string            `json:"name"`
+	Home    string            `json:"home"`              // $HOME inside it, e.g. /home/me
+	Root    string            `json:"root"`              // where magpie opens its / from, e.g. \\wsl.localhost\Ubuntu
+	Has     map[string]bool   `json:"has"`               // "dir:.codex", "bin:pi": what the probe found
+	Probe   int               `json:"probe,omitempty"`   // the wslProbeVersion that found it
+	Gateway string            `json:"gateway,omitempty"` // the Windows host as the distro reaches it, when not mirrored
+	Values  map[string]string `json:"values,omitempty"`  // its agents' fields as last read (wslKind.memo), shown while it is stopped
+	// Net is WSL's networking mode as the distro's wslinfo said at the
+	// last probe ("mirrored", "nat", "virtioproxy", "none"); "" when it
+	// couldn't say (a WSL without wslinfo), and .wslconfig is read instead
+	Net      string `json:"net,omitempty"`
+	Mirrored bool   `json:"-"`
+	Running  bool   `json:"-"`
 }
 
 // local is a path inside the distro as magpie opens it.
@@ -140,6 +145,23 @@ func (d distro) native(local string) string {
 		rel = "/" + rel
 	}
 	return rel
+}
+
+// mirror settles Mirrored: what wslinfo said at the probe, or cfg
+// (.wslconfig's say) when it couldn't.
+func (d *distro) mirror(cfg bool) {
+	d.Mirrored = d.Net == "mirrored" || d.Net == "" && cfg
+}
+
+// notMirrored is the notice of an agent in a distro not known to be in
+// mirrored networking: what WSL said, or that only .wslconfig was read.
+func (d distro) notMirrored(agent string) string {
+	why := "WSL " + d.Name + " is in " + d.Net + " networking, not mirrored"
+	if d.Net == "" {
+		why = "magpie couldn't ask WSL " + d.Name + " its networking mode (it has no wslinfo) and %UserProfile%\\.wslconfig doesn't set it to mirrored"
+	}
+	return why + ", so its " + agent + " was pointed at Windows (" + d.base() + ") rather than 127.0.0.1; that answers only while the gateway listens beyond loopback and Windows' firewall lets WSL in. " +
+		"For 127.0.0.1, set networkingMode=mirrored under [wsl2] in %UserProfile%\\.wslconfig and run wsl --shutdown, then pick the model again."
 }
 
 // base is the gateway's URL from inside the distro.
@@ -374,9 +396,7 @@ func wslAgent(k wslKind, d distro) *Agent {
 	a.LastUsed = nil
 	a.Notice = func() string {
 		if !d.Mirrored {
-			return "WSL " + d.Name + " isn't in mirrored networking, so its " + k.name + " can't reach magpie on 127.0.0.1 and was pointed at Windows (" + d.base() +
-				"), which answers only while the gateway listens beyond loopback and Windows' firewall lets WSL in. " +
-				"Set networkingMode=mirrored under [wsl2] in %UserProfile%\\.wslconfig and run wsl --shutdown, then pick the model again."
+			return d.notMirrored(k.name)
 		}
 		if k.restart == "" {
 			return ""
@@ -560,6 +580,11 @@ func wslDistros() []distro {
 	var out []distro
 	for _, n := range wsl.names {
 		installed[n] = true
+		// a distro that stopped is probed again once it runs: WSL may have
+		// been restarted meanwhile in another networking mode
+		if !wsl.running[n] {
+			delete(wsl.probed, n)
+		}
 		if wsl.running[n] && !wsl.probed[n] {
 			if t, ok := wsl.failed[n]; !ok || time.Since(t) > wslRetryAge {
 				if d := wslProbe(n); d == nil {
@@ -583,7 +608,8 @@ func wslDistros() []distro {
 			continue
 		}
 		c := *d
-		c.Running, c.Mirrored = wsl.running[n], mirrored
+		c.Running = wsl.running[n]
+		c.mirror(mirrored)
 		out = append(out, c)
 	}
 	// an unregistered distro is forgotten
@@ -673,7 +699,7 @@ func wslClaudeStandIn(model string) string {
 	wsl.Unlock()
 	mirrored := wslMirrored(wslConfig())
 	for _, d := range ds {
-		d.Mirrored = mirrored
+		d.mirror(mirrored)
 		path := filepath.Join(d.local(d.Home), ".claude", "settings.json")
 		if m := claudeStandInAt(path, model, d.base()); m != "" {
 			return m
@@ -694,11 +720,14 @@ func wslList(args ...string) (names []string, ok bool) {
 
 // wslProbeVersion is that of wslProbeScript: 2 says where each command is,
 // so one from Windows' drives isn't taken for the distro's own.
+// (wslinfo's networking mode came without a new version: a probe that
+// didn't ask leaves Net "", read as .wslconfig says, as before.)
 const wslProbeVersion = 2
 
 // wslProbeScript prints the distro's home, what of each of wslKinds it
 // has (each command with where it is), where Windows' drives are mounted,
-// and its default route (the Windows host under NAT).
+// its default route (the Windows host under NAT), and WSL's networking
+// mode as wslinfo (WSL 2.0 on) says it.
 var wslProbeScript = func() string {
 	s := `echo "home:$HOME"; `
 	for _, k := range wslKinds {
@@ -710,7 +739,8 @@ var wslProbeScript = func() string {
 	// a drive's source in /proc/mounts is C:\ (written C:\134), under any automount root
 	s += `awk '$1 ~ /^[A-Za-z]:/ {print "win:" $2}' /proc/mounts 2>/dev/null; `
 	return s + `ip route show default 2>/dev/null | head -n1 | sed 's/^/route:/'; ` +
-		`grep -m1 '^nameserver' /etc/resolv.conf 2>/dev/null | sed 's/^/ns:/'; true`
+		`grep -m1 '^nameserver' /etc/resolv.conf 2>/dev/null | sed 's/^/ns:/'; ` +
+		`command -v wslinfo >/dev/null 2>&1 && echo "net:$(wslinfo --networking-mode 2>/dev/null)"; true`
 }()
 
 func wslProbe(name string) *distro {
@@ -760,6 +790,11 @@ func parseProbe(name, out string) *distro {
 		case "ns":
 			if f := strings.Fields(v); len(f) >= 2 && net.ParseIP(f[1]) != nil {
 				ns = f[1]
+			}
+		case "net":
+			// one word; anything else (an old wslinfo's usage) says nothing
+			if m := strings.ToLower(strings.TrimSpace(v)); m != "" && !strings.ContainsAny(m, " \t") {
+				d.Net = m
 			}
 		}
 	}
@@ -821,11 +856,25 @@ func decodeWSL(b []byte) string {
 	return string(utf16.Decode(u))
 }
 
-// wslConfig is %UserProfile%\.wslconfig, "" if there is none.
+// wslConfig is %UserProfile%\.wslconfig, "" if there is none: UTF-8, or
+// UTF-16 as Notepad's "Unicode" saves it, which WSL reads as well.
 func wslConfig() string {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() // %UserProfile% on Windows
 	b, _ := os.ReadFile(filepath.Join(home, ".wslconfig"))
-	return string(b)
+	return decodeText(b)
+}
+
+// decodeText is a text file's contents: UTF-16 with a BOM (either byte
+// order), UTF-16LE without one, or else UTF-8.
+func decodeText(b []byte) string {
+	if len(b) >= 2 && b[0] == 0xfe && b[1] == 0xff {
+		u := make([]uint16, (len(b)-2)/2)
+		for i := range u {
+			u[i] = uint16(b[2+2*i])<<8 | uint16(b[3+2*i])
+		}
+		return string(utf16.Decode(u))
+	}
+	return decodeWSL(b)
 }
 
 // wslMirrored reports whether a .wslconfig puts WSL 2 in mirrored
@@ -838,9 +887,12 @@ func wslMirrored(cfg string) bool {
 		if l == "" || l[0] == '#' || l[0] == ';' {
 			continue
 		}
-		if strings.HasPrefix(l, "[") && strings.HasSuffix(l, "]") {
-			section = strings.ToLower(strings.TrimSpace(l[1 : len(l)-1]))
-			continue
+		if strings.HasPrefix(l, "[") {
+			// [wsl2], or [wsl2] # a comment
+			if end := strings.Index(l, "]"); end > 0 {
+				section = strings.ToLower(strings.TrimSpace(l[1:end]))
+				continue
+			}
 		}
 		k, v, ok := strings.Cut(l, "=")
 		if !ok || section != "wsl2" || !strings.EqualFold(strings.TrimSpace(k), "networkingMode") {
