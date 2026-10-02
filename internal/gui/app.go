@@ -3,7 +3,6 @@
 package gui
 
 import (
-	"cmp"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -88,6 +87,10 @@ type host struct {
 
 	ready     chan struct{} // closed once the main window can be shown
 	readyOnce sync.Once
+
+	// lightweight mode (#580): see lightweight.go
+	winMu sync.Mutex
+	gone  atomic.Pointer[application.WebviewWindow] // the main window let go
 }
 
 // whenReady runs fn once the main window can be shown safely.
@@ -98,31 +101,29 @@ func (h *host) whenReady(fn func()) {
 	}()
 }
 
-func (h *host) HidePanel() { h.panel.Hide() }
+func (h *host) HidePanel() {
+	application.InvokeSync(func() {
+		if h.panel != nil {
+			h.panel.Hide()
+		}
+	})
+}
 func (h *host) ShowMain(view string) {
-	h.closing.Store(false) // opened again while leaving full screen: it stays
-	h.panel.Hide()
+	url := ""
 	if view != "" {
-		h.main.SetURL(mainURL(view, h.query))
+		url = mainURL(view, h.query)
 	}
-	h.dock(settings.Load(), true)
-	h.main.Show()
-	h.main.Focus()
+	application.InvokeSync(func() { h.openMain(url) })
 }
 
 // MainShown says whether the window is up.
-func (h *host) MainShown() bool { return h.main != nil && h.main.IsVisible() }
+func (h *host) MainShown() bool { return application.InvokeSyncWithResult(h.mainShown) }
 
 // Import opens the window on an import link, for the user to confirm.
 func (h *host) Import(link string) {
 	id := stash(link)
 	h.whenReady(func() {
-		h.panel.Hide()
-		h.main.SetURL("/?view=providers&import=" + id + h.query)
-		h.closing.Store(false)
-		h.dock(settings.Load(), true)
-		h.main.Show()
-		h.main.Focus()
+		application.InvokeSync(func() { h.openMain("/?view=providers&import=" + id + h.query) })
 	})
 }
 
@@ -137,8 +138,11 @@ func (h *host) OpenURL(url string)           { _ = h.app.Browser.OpenURL(url) }
 func (h *host) OpenFolder(path string) error { return openFolder(h.app, path) }
 func (h *host) Copy(text string) bool        { return h.app.Clipboard.SetText(text) }
 func (h *host) ChooseFolder(title string) (string, error) {
-	return h.app.Dialog.OpenFile().CanChooseDirectories(true).CanChooseFiles(false).CanCreateDirectories(true).
-		SetTitle(title).AttachToWindow(h.main).PromptForSingleSelection()
+	d := h.app.Dialog.OpenFile().CanChooseDirectories(true).CanChooseFiles(false).CanCreateDirectories(true).SetTitle(title)
+	if w := application.InvokeSyncWithResult(func() *application.WebviewWindow { return h.main }); w != nil {
+		d.AttachToWindow(w)
+	}
+	return d.PromptForSingleSelection()
 }
 
 // panelTitle names the panel for Hyprland's rule, which places it (the
@@ -150,12 +154,19 @@ const panelTitle = "magpie panel"
 // is the page's, in its CSS pixels: at a larger text size the panel is
 // that much taller (and wider), no taller than the screen has room for.
 func (h *host) FitPanel(height int, g Glide) {
+	application.InvokeSync(func() { h.fitPanel(height, g) })
+}
+
+func (h *host) fitPanel(height int, g Glide) {
 	h.panelPage = height
 	_, height = panelFrame(height, h.zoom(), h.panelRoom())
 	if h.panelHeight == height {
 		return
 	}
 	h.panelHeight = height
+	if h.panel == nil { // let go: made again at this height
+		return
+	}
 	if h.panel.IsVisible() && h.glidePanel(height, g) {
 		return
 	}
@@ -186,6 +197,9 @@ func (h *host) panelRoom() int {
 
 // screenRoom is the work area of the screen w is on, 0s when unknown.
 func screenRoom(w *application.WebviewWindow) (int, int) {
+	if w == nil {
+		return 0, 0
+	}
 	s, err := w.GetScreen()
 	if err != nil || s == nil {
 		return 0, 0
@@ -204,13 +218,17 @@ func (h *host) SetTextSize(percent int) {
 	h.whenReady(h.applyZoom)
 }
 
-// applyZoom puts the text size on the windows as they are now.
-func (h *host) applyZoom() {
+// applyZoom puts the text size on the windows as they are now; one
+// lightweight mode let go is made again at it.
+func (h *host) applyZoom() { application.InvokeSync(h.zoomWindows) }
+
+func (h *host) zoomWindows() {
 	z := h.zoom()
-	setPageZoom(h.main, z)
-	setPageZoom(h.panel, z)
-	sw, sh := screenRoom(h.main)
-	h.main.SetMinSize(windowMin(z, sw, sh))
+	if h.main != nil {
+		setPageZoom(h.main, z)
+		sw, sh := screenRoom(h.main)
+		h.main.SetMinSize(windowMin(z, sw, sh))
+	}
 	page := h.panelPage
 	if page == 0 {
 		page = panelStart
@@ -218,6 +236,10 @@ func (h *host) applyZoom() {
 	w, ht := panelFrame(page, z, h.panelRoom())
 	h.glides.Add(1)
 	h.panelHeight = ht
+	if h.panel == nil {
+		return
+	}
+	setPageZoom(h.panel, z)
 	h.panel.SetSize(w, ht)
 	if h.panel.IsVisible() {
 		_ = h.tray.PositionWindow(h.panel, 6)
@@ -291,6 +313,8 @@ func Run(version string, showMain bool, link string) error {
 		Assets:         application.AssetOptions{Handler: handler},
 		Mac:            application.MacOptions{ActivationPolicy: dockPolicy(settings.Load().Dock)},
 		Windows:        windowsOptions(),
+		// the tray stays when lightweight mode has let both windows go
+		Linux: application.LinuxOptions{DisableQuitOnLastWindowClosed: true},
 		// A version downloaded but not restarted into is installed on the
 		// way out, so the next launch is the new one.
 		// Quitting doesn't come back to main on a Mac (NSApp terminate:
@@ -306,7 +330,7 @@ func Run(version string, showMain bool, link string) error {
 		h.app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { Started() })
 	}
 
-	onDock = func(s settings.Settings) { h.dock(s, h.main.IsVisible()) }
+	onDock = func(s settings.Settings) { h.dock(s, h.MainShown()) }
 	// The Dock icon opens the window. Wails would show every hidden window
 	// on it, the panel too, so the hook answers first and stops it.
 	h.app.Event.RegisterApplicationEventHook(events.Mac.ApplicationShouldHandleReopen, func(e *application.ApplicationEvent) {
@@ -314,74 +338,8 @@ func Run(version string, showMain bool, link string) error {
 		e.Cancel()
 	})
 
-	po := panelOptions(runtime.GOOS, theme)
-	po.Width, po.Height, po.Zoom = zoomed(panelWidth, zoom), zoomed(panelStart, zoom), zoom
-	h.panel = h.app.Window.NewWithOptions(po)
-
-	// the window opens at the size it was last given
-	width, height := 660, 600
-	if s := settings.Load().Window; len(s) == 2 && s[0] >= 560 && s[1] >= 420 {
-		width, height = s[0], s[1]
-	}
-	// and no smaller than its page's least at the text size
-	minW, minH := windowMin(zoom, 0, 0)
-	// Windows' title bar in the page's colour from the first frame; the
-	// page keeps it so as its theme changes (TintTitleBar)
-	winOpts, winBg := windowChrome(cmp.Or(os.Getenv("MAGPIE_THEME"), settings.Load().Theme))
-	h.main = h.app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:             "main",
-		Title:            "magpie",
-		URL:              "/?" + theme,
-		Width:            max(width, minW),
-		Height:           max(height, minH),
-		MinWidth:         minW,
-		MinHeight:        minH,
-		Zoom:             zoom,
-		Hidden:           true,
-		Mac:              mainMacWindow(),
-		Windows:          winOpts,
-		BackgroundColour: winBg,
-	})
-	// A resize is kept once it settles; a maximised or full-screen window
-	// is the screen's size, not one the user gave it.
-	var resized *time.Timer
-	h.main.OnWindowEvent(events.Common.WindowDidResize, func(*application.WindowEvent) {
-		if resized != nil {
-			resized.Stop()
-		}
-		resized = time.AfterFunc(500*time.Millisecond, func() {
-			if h.main.IsMaximised() || h.main.IsFullscreen() || h.main.IsMinimised() {
-				return
-			}
-			w, ht := h.main.Size()
-			if w < 560 || ht < 420 {
-				return
-			}
-			// macOS reports a window a pixel short of the size it was
-			// opened at; kept as it is, the window would shrink a pixel at
-			// every start
-			s := settings.Load()
-			if len(s.Window) == 2 && abs(s.Window[0]-w) <= 2 && abs(s.Window[1]-ht) <= 2 {
-				return
-			}
-			s.Window = []int{w, ht}
-			settings.Save(s)
-		})
-	})
-	// Closing the window keeps the tray alive; quitting is a menu action.
-	h.main.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
-		e.Cancel()
-		if closeStep(runtime.GOOS, h.main.IsFullscreen()) == closeLeaveFullscreen {
-			h.leaveFullscreenThenHide()
-			return
-		}
-		h.hideMain()
-	})
-	h.main.OnWindowEvent(events.Mac.WindowDidExitFullScreen, func(*application.WindowEvent) {
-		if h.closing.Swap(false) {
-			h.hideMain()
-		}
-	})
+	h.panel = h.makePanel()
+	h.main = h.makeMain("/?" + theme)
 
 	// the menu in the page's language, relabelled when that changes (#301)
 	labels := trayMenuLabels(trayLang(settings.Load().Lang, systemLang), version, "")
@@ -460,6 +418,7 @@ func Run(version string, showMain bool, link string) error {
 	h.tray.SetMenu(menu)
 	h.tray.AttachWindow(h.panel).WindowOffset(6)
 	h.watchTrayUsage()
+	go h.lighten()
 	h.watchAlerts()
 	// the quick panel by the icon, or the main window if the user would
 	// rather (Settings → Tray icon)
@@ -635,7 +594,14 @@ var OpenView string
 var Started func()
 
 // togglePanel opens the quick panel by the tray icon, or closes it.
-func (h *host) togglePanel() {
+func (h *host) togglePanel() { application.InvokeSync(h.togglePanelNow) }
+
+func (h *host) togglePanelNow() {
+	if _, again := h.panelWin(); again {
+		// made again, with its page to come: shown once it can be
+		h.whenLoaded(h.panel, h.togglePanel)
+		return
+	}
 	if omarchy.Hyprland() {
 		if h.panel.IsVisible() {
 			h.hidePanel()
@@ -662,7 +628,7 @@ func (h *host) placePanel() {
 	h.clicks.Do(func() {
 		go omarchy.WatchClicks(func() {
 			switch {
-			case !h.panel.IsVisible(): // Escape closed it
+			case !application.InvokeSyncWithResult(func() bool { return h.panel != nil && h.panel.IsVisible() }): // Escape closed it
 				omarchy.StopClicks()
 			case omarchy.ClickedOutside(panelTitle):
 				application.InvokeAsync(h.hidePanel)
@@ -681,6 +647,8 @@ func (h *host) placePanel() {
 // hidePanel closes the panel on Hyprland, where it has no focus-lost to
 // close on (see omarchy.ReportClicks).
 func (h *host) hidePanel() {
-	h.panel.Hide()
+	if h.panel != nil {
+		h.panel.Hide()
+	}
 	go omarchy.StopClicks()
 }

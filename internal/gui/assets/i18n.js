@@ -177,6 +177,8 @@ const I18N = {
     "Start magpie in the tray when you log in, so agents find the gateway from the start": "登录系统时在托盘里启动 magpie，各个 Agent 一开始就能连上网关",
     "move magpie to Applications first, then turn this on": "请先把 magpie 移到「应用程序」文件夹，再打开这个选项",
     "Keep magpie in the Dock too, always or while its window is open, for Cmd-Tab and a menu bar too full to show its icon": "让 magpie 也出现在程序坞：常驻，或只在窗口打开时显示，方便 Cmd-Tab 切换，菜单栏图标被挤掉时也能打开",
+    "Lightweight mode": "轻量模式",
+    "A closed panel or window frees its page after a minute, about 100 MB each, and loads it anew when opened": "面板或窗口关闭约一分钟后释放其网页（每个约 100 MB），再次打开时重新加载",
     "With window": "跟随窗口",
     "What clicking magpie’s icon in the menu bar or tray opens": "点击菜单栏或托盘里的 magpie 图标时打开什么",
     "Quick panel": "快捷面板",

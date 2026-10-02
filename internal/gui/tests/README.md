@@ -1519,6 +1519,13 @@ from `/api/plugins/listings` with their buttons waiting on npm, and once
 Install and the installed plugin's "v… out". It runs in Chromium and
 WebKit, in English and Chinese:
 node --test internal/gui/tests/plugin-progressive.test.cjs
+
+`lightweight.test.cjs` checks Settings → General's Lightweight mode row
+(#580): off by default, On and Off saved as `lightweight` true and false
+without the page moving, another setting's save keeping it, no left-border
+accent, and no such row on a browser's page (`web`). English and Chinese,
+Chromium and WebKit, with `/api/settings` faked:
+node --test internal/gui/tests/lightweight.test.cjs
 ```
 
 ## Mobile Web

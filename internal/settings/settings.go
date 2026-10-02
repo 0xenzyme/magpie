@@ -155,6 +155,11 @@ type Settings struct {
 	// is its windows stacked alone, a thin line between one card and the
 	// next.
 	TrayNoLogos bool `json:"trayNoLogos,omitempty"`
+	// Lightweight lets the webview of a window closed — the tray panel or
+	// the main window — go once it has stayed closed a while, and makes it
+	// again when it is opened (#580): less memory, a moment's wait. This
+	// computer's own (KeepOwn).
+	Lightweight bool `json:"lightweight,omitempty"`
 	// QuotaLeft shows a subscription's windows by how much of each is left,
 	// not used: the Usage page, the tray panel and the menu bar alike.
 	QuotaLeft bool `json:"quotaLeft,omitempty"`
@@ -456,7 +461,7 @@ func CarryPerModel(in, cur *Settings) {
 // icon (yoooo on Discord: usage turned off on a Mac came back from a
 // Windows box that shows it).
 func (s *Settings) KeepOwn(cur Settings) {
-	s.Window, s.Proxy, s.Dock, s.DockWindow = cur.Window, cur.Proxy, cur.Dock, cur.DockWindow
+	s.Window, s.Proxy, s.Dock, s.DockWindow, s.Lightweight = cur.Window, cur.Proxy, cur.Dock, cur.DockWindow, cur.Lightweight
 	s.TrayUsages, s.TrayUsage, s.TrayUsageEvery, s.TrayNoLogos = cur.TrayUsages, cur.TrayUsage, cur.TrayUsageEvery, cur.TrayNoLogos
 }
 
