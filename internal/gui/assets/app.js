@@ -5917,6 +5917,20 @@ function renderModels(p) {
   allOff.title = t("Unpick every model");
   allOff.onclick = () => { draft.chosen = []; draw(); };
   bulk.append(allOn, allOff);
+  // just the free ones (Discord: 是否可以支持只选择免费模型), offered only
+  // when the list has both free and paid models: with none free it would
+  // pick nothing, with all free it is Select all
+  const isFree = (m) => m.free || namedFree(m.id, m.name);
+  if (p.models.some(isFree) && !p.models.every(isFree)) {
+    const freeOn = el("button", "text action", t("Free only"));
+    freeOn.title = t("Pick only the free models (those the filter shows), unpicking the others");
+    freeOn.onclick = () => {
+      const f = (q?.value || "").trim().toLowerCase();
+      draft.chosen = p.models.filter((m) => isFree(m) && (!f || m.id.toLowerCase().includes(f) || (m.name || "").toLowerCase().includes(f) || (m.default || "").toLowerCase().includes(f))).map((m) => m.id);
+      draw();
+    };
+    bulk.append(freeOn);
+  }
   if (q || p.models.length > 1) {
     if (q) { q.oninput = draw; bulk.prepend(q); }
     box.append(bulk);

@@ -2142,6 +2142,8 @@ const I18N = {
     "1 skill in {src}": "{src} 中有 1 个技能",
     "{n} skills in {src}": "{src} 中有 {n} 个技能",
     "Select none": "全不选",
+    "Free only": "只选免费",
+    "Pick only the free models (those the filter shows), unpicking the others": "只选中免费模型（有筛选时只选筛出来的），其余取消选中",
     "for": "给",
     "Installing…": "安装中…",
     "1 skill installed": "已安装 1 个技能",
