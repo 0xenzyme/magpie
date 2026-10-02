@@ -139,6 +139,7 @@ func Collect(keys bool, app string) (Bundle, error) {
 		if !keys {
 			s.LANKey, s.LANKeyID = "", ""
 			s.OTel.Headers = nil
+			s.GitHubToken = ""
 		}
 		b.Settings = &s
 	}
@@ -327,6 +328,7 @@ func Restore(b Bundle, parts Parts) (Result, error) {
 		s.KeepOwn(cur)
 		if !b.Keys {
 			s.LANKey, s.LANKeyID = cur.LANKey, cur.LANKeyID
+			s.GitHubToken = cur.GitHubToken
 			s.OTel.Headers = nil
 			if strings.TrimRight(strings.TrimSpace(s.OTel.Endpoint), "/") == cur.OTel.Endpoint {
 				s.OTel.Headers = cur.OTel.Headers

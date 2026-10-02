@@ -11654,6 +11654,7 @@ function renderSettings() {
   $("#wbCheckinSub").title = t("As pressing 签到 in WorkBuddy does");
   renderTrayUsage(s, keep);
   renderProxy(s, keep);
+  renderGitHubToken(s);
   renderImages(s, keep);
   renderSearch(s);
   renderRedact(s, keep);
@@ -12145,6 +12146,49 @@ function renderProxy(s, keep) {
     if (proxyCustom) queueMicrotask(() => i.focus());
   }
   box.append(segs([["auto", t("Auto")], ["off", t("Off")], ["custom", t("Custom")]], mode, pick));
+}
+
+// renderGitHubToken: the GitHub token the library's requests to GitHub's
+// API carry (checking skills for updates), which raises GitHub's limit from
+// 60 requests an hour to 5,000. The page is told a masked one only, and
+// whether it is the one set here or GITHUB_TOKEN / GH_TOKEN's.
+let githubTokenErr = "", githubTokenDraft = "";
+function renderGitHubToken(s) {
+  const box = $("#githubList");
+  box.replaceChildren();
+  const r = el("div", "row pref github-token");
+  const who = el("div", "who");
+  const sub = el("div", "sub");
+  who.append(el("div", "name", t("GitHub token")), sub);
+  const val = el("div", "val");
+  r.append(who, val);
+  box.append(r);
+  const set = (token) => writingPrefs(api("settings/github-token", { token }))
+    .then((ns) => { prefs = ns; githubTokenErr = githubTokenDraft = ""; renderSettings(); status(t("Saved"), "ok", 1500); })
+    .catch((e) => { githubTokenErr = t(e.message); status(t(e.message), "err"); renderSettings(); });
+  const why = t("The library checks skills for updates with it: GitHub allows 5,000 requests an hour with a token, 60 without. It needs no scopes.");
+  if (s.githubTokenFrom === "settings") {
+    sub.textContent = sub.title = why;
+    const x = el("button", "text", t("Remove"));
+    x.onclick = () => set("");
+    val.append(el("code", "", s.githubTokenMask || ""), x);
+    return;
+  }
+  sub.textContent = githubTokenErr || (s.githubTokenFrom
+    ? t("Using {env} from the environment ({mask}); a token set here comes first.", { env: s.githubTokenFrom, mask: s.githubTokenMask || "" }) + " " + why
+    : why);
+  if (githubTokenErr) sub.classList.add("err");
+  sub.title = sub.textContent;
+  const i = input(githubTokenDraft, "ghp_… / github_pat_…", "password");
+  i.className = "words github-token-input";
+  i.setAttribute("aria-label", t("GitHub token"));
+  const save = el("button", "text", t("Save"));
+  save.onclick = () => { const v = i.value.trim(); if (!v) return i.focus(); set(v); };
+  i.oninput = () => { githubTokenDraft = i.value; };
+  i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") save.onclick(); };
+  const get = el("button", "link", t("Create one ↗"));
+  get.onclick = () => api("open", { url: "https://github.com/settings/tokens/new?description=magpie" }).catch(() => {});
+  val.append(i, get, save);
 }
 
 // renderWarmAt draws a daily warm-up's control: Off, or a time of day in

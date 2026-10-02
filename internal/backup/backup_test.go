@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -189,6 +190,54 @@ func TestOTelBackupHeaders(t *testing.T) {
 	if got := settings.Load().OTel.Headers; got["Authorization"] != config.Headers["Authorization"] || got["X-Custom"] != config.Headers["X-Custom"] {
 		t.Fatal("keyless backup changed saved credentials")
 	}
+}
+
+// The GitHub token the library asks GitHub with is a key: a backup without
+// keys leaves it out, and restoring one keeps the token this machine has.
+func TestGitHubTokenBackup(t *testing.T) {
+	home(t)
+	if err := settings.Save(settings.Settings{GitHubToken: "ghp_local", Theme: "dark"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, keys := range []bool{false, true} {
+		b, err := Collect(keys, "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, _ := Seal(b, "pw")
+		if !keys && strings.Contains(string(mustOpen(t, data)), "ghp_local") {
+			t.Fatal("the GitHub token is in a backup without keys")
+		}
+		if keys && b.Settings.GitHubToken != "ghp_local" {
+			t.Fatalf("a backup with keys lost the GitHub token: %q", b.Settings.GitHubToken)
+		}
+	}
+	for _, keys := range []bool{false, true} {
+		incoming := settings.Settings{Theme: "light"}
+		if keys {
+			incoming.GitHubToken = "ghp_incoming"
+		}
+		if err := settings.Save(settings.Settings{GitHubToken: "ghp_local"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Restore(Bundle{Version: 1, Keys: keys, Settings: &incoming}, Parts{Settings: true}); err != nil {
+			t.Fatal(err)
+		}
+		want := map[bool]string{false: "ghp_local", true: "ghp_incoming"}[keys]
+		if got := settings.Load(); got.GitHubToken != want || got.Theme != "light" {
+			t.Errorf("keys %v: restored token %q theme %q, want %q", keys, got.GitHubToken, got.Theme, want)
+		}
+	}
+}
+
+func mustOpen(t *testing.T, data []byte) []byte {
+	t.Helper()
+	b, err := Open(data, "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, _ := json.Marshal(b)
+	return j
 }
 
 func TestOTelRestoreHeaders(t *testing.T) {

@@ -45,6 +45,10 @@ func sandbox(t *testing.T) string {
 	}
 	t.Setenv("APPDATA", "")
 	t.Setenv("LOCALAPPDATA", "")
+	// never the developer's own GitHub token, sent to a fake GitHub
+	for _, k := range GitHubTokenEnv {
+		t.Setenv(k, "")
+	}
 	for _, f := range []string{
 		".claude/settings.json", ".codex/config.toml", ".gemini/settings.json",
 		".config/opencode/opencode.json", ".config/mimocode/mimocode.json", ".pi/agent/settings.json", ".config/goose/config.yaml",
