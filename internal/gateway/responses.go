@@ -728,18 +728,57 @@ func (u Usage) responses() map[string]any {
 }
 
 // responsesDecoder turns a Responses stream into events.
+//
+// A function call's arguments are given once the call is done, not as
+// their deltas come: the deltas can leave out what the finished call holds
+// (#613: Codex's spawn_agent came back with arguments {} where the request
+// was translated, though the upstream's finished call had them), and what
+// was sent of a call's arguments can't be taken back.
 type responsesDecoder struct {
-	started  bool
-	argsSeen bool // arguments of the open function call arrived as deltas
-	called   bool // a function call was streamed
+	started bool
+	called  bool            // a function call was streamed
+	calling bool            // a function call is open
+	args    strings.Builder // the open call's argument deltas
+	full    string          // the open call's arguments as its done events give them
+}
+
+// endCall gives the open call's arguments: the deltas, or what its done
+// events give where that holds more.
+func (d *responsesDecoder) endCall(emit func(Event)) {
+	if !d.calling {
+		return
+	}
+	d.calling = false
+	args := pickArgs(d.args.String(), d.full)
+	d.args.Reset()
+	d.full = ""
+	if args != "" {
+		emit(Event{Kind: KToolArgs, Text: args})
+	}
+}
+
+// pickArgs is the fuller of a call's arguments as streamed and as its done
+// events give them, JSON first.
+func pickArgs(streamed, done string) string {
+	s, f := strings.TrimSpace(streamed), strings.TrimSpace(done)
+	switch sv, fv := json.Valid([]byte(s)), json.Valid([]byte(f)); {
+	case fv && (!sv || len(f) > len(s)):
+		return done
+	case sv || f == "":
+		return streamed
+	default:
+		return done
+	}
 }
 
 func (d *responsesDecoder) decode(data string, emit func(Event)) error {
 	var ev struct {
-		Type     string `json:"type"`
-		Delta    string `json:"delta"`
-		Item     rItem  `json:"item"`
-		Response struct {
+		Type  string `json:"type"`
+		Delta string `json:"delta"`
+		Item  rItem  `json:"item"`
+		// function_call_arguments.done's
+		Arguments string `json:"arguments"`
+		Response  struct {
 			ID                string `json:"id"`
 			Model             string `json:"model"`
 			Status            string `json:"status"`
@@ -767,20 +806,33 @@ func (d *responsesDecoder) decode(data string, emit func(Event)) error {
 			emit(Event{Kind: KStart, MsgID: ev.Response.ID, Model: ev.Response.Model})
 		}
 	case "response.output_item.added":
+		d.endCall(emit)
 		if ev.Item.Type == "function_call" {
-			d.argsSeen, d.called = false, true
+			d.called, d.calling = true, true
 			emit(Event{Kind: KToolStart, ID: ev.Item.CallID, Name: ev.Item.Name})
 		}
 	case "response.output_text.delta":
+		d.endCall(emit)
 		emit(Event{Kind: KText, Text: ev.Delta})
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
+		d.endCall(emit)
 		emit(Event{Kind: KThink, Text: ev.Delta})
 	case "response.function_call_arguments.delta":
-		d.argsSeen = true
-		emit(Event{Kind: KToolArgs, Text: ev.Delta})
+		if d.calling {
+			d.args.WriteString(ev.Delta)
+		} else {
+			emit(Event{Kind: KToolArgs, Text: ev.Delta})
+		}
+	case "response.function_call_arguments.done":
+		if d.calling && ev.Arguments != "" {
+			d.full = ev.Arguments
+		}
 	case "response.output_item.done":
-		if ev.Item.Type == "function_call" && !d.argsSeen && ev.Item.Arguments != "" {
-			emit(Event{Kind: KToolArgs, Text: string(ev.Item.Arguments)})
+		if ev.Item.Type == "function_call" {
+			if ev.Item.Arguments != "" {
+				d.full = string(ev.Item.Arguments)
+			}
+			d.endCall(emit)
 		}
 		if a := ev.Item.Action; ev.Item.Type == "web_search_call" && a != nil && a.Query != "" {
 			var hits []Hit
@@ -792,6 +844,7 @@ func (d *responsesDecoder) decode(data string, emit func(Event)) error {
 			emit(Event{Kind: KSearch, Text: a.Query, Hits: hits})
 		}
 	case "response.completed", "response.incomplete", "response.failed":
+		d.endCall(emit)
 		if ev.Response.Error != nil {
 			emit(Event{Kind: KError, Text: ev.Response.Error.Message, Code: refusedCode(data)})
 			return nil
@@ -815,6 +868,7 @@ func (d *responsesDecoder) decode(data string, emit func(Event)) error {
 		emit(Event{Kind: KStop, Stop: stop})
 		emit(Event{Kind: KUsage, Usage: ev.Response.Usage.usage()})
 	case "error":
+		d.endCall(emit)
 		msg := ev.Message
 		if ev.Error != nil {
 			msg = ev.Error.Message
