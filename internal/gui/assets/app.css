@@ -1769,12 +1769,6 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .move .dep-note .badge { flex: none; margin-top: 2px; }
 /* and in the add sheet, under the subscriptions */
 /* a deprecated subscription not signed in to: its plugin offered first */
-.signing.plugin-offer { flex-wrap: wrap; row-gap: 8px; }
-.signing.plugin-offer .mark.plug { background: none; color: var(--fg-2); }
-.signing.plugin-offer .pkg code { font: 11px/1.4 var(--mono, ui-monospace, monospace); color: var(--fg-2); }
-.signing.plugin-offer .offer-acts { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: -2px 0 0 27px; }
-.signing.plugin-offer .offer-acts .quiet { margin-right: auto; color: var(--muted); }
-.signing.plugin-offer .offer-acts .quiet:hover { color: var(--fg); }
 #fileError { margin: 0 0 10px; }
 #fileError .signing { border: 1px solid var(--line); border-radius: 10px; }
 #fileError .signing .mark { background: var(--red); }

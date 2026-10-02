@@ -81,10 +81,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     for (const lang of ["en", "zh"]) {
       await t.test(lang + ": the add sheet", async () => {
         const w = L[lang];
-        // no plugin: the built-ins, deprecated, under Subscriptions, where
-        // a click installs the plugin and signs in through it
+        // no plugin and no account: neither, as they are the Plugins page's
+        // to install (yetone: 对于新用户来说，这里应该只显示内置的 provider)
         let { page, errors } = await open(browser, lang, { installed: false }, "providers");
-        assert.deepEqual(await qoderTiles(page), [[w.subs, w.intl], [w.subs, "Qoder CN"]]);
+        assert.deepEqual(await qoderTiles(page), []);
+        // signed in to the built-in Qoder CN: its tile, deprecated, under
+        // Subscriptions, to add another account
+        ({ page, errors } = await open(browser, lang, { installed: false, signedIn: true }, "providers"));
+        assert.deepEqual(await qoderTiles(page), [[w.subs, "Qoder CN"]]);
         // the plugin installed: its tiles alone, not the built-ins' beside
         // them (ARNO's sheet had all four)
         ({ page, errors } = await open(browser, lang, { installed: true }, "providers"));

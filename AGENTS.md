@@ -30,10 +30,11 @@ code.
 Two cases decide it:
 
 - **Moved:** the user moved the subscription onto its plugin, from the
-  editor's "Move to plugin", or by clicking it in the Add sheet before
-  signing in (`provider.Adopt`). Its `migrations.json` state is `plugin`
-  (`provider.Moved(id)`). This is the default for new sign-ins since
-  v0.1.642. A user who installs the plugin themselves is moved too
+  editor's "Move to plugin" (or `provider.Adopt`). Its `migrations.json`
+  state is `plugin` (`provider.Moved(id)`). A new user never sees a
+  deprecated built-in: the Add sheet leaves one with no account out
+  (`unusedSub` in app.js), so it is installed from the Plugins page. A user
+  who installs the plugin themselves is moved too
   (`provider.HandOver`): at once when the built-in has no accounts, from the
   gateway's hourly loop (`KeepRetiringMoved`) when it has, unless they moved
   back or the plugin is signed in under its own `-plugin` id already. Until
