@@ -2375,6 +2375,7 @@ const I18N = {
     "Updates for {n} plugins are out": "{n} 个插件有新版本",
     "{name}: signed in": "{name}：已登录",
     "{name}: not signed in": "{name}：未登录",
+    "{name} is a subscription of its own; {other} works without it": "{name} 是另一个独立的订阅，{other} 不需要它也能用",
     "{name} updated to v{v}": "{name} 已更新到 v{v}",
     "Removing…": "移除中…",
     "Downloads": "下载量",
