@@ -10,7 +10,9 @@ package provider
 // its own: a model more than one provider serves under the same name is a
 // group of those, derived each time and never stored until the user
 // changes one. Models of different names are only ever grouped by the
-// user: nothing here guesses which models are alike.
+// user — in a group of their own, or by saying in a provider's Names &
+// levels that one is the same as another (settings' ModelSameAs): nothing
+// here guesses which models are alike beyond how vendors spell one id.
 //
 // A group's member may be another group ("group/<id>"): to the group it is
 // one member, which a rule can put first like a model; its models are its
@@ -23,6 +25,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/yetone/magpie/internal/settings"
 )
 
 // GroupPrefix starts a group's id in the catalog: "group/<id>".
@@ -198,7 +202,7 @@ func groupsIn(entries []Entry) []Group {
 	if f.NoAutoGroups {
 		return out
 	}
-	for _, g := range autoGroups(entries) {
+	for _, g := range autoGroups(entries, settings.Load().ModelSameAs) {
 		if slices.ContainsFunc(out, func(o Group) bool { return o.ID == g.ID }) {
 			continue // the user changed it: theirs now
 		}
@@ -261,6 +265,27 @@ func SetAutoGroups(on bool) error {
 // vendor spells it: "auto-claude-opus-5-5" for claude-opus-5.5.
 func AutoGroupID(model string) string { return "auto-" + Slug(sameModel(model)) }
 
+// AutoGroupOf is the id of the group magpie finds for a provider's model:
+// AutoGroupID of the model the user said it is the same as (settings'
+// ModelSameAs), else of its own id.
+func AutoGroupOf(pid, model string) string {
+	return "auto-" + Slug(mergeKey(pid, model, settings.Load().ModelSameAs))
+}
+
+// MergeName is the name the groups magpie finds merge a model by, when
+// the user said nothing of it: its id as vendors agree on it (sameModel).
+func MergeName(model string) string { return sameModel(model) }
+
+// mergeKey is what the groups magpie finds merge pid's model by: the
+// model the user said it is the same as (same, by "<provider>/<model>"),
+// spelt as vendors agree on it, else its own id so spelt.
+func mergeKey(pid, model string, same map[string]string) string {
+	if v := same[pid+"/"+model]; v != "" {
+		return sameModel(v)
+	}
+	return sameModel(model)
+}
+
 // AutoStandIn is the model a request for a group magpie found goes to while
 // such groups are off (SetAutoGroups): its model, from the first provider
 // that serves it, as "provider/model". An agent set to the group, or a
@@ -276,7 +301,7 @@ func AutoStandIn(id string) (string, bool) {
 		return "", false
 	}
 	for _, e := range entries {
-		if AutoGroupID(e.Model) == gid {
+		if AutoGroupOf(e.Provider.ID, e.Model) == gid {
 			return e.ID, true
 		}
 	}
@@ -284,13 +309,14 @@ func AutoStandIn(id string) (string, bool) {
 }
 
 // autoGroups are the models more than one ready provider serves under the
-// same name — however each vendor spells it (see sameModel) — in the order
-// the providers were added.
-func autoGroups(entries []Entry) []Group {
+// same name — however each vendor spells it (see sameModel), or as the
+// user said one is the same as another (same: settings' ModelSameAs) — in
+// the order the providers were added.
+func autoGroups(entries []Entry, same map[string]string) []Group {
 	var order []string
 	by := map[string][]Entry{}
 	for _, e := range entries {
-		k := sameModel(e.Model)
+		k := mergeKey(e.Provider.ID, e.Model, same)
 		if !slices.ContainsFunc(by[k], func(o Entry) bool { return o.Provider.ID == e.Provider.ID }) {
 			if by[k] == nil {
 				order = append(order, k)
@@ -324,27 +350,51 @@ func autoGroups(entries []Entry) []Group {
 }
 
 // sameModel is a model's name as vendors agree on it: lowercase, without
-// the vendor's own prefix ("anthropic/claude-sonnet-5" is claude-sonnet-5),
-// with a version's dot as Anthropic writes it ("claude-opus-5.5" is
-// claude-opus-5-5) and without the snapshot date some add
-// ("claude-opus-5-5-20260801"). A variant after ":" (":batch") stays apart.
+// the vendor's own prefix ("anthropic/claude-sonnet-5" is claude-sonnet-5,
+// "accounts/fireworks/models/…" too), with a version's dot as Anthropic
+// writes it ("claude-opus-5.5" is claude-opus-5-5, and so is Fireworks'
+// "p" for the dot, "deepseek-v4p1"), "_" as "-", and without the snapshot
+// date some add: "claude-opus-5-5-20260801", Vertex's "…@20260801", and
+// Volcengine Ark's six digits ("deepseek-v4-1-flash-260910" is
+// deepseek-v4-1-flash, #583). Anything else stays: a variant after ":"
+// (":batch"), -flash, -thinking, and a four-digit release (qwen's -2507,
+// kimi-k2-0905) that is a model of its own.
 func sameModel(id string) string {
-	k := strings.ToLower(id)
+	k := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(id)), "_", "-")
 	if i := strings.LastIndex(k, "/"); i >= 0 {
 		k = k[i+1:]
 	}
 	b := []byte(k)
 	for i := 1; i+1 < len(b); i++ {
-		if b[i] == '.' && isDigit(b[i-1]) && isDigit(b[i+1]) {
+		if (b[i] == '.' || b[i] == 'p') && isDigit(b[i-1]) && isDigit(b[i+1]) {
 			b[i] = '-'
 		}
 	}
 	k = string(b)
-	if i := strings.LastIndex(k, "-"); i > 0 && len(k)-i-1 == 8 && strings.HasPrefix(k[i+1:], "20") && strings.Trim(k[i+1:], "0123456789") == "" {
+	if i := strings.LastIndexAny(k, "-@"); i > 0 && snapshotDate(k[i+1:]) {
 		k = k[:i]
 	}
 	return k
 }
+
+// snapshotDate is whether s is the date a vendor dates a snapshot of a
+// model by: YYYYMMDD from 2000 on, or Ark's YYMMDD from 2023 on, with a
+// month and a day that are one.
+func snapshotDate(s string) bool {
+	if strings.Trim(s, "0123456789") != "" {
+		return false
+	}
+	switch {
+	case len(s) == 8 && strings.HasPrefix(s, "20"):
+		return true
+	case len(s) == 6:
+		yy, mm, dd := atoi2(s[0:2]), atoi2(s[2:4]), atoi2(s[4:6])
+		return yy >= 23 && yy <= 39 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31
+	}
+	return false
+}
+
+func atoi2(s string) int { return int(s[0]-'0')*10 + int(s[1]-'0') }
 
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
@@ -765,7 +815,7 @@ func DeleteGroup(id string) error {
 		}
 		return false
 	})
-	if slices.ContainsFunc(autoGroups(providerEntries()), func(g Group) bool { return g.ID == id }) {
+	if slices.ContainsFunc(autoGroups(providerEntries(), settings.Load().ModelSameAs), func(g Group) bool { return g.ID == id }) {
 		f.Groups = append(f.Groups, Group{ID: id, Hidden: true})
 		found = true
 	}
@@ -824,7 +874,7 @@ func RenameGroup(from, to string) error {
 		slices.ContainsFunc(f.Groups, func(o Group) bool { return o.ID == to }) {
 		return fmt.Errorf("there is a group %q already", to)
 	}
-	found := slices.ContainsFunc(autoGroups(providerEntries()), func(o Group) bool { return o.ID == from })
+	found := slices.ContainsFunc(autoGroups(providerEntries(), settings.Load().ModelSameAs), func(o Group) bool { return o.ID == from })
 	g.ID, g.Auto, g.Hidden = to, false, false
 	f.Groups = slices.DeleteFunc(f.Groups, func(o Group) bool { return o.ID == from })
 	if found {

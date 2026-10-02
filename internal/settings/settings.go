@@ -251,6 +251,12 @@ type Settings struct {
 	// (01huadalang on Discord). Absent leaves it to the vendor's list and
 	// to each URL the provider has (see provider.SetModelAPI).
 	ModelAPIs map[string]string `json:"modelAPIs,omitempty"`
+	// ModelSameAs is the model another vendor sells under another name
+	// that a model is, by "<provider id>/<model id>": the routing groups
+	// magpie finds (provider's autoGroups) merge it with that one rather
+	// than by its own id, for an id no rule of magpie's matches up
+	// (kyzhouxu, #583). Absent leaves it to its id.
+	ModelSameAs map[string]string `json:"modelSameAs,omitempty"`
 	// The main window's size when it was last resized, width and height,
 	// so it opens at it again after a restart.
 	Window []int `json:"window,omitempty"`

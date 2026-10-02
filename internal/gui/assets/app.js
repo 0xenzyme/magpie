@@ -6243,6 +6243,24 @@ function renderModels(p) {
       const who = el("div", "mwho");
       who.append(name, el("code", "", m.id));
       row.append(who);
+      // the model of other providers' it is, for the routing groups magpie
+      // finds, when its id is one no rule matches up with theirs
+      // (Volcengine's deepseek-v4-1-flash-260910 and others'
+      // deepseek-v4.1-flash, #583); empty merges it by its own id, which
+      // the box shows as it is merged
+      const sameNow = () => prefs[id]?.same ?? m.same ?? "";
+      const sameBox = el("label", "msame");
+      const same = input(sameNow(), m.merge || m.id);
+      same.title = t("The model other providers serve that {id} is the same as: the routing groups magpie finds put them together. Empty: by its own id", { id: m.id });
+      same.spellcheck = false;
+      same.onchange = () => {
+        const v = same.value.trim();
+        if (v === (m.same || "")) delete pref().same; else pref().same = v;
+        drawReset();
+      };
+      same.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") same.blur(); else if (e.key === "Escape") { same.value = sameNow(); same.blur(); } };
+      sameBox.append(el("span", "", t("Same as")), same);
+      row.append(sameBox);
       const [img, imgCb] = tick(t("Accepts images"), imagesNow());
       img.title = t("Whether agents are told {id} can see images", { id: m.id });
       imgCb.onchange = () => {
@@ -6297,7 +6315,7 @@ function renderModels(p) {
       const unsaved = el("span", "hint munsaved", t("unsaved"));
       unsaved.title = t("Made when the provider is saved; Cancel drops it");
       const reset = el("button", "text action", t("Restore default"));
-      reset.title = t("Its own name, every reasoning level it has, whether it sees images, and the API it is asked on");
+      reset.title = t("Its own name, every reasoning level it has, whether it sees images, the API it is asked on, and the model it is the same as");
       reset.onclick = () => {
         prefs[id] = {};
         if (m.default) prefs[id].name = "";
@@ -6307,6 +6325,8 @@ function renderModels(p) {
         imgCb.checked = imagesNow();
         for (const [l, cb] of boxes) cb.checked = keptNow().includes(l);
         if (m.api) prefs[id].api = "";
+        if (m.same) prefs[id].same = "";
+        same.value = sameNow();
         if (apiSeg) { for (const b of apiSeg.querySelectorAll(".opt")) b.classList.toggle("on", b.dataset.api === apiNow()); slide(apiSeg, "api"); }
         drawReset();
       };
@@ -6316,7 +6336,7 @@ function renderModels(p) {
         unsaved.hidden = !prefs[id];
         // staged back to its own already, there is nothing to restore
         const images = prefs[id]?.ownImages ? false : prefs[id]?.images !== undefined ? prefs[id].images !== !!m.ownImages : !!m.imageSet;
-        const custom = nameNow() !== "" || (prefs[id]?.efforts ? prefs[id].efforts.length > 0 : !!m.kept?.length) || images || apiNow() !== "";
+        const custom = nameNow() !== "" || (prefs[id]?.efforts ? prefs[id].efforts.length > 0 : !!m.kept?.length) || images || apiNow() !== "" || sameNow() !== "";
         reset.hidden = !custom;
       };
       row.append(unsaved, reset);

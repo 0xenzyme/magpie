@@ -426,18 +426,21 @@ func (p Provider) ModelAPI(model string) (Protocol, bool) {
 // ModelPref is what the provider editor's Names & levels changed of one
 // model, sent with its Save: each part left nil is as it was. Name "" gives
 // the model its own name back, Efforts [] all its levels, OwnImages the
-// vendor's answer for whether it sees images, and API "" every API the
-// provider has for it.
+// vendor's answer for whether it sees images, API "" every API the
+// provider has for it, and Same "" its own id to merge it with other
+// vendors' by (see SetModelSame).
 type ModelPref struct {
 	Name      *string   `json:"name,omitempty"`
 	Efforts   *[]string `json:"efforts,omitempty"`
 	Images    *bool     `json:"images,omitempty"`
 	OwnImages bool      `json:"ownImages,omitempty"`
 	API       *string   `json:"api,omitempty"`
+	Same      *string   `json:"same,omitempty"`
 }
 
 // SetModelPrefs makes the changes to a provider's models, by model id, as
-// SetModelName, SetModelEfforts, SetModelImage and SetModelAPI do, and tells the agents
+// SetModelName, SetModelEfforts, SetModelImage, SetModelAPI and
+// SetModelSame do, and tells the agents
 // once, after them all, rather than once a change. It stops at the first
 // that fails, telling the agents of those made before it.
 func SetModelPrefs(pid string, prefs map[string]ModelPref) error {
@@ -473,10 +476,64 @@ func SetModelPrefs(pid string, prefs map[string]ModelPref) error {
 					return err
 				}
 			}
+			if m.Same != nil {
+				if err := set(setModelSame(ref, *m.Same)); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	}()
 	return touchedIf(changed, err)
+}
+
+// SetModelSame says which model a provider's model, spelt "provider/model",
+// is the same as, for one a vendor names its own way (Volcengine Ark's
+// dated ids, kyzhouxu on #583): the routing groups magpie finds merge it
+// with that model from every other provider (autoGroups). The name is a
+// model's id as any vendor spells it ("deepseek-v4.1-flash", or with a
+// vendor's prefix); "" — or a name that is the model's own however spelt —
+// merges it by its own id again. The agents are told, the groups they are
+// shown having changed.
+func SetModelSame(ref, same string) error {
+	return touchedIf(setModelSame(ref, same))
+}
+
+func setModelSame(ref, same string) (bool, error) {
+	p, model, err := splitRef(ref)
+	if err != nil {
+		return false, err
+	}
+	same = strings.TrimSpace(same)
+	if len([]rune(same)) > 80 {
+		return false, errors.New("the model a model is the same as is at most 80 characters")
+	}
+	if same != "" && Slug(sameModel(same)) == "" {
+		return false, fmt.Errorf("%q names no model: give a model's id, as deepseek-v4.1-flash", same)
+	}
+	if sameModel(same) == sameModel(model) {
+		same = "" // its own id: merged by it already
+	}
+	if same != "" && !p.serves(model) {
+		return false, fmt.Errorf("%s has no model %s (magpie provider %s lists them)", p.ID, model, p.ID)
+	}
+	s := settings.Load()
+	key := p.ID + "/" + model
+	if s.ModelSameAs[key] == same {
+		return false, nil
+	}
+	if same == "" {
+		delete(s.ModelSameAs, key)
+	} else {
+		if s.ModelSameAs == nil {
+			s.ModelSameAs = map[string]string{}
+		}
+		s.ModelSameAs[key] = same
+	}
+	if err := settings.Save(s); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // ImageOverride is the user's answer for whether pid's model takes images.

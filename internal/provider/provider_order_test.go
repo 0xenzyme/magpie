@@ -38,11 +38,11 @@ func TestProviderOrder(t *testing.T) {
 	if p, _, ok := Resolve("m"); !ok || p.ID != "c" {
 		t.Fatalf("m resolves to %q, not c", p.ID)
 	}
-	g := slices.IndexFunc(autoGroups(providerEntries()), func(g Group) bool { return g.ID == AutoGroupID("m") })
+	g := slices.IndexFunc(autoGroups(providerEntries(), nil), func(g Group) bool { return g.ID == AutoGroupID("m") })
 	if g < 0 {
 		t.Fatal("no group found of m")
 	}
-	if ms := autoGroups(providerEntries())[g].Members; !slices.Equal(ms, []string{"c/m", "a/m", "b/m"}) {
+	if ms := autoGroups(providerEntries(), nil)[g].Members; !slices.Equal(ms, []string{"c/m", "a/m", "b/m"}) {
 		t.Fatalf("group of m tries %v", ms)
 	}
 	if err := Save(Provider{ID: "d", Name: "d", Key: "sk-d", Chat: "https://d.example.com/v1", Models: []string{"m"}}); err != nil {

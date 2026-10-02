@@ -40,6 +40,8 @@ type modelJSON struct {
 	Rate     float64  `json:"rate,omitempty"`    // the credits a request costs the subscription, as a multiple
 	RateWas  float64  `json:"rateWas,omitempty"` // the rate before a discount running now
 	API      string   `json:"api,omitempty"`     // the one API the user said it is asked on
+	Same     string   `json:"same,omitempty"`    // the model the user said it is the same as, for the groups magpie finds (#583)
+	Merge    string   `json:"merge,omitempty"`   // what those groups merge it by when the user says nothing
 }
 
 type providerJSON struct {
@@ -376,6 +378,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 	}
 	seen := map[string]bool{}
 	names, kept := p.ModelNames(), p.ModelEfforts()
+	sames := settings.Load().ModelSameAs
 	// a list fetched before magpie kept each model's most: the one Codex
 	// CLI keeps says it
 	var most []catalog.Model
@@ -401,6 +404,8 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		if api, ok := p.ModelAPI(m.ID); ok {
 			j.API = string(api)
 		}
+		j.Same = sames[p.ID+"/"+m.ID]
+		j.Merge = provider.MergeName(m.ID)
 		if len(j.Efforts) == 0 {
 			j.Efforts, j.Given = provider.Levels, true
 		}

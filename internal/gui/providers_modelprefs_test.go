@@ -38,6 +38,13 @@ func TestProviderSaveModelPrefs(t *testing.T) {
 	if s.ModelNames["relay/sol"] != "My Sol" || !slices.Equal(s.ModelEfforts["relay/sol"], []string{"low", "high"}) || !s.ModelImages["relay/sol"] {
 		t.Fatalf("names %v, efforts %v, images %v", s.ModelNames, s.ModelEfforts, s.ModelImages)
 	}
+	// the model it is the same as, for the groups magpie finds (#583)
+	if w := post(`{"id":"relay","from":"relay","name":"Relay","chat":"http://127.0.0.1:1/v1","models":["sol"],"modelPrefs":{"sol":{"same":"deepseek-v4.1-flash"}}}`); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if got := settings.Load().ModelSameAs["relay/sol"]; got != "deepseek-v4.1-flash" {
+		t.Fatalf("same as %q", got)
+	}
 	// one it refuses fails the Save, saying why
 	if w := post(`{"id":"relay","from":"relay","name":"Relay","chat":"http://127.0.0.1:1/v1","models":["sol"],"modelPrefs":{"sol":{"efforts":["loud"]}}}`); w.Code == 200 || !strings.Contains(w.Body.String(), "loud") {
 		t.Fatalf("%d %s", w.Code, w.Body)
