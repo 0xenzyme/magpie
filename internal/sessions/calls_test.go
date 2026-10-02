@@ -23,6 +23,8 @@ func setupCalls(t *testing.T) callDirs {
 	t.Setenv("CLAUDE_CONFIG_DIR", d.claude)
 	t.Setenv("CODEX_HOME", d.codex)
 	t.Setenv("DSH_HOME", "")
+	t.Setenv("QODER_CONFIG_DIR", "")
+	t.Setenv("QODERCN_CONFIG_DIR", "")
 	t.Setenv("HOME", filepath.Join(dir, "home"))
 	t.Setenv("USERPROFILE", filepath.Join(dir, "home"))
 	callDesktopDirs = func() []string { return []string{d.desktop} }
