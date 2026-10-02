@@ -39,19 +39,37 @@ type ModelInfo struct {
 	AlwaysThinks  bool   `json:"-"`
 	DefaultEffort string `json:"-"`
 	// Free is set on a model that costs the plan no credits, as Qoder's
-	// client reads it: is_free, or a price_factor of 0.
+	// client shows it: a price_factor of 0 (see free).
 	Free bool `json:"-"`
 }
 
-// free reads whether the listing marks a model free: is_free true, or a
-// price_factor (the credits a request costs, as a multiple) of 0. Either
-// may come in snake or camel case.
+// promotion is a listing entry's running discount: a price_factor of 0
+// while it is active, with a price before it, is a discount, not a free
+// model.
+type promotion struct {
+	Active  bool     `json:"active"`
+	Before  *float64 `json:"before_promotion_price_factor"`
+	BeforeC *float64 `json:"beforePromotionPriceFactor"`
+}
+
+// free reads whether a model costs the plan no credits: a price_factor (the
+// credits a request costs, as a multiple; priceFactor in camel case) of 0,
+// the price Qoder's own client shows ("0×"). is_free is no word on that:
+// Qoder's listing has it true on Qwen3.8-Max at 0.5×, an off-peak discount
+// (错峰 4 折) on it, and Qoder's client shows the price, not it. It is taken
+// only from a listing with no price at all. A price of 0 for the while an
+// active promotion lasts, with a price before it, is a discount, not a free
+// model; a limited-time free model (Qwen3.8-Flash: 0×, its
+// original_price_factor 0.1 struck through) is free while it is. The same
+// rule as the plugin's freeOf (packages/qoder/index.mjs).
 func (m *ModelInfo) free(raw json.RawMessage) {
 	var v struct {
-		IsFree      *bool    `json:"is_free"`
-		IsFreeC     *bool    `json:"isFree"`
-		PriceFactor *float64 `json:"price_factor"`
-		PriceC      *float64 `json:"priceFactor"`
+		IsFree      *bool      `json:"is_free"`
+		IsFreeC     *bool      `json:"isFree"`
+		PriceFactor *float64   `json:"price_factor"`
+		PriceC      *float64   `json:"priceFactor"`
+		Promotion   *promotion `json:"promotion"`
+		PromotionT  *promotion `json:"prommotion"`
 	}
 	if json.Unmarshal(raw, &v) != nil {
 		return
@@ -62,7 +80,22 @@ func (m *ModelInfo) free(raw json.RawMessage) {
 	if v.PriceFactor == nil {
 		v.PriceFactor = v.PriceC
 	}
-	m.Free = v.IsFree != nil && *v.IsFree || v.PriceFactor != nil && *v.PriceFactor == 0
+	if v.Promotion == nil {
+		v.Promotion = v.PromotionT
+	}
+	if v.PriceFactor != nil {
+		if *v.PriceFactor != 0 {
+			m.Free = false
+			return
+		}
+		p := v.Promotion
+		if p != nil && p.Before == nil {
+			p.Before = p.BeforeC
+		}
+		m.Free = !(p != nil && p.Active && p.Before != nil && *p.Before > 0)
+		return
+	}
+	m.Free = v.IsFree != nil && *v.IsFree
 }
 
 // effortOrder ranks Qoder's effort names, lowest first.
