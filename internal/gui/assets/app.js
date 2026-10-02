@@ -2677,6 +2677,7 @@ async function loadProviders() {
     } else renderGatewayView();
     backToReader($("#view-gateway"));
   } else renderProviders();
+  renderArchive();
 }
 
 // Rows in the shape of the list while it is first asked for; a reload keeps
@@ -3168,7 +3169,6 @@ function renderGatewayView() {
   if (gatewayKeyDraft === null && !$("#gatewayKeys .rename-in")) renderGatewayKeys();
   renderConnect();
   renderGatewayModels();
-  renderArchive();
   renderActivity();
 }
 
@@ -3795,26 +3795,52 @@ function callBodyPanel(label, raw, truncated, id) {
 }
 
 // The request archive: with it on, each call's headers and bodies, secrets
-// taken out, go to the S3 bucket sync keeps its backup in, and a call's row
-// reads its own back from there (gateway/archive.go).
+// taken out, go to the S3 bucket sync keeps its backup in, and a request's
+// row on the Usage page reads its own back from there (gateway/archive.go).
+// Its switch sits over that list, at its right (Jorben on Discord); what it
+// keeps, and where, or what it needs first, is its tooltip, and a failed
+// upload says so beside it. The switch is the same element across redraws,
+// changed in place, so one being pressed or focused is never swapped out.
+let archiveSaving = false;
 function renderArchive() {
+  const box = $("#ledArchive");
+  if (!box) return;
+  // not said Off before the gateway's state is in
+  box.hidden = !providers?.gateway;
+  if (box.hidden) return;
   const a = providers.gateway.archive || {};
-  const box = $("#archiveList");
-  box.replaceChildren();
-  const r = el("div", "row pref");
-  const who = el("div", "who");
-  who.append(el("div", "name", t("Request archive")));
-  const failed = a.on && a.error;
-  const sub = el("div", "sub" + (failed ? " err" : ""), failed ? t("Last upload failed: {e}", { e: a.error })
-    : a.bucket ? t("Keeps each call’s headers and bodies, secrets taken out, in {where}", { where: a.bucket })
-    : t("Keeps each call’s headers and bodies, secrets taken out, in your S3 bucket. Set up Sync and backup in Settings with an s3:// address first"));
-  who.append(sub);
-  const val = el("div", "val");
-  val.append(segs([["off", t("Off")], ["on", t("On")]], a.on ? "on" : "off", (v) =>
-    api("settings/archive", { on: v === "on" }).then((na) => { providers.gateway.archive = na; renderArchive(); })
-      .catch((e) => { status(t(e.message), "err"); renderArchive(); })));
-  r.append(who, val);
-  box.append(r);
+  let b = box.querySelector(".led-arch-sw");
+  if (!b) {
+    b = el("button", "led-arch-sw");
+    b.type = "button";
+    b.setAttribute("role", "switch");
+    const sw = el("span", "lib-switch");
+    sw.append(el("i"));
+    b.append(el("span", "led-arch-name"), sw);
+    b.onclick = () => {
+      if (archiveSaving) return;
+      archiveSaving = true;
+      renderArchive();
+      api("settings/archive", { on: !providers.gateway.archive?.on })
+        .then((na) => { providers.gateway.archive = na; })
+        .catch((e) => status(t(e.message), "err"))
+        .finally(() => { archiveSaving = false; renderArchive(); });
+    };
+    box.append(b);
+  }
+  b.classList.toggle("on", !!a.on);
+  b.querySelector(".lib-switch").classList.toggle("on", !!a.on);
+  b.setAttribute("aria-checked", a.on ? "true" : "false");
+  b.disabled = archiveSaving;
+  b.querySelector(".led-arch-name").textContent = t("Request archive");
+  b.title = a.bucket ? t("Keeps each call’s headers and bodies, secrets taken out, in {where}", { where: a.bucket })
+    : t("Keeps each call’s headers and bodies, secrets taken out, in your S3 bucket. Set up Sync and backup in Settings with an s3:// address first");
+  let err = box.querySelector(".led-arch-err");
+  if (a.on && a.error) {
+    if (!err) { err = el("span", "led-arch-err"); box.prepend(err); }
+    err.textContent = t("Upload failed");
+    err.title = t("Last upload failed: {e}", { e: a.error });
+  } else err?.remove();
 }
 
 // What was read back from the archive, by "<date>/<id>": the archive's
@@ -3873,8 +3899,9 @@ function archiveBodyPanel(label, part, id) {
 }
 
 // A call the archive kept, by "<date>/<id>": read back when asked, and its
-// file downloaded, drawn again by redraw as it is read — under a recent
-// call on the Gateway page, and a request's row on the Usage page.
+// file downloaded, drawn again by redraw as it is read — under a request's
+// row on the Usage page (the Gateway page's recent calls show their own
+// bodies, and no longer the archive's copy as well).
 function archivePanel(name, id, redraw) {
   const box = el("section", "call-archive");
   const [date, aid] = name.split("/");
@@ -3960,7 +3987,6 @@ function renderActivity() {
         callBodyPanel("Request Body", c.requestBody, c.requestTruncated),
         callBodyPanel("Response Body", c.responseBody, c.responseTruncated, id),
       );
-      if (c.archive) details.append(archivePanel(c.archive, id, renderActivity));
       item.dataset.id = id;
       item.append(details);
     }
@@ -9408,6 +9434,7 @@ function renderLedger() {
   view.classList.remove("loading");
   view.removeAttribute("aria-busy");
   renderPeriod();
+  renderArchive();
 
   const cost = $("#usageCost");
   cost.replaceChildren();

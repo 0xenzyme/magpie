@@ -1127,15 +1127,15 @@ unticked), each a click from a group; `?view=routing&newgroup=` opens the
 window on one, and the tray panel asks `window/main` for it. The page doesn't
 move, no left-border accent; English and Chinese, Chromium and WebKit.
 
-`request-archive.test.cjs` turns the Gateway page's request archive on and
-off: off unless turned on, refused with sync not set up with an s3:// bucket
-(the reason in the footer, the switch left off), on with one, the bucket said.
-A call the archive kept shows its date and id under its bodies; "Fetch from
-archive" reads `archive?date=&id=` and shows the request's and response's
-headers and bodies with secrets taken out, a call not uploaded yet says so
-and can be asked again, and a call it didn't keep has nothing of it. No click
-moves the page; no left-border accent. English and Chinese, Chromium and
-WebKit, with `/api/plugins` faked.
+`request-archive.test.cjs` turns the request archive on and off from its
+switch at the top right of the Usage page's request list (Jorben on Discord):
+off unless turned on, refused with sync not set up with an s3:// bucket (the
+reason in the footer, the switch left off), on with one, the bucket in its
+tooltip, and a failed upload said beside it. The Gateway page has no switch
+any more, and its recent calls, even one the archive kept, show their own
+bodies with no "Fetch from archive" under them. No click moves the page; no
+left-border accent. English and Chinese, Chromium and WebKit, with
+`/api/plugins` faked.
 
 `request-archive-usage.test.cjs` opens the request archive from the Usage
 page's Requests (jorben, #447): a request the archive kept names it in its
@@ -1174,9 +1174,9 @@ move; English and Chinese, Chromium and WebKit.
 on Discord: no request archive switch and no usage chart icons in the remote
 web UI, and a 404 for `/wails/runtime.js`). With `web` set the page never
 asks for `/wails/runtime.js`, which the browser has none of, and nothing
-fails to load; the app's window still loads it. The Gateway page's request
-archive switch is there and posts `settings/archive` without moving the
-page, and the Usage page's chart draws its columns with each provider's icon
+fails to load; the app's window still loads it. The request archive's switch
+over the Usage page's requests is there and posts `settings/archive` without
+moving the page, and the Usage page's chart draws its columns with each provider's icon
 in its ranking. English and Chinese, Chromium and WebKit, with the API and
 `/api/plugins` faked. Go's `TestPageFilesRevalidate` checks that the page's
 files go out with `Cache-Control: no-cache` and an ETag of their content, so

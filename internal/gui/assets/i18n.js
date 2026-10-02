@@ -999,6 +999,7 @@ const I18N = {
     "Keeps each call’s headers and bodies, secrets taken out, in {where}": "把每次调用的请求头、响应头和请求体、响应体去掉密钥后存到 {where}",
     "Keeps each call’s headers and bodies, secrets taken out, in your S3 bucket. Set up Sync and backup in Settings with an s3:// address first": "把每次调用的请求头、响应头和请求体、响应体去掉密钥后存到你自己的 S3 存储桶。请先在设置的“同步与备份”中填写 s3:// 地址",
     "Last upload failed: {e}": "上次上传失败：{e}",
+    "Upload failed": "上传失败",
     "The request archive goes to the S3 bucket sync keeps its backup in: set up Sync and backup in Settings with an s3:// address first": "请求存档会上传到同步备份所用的 S3 存储桶：请先在设置的“同步与备份”中填写 s3:// 地址",
     "The request archive goes to the S3 bucket sync keeps its backup in, and sync isn't set up with one": "请求存档会上传到同步备份所用的 S3 存储桶，但同步尚未设置 S3",
     "Not in the archive yet: it is uploaded just after the call, or the upload failed (magpie's log says why)": "存档里还没有这次调用：调用结束后才会上传，或者上传失败了（原因见 magpie 日志）",
