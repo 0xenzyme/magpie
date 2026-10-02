@@ -231,6 +231,19 @@
         redrawList();
       };
       r.append(fold, el("span", "sub sm-path", cwd), el("span", "grow"), el("span", "note", t(items.length === 1 ? "{n} session" : "{n} sessions", { n: items.length })));
+      // every session of the folder, the ones a filter hides too, asked
+      // about and deleted as picked ones are (#527)
+      if (current()?.deletable) {
+        const all = el("button", "text sm-folder-del");
+        all.type = "button";
+        all.title = t("Delete every session in this folder");
+        all.append(svg(TRASH, 13, 1.4), el("span", "", t("Delete all")));
+        all.onclick = (e) => {
+          e.stopPropagation();
+          askDelete(data.sessions.filter((s) => (s.cwd || "") === cwd).map((s) => s.id), cwd);
+        };
+        r.append(all);
+      }
       r.title = cwd;
       g.append(r);
       if (open) for (const s of items) g.append(item(s));
@@ -316,16 +329,21 @@
     return d;
   }
 
-  // askDelete asks in magpie's dialog before the sessions go to its trash
-  function askDelete(ids) {
+  // askDelete asks in magpie's dialog before the sessions go to its trash;
+  // folder (a cwd, "" for none) when they are every session of one folder
+  function askDelete(ids, folder) {
     const byID = new Map((data?.sessions || []).map((s) => [s.id, s]));
     const list = ids.map((id) => byID.get(id)).filter(Boolean);
     if (!list.length) return;
     const a = current();
     const ed = el("div", "editor sm-ask");
     const h = el("div", "ehead");
-    h.append(icon(a.icon), el("b", "", list.length === 1 ? t("Delete this session?") : t("Delete {n} sessions?", { n: list.length })));
+    const whole = folder !== undefined && list.length > 1;
+    h.append(icon(a.icon), el("b", "", list.length === 1 ? t("Delete this session?")
+      : whole ? t("Delete all {n} sessions in {folder}?", { n: list.length, folder: folder ? baseName(folder) : t("No folder") })
+      : t("Delete {n} sessions?", { n: list.length })));
     ed.append(h);
+    if (folder) ed.append(el("p", "sub sm-ask-path", folder));
     const names = el("ul", "sm-ask-list");
     for (const s of list.slice(0, 5)) names.append(el("li", "", s.title || s.id));
     if (list.length > 5) names.append(el("li", "more", t("+{n} more", { n: list.length - 5 })));
