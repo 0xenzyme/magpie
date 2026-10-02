@@ -1790,7 +1790,9 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .editor .proxy-row .proxy-mode { flex: none; }
 .editor .proxy-row input.proxy-url { flex: 1 1 auto; width: auto; min-width: 0; }
 .editor .proxy-row input.proxy-url.off { visibility: hidden; }
-.editor input.concurrency { width: 12em; max-width: 100%; }
+.editor input.concurrency[type] { width: 12em; max-width: 100%; }
+.editor input[type="number"] { -moz-appearance: textfield; }
+.editor input[type="number"]::-webkit-inner-spin-button, .editor input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 /* each of a subscription's accounts with a proxy of its own: its name
    over the same row as the provider's, in a quiet card, no stripes */
 .editor .acct-proxies { display: grid; gap: 8px; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
@@ -1812,7 +1814,7 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .stepplan .steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: var(--muted); line-height: 1.5; }
 .stepplan .steps .pair { margin-top: 2px; }
 .stepplan .bookmarklet { display: inline-block; padding: 1px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--fg); background: var(--pill); text-decoration: none; cursor: grab; white-space: nowrap; }
-.editor input[type="text"], .editor input[type="password"], .editor input[type="url"], .acc .kf input, .acc input.rename-in {
+.editor input[type="text"], .editor input[type="password"], .editor input[type="url"], .editor input[type="number"], .acc .kf input, .acc input.rename-in {
   height: 27px; padding: 0 9px; border-radius: 7px;
   border: 1px solid var(--line); background: var(--card);
   font-size: 12.5px; outline: none; width: 100%; min-width: 0;

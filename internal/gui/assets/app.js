@@ -4347,7 +4347,7 @@ function concurrencyField(p) {
   box.step = "1";
   box.inputMode = "numeric";
   box.oninput = () => { draft.concurrency = box.value; };
-  return field(t("Max concurrent requests"), box, plugin ? t("Over it, requests queue and go out in order; empty takes the plugin's {n}, 0 is no limit", { n: plugin }) : t("Over it, requests queue and go out in order; 0 or empty is no limit"));
+  return field(t("Concurrency"), box, plugin ? t("Over it, requests queue and go out in order; empty takes the plugin's {n}, 0 is no limit", { n: plugin }) : t("Over it, requests queue and go out in order; 0 or empty is no limit"));
 }
 function concurrencyDraft(p) {
   return { concurrency: p?.maxConcurrency == null ? "" : String(p.maxConcurrency) };
@@ -4362,7 +4362,7 @@ function concurrencyOfDraft() {
 }
 function concurrencyError(ed) {
   ed.querySelector("input.concurrency")?.focus({ preventScroll: true });
-  return editorError(t("Max concurrent requests: a whole number from 0 to 1000"), "warn");
+  return editorError(t("Concurrency: a whole number from 0 to 1000"), "warn");
 }
 function proxyDraft(p) {
   const v = (p?.proxy || "").trim();

@@ -53,14 +53,14 @@ function serve(lang, posts) {
 }
 
 const words = {
-  en: { label: "Max concurrent requests", save: "Save", none: "No limit", plugin: "4, as its plugin says", hint: "Over it, requests queue and go out in order; 0 or empty is no limit", bad: "Max concurrent requests: a whole number from 0 to 1000" },
-  zh: { label: "最大并发请求数", save: "保存", none: "不限制", plugin: "4（插件的默认值）", hint: "超出时排队，按顺序发出；0 或留空为不限制", bad: "最大并发请求数：请填写 0 到 1000 之间的整数" },
+  en: { label: "Concurrency", save: "Save", none: "No limit", plugin: "4, as its plugin says", hint: "Over it, requests queue and go out in order; 0 or empty is no limit", bad: "Concurrency: a whole number from 0 to 1000" },
+  zh: { label: "并发上限", save: "保存", none: "不限制", plugin: "4（插件的默认值）", hint: "超出时排队，按顺序发出；0 或留空为不限制", bad: "并发上限：请填写 0 到 1000 之间的整数" },
 };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   for (const lang of ["en", "zh"]) {
     const w = words[lang];
-    const open = async (t, name) => {
+    const open = async (t, name, scheme = "light") => {
       const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
       t.after(async () => {
         if (process.env.ARTIFACT_DIR) {
@@ -69,7 +69,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         }
         await browser.close();
       });
-      const page = await (await browser.newContext({ viewport: { width: 900, height: 760 }, reducedMotion: "reduce" })).newPage();
+      const page = await (await browser.newContext({ viewport: { width: 900, height: 760 }, reducedMotion: "reduce", colorScheme: scheme })).newPage();
       page.setDefaultTimeout(5000);
       const errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
@@ -129,10 +129,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(saved.body.maxConcurrency, null);
 
       const missing = await page.evaluate(() => [
-        "Max concurrent requests", "No limit", "{n}, as its plugin says",
+        "Concurrency", "No limit", "{n}, as its plugin says",
         "Over it, requests queue and go out in order; 0 or empty is no limit",
         "Over it, requests queue and go out in order; empty takes the plugin's {n}, 0 is no limit",
-        "Max concurrent requests: a whole number from 0 to 1000",
+        "Concurrency: a whole number from 0 to 1000",
       ].filter((k) => !I18N.zh[k]));
       assert.deepEqual(missing, [], "every string has its Chinese");
       // a left border thicker or another colour than the right one is a stripe
@@ -140,6 +140,25 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(stripes, 0, "no border stripes");
       assert.deepEqual(errors, []);
     });
+
+    // Discord, ARNO: in the dark the field was a white box (the editor styled
+    // text, password and url inputs, not a number one) and its label ran to
+    // two lines in the 72px label column
+    for (const scheme of ["dark", "light"]) {
+      test(`${engine} ${lang} ${scheme}: the field looks like the editor's other fields, its label on one line`, async (t) => {
+        const { page, errors } = await open(t, "Relay", scheme);
+        const look = (e) => { const s = getComputedStyle(e); return { bg: s.backgroundColor, border: s.borderTopColor, radius: s.borderTopLeftRadius, height: s.height, color: s.color }; };
+        const other = await page.locator('.editor input[type="text"]').first().evaluate(look);
+        assert.deepEqual(await box(page).evaluate(look), other, "styled as a text field");
+        assert.equal(await box(page).evaluate((e) => e.getBoundingClientRect().width > 100), true, "wide enough for its placeholder");
+        const label = page.locator(".editor label", { hasText: w.label });
+        const lines = await label.evaluate((e) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight || "0") || 0));
+        const h = await label.evaluate((e) => e.getBoundingClientRect().height);
+        const one = await page.locator(".editor label").first().evaluate((e) => e.getBoundingClientRect().height);
+        assert(h <= one + 1, `the label takes ${h}px, one line is ${one}px (${lines})`);
+        assert.deepEqual(errors, []);
+      });
+    }
 
     test(`${engine} ${lang}: a signed-in account's limit opens as it is and is saved`, async (t) => {
       const { page, errors, posts } = await open(t, "Codex");
