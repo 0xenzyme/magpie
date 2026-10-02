@@ -101,6 +101,9 @@ type providerJSON struct {
 	// KeepLogin: magpie keeps Codex or Claude Code signed in to the first
 	// account rather than moving it on when that runs low (#524)
 	KeepLogin bool `json:"keepLogin,omitempty"`
+	// KeepLoginAs: the account it is kept signed in to instead of the
+	// first, the gateway still trying them in their order
+	KeepLoginAs string `json:"keepLoginAs,omitempty"`
 	// how many requests each of its keys or accounts has out at once, the
 	// rest queued: the user's (null: not set), and what its plugin says
 	// when the user set none (provider.Concurrency)
@@ -281,7 +284,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		Catalog: p.Catalog, Website: p.Website, KeysURL: p.KeysURL,
 		Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, Headers: p.Headers, Searches: p.Searches, BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, ModelsURL: p.ModelsURL,
 		Ready: p.Ready(), Chosen: p.Models, Models: []modelJSON{}, Agents: []providerAgent{},
-		Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, KeepLogin: p.KeepLogin, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
+		Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
 		MaxConcurrency: p.MaxConcurrency, PluginConcurrency: p.PluginConcurrency(),
 	}
 	if out.Fallback == nil {
@@ -802,6 +805,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 					in.Keys = old.Keys
 					in.Routing = old.Routing     // set on its own, with route
 					in.KeepLogin = old.KeepLogin // and this with keeplogin
+					in.KeepLoginAs = old.KeepLoginAs
 					in.Off = old.Off             // and this with off and on
 					if in.Contexts == nil {
 						in.Contexts = old.Contexts // a save that doesn't say
@@ -898,11 +902,21 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			}
 			provider.ForgetBalances()
 		case "keeplogin":
-			// Codex or Claude Code stays signed in to the first account (#524)
-			if err := provider.SetKeepLogin(in.ID, in.KeepLogin); err != nil {
+			// Codex or Claude Code stays signed in to the first account, or
+			// to one of the user's choosing (keepLoginAs), which signs it in
+			// to that one now, and back to the first when let go (#524)
+			var err error
+			moved, err = agent.Reseat(func() error {
+				if in.KeepLogin && in.KeepLoginAs != "" {
+					return provider.SetKeepLoginAs(in.ID, in.KeepLoginAs)
+				}
+				return provider.SetKeepLogin(in.ID, in.KeepLogin)
+			})
+			if err != nil {
 				fail(rw, err)
 				return
 			}
+			agent.SyncCatalog()
 		case "affinity":
 			if err := provider.SetAffinity(in.ID, in.Affinity); err != nil {
 				fail(rw, err)

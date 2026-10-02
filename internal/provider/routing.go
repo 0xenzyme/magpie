@@ -39,6 +39,8 @@ func SetRouting(id, routing string) error {
 
 // SetKeepLogin keeps Codex or Claude Code signed in to the account the
 // user made first (Provider.KeepLogin), or lets magpie move it on again.
+// Either way it is no longer kept on one of the user's choosing
+// (KeepLoginAs): it is signed in to the first again.
 func SetKeepLogin(id string, keep bool) error {
 	p, err := Find(id)
 	if err != nil {
@@ -47,8 +49,15 @@ func SetKeepLogin(id string, keep bool) error {
 	if p.Account == nil || p.Account.Agent != p.ID || !slices.Contains(switchedAgents, p.ID) {
 		return fmt.Errorf("magpie doesn't sign %s in to another of its accounts", p.Name)
 	}
-	p.KeepLogin = keep
-	return Save(*p)
+	chosen := p.KeepLogin && p.KeepLoginAs != ""
+	p.KeepLogin, p.KeepLoginAs = keep, ""
+	if err := Save(*p); err != nil {
+		return err
+	}
+	if chosen {
+		return signInToFirst(p.ID)
+	}
+	return nil
 }
 
 // SetAffinity changes how long a provider's conversations stay with the key

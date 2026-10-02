@@ -139,6 +139,21 @@ func perKeyBarred(p provider.Provider, model string, from provider.Protocol) (ou
 		for i, q := range also {
 			all = append(all, candidate{p: q, model: model, rest: p.ID + "@" + q.Account.User, rank: i + 1})
 		}
+		// kept signed in to an account of the user's choosing, the one
+		// signed in to stands at its own place in the order, not first
+		// (#524)
+		if ranks := p.LoginRanks(); ranks != nil {
+			at := func(c candidate) int {
+				if r, ok := ranks[strings.ToLower(c.p.Account.User)]; ok {
+					return r
+				}
+				return len(ranks)
+			}
+			slices.SortStableFunc(all, func(a, b candidate) int { return at(a) - at(b) })
+			for i := range all {
+				all[i].rank = i
+			}
+		}
 		all = slices.DeleteFunc(all, func(c candidate) bool {
 			if p.AccountServes(c.p.Account.User, model) {
 				return false

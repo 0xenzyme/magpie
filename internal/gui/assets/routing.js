@@ -701,7 +701,7 @@
     let i = -1;
     if (p?.account && w.kind === "account") {
       const user = (w.who || "").toLowerCase();
-      i = loginsInOrder(p.account).findIndex((l) => (l.user || "").toLowerCase() === user);
+      i = loginsInOrder(p.account, p).findIndex((l) => (l.user || "").toLowerCase() === user);
     } else if (p && w.kind === "key") i = (p.keyList || []).findIndex((k) => w.id === p.id + "#" + k.id);
     return i >= 0 ? i : (p ? 1000 : 0) + (w.rank || 0);
   }

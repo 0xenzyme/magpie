@@ -610,8 +610,18 @@ func Logins(agent string) []Login {
 // InUseLogin is the account of an agent's the gateway goes to first: the
 // one the agent is signed in to, unless it is paused, else the first other
 // one on; "" when the agent has none.
+// Kept signed in to one of the user's choosing, it is the first in the
+// order that is in use.
 func InUseLogin(agent string) string {
-	return inUseOf(Logins(agent))
+	ls := Logins(agent)
+	if keptAs(agent) != "" {
+		for _, l := range ls {
+			if (l.Active || l.On) && !l.Paused && l.Lapsed == "" {
+				return l.User
+			}
+		}
+	}
+	return inUseOf(ls)
 }
 
 func inUseOf(ls []Login) string {

@@ -23,7 +23,8 @@ package provider
 // that: once it is no longer low (backShare) the agent is signed back in
 // to it, as Smart gives it requests again then (#408). A switch the user
 // makes meanwhile ends that. With KeepLogin on the subscription, the agent
-// stays signed in to the first, whatever it has left (#524).
+// stays signed in to the first, whatever it has left (#524); with
+// KeepLoginAs, to that account, wherever it stands in the order.
 
 import (
 	"context"
@@ -117,6 +118,15 @@ func NextLogin(ctx context.Context, agent string) (from, to string, back, ok boo
 			spares = append(spares, l)
 		}
 	}
+	// kept on an account of the user's choosing, the agent goes back to
+	// it whenever it is on another, and never moves off it (#524)
+	if as := keptAs(agent); as != "" {
+		i := slices.IndexFunc(ls, func(l Login) bool { return strings.EqualFold(l.User, as) })
+		if from == "" || strings.EqualFold(from, as) || i < 0 || ls[i].Lapsed != "" {
+			return "", "", false, false
+		}
+		return from, ls[i].User, true, true
+	}
 	if from == "" || len(spares) == 0 {
 		return "", "", false, false
 	}
@@ -170,7 +180,11 @@ func SwitchWhenSpent(ctx context.Context, agent string) (string, error) {
 	}
 	if back {
 		setLoginReturn(agent, loginReturn{})
-		log.Printf("%s: %s has room again; signed it back in to it", agent, to)
+		if keptAs(agent) != "" {
+			log.Printf("%s: kept signed in to %s; signed it back in to it from %s", agent, to, from)
+		} else {
+			log.Printf("%s: %s has room again; signed it back in to it", agent, to)
+		}
 	} else {
 		if r.Back == "" {
 			r.Back = from

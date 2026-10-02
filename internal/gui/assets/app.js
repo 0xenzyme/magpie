@@ -6445,7 +6445,9 @@ function renderRouting(p) {
   const a = p.account;
   // — at 98%, In order once used up (#530), never when kept on the first (#524)
   const own = !a || (a.agent !== "codex" && a.agent !== "claude") ? ""
-    : " " + (p.keepLogin
+    : " " + (keptLogin(p)
+      ? t("Routing picks the account for each request through magpie, in the accounts' order; {agent} on its own stays signed in to {user}, whatever it has left.", { agent: a.agentName, user: keptLogin(p) })
+      : p.keepLogin
       ? t("Routing picks the account for each request through magpie; {agent} on its own stays signed in to the first account, whatever it has left.", { agent: a.agentName })
       : cur[0] === "order"
         ? t("Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is used up, and back to the first once that has room again.", { agent: a.agentName })
@@ -7245,18 +7247,41 @@ function forgetOwnTitle(a) {
   return t("magpie stops showing and using {agent}'s own sign-in; its files are left as they are, and it shows again when {agent} signs in anew", { agent: a.agentName });
 }
 
+// keptLogin: the account Codex or Claude Code is kept signed in to in
+// place of the first (#524), "" when none — the gateway then tries the
+// accounts in their order, the one signed in to at its own place
+function keptLogin(p) {
+  const a = p?.account;
+  if (!a || (a.agent !== "codex" && a.agent !== "claude") || !p.keepLogin || !p.keepLoginAs) return "";
+  const as = p.keepLoginAs.toLowerCase();
+  return (a.logins || []).find((l) => (l.user || "").toLowerCase() === as)?.user || "";
+}
+
 // loginsInOrder: an agent's accounts as its provider lists them and the
-// gateway tries them, the one it is signed in to first
-function loginsInOrder(a) {
+// gateway tries them, the one it is signed in to first — unless it is
+// kept signed in to one of the user's choosing (p given), when the order
+// is the accounts' own
+function loginsInOrder(a, p) {
   const ls = a.logins?.length ? [...a.logins] : [{ user: a.user, plan: a.plan, active: true, on: true }];
+  if (p && keptLogin(p)) return ls;
   return ls.sort((x, y) => (y.active ? 1 : 0) - (x.active ? 1 : 0));
 }
 
 function renderAccounts(a, p) {
   const sub = subOf(a.agent);
   const list = el("div", "accts");
-  const ls = loginsInOrder(a);
+  const ls = loginsInOrder(a, p);
   const several = ls.filter((l) => (l.active && !l.paused) || l.on).length > 1;
+  // kept signed in to one of the user's choosing (#524), the first is the
+  // first in use in the order, which Make first sets without a sign-in
+  const kept = keptLogin(p);
+  const firstUser = kept ? ls.find((l) => (l.active || l.on) && !l.paused && !l.lapsed)?.user : ls.find((l) => l.active)?.user;
+  const makeFirst = (l) => {
+    const b = el("button", "text", t("Make first"));
+    b.title = t("The gateway uses this account first; {agent} stays signed in to {user}", { agent: a.agentName, user: kept });
+    b.onclick = () => { b.classList.add("busy"); accountAction("provider/arrange", { id: p.id, accountOrder: [l.user, ...ls.filter((x) => x !== l).map((x) => x.user)] }, t("The gateway now uses {user} first", { user: l.user })); };
+    return b;
+  };
   // the account Claude Code or Codex is signed in to can be paused while
   // another is on: the gateway passes over it, the agent staying signed in
   // to it (#263)
@@ -7286,7 +7311,13 @@ function renderAccounts(a, p) {
     const [amPill, amBox] = ls.length > 1 || accountModelsOf(p, l.user).length ? accountModels(p, l.user, false, l.user) : [];
     if (amPill) row.append(amPill);
     row.append(el("span", "grow"));
-    if (l.active) {
+    if (l.active && kept && l.user !== firstUser) {
+      // signed in to, kept so, and tried at its place in the order
+      const signed = el("span", "using", l.paused ? t("Paused") : t("Signed in"));
+      signed.title = t("{agent} is kept signed in to this account; requests through magpie go to the accounts in their order", { agent: a.agentName });
+      row.append(signed);
+      if (on) row.append(makeFirst(l));
+    } else if (l.active) {
       const using = el("span", "using", l.paused ? t("Paused") : back ? t("First for now") : several ? t("First") : t("In use"));
       if (back && !l.paused) using.title = t("{user} was nearly used up, so magpie signed {agent} in to this one; it goes back to {user} once that has room again", { user: back.user, agent: a.agentName });
       row.append(using);
@@ -7305,10 +7336,18 @@ function renderAccounts(a, p) {
         again.title = t("magpie signs {agent} back in to this account once it has room again", { agent: a.agentName });
         row.append(again);
       }
-      const use = el("button", "text", on ? t("Make first") : t("Use"));
-      use.title = sub?.own ? t("The gateway uses this account first") : t("Sign {agent} in to this account", { agent: a.agentName });
-      use.onclick = () => { use.classList.add("busy"); accountAction("login/switch", { agent: a.agent, user: l.user }, sub?.own ? t("The gateway now uses {user} first", { user: l.user }) : t("{agent} is now signed in as {user}", { agent: a.agentName, user: l.user })); };
-      row.append(forget, use);
+      if (kept) {
+        // the sign-in stays where it is kept: Make first is the order's,
+        // and an account not in use is ticked on by its dot
+        row.append(forget);
+        if (l.user === firstUser) row.append(el("span", "using", t("First")));
+        else if (on) row.append(makeFirst(l));
+      } else {
+        const use = el("button", "text", on ? t("Make first") : t("Use"));
+        use.title = sub?.own ? t("The gateway uses this account first") : t("Sign {agent} in to this account", { agent: a.agentName });
+        use.onclick = () => { use.classList.add("busy"); accountAction("login/switch", { agent: a.agent, user: l.user }, sub?.own ? t("The gateway now uses {user} first", { user: l.user }) : t("{agent} is now signed in as {user}", { agent: a.agentName, user: l.user })); };
+        row.append(forget, use);
+      }
     }
     row.append(accountQuota(l.lapsed ? { [l.user]: { error: l.lapsed } } : quota, l.user));
     row.classList.add("with-aq"); // not :has(.aq), which Safari 15.0 lacks (#220)
@@ -7316,15 +7355,29 @@ function renderAccounts(a, p) {
     list.append(row);
   }
   // magpie signs Codex or Claude Code in to the next account when the
-  // first runs low (#209, #408); this keeps it on the first instead, the
-  // gateway still spreading requests over the ticked ones (#524)
+  // first runs low (#209, #408); this keeps it on the first instead, or on
+  // an account of the user's choosing, the gateway still spreading requests
+  // over the ticked ones in their order (#524)
   if ((a.agent === "codex" || a.agent === "claude") && several && p) {
-    const [keep, cb] = tick(t("Keep {agent} signed in to the first account", { agent: a.agentName }), !!p.keepLogin);
-    keep.classList.add("keep-login");
+    const box = el("div", "keep-login");
+    const [keep, cb] = tick(t("Keep {agent} signed in to", { agent: a.agentName }), !!p.keepLogin);
     keep.title = t("magpie won't sign {agent} in to another account when the first runs low; requests through magpie still go to the other ticked accounts as Routing says", { agent: a.agentName });
-    cb.onchange = () => accountAction("provider/keeplogin", { id: p.id, keepLogin: cb.checked },
-      cb.checked ? t("{agent} stays signed in to the first account", { agent: a.agentName }) : t("magpie moves {agent} to an account with room again", { agent: a.agentName }));
-    list.append(keep);
+    const as = el("select", "keep-as");
+    as.title = t("The account {agent} stays signed in to; the first is the one the gateway uses first", { agent: a.agentName });
+    as.append(new Option(t("the first account"), ""));
+    for (const l of ls) if (!l.lapsed) as.append(new Option(l.user, l.user));
+    as.value = kept;
+    const post = (keepLogin) => {
+      const body = { id: p.id, keepLogin };
+      if (keepLogin && as.value) body.keepLoginAs = as.value;
+      accountAction("provider/keeplogin", body, !keepLogin ? t("magpie moves {agent} to an account with room again", { agent: a.agentName })
+        : as.value ? t("{agent} stays signed in to {user}", { agent: a.agentName, user: as.value }) : t("{agent} stays signed in to the first account", { agent: a.agentName }));
+    };
+    cb.onchange = () => post(cb.checked);
+    // picking one keeps it so, ticked or not
+    as.onchange = () => { cb.checked = true; post(true); };
+    box.append(keep, as);
+    list.append(box);
   }
   if (a.agent === "codex" && providers?.codexDaemon) list.append(renderCodexDaemon(providers.codexDaemon));
   if (signing?.agent === a.agent) list.append(renderSigning(sub));

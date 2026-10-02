@@ -1236,6 +1236,17 @@ has room" (额度恢复后切回首选); with nothing to go back to, the account
 is on is just "First". The Routing note says magpie moves back. The page
 doesn't move; English and Chinese, Chromium and WebKit.
 
+`keep-login.test.cjs` checks the tick under Codex's accounts that keeps
+Codex signed in (#524: 始终登录首选账号), and the pick beside it that keeps
+it signed in to an account of the user's choosing rather than the first
+(Koohoko on #524: 首选只是为了按顺序先消耗它的额度). Picking one posts
+provider/keeplogin with keepLoginAs; the order holds, the first saying First
+and the chosen one Signed in (已登录), Make first on it posting
+provider/arrange rather than a sign-in; picking "the first account" goes
+back. The Routing note follows each, In order says magpie moves Codex on
+once used up (#530), and one account has no tick. The page doesn't move;
+English and Chinese, Chromium and WebKit.
+
 `signin-again.test.cjs` checks a sign-in to an account magpie lists
 already (#413: WorkBuddy's page offers the account WorkBuddy is signed in
 to). Adding another WorkBuddy account comes back done with `again`: the

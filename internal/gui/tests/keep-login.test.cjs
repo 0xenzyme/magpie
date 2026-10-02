@@ -3,8 +3,12 @@
 // signed in to the first account; ticking it posts provider/keeplogin, and
 // the Routing note then says Codex stays on the first. #530: In order, the
 // note says magpie moves Codex on once the account is used up, not at 98%.
-// With one account there is nothing to keep, so no tick. The page doesn't
-// move. In English and Chinese, Chromium and WebKit.
+// With one account there is nothing to keep, so no tick. Beside the tick,
+// a pick keeps Codex signed in to an account of the user's choosing
+// (keepLoginAs) while the first stays first: that row says Signed in, the
+// first says First, and Make first on it arranges the order rather than
+// signing Codex in. The page doesn't move. In English and Chinese,
+// Chromium and WebKit.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -38,7 +42,13 @@ function serve(lang, first, posts) {
     if (url.pathname === "/api/provider/keeplogin") {
       const body = route.request().postDataJSON();
       posts.push(body);
-      list = [{ ...list[0], keepLogin: body.keepLogin }];
+      const as = body.keepLogin && body.keepLoginAs || "";
+      const logins = list[0].account.logins.map((l) => ({ ...l, active: as ? l.user === as : l.user === "work@example.com" }));
+      list = [{ ...list[0], keepLogin: body.keepLogin, keepLoginAs: as, account: { ...list[0].account, logins } }];
+      return json(providers());
+    }
+    if (url.pathname === "/api/provider/arrange") {
+      posts.push({ arrange: route.request().postDataJSON() });
       return json(providers());
     }
     if (url.pathname === "/api/groups") return json({ groups: [] });
@@ -51,8 +61,8 @@ function serve(lang, first, posts) {
 }
 
 const words = {
-  en: { keep: "Keep Codex signed in to the first account", kept: /Codex on its own stays signed in to the first account/, moves: /once it is 98% used/, usedUp: /once it is used up/ },
-  zh: { keep: "Codex 始终登录首选账号", kept: /Codex 自己直连时始终登录首选账号/, moves: /用到 98% 时/, usedUp: /额度用完时/ },
+  en: { keep: "Keep Codex signed in to", first: "the first account", signed: "Signed in", firstLabel: "First", makeFirst: "Make first", keptAs: /Codex on its own stays signed in to spare@example.com/, kept: /Codex on its own stays signed in to the first account/, moves: /once it is 98% used/, usedUp: /once it is used up/ },
+  zh: { keep: "Codex 始终登录", first: "首选账号", signed: "已登录", firstLabel: "首选", makeFirst: "设为首选", keptAs: /Codex 自己直连时始终登录 spare@example.com/, kept: /Codex 自己直连时始终登录首选账号/, moves: /用到 98% 时/, usedUp: /额度用完时/ },
 };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -74,13 +84,19 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
     test(`${engine} ${lang}: a tick keeps Codex signed in to the first account`, async (t) => {
       const { page, errors, posts } = await open(t, {});
-      const keep = page.locator(".editor .accts label.keep-login");
+      const keep = page.locator(".editor .accts .keep-login label");
       assert.equal((await keep.textContent()).trim(), w.keep);
       assert.ok(await keep.getAttribute("title"), "it says what it does");
       assert.equal(await keep.locator("input").isChecked(), false);
       assert.match(await page.locator(".editor").textContent(), w.moves);
       const missing = await page.evaluate(() => [
-        "Keep {agent} signed in to the first account",
+        "Keep {agent} signed in to",
+        "the first account",
+        "The account {agent} stays signed in to; the first is the one the gateway uses first",
+        "{agent} stays signed in to {user}",
+        "{agent} is kept signed in to this account; requests through magpie go to the accounts in their order",
+        "The gateway uses this account first; {agent} stays signed in to {user}",
+        "Routing picks the account for each request through magpie, in the accounts' order; {agent} on its own stays signed in to {user}, whatever it has left.",
         "magpie won't sign {agent} in to another account when the first runs low; requests through magpie still go to the other ticked accounts as Routing says",
         "{agent} stays signed in to the first account",
         "magpie moves {agent} to an account with room again",
@@ -93,15 +109,46 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // the answer drawn: the note says so, and the box is ticked
       const says = (re) => page.waitForFunction((src) => new RegExp(src).test(document.querySelector(".editor")?.textContent || ""), re.source);
       await says(w.kept);
-      assert.equal(await page.locator(".editor .accts label.keep-login input").isChecked(), true);
+      assert.equal(await page.locator(".editor .accts .keep-login input").isChecked(), true);
       assert.deepEqual(posts, [{ id: "codex", keepLogin: true }]);
       assert.match(await page.locator(".editor").textContent(), w.kept);
       assert.doesNotMatch(await page.locator(".editor").textContent(), w.moves);
       assert.equal(await page.evaluate(() => document.scrollingElement.scrollTop), top, "the page doesn't move");
-      await page.locator(".editor .accts label.keep-login input").click();
+      await page.locator(".editor .accts .keep-login input").click();
       await says(w.moves);
-      assert.equal(await page.locator(".editor .accts label.keep-login input").isChecked(), false);
+      assert.equal(await page.locator(".editor .accts .keep-login input").isChecked(), false);
       assert.deepEqual(posts[1], { id: "codex", keepLogin: false });
+      assert.deepEqual(errors, []);
+    });
+
+    test(`${engine} ${lang}: Codex kept signed in to an account of the user's choosing, the first still first`, async (t) => {
+      const { page, errors, posts } = await open(t, {});
+      const pick = page.locator(".editor .accts .keep-login select");
+      assert.equal(await pick.inputValue(), "");
+      assert.equal((await pick.locator("option").first().textContent()).trim(), w.first);
+      assert.ok(await pick.getAttribute("title"), "it says what it does");
+      const top = await page.evaluate(() => document.scrollingElement.scrollTop);
+      await pick.selectOption("spare@example.com");
+      await page.waitForFunction((src) => new RegExp(src).test(document.querySelector(".editor")?.textContent || ""), w.keptAs.source);
+      assert.deepEqual(posts, [{ id: "codex", keepLogin: true, keepLoginAs: "spare@example.com" }]);
+      assert.equal(await page.locator(".editor .accts .keep-login input").isChecked(), true);
+      assert.equal(await page.locator(".editor .accts .keep-login select").inputValue(), "spare@example.com");
+      // the order holds: work first, spare signed in at its place
+      const rows = page.locator(".editor .accts .acc[data-account-id]");
+      assert.deepEqual(await rows.evaluateAll((rs) => rs.map((r) => r.dataset.accountId)), ["work@example.com", "spare@example.com"]);
+      const work = rows.nth(0), spare = rows.nth(1);
+      assert.equal((await work.locator(".using").textContent()).trim(), w.firstLabel);
+      assert.equal((await spare.locator(".using").textContent()).trim(), w.signed);
+      assert.equal(await work.locator("button.text", { hasText: w.makeFirst }).count(), 0);
+      // Make first arranges the order, no sign-in
+      await spare.locator("button.text", { hasText: w.makeFirst }).click();
+      await page.waitForFunction(() => !document.querySelector(".editor .busy"));
+      assert.deepEqual(posts[1], { arrange: { id: "codex", accountOrder: ["spare@example.com", "work@example.com"] } });
+      assert.equal(await page.evaluate(() => document.scrollingElement.scrollTop), top, "the page doesn't move");
+      // back to the first account
+      await page.locator(".editor .accts .keep-login select").selectOption("");
+      await page.waitForFunction((src) => new RegExp(src).test(document.querySelector(".editor")?.textContent || ""), w.kept.source);
+      assert.deepEqual(posts[2], { id: "codex", keepLogin: true });
       assert.deepEqual(errors, []);
     });
 
@@ -115,7 +162,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
     test(`${engine} ${lang}: with one account on, there is nothing to keep`, async (t) => {
       const { page, errors } = await open(t, { spare: false });
-      assert.equal(await page.locator(".editor .accts label.keep-login").count(), 0);
+      assert.equal(await page.locator(".editor .accts .keep-login label").count(), 0);
       assert.deepEqual(errors, []);
     });
   }
