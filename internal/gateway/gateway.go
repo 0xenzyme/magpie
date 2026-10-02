@@ -591,6 +591,23 @@ func unprefixed(id string) string {
 	return rest
 }
 
+// askedAt splits a model asked for at an effort of its own,
+// "<model>:<level>" (before a [1m] mark) — a Claude Code tier magpie set one
+// on (#536) — into the model and the level, "" for none. As a routing
+// group's member is read (#189), only a level's name after the last colon is
+// one, and a model a provider has by the whole id ("x:high") is taken whole.
+func askedAt(id string) (string, string) {
+	bare, marked := strings.CutSuffix(id, "[1m]")
+	m, e := provider.MemberEffort(bare)
+	if e == "" {
+		return id, ""
+	}
+	if marked {
+		m += "[1m]"
+	}
+	return m, e
+}
+
 // estimatedMoved are the built-ins that estimated a count, as their
 // plugins do, moved or beside the built-in (kiro-plugin); Command Code's
 // whatever its plan, as the plugin alone knows a Go key.
@@ -614,6 +631,7 @@ func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 	// Count the same masked prompt that generation sends to the vendor.
 	w, body, unmask := redacted(w, body)
 	defer unmask()
+	model, _ = askedAt(model) // counted as the model, whatever its effort
 	id := unprefixed(model)
 	if sid, ok := provider.AutoStandIn(id); ok {
 		id = sid
@@ -831,6 +849,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	w, body, unmask := redacted(w, body)
 	defer unmask()
 	requestBody, requestTruncated := captureRequestBody(body)
+	// a model asked for at an effort of its own (a Claude Code tier, #536)
+	// is the model, every try of it asked for that effort
+	asked, askedEffort := askedAt(modelOf(body))
+	if askedEffort != "" {
+		body = rewriteModel(body, asked)
+	}
 	capture := &captureResponseWriter{ResponseWriter: w}
 	w = capture
 	// the agent it is recorded as, the one on the computer it was passed
@@ -864,7 +888,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	// a model's id without a provider in it that names a routing group is
 	// the group's, as "group/<id>" is, rather than one provider's that
 	// serves it: the Routing view shows the group it went to
-	asked := call.Model
+	asked = call.Model
 	if agent == "claude-desktop" {
 		asked = desktopTurn(asked, body)
 	}
@@ -1160,11 +1184,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 		}
 		picked := false // the effort asked for in place of the agent's
-		if c.effort != "" {
-			// a member fixed at an effort (#189) is asked for it, at the
-			// level its model has nearest, whatever the agent asked or the
-			// turn's pick: even a request that asked for no reasoning
-			attemptBody = withFixedEffort(from, attemptBody, fitLevel(c.effort, c.p.Efforts(c.model)))
+		// a member fixed at an effort (#189), else the model asked for at
+		// one (#536)
+		fixed := cmp.Or(c.effort, askedEffort)
+		if fixed != "" {
+			// a member fixed at an effort is asked for it, at the level its
+			// model has nearest, whatever the agent asked or the turn's
+			// pick: even a request that asked for no reasoning
+			attemptBody = withFixedEffort(from, attemptBody, fitLevel(fixed, c.p.Efforts(c.model)))
 		} else if effort != "" {
 			// the level this model has nearest to the one picked; one whose
 			// levels aren't known isn't asked for more than high, which
@@ -1193,7 +1220,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 		}
 		s.trace.update(tr, func(t *Route) {
-			t.Tries = append(t.Tries, Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Fast: fast, Start: began})
+			t.Tries = append(t.Tries, Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: fixed, Fast: fast, Start: began})
 		})
 		held := false // answered as its vendor did a moment ago, without asking
 		var queued int64 // ms it waited for a slot of its key's or account's
@@ -1235,7 +1262,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// the vendor's safety filter, with nothing said (#248)
 			call.Error = refusedError(c.p, c.model, hw.failMsg)
 		}
-		try := Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: c.effort, Fast: fast, Start: began, Done: true, Status: call.Status, Millis: time.Since(began).Milliseconds(), Error: call.Error, Queued: queued,
+		try := Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: fixed, Fast: fast, Start: began, Done: true, Status: call.Status, Millis: time.Since(began).Milliseconds(), Error: call.Error, Queued: queued,
 			Served: call.Usage.Served}
 		asName := provider.SentNameOnIn(wiresOf(r.Context()), c.p.ID, accountAgent(c.p), c.model, sent)
 		try.Swapped, try.Routed = swapped(asName, call.Usage.Served), usage.GroupRouted(asName, call.Usage.Served)

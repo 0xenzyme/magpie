@@ -253,8 +253,8 @@ function renderAgents() {
     // an effort or ultracode the model has none of (Claude Code on Haiku
     // 4.5, ultracode short of xhigh) isn't drawn at all, nor are subagents
     // with no model to go on (Claude Code's, until it runs through magpie)
-    const none = (f) => (f.key === "effort" || f.key === "ultracode" || f.label === "subagents") && !f.options.length && !f.value;
-    const shownFields = a.fields.filter((f) => !TIERS.includes(f.label) && !none(f));
+    const none = (f) => (f.key === "effort" || f.key === "ultracode" || f.label === "subagents" || f.label === SUB_EFFORT) && !f.options.length && !f.value;
+    const shownFields = a.fields.filter((f) => !TIERS.includes(f.label) && !TIER_EFFORTS.includes(f.label) && !none(f));
     const tiers = tierMenu(a);
     if (tiers) shownFields.push(tiers);
     const sorted = shownFields.sort((x, y) => wide(y) - wide(x) || extra(x) - extra(y));
@@ -1397,6 +1397,8 @@ function openRowMenu(anchor, acts) {
 // once it runs through magpie. They share one button, which lists the four;
 // picking one opens the model picker for it.
 const TIERS = ["opus", "sonnet", "haiku", "fable"];
+// and each an effort of its own (#536), in the same menu, under its model
+const TIER_EFFORTS = TIERS.map((tier) => tier + " effort");
 // fields that fall back to the agent's model when unset: omp's smol and
 // slow roles take the session's, as its subagents do ("smol", not "small":
 // other agents' small model is a picker of its own)
@@ -1426,8 +1428,7 @@ function extraField(a, f) {
   const b = el("button", "field extra" + (set ? " set" : ""));
   b.append(svg(EXTRA_GLYPH[f.label] || EXTRA_GLYPH.tiers, 13, 1.5));
   const opt = optionFor(f, f.value);
-  b.title = f.label === SUB_EFFORT ? subEffortTitle(f, opt) : f.menu
-    ? t("{label}: {value}", { label: t(f.label), value: f.summary }) + "\n" + f.options.map((o) => `${o.label}: ${o.note}`).join("\n")
+  b.title = f.label === SUB_EFFORT ? subEffortTitle(a, f, opt) : f.menu ? menuTitle(f)
     : t("{label}: {value}", { label: t(f.label), value: t(opt?.label || f.value || "same as model") }) + (opt?.note && !FOLLOWS_MODEL.includes(f.label) ? "\n" + t(opt.note) : "");
   b.setAttribute("aria-label", b.title);
   b.dataset.key = f.key;
@@ -1435,12 +1436,17 @@ function extraField(a, f) {
   return b;
 }
 
+// menuTitle: a menu square's title, its summary and then each of its entries
+function menuTitle(f) {
+  return t("{label}: {value}", { label: t(f.label), value: f.summary }) + "\n" + f.options.map((o) => `${t(o.label)}: ${o.note}`).join("\n");
+}
+
 // subEffortTitle: the effort subagents start at, and unset, what that means:
 // Codex runs one at the session's effort, or, given a model of its own, at
-// that model's default
-function subEffortTitle(f, opt) {
+// that model's default; Claude Code's (#536) at the effort it asks for
+function subEffortTitle(a, f, opt) {
   return t("{label}: {value}", { label: t(f.label), value: effortName(opt || { value: f.value }) }) +
-    (f.value ? "" : "\n" + t("the session's effort, or the subagent model's own default"));
+    (f.value ? "" : "\n" + t(a.id === "claude" ? "the effort Claude Code asks for" : "the session's effort, or the subagent model's own default"));
 }
 
 // launchButton copies the command that starts an agent on magpie, for one
@@ -1464,15 +1470,23 @@ function tierMenu(a) {
   if (!tiers.length || !tiers.some((f) => f.options.length)) return null;
   const main = a.fields.find((f) => f.key === "model");
   const mainName = optionFor(main, main.value)?.label || main.value;
-  const custom = tiers.filter((f) => f.value);
+  // a tier's effort, offered while there are levels to pick (Claude Code
+  // through magpie); unset, the tier runs at the effort Claude Code asks
+  const effortOf = (f) => a.fields.find((e) => e.label === f.label + " effort" && (e.options.length || e.value));
+  const level = (e) => e?.value ? effortName(optionFor(e, e.value) || { value: e.value }) : "";
+  const custom = tiers.filter((f) => f.value || effortOf(f)?.value);
   const name = (f) => optionFor(f, f.value)?.label || f.value;
   return {
     key: "tiers", label: "tiers", value: "", menu: true, custom: custom.length > 0,
-    summary: custom.length ? custom.map((f) => f.label).join(", ") : t("same as model"),
-    options: tiers.map((f) => ({
-      value: f.key, label: f.label, icon: optionFor(f, f.value)?.icon || optionFor(main, main.value)?.icon,
-      note: f.value ? name(f) : t("same as model ({model})", { model: mainName }),
-    })),
+    summary: custom.length ? custom.map((f) => level(effortOf(f)) ? `${f.label} (${level(effortOf(f))})` : f.label).join(", ") : t("same as model"),
+    options: tiers.flatMap((f) => {
+      const model = {
+        value: f.key, label: f.label, icon: optionFor(f, f.value)?.icon || optionFor(main, main.value)?.icon,
+        note: f.value ? name(f) : t("same as model ({model})", { model: mainName }),
+      };
+      const e = effortOf(f);
+      return e ? [model, { value: e.key, label: t(e.label), effortOf: e, note: level(e) || t("the effort Claude Code asks for") }] : [model];
+    }),
   };
 }
 
@@ -1963,7 +1977,7 @@ function openPicker(agent, field, anchor, ev, only) {
   // routing groups come first, before the agent's own models and each
   // provider's; only the picker's own choices (Automatic, Off) above them
   options = [...options.filter((o) => o.reset), ...options.filter((o) => !o.reset && o.group === ROUTING_GROUPS), ...options.filter((o) => !o.reset && o.group !== ROUTING_GROUPS)];
-  const effortPicker = !only && (field.key === "effort" || field.label === "effort" || field.label === "thinking" || field.label === SUB_EFFORT);
+  const effortPicker = !only && (field.key === "effort" || field.label === "effort" || field.label === "thinking" || field.label === SUB_EFFORT || TIER_EFFORTS.includes(field.label));
   options = oneRowPerModel(options, cur);
   // Current model first, then the rest in catalog order. Effort levels keep
   // their natural low → high order because their position is meaningful.
@@ -2183,8 +2197,18 @@ function renderEffortPicker() {
     // a square (the subagents' effort) says it in its title, lit while set
     if (opened.field.label === SUB_EFFORT) {
       opened.anchor.classList.toggle("set", !!option.value);
-      opened.anchor.title = subEffortTitle(opened.field, option);
+      opened.anchor.title = subEffortTitle(opened.agent, opened.field, option);
       opened.anchor.setAttribute("aria-label", opened.anchor.title);
+    }
+    // a tier's effort, opened from the tiers' square: that square's title
+    // and light follow the level
+    if (TIER_EFFORTS.includes(opened.field.label)) {
+      const menu = tierMenu(opened.agent);
+      if (menu) {
+        opened.anchor.classList.toggle("set", menu.custom);
+        opened.anchor.title = menuTitle(menu);
+        opened.anchor.setAttribute("aria-label", opened.anchor.title);
+      }
     }
     // Persist every settled slider value, but keep the compact control open so
     // the user can compare adjacent levels. Queue writes to preserve ordering
@@ -2362,7 +2386,7 @@ function renderList() {
   const list = $("#list");
   list.replaceChildren();
   if (!pick.items.length) { list.append(el("div", "none", t("No matches."))); for (const m of pick.kept || []) list.append(keptNote(m)); return; }
-  const hasIcons = pick.items.some((o) => o.icon);
+  const hasIcons = pick.items.some((o) => o.icon || o.effortOf);
   const q = $("#q").value.trim();
   let group = null;
   pick.items.forEach((o, idx) => {
@@ -4592,6 +4616,7 @@ function stackIcon(icons) {
 }
 
 function optionIcon(o) {
+  if (o.effortOf) return effortIcon(o.effortOf);
   return o.icons?.length ? stackIcon(o.icons) : icon(o.icon);
 }
 
