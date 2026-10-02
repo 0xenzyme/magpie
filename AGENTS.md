@@ -33,7 +33,11 @@ Two cases decide it:
   editor's "Move to plugin", or by clicking it in the Add sheet before
   signing in (`provider.Adopt`). Its `migrations.json` state is `plugin`
   (`provider.Moved(id)`). This is the default for new sign-ins since
-  v0.1.642.
+  v0.1.642. A user who installs the plugin themselves is moved too
+  (`provider.HandOver`): at once when the built-in has no accounts, from the
+  gateway's hourly loop (`KeepRetiringMoved`) when it has, unless they moved
+  back or the plugin is signed in under its own `-plugin` id already. Until
+  then the Add sheet shows the plugin's tile only (`replacedSub` in app.js).
 - **Not moved:** the user is still signed in through the built-in.
 
 For a moved subscription, the plugin does everything: sign-in, refresh,

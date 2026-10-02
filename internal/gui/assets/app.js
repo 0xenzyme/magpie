@@ -2989,6 +2989,10 @@ function renderFileError() {
 const DEPRECATED_WHY = "Some subscriptions are reached in ways their vendors' terms may not allow. So that magpie itself isn't banned over them, subscription providers are being decoupled from magpie and run by community plugins instead.";
 // deprecatedSub: a built-in subscription with a plugin, not moved onto it
 const deprecatedSub = (agent) => (providers?.movable || []).includes(agent) && !movedSub(agent);
+// replacedSub: a deprecated built-in whose plugin is installed and serves
+// it, under the plugin's own id (the built-in's with "-plugin") until moved;
+// its accounts, if any, still work, and its plugin's Move brings them over
+const replacedSub = (agent) => deprecatedSub(agent) && (providers?.plugins || []).some((x) => x.pid === agent);
 function deprecatedBadge() {
   const b = el("span", "badge deprecated", t("Deprecated"));
   b.title = t(DEPRECATED_WHY);
@@ -4151,8 +4155,10 @@ function renderAdd() {
       return grid;
     };
     let any = false;
-    // one moved onto its plugin stays where it was, signing in through it
-    const subs = SUBS.map((x) => subOf(x.agent)).filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "subscription".includes(f));
+    // one moved onto its plugin stays where it was, signing in through it;
+    // a deprecated one whose plugin is installed is that plugin's row alone
+    // (ARNO on Discord: Qoder CN twice), unless it is signing in now
+    const subs = SUBS.filter((x) => !replacedSub(x.agent) || signing?.agent === x.agent).map((x) => subOf(x.agent)).filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "subscription".includes(f));
     if (subs.length) {
       any = true;
       const grid = section("Subscriptions", "sign in, no key");
