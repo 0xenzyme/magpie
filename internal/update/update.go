@@ -376,6 +376,7 @@ func StageBinary(ctx context.Context, rel *Release) (string, error) {
 // InstallBinary swaps a staged binary in for exe, the running one, which
 // keeps going until it exits.
 func InstallBinary(staged, exe string) error {
+	var old string
 	if runtime.GOOS == "windows" {
 		// A running .exe cannot be overwritten, but it can be moved aside.
 		// What the last update moved aside may still be running too (a
@@ -383,12 +384,17 @@ func InstallBinary(staged, exe string) error {
 		// replaced then: this one goes beside it, under a name of its own.
 		// The download is kept, for another try.
 		RemoveOld(exe)
-		if err := moveAside(exe); err != nil {
+		var err error
+		if old, err = moveAside(exe); err != nil {
 			return err
 		}
 	}
 	if err := os.Rename(staged, exe); err != nil {
-		if !NeedsAdmin(err) { // kept for InstallBinaryAsAdmin
+		if old != "" {
+			if restoreErr := os.Rename(old, exe); restoreErr != nil {
+				return errors.Join(err, fmt.Errorf("couldn't restore %s from %s: %w", filepath.Base(exe), old, restoreErr))
+			}
+		} else if !NeedsAdmin(err) { // kept for InstallBinaryAsAdmin
 			os.Remove(staged)
 		}
 		return err
@@ -414,12 +420,14 @@ const (
 // moveAside moves the running exe out of the way of the new version, under
 // a name of its own, trying again for a few seconds while something has it
 // open. What it says when it can't is the reason and what to do: the error
-// is shown as is in the version row.
-func moveAside(exe string) error {
+// is shown as is in the version row. On success it returns the actual name,
+// so a failed installation can put the running exe back.
+func moveAside(exe string) (string, error) {
 	var err error
 	for i := 0; ; i++ {
-		if err = renameFile(exe, oldName(exe)); err == nil {
-			return nil
+		old := oldName(exe)
+		if err = renameFile(exe, old); err == nil {
+			return old, nil
 		}
 		if errors.Is(err, fs.ErrNotExist) || i == len(asideWaits) {
 			break
@@ -443,7 +451,7 @@ func moveAside(exe string) error {
 	default:
 		hint = "download the new version and put it in place of this one"
 	}
-	return fmt.Errorf("couldn't move %s aside to put the new version in: %s; %s", filepath.Base(exe), strings.TrimRight(why, ". 。"), hint)
+	return "", fmt.Errorf("couldn't move %s aside to put the new version in: %s; %s", filepath.Base(exe), strings.TrimRight(why, ". 。"), hint)
 }
 
 // oldName is where a running exe is moved aside to: exe.old, or when
