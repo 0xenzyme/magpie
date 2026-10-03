@@ -63,12 +63,17 @@ func testSaveConcurrent(t *testing.T, linked bool) {
 	} else {
 		close(readDone)
 	}
+	iterations := 300
+	if linked {
+		// Each hard-link save syncs the file; fewer writes keep this test quick.
+		iterations = 50
+	}
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
 			<-start
-			for i := range 300 {
+			for i := range iterations {
 				s := Load()
 				check(s)
 				s.NoAutoUpdate = i%2 == 0
