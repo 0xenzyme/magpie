@@ -652,6 +652,8 @@ func SignOut(ctx context.Context, provider, account string) error {
 	if Running() {
 		return Call(ctx, "signOut", map[string]any{"provider": provider, "account": account}, nil)
 	}
+	unlock := lockAuth()
+	defer unlock()
 	var m map[string]json.RawMessage
 	b, err := steady.ReadFile(AuthPath())
 	if err != nil {

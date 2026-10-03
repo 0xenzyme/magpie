@@ -29,6 +29,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/proc"
@@ -65,6 +66,33 @@ func Dir() string { return filepath.Join(settings.Dir(), "plugins") }
 
 // AuthPath is the plugins' sign-ins, OpenCode's auth.json in shape.
 func AuthPath() string { return filepath.Join(settings.Dir(), "plugin-auth.json") }
+
+// authLockStale is how long plugin-auth.json.lock is held at most: one
+// older was left by a host or a magpie that died holding it.
+const authLockStale = 10 * time.Second
+
+// lockAuth takes plugin-auth.json.lock, which host.js takes too, for a
+// change to plugin-auth.json read afresh under it: two hosts (one being
+// restarted) and magpie never write each other's accounts away. It gives
+// the unlock.
+func lockAuth() func() {
+	lock := AuthPath() + ".lock"
+	start := time.Now()
+	for {
+		f, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err == nil {
+			f.Close()
+			return func() { os.Remove(lock) }
+		}
+		if !os.IsExist(err) && !os.IsPermission(err) {
+			return func() {} // no folder to lock in: no file to change either
+		}
+		if fi, err := os.Stat(lock); err == nil && time.Since(fi.ModTime()) > authLockStale || time.Since(start) > 2*authLockStale {
+			os.Remove(lock)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
 
 func listPath() string { return filepath.Join(settings.Dir(), "plugins.json") }
 

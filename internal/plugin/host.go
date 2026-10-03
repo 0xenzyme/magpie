@@ -47,6 +47,7 @@ type message struct {
 	Message  string            `json:"message"`
 	Title    string            `json:"title"`
 	Variant  string            `json:"variant"`
+	Count    int               `json:"count"`
 }
 
 type call struct {
@@ -67,6 +68,9 @@ type host struct {
 	dead   chan struct{}
 	err    error
 	loaded []Loaded
+	// renewing is how many sign-ins the host is renewing: stop lets them
+	// end, their new tokens saved, before it kills the host
+	renewing atomic.Int32
 }
 
 // Loaded is how a plugin fared when the host loaded it.
@@ -190,14 +194,36 @@ func (h *host) alive() bool {
 	}
 }
 
+// stopWait is how long a stopped host has to finish its calls; while it
+// is renewing a sign-in it has up to stopRenewing in all, since a vendor
+// that rotates its refresh token has already spent the old one, and the
+// account is signed out unless the new one is saved.
+var (
+	stopWait     = 2 * time.Second
+	stopRenewing = 15 * time.Second
+)
+
 func (h *host) stop() {
 	h.in.Close()
+	start := time.Now()
+	wait := time.NewTimer(stopWait)
+	defer wait.Stop()
 	select {
 	case <-h.dead:
-	case <-time.After(2 * time.Second):
-		if h.cmd.Process != nil {
-			h.cmd.Process.Kill()
+		return
+	case <-wait.C:
+	}
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for h.renewing.Load() > 0 && time.Since(start) < stopRenewing {
+		select {
+		case <-h.dead:
+			return
+		case <-tick.C:
 		}
+	}
+	if h.cmd.Process != nil {
+		h.cmd.Process.Kill()
 	}
 }
 
@@ -385,6 +411,8 @@ func (h *host) dispatch(m message) {
 		switch m.Event {
 		case "auth":
 			changed()
+		case "renewing":
+			h.renewing.Store(int32(m.Count))
 		case "signIn":
 			onSignInMu.Lock()
 			f := onSignIn

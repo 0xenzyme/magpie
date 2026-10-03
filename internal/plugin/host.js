@@ -240,18 +240,67 @@ function pause(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
+// Two hosts run at once while one is restarted (the old one finishing its
+// calls), and magpie writes the file when no host runs: each change to it
+// is made under plugin-auth.json.lock, read afresh and written back with
+// only its own accounts changed, so a host never writes another's newer
+// token away with what it read before. Nothing awaits under the lock; one
+// held longer than AUTH_LOCK_STALE was left by a host that died.
+const AUTH_LOCK_STALE = 10 * 1000
+
+function lockAuth() {
+  const lock = authPath + ".lock"
+  fs.mkdirSync(path.dirname(authPath), { recursive: true })
+  for (const start = Date.now(); ; ) {
+    try {
+      fs.closeSync(fs.openSync(lock, "wx", 0o600))
+      return () => {
+        try {
+          fs.unlinkSync(lock)
+        } catch {}
+      }
+    } catch (e) {
+      if (e?.code !== "EEXIST" && e?.code !== "EPERM" && e?.code !== "EACCES") throw e
+    }
+    let old = false
+    try {
+      old = Date.now() - fs.statSync(lock).mtimeMs > AUTH_LOCK_STALE
+    } catch {}
+    if (old || Date.now() - start > 2 * AUTH_LOCK_STALE) {
+      try {
+        fs.unlinkSync(lock)
+      } catch {}
+    }
+    pause(5)
+  }
+}
+
+// changeAuth runs change on the file as it is now, under the lock, and
+// writes it back when change says it changed it.
+function changeAuth(change) {
+  const unlock = lockAuth()
+  try {
+    const all = readAuth()
+    const out = change(all)
+    if (out !== false) writeAuth(all)
+    return out
+  } finally {
+    unlock()
+  }
+}
+
 function setAuth(key, info) {
-  const all = readAuth()
-  all[key] = info
-  writeAuth(all)
+  changeAuth((all) => {
+    all[key] = info
+  })
   loaders.delete(key)
   send({ event: "auth", provider: providerOf(key), account: key })
 }
 
 function removeAuth(key) {
-  const all = readAuth()
-  delete all[key]
-  writeAuth(all)
+  changeAuth((all) => {
+    delete all[key]
+  })
   loaders.delete(key)
   send({ event: "auth", provider: providerOf(key), account: key })
 }
@@ -324,24 +373,28 @@ function uidOf(a) {
 // else the same secret) replaces that one's and goes. It gives where it is
 // kept.
 function settle(provider, key) {
-  const all = readAuth()
-  const now = all[key]
-  if (!now) return key
-  const who = whoOf(now)
-  const secret = secretOf(now)
-  for (const k of accountsOf(all, provider)) {
-    if (k === key) continue
-    const was = all[k]
-    const other = uidOf(now) && uidOf(was) && uidOf(now) !== uidOf(was)
-    if ((who && whoOf(was) === who && !other) || (!who && !whoOf(was) && secret && secretOf(was) === secret)) {
-      all[k] = now
-      delete all[key]
-      writeAuth(all)
-      loaders.delete(k)
-      loaders.delete(key)
-      send({ event: "auth", provider, account: k })
-      return k
+  const k = changeAuth((all) => {
+    const now = all[key]
+    if (!now) return false
+    const who = whoOf(now)
+    const secret = secretOf(now)
+    for (const k of accountsOf(all, provider)) {
+      if (k === key) continue
+      const was = all[k]
+      const other = uidOf(now) && uidOf(was) && uidOf(now) !== uidOf(was)
+      if ((who && whoOf(was) === who && !other) || (!who && !whoOf(was) && secret && secretOf(was) === secret)) {
+        all[k] = now
+        delete all[key]
+        return k
+      }
     }
+    return false
+  })
+  if (k) {
+    loaders.delete(k)
+    loaders.delete(key)
+    send({ event: "auth", provider, account: k })
+    return k
   }
   return key
 }
@@ -372,8 +425,14 @@ function makeClient() {
           // tokens over the old; nothing is merged. It goes to the
           // account the request is for.
           const key = keyFor(id)
-          const prev = readAuth()[key]
-          if (JSON.stringify(prev) !== JSON.stringify(body)) setAuth(key, body)
+          const kept = changeAuth((all) => {
+            if (JSON.stringify(all[key]) === JSON.stringify(body)) return false
+            all[key] = body
+          })
+          if (kept !== false) {
+            loaders.delete(key)
+            send({ event: "auth", provider: providerOf(key), account: key })
+          }
         }
         return { data: true }
       },
@@ -931,9 +990,12 @@ async function fresh(provider, key) {
     pending++ // the host doesn't leave in the middle of it
     r = renew(provider, key, a).finally(() => {
       renewing.delete(key)
+      // nor does magpie stop it in the middle of one (host.go's stop)
+      send({ event: "renewing", count: renewing.size })
       done()
     })
     renewing.set(key, r)
+    send({ event: "renewing", count: renewing.size })
   }
   let t
   await Promise.race([r, new Promise((ok) => (t = setTimeout(ok, RENEW_WAIT)))])
@@ -954,12 +1016,19 @@ async function renew(provider, key, a) {
     return
   }
   if (!got || typeof got !== "object") return
-  // signed out, or signed in again, while it ran: that one stands
-  const now = readAuth()[key]
-  if (!now || secretOf(now) !== secretOf(was) || now.access !== was.access) return
+  // signed out, signed in again or renewed by another host while it ran:
+  // that one stands. Checked under the lock the save is made under, so
+  // nothing comes between the two.
   const { type: _t, ...fields } = got
+  const kept = changeAuth((all) => {
+    const now = all[key]
+    if (!now || secretOf(now) !== secretOf(was) || now.access !== was.access) return false
+    all[key] = { ...was, ...fields, type: "oauth" }
+  })
+  if (kept === false) return
   unrenewed.delete(key)
-  setAuth(key, { ...was, ...fields, type: "oauth" })
+  loaders.delete(key)
+  send({ event: "auth", provider, account: key })
   send({ event: "signIn", provider, account: key, said: "renewed" })
 }
 
@@ -1197,12 +1266,18 @@ const handlers = {
   // take gives the accounts named (else every account of the provider) and
   // forgets them in one step: nothing renews a token between the two
   take(p) {
-    const all = readAuth()
     const out = {}
-    for (const k of p.accounts?.length ? p.accounts : accountsOf(all, p.provider)) {
-      if (!(k in all)) continue
-      out[k] = all[k]
-      removeAuth(k)
+    changeAuth((all) => {
+      for (const k of p.accounts?.length ? p.accounts : accountsOf(all, p.provider)) {
+        if (!(k in all)) continue
+        out[k] = all[k]
+        delete all[k]
+      }
+      if (!Object.keys(out).length) return false
+    })
+    for (const k of Object.keys(out)) {
+      loaders.delete(k)
+      send({ event: "auth", provider: providerOf(k), account: k })
     }
     return { auths: out }
   },
