@@ -16,7 +16,7 @@ const assets = path.resolve(__dirname, "../assets");
 const SLOW = 2500;
 const models = ["claude-sonnet-5-5", "claude-opus-5-5", "magpie/deepseek/pro", "magpie/kimi/k3"].map((m) => ({ value: m, ref: m.replace(/^magpie\//, ""), label: "Label " + m }));
 const agent = (id, name) => ({
-  id, name, path: "/test/" + id, wired: id === "claude",
+  id, name, path: "/test/" + id, wired: true, // on magpie models (#726: a connected one is in view)
   fields: [{ key: "model", label: "model", value: "claude-sonnet-5-5", options: models }],
 });
 const fresh = () => ({

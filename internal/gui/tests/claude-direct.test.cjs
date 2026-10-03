@@ -22,14 +22,15 @@ const options = [
   { value: "claude-opus-5-5", note: "Claude Opus 5.5", icon: "claude-color", group: "Claude Code", direct: "Anthropic" },
   { value: "magpie/deepseek/pro", label: "DeepSeek Pro", icon: "deepseek-color", group: "DeepSeek", ref: "deepseek/pro" },
 ];
-// the other agents, so Claude Code sits down a list that scrolls
+// the other agents, so Claude Code sits down a list that scrolls; on a
+// magpie model, so connected and in view (#726)
 const filler = [{ key: "model", label: "model", value: "magpie/deepseek/pro", options: [options[3]] }];
 const fresh = () => ({
   agents: [
-    ...Array.from({ length: 5 }, (_, i) => ({ id: "agent-" + i, name: "Agent " + i, path: "/test/" + i, fields: filler })),
+    ...Array.from({ length: 5 }, (_, i) => ({ id: "agent-" + i, name: "Agent " + i, path: "/test/" + i, wired: true, fields: filler })),
     { id: "claude", name: "Claude Code", icon: "claudecode-color", path: "~/.claude/settings.json", wired: true,
       fields: [{ key: "model", label: "model", value: "sonnet", options }] },
-    ...Array.from({ length: 8 }, (_, i) => ({ id: "more-" + i, name: "More " + i, path: "/test/m" + i, fields: filler })),
+    ...Array.from({ length: 8 }, (_, i) => ({ id: "more-" + i, name: "More " + i, path: "/test/m" + i, wired: true, fields: filler })),
   ],
   profiles: [],
 });

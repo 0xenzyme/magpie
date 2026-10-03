@@ -223,6 +223,7 @@ const I18N = {
     "{agent} hidden": "已隐藏 {agent}",
     "{agent} shown": "已显示 {agent}",
     "{agent} is no longer hidden · it stays under Not set up until a model is picked for it": "{agent} 已取消隐藏 · 给它选一个模型前，它会留在「未设置」里",
+    "{agent} is no longer hidden · it stays under Not set up until it is connected": "{agent} 已取消隐藏 · 接入前，它会留在「未设置」里",
     "model": "模型",
     "effort": "推理强度",
     "thinking": "思考",

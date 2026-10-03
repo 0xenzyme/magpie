@@ -15,7 +15,7 @@ const assets = path.resolve(__dirname, "../assets");
 const LAUNCH = "GEMINI_API_KEY=magpie-agy GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:3425 agy --model 'magpie/deepseek/pro'";
 const models = [{ value: "magpie/deepseek/pro", label: "magpie/deepseek/pro", ref: "deepseek/pro" }, { value: "model-b", label: "model-b" }];
 const agent = (id, name, launch) => ({
-  id, name, path: "/test/" + id, launch, wired: !!launch,
+  id, name, path: "/test/" + id, launch, wired: true, // on a magpie model (#726: a connected one is in view)
   fields: [{ key: "model", label: "model", value: "magpie/deepseek/pro", options: models }],
 });
 const state = {

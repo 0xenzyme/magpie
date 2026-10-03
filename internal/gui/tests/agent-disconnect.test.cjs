@@ -73,6 +73,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.route("**/*", server(lang, posts));
       await page.goto("http://magpie.test/?view=agents");
       await page.locator(row("claude")).waitFor();
+      // Claude Code, not connected, is under Not set up (#726): unrolled
+      await page.locator(".agent-more").click();
+      await page.waitForFunction(() => !document.querySelector(".agent-fold-inner")?.inert);
       const missing = await page.evaluate(() => [
         "Drag to reorder · click to move, hide or disconnect from magpie",
         "Disconnect from magpie",

@@ -1462,9 +1462,20 @@ let panelOpenAgent = null; // the one agent row the panel has opened
 
 // set up: a model, a provider, a role given one — what magpie is there for.
 // How the agent's own model is run (ultracode, an effort) is not: turning
-// Claude Code's ultracode on folded every other agent away under Show more
+// Claude Code's ultracode on folded every other agent away under Show more.
+// One with 「接入」's switch is set up when it is connected, and only then
+// (#726): its fields are read from its own files, so one not connected kept
+// its row up for a model of its own (Antigravity, DeepSeek Harness), and a
+// connected Codex starting on its last choice, no model set, went under
+// Not set up. One magpie connected that has come apart (drift) stays up
+// too, to be put right. One with no switch (Cursor, an app's own models)
+// goes by what is set on it, as before, though while an agent can be
+// connected it doesn't start the folding (arrangeAgents): its values are
+// its own files' too, and a Cursor on auto would fold every agent not
+// connected yet away on a fresh magpie.
 const tweak = (f) => f.key === "ultracode" || f.key === "effort" || f.key.endsWith("_effort");
-const agentUsed = (a) => a.added || a.fields.some((f) => f.value && !tweak(f));
+const onMagpie = (a) => !!(a.added || a.wired || a.drift);
+const agentUsed = (a) => onMagpie(a) || (!connectable(a) && a.fields.some((f) => f.value && !tweak(f)));
 
 // importButton: the one control of an app magpie is added to by its import
 // link: magpie, once the app has it, or an offer to add it
@@ -1489,14 +1500,18 @@ const isHidden = (a) => (state.settings?.agentsHidden || []).includes(a.id);
 
 // arrangeAgents: the rows in view, in order, and the folded rest. Folded is
 // what was hidden by hand, and what nothing is set on — noise in a picker —
-// unless it was shown by hand or nothing is set on any (a fresh magpie has
-// nothing to show otherwise).
+// unless none is set up yet (a fresh magpie has nothing to show
+// otherwise).
 function arrangeAgents() {
   const s = state.settings || {};
   const order = s.agentOrder || [], hidden = new Set(s.agentsHidden || []);
   const rank = (a) => { const i = order.indexOf(a.id); return i < 0 ? order.length : i; };
   const all = state.agents.map((a, i) => [a, i]).sort(([x, i], [y, j]) => rank(x) - rank(y) || i - j).map(([a]) => a);
-  const anyUsed = all.some((a) => !hidden.has(a.id) && agentUsed(a));
+  // with 「接入」 there to use, folding starts once one is on magpie, not for a
+  // model an agent not connected has in its own files (#726); with magpie
+  // having nothing to connect, once any is set
+  const counts = all.some(connectable) ? onMagpie : agentUsed;
+  const anyUsed = all.some((a) => !hidden.has(a.id) && counts(a));
   // what is set on it alone decides where one not hidden goes: pinned in view
   // by hand, one cleared stayed up among the set ones with nothing to say why
   const inView = (a) => !hidden.has(a.id) && (!anyUsed || agentUsed(a));
@@ -1538,10 +1553,13 @@ function setAgentHidden(a, hide) {
   agentsGlide = hide ? ROLLUP : UNROLL;
   saveArrangement(all.map((x) => x.id), hidden, []);
   // hidden, it says where it went, since the row goes out of sight; shown
-  // with nothing set on it, it stays folded under Not set up, and says why
+  // with nothing set on it, it stays folded under Not set up, and says why:
+  // one with a switch until it is connected
   const still = !hide && arrangeAgents().folded.includes(a);
+  const until = connectable(a) ? "{agent} is no longer hidden · it stays under Not set up until it is connected"
+    : "{agent} is no longer hidden · it stays under Not set up until a model is picked for it";
   status(t(hide ? "{agent} hidden · find it under Hidden at the bottom"
-    : still ? "{agent} is no longer hidden · it stays under Not set up until a model is picked for it" : "{agent} shown", { agent: a.name }), "ok", hide || still ? 4000 : 1800);
+    : still ? until : "{agent} shown", { agent: a.name }), "ok", hide || still ? 4000 : 1800);
 }
 
 const ALT = /^Mac/.test(navigator.platform) ? "⌥" : "Alt+";
