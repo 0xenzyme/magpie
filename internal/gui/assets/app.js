@@ -9808,9 +9808,10 @@ function renderQuotas() {
       // its tooltip; the curve and the rest only in full
       if (brief) meters.classList.add("brief");
       card.append(meters);
-      // WorkBuddy's daily check-in, how this account's went, and the
-      // switch for it, on the card rather than only in Settings (#694)
-      if (sub.checkins) card.append(checkinRow(sub, sub === subs.find((x) => x.checkins), subs));
+      // WorkBuddy's or Trae CN's daily check-in, how this account's went,
+      // and the switch for it, on the card rather than only in Settings
+      // (#694); the switch on the first card of each vendor's
+      if (sub.checkins) card.append(checkinRow(sub, sub === subs.find((x) => x.checkins && (x.checkinBy || "") === (sub.checkinBy || "")), subs));
       // what was left over time, against an even burn (#651)
       const curve = !brief && !sub.error && quotaCurve(sub);
       if (curve) card.append(curve);
@@ -10856,13 +10857,16 @@ function autoResetButton(q, cls) {
   return b;
 }
 
-// checkinRow is a WorkBuddy (China) account's daily check-in on its
-// Usage card: today's (a Beijing day) done, with the credits and the
-// streak, or why not, or the last day it was; the card's first such row
-// also holds the switch, which is Settings' "Daily check-in", and a press
-// for those not in yet today (#694, Dazzle-sys: 卡片显示今日是否已经签到).
+// checkinRow is a WorkBuddy (China) or Trae CN account's daily check-in
+// on its Usage card: today's (a Beijing day) done, with the credits and
+// the streak, or why not, or the last day it was; the vendor's first such
+// row also holds the switch, which is Settings' "Daily check-in", and a
+// press for its accounts not in yet today (#694, Dazzle-sys:
+// 卡片显示今日是否已经签到; Hu9956: TRAE cn 也有每天签到送100积分).
 function checkinRow(q, first, subs) {
-  const on = !!state.settings?.workbuddyCheckin;
+  const trae = q.checkinBy === "trae";
+  const by = q.checkinBy || "";
+  const on = !!(trae ? state.settings?.traeCheckin : state.settings?.workbuddyCheckin);
   const r = q.checkin;
   const today = wbToday();
   const row = el("div", "wb-checkin");
@@ -10892,19 +10896,22 @@ function checkinRow(q, first, subs) {
   row.dataset.state = kind || "none";
   const say = el("span", "ci-say");
   say.append(el("i", "ci-dot" + (kind ? " " + kind : "")), el("span", "", text));
-  say.title = [t("WorkBuddy's daily check-in, as pressing 签到 in WorkBuddy does"), r?.outcome === "failed" ? r.msg : ""].filter(Boolean).join("\n");
+  say.title = [t(trae ? "Trae CN's daily check-in, as pressing 签到 in Trae does" : "WorkBuddy's daily check-in, as pressing 签到 in WorkBuddy does"),
+    r?.outcome === "failed" || r?.outcome === "ineligible" ? r.msg : ""].filter(Boolean).join("\n");
   row.append(say);
   if (!first) return row;
   const auto = el("button", "text ci-auto" + (on ? " on" : ""), t("Auto check-in"));
   auto.type = "button";
   auto.setAttribute("aria-pressed", String(on));
-  auto.title = t(on ? "On: magpie checks each WorkBuddy (China) account in once a day, as Settings' Daily check-in does. Click to turn it off."
-    : "Check each WorkBuddy (China) account in once a day, as Settings' Daily check-in does");
+  auto.title = trae ? t(on ? "On: magpie checks each Trae CN account in once a day, as Settings' Daily check-in does. Click to turn it off."
+    : "Check each Trae CN account in once a day, as Settings' Daily check-in does")
+    : t(on ? "On: magpie checks each WorkBuddy (China) account in once a day, as Settings' Daily check-in does. Click to turn it off."
+      : "Check each WorkBuddy (China) account in once a day, as Settings' Daily check-in does");
   auto.onclick = async (e) => {
     e.stopPropagation();
     auto.disabled = true;
     try {
-      prefs = await writingPrefs(api("settings/workbuddy-checkin", { on: !on }));
+      prefs = await writingPrefs(api(trae ? "settings/trae-checkin" : "settings/workbuddy-checkin", { on: !on }));
       state.settings = prefs;
       status(t(on ? "Daily check-in turned off" : "Daily check-in turned on; magpie checks in within a few minutes"), "ok");
       renderQuotas();
@@ -10915,7 +10922,7 @@ function checkinRow(q, first, subs) {
   };
   row.append(auto);
   // pressed now: shown while an account isn't in today and could be
-  const due = subs.filter((x) => x.checkins && !(x.checkin?.day === today && x.checkin.outcome !== "failed"));
+  const due = subs.filter((x) => x.checkins && (x.checkinBy || "") === by && !(x.checkin?.day === today && x.checkin.outcome !== "failed"));
   if (due.length) {
     const now = el("button", "text ci-now", t("Check in now"));
     now.type = "button";
@@ -10925,7 +10932,7 @@ function checkinRow(q, first, subs) {
       now.disabled = true;
       now.classList.add("busy");
       try {
-        const rs = await api("usage/workbuddy-checkin", {});
+        const rs = await api(trae ? "usage/trae-checkin" : "usage/workbuddy-checkin", {});
         const bad = (rs || []).filter((x) => x.outcome === "failed").length;
         status(bad ? t("Check-in failed for {n} account(s)", { n: bad }) : t("Checked in"), bad ? "err" : "ok");
       } catch (err) {
@@ -13643,7 +13650,7 @@ const DISCORD_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="curre
 // Codex's when it is not. A click on a tab leaves the page where it is, as
 // every click does (see "where the reader is"): a shorter card under it at
 // the page's end gets room kept at the view's foot.
-const WARM_TABS = { codex: "codexWarmList", claude: "claudeWarmList", wb: "wbList" };
+const WARM_TABS = { codex: "codexWarmList", claude: "claudeWarmList", wb: "wbList", trae: "traeList" };
 let warmTab = "codex";
 try { const k = localStorage.getItem("magpie.warmTab"); if (k in WARM_TABS) warmTab = k; } catch {}
 function setWarmTab(tab, remember) {
@@ -13806,6 +13813,14 @@ function renderSettings() {
   $("#wbCheckinSub").textContent = [t("Claims each signed-in China account's check-in credits once a day"),
     ...(s.workbuddyCheckins || []).map(wbCheckinLine)].filter(Boolean).join(" · ");
   $("#wbCheckinSub").title = t("As pressing 签到 in WorkBuddy does");
+  // and Trae CN's (#694), its tab shown while a Trae CN account is signed in
+  $("#warmTab-trae").hidden = !s.trae && !s.traeCheckin;
+  setWarmTab(warmTab);
+  $("#traeCheckinSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.traeCheckin ? "on" : "off",
+    (v) => savePrefs({ ...keep, traeCheckin: v === "on" })));
+  $("#traeCheckinSub").textContent = [t("Claims each signed-in Trae CN account's check-in credits once a day"),
+    ...(s.traeCheckins || []).map(wbCheckinLine)].filter(Boolean).join(" · ");
+  $("#traeCheckinSub").title = t("As pressing 签到 in Trae does");
   renderTrayUsage(s, keep);
   renderProxy(s, keep);
   renderGitHubToken(s);
@@ -15044,7 +15059,7 @@ function prefsKeep(s) {
     otel: s.otel || {},
     trayUsages: s.trayUsages || [],
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
-    claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, noStats: !!s.noStats,
+    claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, traeCheckin: !!s.traeCheckin, noStats: !!s.noStats,
     noUpdatePill: !!s.noUpdatePill, noAutoUpdate: !!s.noAutoUpdate, updateEvery: s.updateEvery || 360,
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, vision: s.vision || "", imageGen: s.imageGen || "", searcher: s.searcher || "", currency: s.currency || "usd",
     westernUnits: !!s.westernUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };

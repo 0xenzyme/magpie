@@ -8,7 +8,11 @@
 // switch as Settings' Daily check-in (POST /api/settings/workbuddy-checkin),
 // and Check in now while an account isn't in today
 // (POST /api/usage/workbuddy-checkin). Another vendor's card has none of it.
-// Clicks never move the page. English and Chinese; the API is faked here.
+// Clicks never move the page. A Trae CN account's card (Hu9956: TRAE cn
+// 也有每天签到送100积分) has the same row, with its own switch
+// (POST /api/settings/trae-checkin) and press (POST /api/usage/trae-checkin),
+// the WorkBuddy one left as it was. English and Chinese; the API is faked
+// here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -25,10 +29,12 @@ const quotas = () => [
   { provider: "workbuddy", name: "WorkBuddy", icon: "workbuddy-color", plan: "Free", user: "Lucy", windows: [{ name: "Credits", used: 1 }],
     checkins: true, checkin: { user: "Lucy", day: today, outcome: "ineligible" } },
   { provider: "codex", name: "Codex", icon: "openai", plan: "Plus", windows: [{ name: "5 hours", used: 20 }] },
+  { provider: "trae-cn", name: "Trae CN", plan: "Free", user: "hu", windows: [{ name: "Credits", used: 3 }],
+    checkins: true, checkinBy: "trae", checkin: { user: "hu", day: "2026-09-30", outcome: "claimed", credit: 100 } },
 ];
 
 function serve(lang, asked) {
-  const settings = { theme: "light", lang, quotaLeft: false, currency: "usd", workbuddyCheckin: false };
+  const settings = { theme: "light", lang, quotaLeft: false, currency: "usd", workbuddyCheckin: false, traeCheckin: false };
   return async (route) => {
     const url = new URL(route.request().url());
     const json = (data) => route.fulfill({ json: data });
@@ -40,6 +46,15 @@ function serve(lang, asked) {
       asked.push(["set", route.request().postDataJSON()]);
       settings.workbuddyCheckin = route.request().postDataJSON().on;
       return json(settings);
+    }
+    if (url.pathname === "/api/settings/trae-checkin") {
+      asked.push(["trae-set", route.request().postDataJSON()]);
+      settings.traeCheckin = route.request().postDataJSON().on;
+      return json(settings);
+    }
+    if (url.pathname === "/api/usage/trae-checkin") {
+      asked.push(["trae-now"]);
+      return json([{ user: "hu", by: "trae", day: today, outcome: "claimed", credit: 100 }]);
     }
     if (url.pathname === "/api/usage/workbuddy-checkin") {
       asked.push(["now"]);
@@ -108,6 +123,40 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await reread;
       assert.deepEqual(asked.slice(before), [["now"]]);
       assert.equal(await page.locator("select").count(), 0);
+      assert.deepEqual(errors, []);
+    });
+
+    test(`${engine} ${lang}: the Trae CN card has its own check-in`, async (t) => {
+      const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+      t.after(() => browser.close());
+      const page = await (await browser.newContext({ viewport: { width: 900, height: 900 }, reducedMotion: "reduce" })).newPage();
+      page.setDefaultTimeout(5000);
+      const errors = [], asked = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.route("**/*", serve(lang, asked));
+      await page.goto("http://magpie.test/?view=usage");
+      const card = page.locator(".subscription-card", { hasText: "Trae CN" });
+      await card.locator(".wb-checkin").first().waitFor();
+      assert.equal(await card.locator(".wb-checkin").count(), 1);
+      assert.equal((await card.locator(".ci-say").innerText()).trim(), lang === "en" ? "Auto check-in is off · last checked in 2026-09-30" : "自动签到已关闭 · 上次签到于 2026-09-30");
+      assert.match(await card.locator(".ci-say").getAttribute("title"), /Trae/);
+      // its own switch and press, beside WorkBuddy's
+      assert.equal(await page.locator(".ci-auto").count(), 2);
+      const auto = card.locator(".ci-auto");
+      assert.equal((await auto.innerText()).trim(), w.auto);
+      assert.match(await auto.getAttribute("title"), /Trae CN/);
+      const y = await scrolls(page);
+      await auto.click();
+      await page.waitForFunction(() => document.querySelectorAll(".ci-auto[aria-pressed=true]").length === 1);
+      assert.equal(await auto.getAttribute("aria-pressed"), "true");
+      assert.deepEqual(asked, [["trae-set", { on: true }]]);
+      assert.equal(await scrolls(page), y, "the toggle moved the page");
+      assert.equal(await page.locator(".subscription-card", { hasText: "WorkBuddy" }).locator(".ci-auto").getAttribute("aria-pressed"), "false", "WorkBuddy's switch changed too");
+      const before = asked.length;
+      const reread = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/usage/quotas");
+      await card.locator(".ci-now").click();
+      await reread;
+      assert.deepEqual(asked.slice(before), [["trae-now"]]);
       assert.deepEqual(errors, []);
     });
   }

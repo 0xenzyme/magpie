@@ -590,17 +590,20 @@ type checkinMsg struct {
 	ok   bool
 }
 
-// The check-in; vars so tests can stand in for WorkBuddy.
+// The check-in; vars so tests can stand in for WorkBuddy and Trae CN.
 var (
 	checkinHere  = provider.CheckInWorkBuddy
 	hasWorkBuddy = provider.HasWorkBuddy
+	checkinTrae  = provider.CheckInTrae
+	hasTrae      = provider.HasTrae
 )
 
 // checkinCmd presses WorkBuddy's daily check-in (签到) now for every
 // WorkBuddy (China) account signed in here not in yet today, all at once,
 // as the app's Usage card's "Check in now" and magpie accounts checkin do:
 // the built-in's or the plugin's (akic404 on Discord: the TUI had no way
-// to). It says how each account stands: the credits and streak, in
+// to); and Trae CN's (每日签到) for each Trae CN account (#694). It says
+// how each account stands: the credits and streak, in
 // already today, or why not. A shared magpie's accounts are checked in
 // on that magpie, from its own app, TUI or CLI.
 func checkinCmd() tea.Msg {
@@ -616,8 +619,16 @@ func checkinCmd() tea.Msg {
 			parts = append(parts, checkinWords(r))
 		}
 	}
+	if hasTrae() {
+		for _, r := range checkinTrae(ctx) {
+			if r.Outcome == provider.CheckinFailed {
+				failed++
+			}
+			parts = append(parts, checkinWords(r))
+		}
+	}
 	if len(parts) == 0 {
-		return checkinMsg{text: "no WorkBuddy (China) account is signed in · only WorkBuddy (China) has the daily check-in"}
+		return checkinMsg{text: "no WorkBuddy (China) or Trae CN account is signed in · only they have the daily check-in"}
 	}
 	return checkinMsg{text: strings.Join(parts, "; "), ok: failed == 0}
 }
@@ -625,7 +636,12 @@ func checkinCmd() tea.Msg {
 // checkinWords is how an account's check-in stands, in a few words.
 func checkinWords(r provider.WorkBuddyCheckin) string {
 	who := r.User
-	if who == "" {
+	switch {
+	case r.By == "trae" && who == "":
+		who = "Trae CN"
+	case r.By == "trae":
+		who = "Trae CN " + who
+	case who == "":
 		who = "WorkBuddy"
 	}
 	switch r.Outcome {
@@ -653,7 +669,8 @@ func checkinWords(r provider.WorkBuddyCheckin) string {
 	return who + " couldn't check in: " + msg
 }
 
-// checkinCell is a WorkBuddy (China) account's check-in on its line: today's
+// checkinCell is a WorkBuddy (China) or Trae CN account's check-in on its
+// line: today's
 // done, with the credits, or not yet; empty for an account without one.
 func checkinCell(q provider.SubscriptionQuota, now time.Time) string {
 	if !q.Checkins {
@@ -689,7 +706,7 @@ func (m model) updateUsage(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "c":
 		// WorkBuddy's daily check-in, as the app's "Check in now"
-		m.flash, m.flashOK = "checking WorkBuddy in…", true
+		m.flash, m.flashOK = "checking in…", true
 		return m, checkinCmd
 	case "l", "right":
 		m.period = periods[(i+1)%len(periods)]

@@ -114,6 +114,10 @@ type Settings struct {
 	// signed-in WorkBuddy (China) account once a Beijing day, claiming the
 	// credits it gives while its event runs.
 	WorkBuddyCheckin bool `json:"workbuddyCheckin,omitempty"`
+	// TraeCheckin presses Trae CN's daily check-in (每日签到) for each
+	// signed-in Trae CN account (its plugin's) once a Beijing day, claiming
+	// the credits it gives.
+	TraeCheckin bool `json:"traeCheckin,omitempty"`
 	// NoStats stops the one event a day that counts magpie's users (see
 	// internal/stats).
 	NoStats bool `json:"noStats,omitempty"`

@@ -100,6 +100,9 @@ type WorkBuddyCheckin struct {
 	// many before it the same day did the same.
 	Offline bool `json:"offline,omitempty"`
 	Tries   int  `json:"tries,omitempty"`
+	// By is the vendor whose check-in it is: "" WorkBuddy's, "trae"
+	// Trae CN's; never kept.
+	By string `json:"by,omitempty"`
 	// Asked is true of one checked in on this run, not one read back.
 	Asked bool `json:"-"`
 }
@@ -175,53 +178,25 @@ func newWBCheckiner() wbCheckiner {
 	return wbCheckiner{path: wbCheckinPath(), now: time.Now, accounts: wbCheckinAccounts}
 }
 
-// checkinNow checks each account in use in for today that isn't yet, and
-// keeps what came of it; soon, a failure is tried again without waiting
-// out wbCheckinRetry. It says how every account stands, those it didn't
-// ask as last kept.
+// checkinNow is checkiner's, over the accounts c lists.
 func (c wbCheckiner) checkinNow(ctx context.Context, soon bool) []WorkBuddyCheckin {
-	wbCheckinMu.Lock()
-	defer wbCheckinMu.Unlock()
-	st := readCheckins(c.path)
-	now := c.now()
-	day := wbCheckinDay(now)
-	var out []WorkBuddyCheckin
-	changed := false
-	// one account signed in to both the built-in and the plugin is
-	// checked in once
-	asked := map[string]bool{}
-	for _, a := range c.accounts() {
-		if !a.On || a.creds.UID == "" {
-			continue
-		}
-		key := wbCheckinKey(a)
-		if asked[key] {
-			continue
-		}
-		asked[key] = true
-		prev, seen := st[key]
-		if seen && prev.settled(day, now, soon) {
-			prev.User = a.User
-			out = append(out, prev)
-			continue
-		}
-		r := wbCheckin(ctx, a)
-		r.Day, r.At = day, now
-		if r.Offline && seen && prev.Day == day && prev.Offline {
-			r.Tries = prev.Tries + 1
-		}
-		st[key], changed = r, true
-		r.User, r.Asked = a.User, true
-		out = append(out, r)
-	}
-	if changed {
-		if b, err := json.MarshalIndent(st, "", "  "); err == nil {
-			if err := writePrivate(c.path, append(b, '\n')); err != nil {
-				log.Printf("workbuddy check-in: %v", err)
+	return c.checkiner().checkinNow(ctx, soon)
+}
+
+func (c wbCheckiner) clock() time.Time { return c.now() }
+
+func (c wbCheckiner) checkiner() checkiner {
+	return checkiner{path: c.path, now: c.now, mu: &wbCheckinMu, label: "workbuddy", accounts: func() []checkinAcct {
+		var out []checkinAcct
+		for _, a := range c.accounts() {
+			key := ""
+			if a.creds.UID != "" {
+				key = wbCheckinKey(a)
 			}
+			out = append(out, checkinAcct{User: a.User, On: a.On, key: key, do: func(ctx context.Context) WorkBuddyCheckin { return wbCheckin(ctx, a) }})
 		}
-	}
-	return out
+		return out
+	}}
 }
 
 // wbCheckin checks a in for the day as WorkBuddy's 签到 does: the event's
@@ -314,29 +289,45 @@ func WorkBuddyCheckins() []WorkBuddyCheckin {
 // those in through the plugin's fetch. qs, which may be the usage cache,
 // is left as it is; nothing is asked.
 func WithCheckins(qs []SubscriptionQuota) []SubscriptionQuota {
-	return withCheckins(qs, wbCheckinAccounts(), readCheckins(wbCheckinPath()))
+	qs = withCheckins(qs, wbCheckinAccounts(), readCheckins(wbCheckinPath()))
+	return markCheckins(qs, traeCards(traeCheckinAccounts()), readCheckins(traeCheckinPath()), "trae")
 }
 
 func withCheckins(qs []SubscriptionQuota, accts []wbAccount, st map[string]WorkBuddyCheckin) []SubscriptionQuota {
-	var on []wbAccount
+	var on []checkinCard
 	for _, a := range accts {
 		if a.On && a.creds.UID != "" {
-			on = append(on, a)
+			// the card: the site's, or the plugin's under its own id
+			card := a.card
+			if card == "" {
+				card = a.site.id
+			}
+			on = append(on, checkinCard{User: a.User, card: card, key: wbCheckinKey(a)})
 		}
 	}
+	return markCheckins(qs, on, st, "")
+}
+
+// checkinCard is an account checked in each day, by the usage card it is
+// shown on and its entry in the vendor's file.
+type checkinCard struct{ User, card, key string }
+
+// markCheckins is qs with each card of an account in on told it is
+// checked in each day, by the vendor by ("" WorkBuddy), and how its last
+// check-in went, from st.
+func markCheckins(qs []SubscriptionQuota, on []checkinCard, st map[string]WorkBuddyCheckin, by string) []SubscriptionQuota {
 	if len(on) == 0 {
 		return qs
 	}
 	out := slices.Clone(qs)
 	for i, q := range out {
-		// the card's accounts: the site's, or the plugin's under its own id
-		var mine []wbAccount
+		var mine []checkinCard
 		for _, a := range on {
-			if a.card == q.Provider || a.card == "" && a.site.id == q.Provider {
+			if a.card == q.Provider {
 				mine = append(mine, a)
 			}
 		}
-		var a *wbAccount
+		var a *checkinCard
 		for j := range mine {
 			// a card without an account's name is the only account's
 			if strings.EqualFold(mine[j].User, q.User) || q.User == "" && len(mine) == 1 {
@@ -347,9 +338,9 @@ func withCheckins(qs []SubscriptionQuota, accts []wbAccount, st map[string]WorkB
 		if a == nil {
 			continue
 		}
-		out[i].Checkins = true
-		if r, ok := st[wbCheckinKey(*a)]; ok {
-			r.User = a.User
+		out[i].Checkins, out[i].CheckinBy = true, by
+		if r, ok := st[a.key]; ok {
+			r.User, r.By = a.User, by
 			out[i].Checkin = &r
 		}
 	}
@@ -409,12 +400,12 @@ func wbPluginAccounts(pp plugin.Provider) []wbAccount {
 // settings say to: two minutes after it starts, every wbCheckinEvery after
 // that, and as the Beijing day turns, until ctx ends.
 func KeepWorkBuddyCheckedIn(ctx context.Context) {
-	keepCheckedIn(ctx, newWBCheckiner(), func() bool { return settings.Load().WorkBuddyCheckin })
+	keepCheckedIn(ctx, "workbuddy", newWBCheckiner(), func() bool { return settings.Load().WorkBuddyCheckin })
 }
 
 // keepCheckedIn runs c while on says to. The clock is looked at every
 // minute: a machine that slept through the day's turn notices on waking.
-func keepCheckedIn(ctx context.Context, c wbCheckiner, on func() bool) {
+func keepCheckedIn(ctx context.Context, label string, c checkinRunner, on func() bool) {
 	t := time.NewTimer(2 * time.Minute)
 	defer t.Stop()
 	var l wbCheckinLoop
@@ -428,12 +419,14 @@ func keepCheckedIn(ctx context.Context, c wbCheckiner, on func() bool) {
 			for _, r := range l.tick(ctx, c) {
 				switch {
 				case !r.Asked:
+				case r.Outcome == CheckinClaimed && r.Streak == 0:
+					log.Printf("%s check-in: %s +%g", label, r.User, r.Credit)
 				case r.Outcome == CheckinClaimed:
-					log.Printf("workbuddy check-in: %s +%g, a %d-day streak", r.User, r.Credit, r.Streak)
+					log.Printf("%s check-in: %s +%g, a %d-day streak", label, r.User, r.Credit, r.Streak)
 				case r.Outcome == CheckinFailed:
-					log.Printf("workbuddy check-in: %s: %s", r.User, r.Msg)
+					log.Printf("%s check-in: %s: %s", label, r.User, r.Msg)
 				default:
-					log.Printf("workbuddy check-in: %s: %s", r.User, r.Outcome)
+					log.Printf("%s check-in: %s: %s", label, r.User, r.Outcome)
 				}
 			}
 		}
@@ -448,9 +441,9 @@ type wbCheckinLoop struct{ last, again time.Time }
 // tick looks at the accounts if it is time to: the first tick,
 // wbCheckinEvery after the last look, as the Beijing day turns, or as a
 // failure comes due again. It says how they stand, or nil.
-func (l *wbCheckinLoop) tick(ctx context.Context, c wbCheckiner) []WorkBuddyCheckin {
+func (l *wbCheckinLoop) tick(ctx context.Context, c checkinRunner) []WorkBuddyCheckin {
 	// the wall clock, which goes on while the machine sleeps
-	now := c.now().Round(0)
+	now := c.clock().Round(0)
 	if !l.last.IsZero() && now.Sub(l.last) < wbCheckinEvery && wbCheckinDay(now) == wbCheckinDay(l.last) &&
 		(l.again.IsZero() || now.Before(l.again)) {
 		return nil

@@ -446,6 +446,16 @@ func usageRoutes(mux *http.ServeMux, w Windows) {
 		}
 		writeJSON(rw, rs)
 	})
+	// and Trae CN's, for each Trae CN account (#694)
+	mux.HandleFunc("POST /api/usage/trae-checkin", func(rw http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
+		defer cancel()
+		rs := provider.CheckInTrae(ctx)
+		if rs == nil {
+			rs = []provider.WorkBuddyCheckin{}
+		}
+		writeJSON(rw, rs)
+	})
 	// what was left of each window over time, for the quota cards' curves
 	// (#651); ?days= back
 	mux.HandleFunc("GET /api/usage/quotas/history", func(rw http.ResponseWriter, r *http.Request) {

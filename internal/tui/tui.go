@@ -693,7 +693,7 @@ func (m model) View() string {
 			}
 		case pageUsage:
 			body = m.viewUsage()
-			footer = hints("←→", "period", "t w m A", "today · 7 days · 30 days · all", "u", "used / left", "c", "WorkBuddy check-in", "r", "reload", "1–6", "pages", "q", "quit")
+			footer = hints("←→", "period", "t w m A", "today · 7 days · 30 days · all", "u", "used / left", "c", "daily check-in", "r", "reload", "1–6", "pages", "q", "quit")
 		default:
 			body = m.viewList()
 			footer = hints("↑↓", "agent", "←→", "field", "↵", "change", "s", "save profile", "p", "profiles", "1–6", "pages", "q", "quit")

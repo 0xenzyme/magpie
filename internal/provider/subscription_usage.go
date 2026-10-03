@@ -96,12 +96,13 @@ type SubscriptionQuota struct {
 	// Daily is a WorkBuddy account's credits used day by day, as magpie
 	// counted them from its readings (credits_daily.go).
 	Daily *DailyCredits `json:"daily,omitempty"`
-	// Checkins is set on a WorkBuddy (China) account that WorkBuddy's
-	// daily check-in is pressed for, and Checkin is how its last one went,
-	// nil before the first; never cached, added as the page asks
-	// (WithCheckins).
-	Checkins bool              `json:"checkins,omitempty"`
-	Checkin  *WorkBuddyCheckin `json:"checkin,omitempty"`
+	// Checkins is set on a WorkBuddy (China) or Trae CN account whose
+	// daily check-in is pressed for, CheckinBy whose ("" WorkBuddy's,
+	// "trae" Trae CN's), and Checkin is how its last one went, nil before
+	// the first; never cached, added as the page asks (WithCheckins).
+	Checkins  bool              `json:"checkins,omitempty"`
+	CheckinBy string            `json:"checkinBy,omitempty"`
+	Checkin   *WorkBuddyCheckin `json:"checkin,omitempty"`
 }
 
 var subscriptionUsageCache struct {

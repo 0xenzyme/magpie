@@ -13,11 +13,27 @@ import (
 // what checking them in comes to, none signed in when rs is nil.
 func stubCheckin(t *testing.T, rs []provider.WorkBuddyCheckin) *int {
 	t.Helper()
+	stubTrae(t, nil)
 	oldHere, oldHas := checkinHere, hasWorkBuddy
 	t.Cleanup(func() { checkinHere, hasWorkBuddy = oldHere, oldHas })
 	calls := 0
 	hasWorkBuddy = func() bool { return rs != nil }
 	checkinHere = func(context.Context) []provider.WorkBuddyCheckin {
+		calls++
+		return rs
+	}
+	return &calls
+}
+
+// stubTrae stands in for the Trae CN accounts, as stubCheckin does
+// WorkBuddy's.
+func stubTrae(t *testing.T, rs []provider.WorkBuddyCheckin) *int {
+	t.Helper()
+	oldHere, oldHas := checkinTrae, hasTrae
+	t.Cleanup(func() { checkinTrae, hasTrae = oldHere, oldHas })
+	calls := 0
+	hasTrae = func() bool { return rs != nil }
+	checkinTrae = func(context.Context) []provider.WorkBuddyCheckin {
 		calls++
 		return rs
 	}
@@ -35,7 +51,7 @@ func TestTUIChecksWorkBuddyIn(t *testing.T) {
 	// nothing signed in: said so, nothing asked
 	calls := stubCheckin(t, nil)
 	m := press(t, usagePage, "c")
-	wantFlash(t, m, false, "no WorkBuddy (China) account is signed in")
+	wantFlash(t, m, false, "no WorkBuddy (China) or Trae CN account is signed in")
 	if *calls != 0 {
 		t.Fatal("checked in with no account")
 	}
@@ -46,7 +62,7 @@ func TestTUIChecksWorkBuddyIn(t *testing.T) {
 	if strings.Contains(m.flash, "already") || *calls != 1 {
 		t.Fatalf("claimed now: %q, %d calls", m.flash, *calls)
 	}
-	if !strings.Contains(m.View(), "WorkBuddy check-in") {
+	if !strings.Contains(m.View(), "daily check-in") {
 		t.Fatalf("the footer doesn't name c:\n%s", m.View())
 	}
 
@@ -61,6 +77,26 @@ func TestTUIChecksWorkBuddyIn(t *testing.T) {
 	stubCheckin(t, []provider.WorkBuddyCheckin{{User: "a", Outcome: provider.CheckinIneligible}, {User: "b", Outcome: provider.CheckinInactive}})
 	m = press(t, usagePage, "c")
 	wantFlash(t, m, true, "a isn't eligible for the check-in; b: no check-in event now")
+}
+
+// c checks the Trae CN accounts in too, after WorkBuddy's, each said as
+// Trae CN's (#694); with only Trae CN signed in, it is checked in alone.
+func TestTUIChecksTraeIn(t *testing.T) {
+	home(t)
+	usagePage := model{w: 200, h: 40, page: pageUsage}
+
+	wb := stubCheckin(t, []provider.WorkBuddyCheckin{{User: "旅行者", Outcome: provider.CheckinDone, Credit: 100, Streak: 4}})
+	tr := stubTrae(t, []provider.WorkBuddyCheckin{{User: "hu", By: "trae", Outcome: provider.CheckinClaimed, Credit: 100, Asked: true}})
+	m := press(t, usagePage, "c")
+	wantFlash(t, m, true, "旅行者 checked in today +100 · a 4-day streak · already; Trae CN hu checked in today +100")
+	if *wb != 1 || *tr != 1 {
+		t.Fatalf("calls: workbuddy %d, trae %d", *wb, *tr)
+	}
+
+	stubCheckin(t, nil)
+	stubTrae(t, []provider.WorkBuddyCheckin{{User: "hu", By: "trae", Outcome: provider.CheckinIneligible, Msg: "device checked in"}})
+	m = press(t, usagePage, "c")
+	wantFlash(t, m, true, "Trae CN hu isn't eligible for the check-in")
 }
 
 // A WorkBuddy (China) account's line on the Usage page says how today's

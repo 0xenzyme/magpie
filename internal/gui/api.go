@@ -331,6 +331,9 @@ type settingsJSON struct {
 	// last daily check-in
 	WorkBuddy         bool                        `json:"workbuddy"`
 	WorkBuddyCheckins []provider.WorkBuddyCheckin `json:"workbuddyCheckins,omitempty"`
+	// and a Trae CN account (its plugin's), and theirs (#694)
+	Trae         bool                        `json:"trae"`
+	TraeCheckins []provider.WorkBuddyCheckin `json:"traeCheckins,omitempty"`
 	// FX is the dollar-to-yuan rate the cny currency choice shows costs at
 	FX fxJSON `json:"fx"`
 	// NotifyProblem is why a usage alert set wouldn't be seen: "denied"
@@ -426,6 +429,7 @@ func settingsState() settingsJSON {
 	}
 	s.CodexWarmed, s.ClaudeWarmed = latest(provider.CodexWarmed()), latest(provider.ClaudeWarmed())
 	s.WorkBuddy, s.WorkBuddyCheckins = provider.HasWorkBuddy(), provider.WorkBuddyCheckins()
+	s.Trae, s.TraeCheckins = provider.HasTrae(), provider.TraeCheckins()
 	s.VisionAuto, s.VisionModels = gateway.AutoVision(), []modelRef{}
 	for _, e := range provider.Served() {
 		if e.Images && (e.ImageInput == nil || *e.ImageInput) && (e.Group != "" || e.Provider.Ready()) {
@@ -1001,6 +1005,21 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		}
 		s := settings.Load()
 		s.WorkBuddyCheckin = in.On
+		if err := settings.Save(s); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, settingsState())
+	})
+	// and Trae CN's (#694)
+	mux.HandleFunc("POST /api/settings/trae-checkin", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ On bool }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		s := settings.Load()
+		s.TraeCheckin = in.On
 		if err := settings.Save(s); err != nil {
 			fail(rw, err)
 			return
