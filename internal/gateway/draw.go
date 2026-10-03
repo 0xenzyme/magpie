@@ -528,6 +528,11 @@ func (s *Server) send(ctx context.Context, p provider.Provider, url, contentType
 
 // sendAs is send with the method: a video's progress is asked with a GET.
 func (s *Server) sendAs(ctx context.Context, p provider.Provider, method, url, contentType string, body []byte, sign bool) ([]byte, int, error) {
+	return s.sendWith(ctx, p, method, url, contentType, body, sign, nil)
+}
+
+// sendWith is sendAs with headers of the vendor's own besides.
+func (s *Server) sendWith(ctx context.Context, p provider.Provider, method, url, contentType string, body []byte, sign bool, extra http.Header) ([]byte, int, error) {
 	ctx = p.Via(ctx)
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
@@ -556,6 +561,9 @@ func (s *Server) sendAs(ctx context.Context, p provider.Provider, method, url, c
 			req.Header[k] = []string{v}
 		}
 	}
+	for k, v := range extra {
+		req.Header[k] = v
+	}
 	res, err := p.Do(s.client, req) // a plugin's through the plugin
 	if err != nil {
 		if ctx.Err() != nil {
@@ -577,7 +585,13 @@ func (s *Server) sendAs(ctx context.Context, p provider.Provider, method, url, c
 // vendorMessage is the message of a vendor's error, or its body.
 func vendorMessage(b []byte) string {
 	var e struct {
-		Error json.RawMessage `json:"error"`
+		Error  json.RawMessage `json:"error"`
+		Errors struct {
+			Message string `json:"message"`
+		} `json:"errors"` // ModelScope's
+	}
+	if json.Unmarshal(b, &e) == nil && e.Errors.Message != "" {
+		return e.Errors.Message
 	}
 	if json.Unmarshal(b, &e) == nil && len(e.Error) > 0 {
 		var m struct {
@@ -597,6 +611,9 @@ func vendorMessage(b []byte) string {
 // drawImages asks an images API: generations, or edits with the images
 // sent along.
 func (s *Server) drawImages(ctx context.Context, p provider.Provider, model string, d drawing) (drawn, int, error) {
+	if isModelScope(p) {
+		return s.drawModelScope(ctx, p, model, d)
+	}
 	base := strings.TrimRight(p.Base(provider.Chat), "/")
 	if drawsCodex(p) || drawsGrok(p) {
 		base = strings.TrimRight(p.Base(provider.Responses), "/")
@@ -725,6 +742,10 @@ func (s *Server) drawImages(ctx context.Context, p provider.Provider, model stri
 		} else if e.URL != "" {
 			out.Images = append(out.Images, picture{URL: e.URL})
 		}
+	}
+	if len(out.Images) == 0 {
+		// an answer with no image says why, or is shown as it came
+		return out, 502, fmt.Errorf("%s answered with no image%s", provider.HostOf(url), vendorSaid(vendorMessage(b)))
 	}
 	return out, code, nil
 }
