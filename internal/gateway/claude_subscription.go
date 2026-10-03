@@ -130,6 +130,11 @@ type subscriptionRun struct {
 	// --effort) or was told since (setEffort); "" is Claude Code's own
 	effort string
 
+	// loginVersion is the credential the run's account had when it
+	// started (provider.ClaudeLoginVersion), which a refusal it reports is
+	// kept for
+	loginVersion string
+
 	// told is the conversation as the client had it in its last request
 	// here (historyKey): tool results are the run's while the client's
 	// conversation goes on from that one.
@@ -325,6 +330,9 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 	}
 
 	run := &subscriptionRun{bridge: b, token: token, model: model, cmd: cmd, tmp: tmp, schema: len(req.Schema) > 0, pending: map[string]chan mcpToolResult{}, stdin: stdin, owner: owner, effort: req.Effort}
+	if user, _ := ownerAccount(owner); user != "" {
+		run.loginVersion = provider.ClaudeLoginVersion(user)
+	}
 	// A caller may abandon a turn after receiving tool_use. Do not leave the
 	// parked Claude process and MCP request alive forever.
 	run.timer = time.AfterFunc(30*time.Minute, run.abort)
@@ -831,8 +839,8 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			// a run in Claude Code's own home is on whatever account
 			// Claude Code is signed in to by now: switched off the
 			// owner's, what it says is another's (nil_1024)
-			if f := strings.Split(r.owner, "\x00"); len(f) > 1 && !(len(f) > 2 && f[2] == ownHome && provider.ClaudeCodeMovedOff(f[1])) {
-				provider.NoteClaudeLimits(f[1], claudeLimits(envelope.RateLimitInfo))
+			if user, own := ownerAccount(r.owner); user != "" && !(own && provider.ClaudeCodeMovedOff(user)) {
+				provider.NoteClaudeLimits(user, claudeLimits(envelope.RateLimitInfo))
 			}
 			continue
 		}
@@ -850,6 +858,14 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 					if len(envelope.Errors) > 0 {
 						text += ": " + strings.Join(envelope.Errors, "; ")
 					}
+				}
+				// Anthropic refused the account's sign-in: kept on it, so
+				// it isn't run again on that one (provider/claude_auth.go) —
+				// not when Claude Code's own run went on as another account,
+				// which is read only for such an error
+				if user, own := ownerAccount(r.owner); user != "" && provider.ClaudeSignInRequired(text) &&
+					!(own && provider.ClaudeCodeMovedOff(user)) {
+					provider.NoteClaudeSignInFailure(user, r.loginVersion, text)
 				}
 				r.emit(Event{Kind: KError, Text: text, Status: envelope.APIErrorStatus, Code: errKind, RequestID: reqID})
 				r.endSegment()
@@ -1482,6 +1498,16 @@ func (b *subscriptionBridge) removeRun(run *subscriptionRun) {
 // ownHome marks a run's owner as Claude Code's own sign-in, run in its
 // own home.
 const ownHome = "own"
+
+// ownerAccount is the account a run's owner names, "" when it names none,
+// and whether it is Claude Code's own sign-in (ownHome).
+func ownerAccount(owner string) (user string, own bool) {
+	f := strings.Split(owner, "\x00")
+	if len(f) < 2 {
+		return "", false
+	}
+	return f[1], len(f) > 2 && f[2] == ownHome
+}
 
 func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request, from provider.Protocol, p provider.Provider, model string, body []byte, usage *Usage) (int, string) {
 	start := func(ctx context.Context, req *Request) (*subscriptionRun, <-chan Event, error) {

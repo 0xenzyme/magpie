@@ -129,6 +129,7 @@ const (
 	failQuota  = "quota"
 	failRate   = "rate"
 	failOther  = "other"
+	failAuth   = "auth"
 	// failCanceled: the agent went away before the answer came
 	failCanceled = "canceled"
 	// failForeign: the conversation's reasoning was sealed by another
@@ -189,6 +190,17 @@ func failure(status int, body []byte) string {
 		return failRate
 	}
 	return failOther
+}
+
+// failureOf says why c's reply failed: a Claude account's sign-in that
+// Anthropic refused is told as one (provider/claude_auth.go), passed over
+// till it is signed in again; another vendor saying the same words fails
+// as failure says, and rests as before.
+func failureOf(c candidate, status int, body []byte) string {
+	if status >= 400 && c.p.Account != nil && c.p.Account.Agent == "claude" && provider.ClaudeSignInRequired(string(body)) {
+		return failAuth
+	}
+	return failure(status, body)
 }
 
 // openRouterSharedPool says an OpenRouter free model was refused by the
@@ -307,7 +319,7 @@ func (s *Server) restAfter(c candidate, status int, header http.Header, body []b
 func (s *Server) restAfterMarked(c candidate, status int, header http.Header, body []byte, sharedPool bool) Rest {
 	now := time.Now()
 	d := fallbackCooldown
-	why := failure(status, body)
+	why := failureOf(c, status, body)
 	r := Rest{Why: why, Status: status, By: "cooldown"}
 	if why == failProxy {
 		// the account is as good as it was; the proxy is the user's to start

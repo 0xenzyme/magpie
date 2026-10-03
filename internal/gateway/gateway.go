@@ -1652,11 +1652,24 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			skipped = append(skipped, c.label()+": "+call.Error)
 			continue
 		}
+		if !last && hw.failed() && failureOf(c, hw.code(), hw.errBody()) == failAuth {
+			// the account's sign-in is gone, refused by Anthropic: no rest
+			// brings it back, so none is told; it is passed over until it
+			// is signed in again (provider/claude_auth.go), and the next
+			// one is asked
+			if other == nil {
+				other = &Try{Status: call.Status, Error: call.Error}
+			}
+			try.Fail = failAuth
+			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+			skipped = append(skipped, c.label()+": "+call.Error)
+			continue
+		}
 		if wait, ok := passing(hw.code(), hw.header, hw.errBody(), again); ok && !last && hw.failed() && spentAfter(cands[i+1:]) {
 			// the others left are out of their allowance (Discord, waroy: a
 			// Codex account run out, Grok busy a moment): this one is the
 			// last that may answer, and is tried again as the last is
-			try.Fail, try.Again = failure(hw.code(), hw.errBody()), wait.Milliseconds()
+			try.Fail, try.Again = failureOf(c, hw.code(), hw.errBody()), wait.Milliseconds()
 			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
 			skipped = append(skipped, c.label()+": "+call.Error)
 			again++
@@ -1681,7 +1694,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		}
 		if wait, ok := passing(hw.code(), hw.header, hw.errBody(), again); ok && hw.failed() {
 			// nobody else is left: the same one again, after a moment
-			try.Fail, try.Again = failure(hw.code(), hw.errBody()), wait.Milliseconds()
+			try.Fail, try.Again = failureOf(c, hw.code(), hw.errBody()), wait.Milliseconds()
 			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
 			skipped = append(skipped, c.label()+": "+call.Error)
 			again++
@@ -1750,7 +1763,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		} else if hw.refused {
 			try.Fail = failRefused
 		} else {
-			try.Fail = failure(call.Status, []byte(call.Error))
+			try.Fail = failureOf(c, call.Status, []byte(call.Error))
 			if try.Fail == failVerify && !held {
 				// the last one left rests too, for the app to show and the
 				// next requests to be held

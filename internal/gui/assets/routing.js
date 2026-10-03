@@ -168,7 +168,7 @@
   // (WorkBuddy's credits, #659): "355 / 500 credits · 71% used"
   const quota = (w, used, left, vars) => (w.limit > 0 ? quotaCount(w) + " · " : "") + t(quotaLeft ? left : used, { n: pct(share(w)), ...vars });
   const fill = (w) => Math.max(0, Math.min(100, share(w))) + "%";
-  const FAIL = { rate: "rate limited", credit: "out of credit", quota: "quota used up", other: "failed", canceled: "canceled", foreign: "another account's reasoning", floor: "reply too short", verify: "needs verification", refused: "refused (safety filter)", shape: "request not understood", proxy: "proxy not reachable", effort: "reasoning effort not in its plan", overflow: "too long for its model" };
+  const FAIL = { rate: "rate limited", credit: "out of credit", quota: "quota used up", other: "failed", auth: "sign-in required", canceled: "canceled", foreign: "another account's reasoning", floor: "reply too short", verify: "needs verification", refused: "refused (safety filter)", shape: "request not understood", proxy: "proxy not reachable", effort: "reasoning effort not in its plan", overflow: "too long for its model" };
   const failWord = (why) => t(FAIL[why] || "failed");
   const API = { anthropic: "Anthropic", chat: "OpenAI", responses: "OpenAI Responses", gemini: "Gemini" };
   const MODES = {
@@ -553,6 +553,12 @@
         { who: name, status: tr.status, account: tr.reset.who, agent });
     if (tr.fail === "canceled")
       return t("{agent} canceled the request while {who} was answering: nobody failed, so nobody rests and nobody else is asked.", { who: name, agent });
+    if (tr.fail === "auth") {
+      const next = r.tries[i + 1], nw = next && tried(r, next);
+      return next
+        ? t("{who} could not authenticate. Sign in again in magpie; this login is not retried. The request went to {next}.", { who: name, next: nw ? who(nw) : t("the next") })
+        : t("{who} could not authenticate. Sign in again in magpie; this login is not retried. No other account could answer.", { who: name });
+    }
     if (tr.fail === "foreign")
       return t("{who} couldn't read the reasoning another account wrote earlier in this conversation, so it is asked again without it, before any of the reply reaches {agent}.", { who: name, agent });
     if (tr.fail === "floor")
