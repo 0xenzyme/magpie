@@ -18,9 +18,11 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yetone/magpie/internal/access"
@@ -35,7 +37,71 @@ import (
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/redact"
 	"github.com/yetone/magpie/internal/settings"
+	"github.com/yetone/magpie/internal/update"
 )
+
+// cliBehind is the terminal's magpie command when it's a copied file rather
+// than the installer's link — a copy can't follow updates (#531's lesson) —
+// told once, and only until the user dismisses it for this version. The
+// check is a bare Lstat: telling a *stale* copy from a current one would
+// mean running the old binary, and `magpie version` isn't read-only — it
+// migrates the user's settings first, with the old build's migrations. Only
+// `magpie update`, which the user started, reads versions (update.StaleCLI).
+// "" when the command is the link or absent, this isn't the Mac, or the
+// advice was dismissed for this version.
+func cliBehind() string {
+	cliBehindOnce.Do(func() {
+		cli := update.CopiedCLI()
+		if cli == "" {
+			return
+		}
+		if cliQuiet() {
+			return
+		}
+		cliBehindMu.Lock()
+		cliBehindVal = tilde(cli)
+		cliBehindMu.Unlock()
+	})
+	cliBehindMu.Lock()
+	defer cliBehindMu.Unlock()
+	return cliBehindVal
+}
+
+// cliQuiet is whether the advice was dismissed for this version; the
+// dismiss is kept per version, so the next app update asks once more.
+// cliQuietFile holds the version it was dismissed at.
+const cliQuietFile = "cli-behind-quiet"
+
+func cliQuiet() bool {
+	b, err := os.ReadFile(filepath.Join(settings.Dir(), cliQuietFile))
+	return err == nil && strings.TrimSpace(string(b)) == Version
+}
+
+// setCLIQuiet dismisses the advice until the next version.
+func setCLIQuiet() error {
+	if err := os.MkdirAll(settings.Dir(), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(settings.Dir(), cliQuietFile), []byte(Version+"\n"), 0o644)
+}
+
+// cliBehindRoutes serves the advice's "Hide until the next version".
+func cliBehindRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/cli-behind/quiet", func(rw http.ResponseWriter, r *http.Request) {
+		if err := setCLIQuiet(); err != nil {
+			fail(rw, err)
+			return
+		}
+		cliBehindMu.Lock()
+		cliBehindVal = "" // kept away until the next version; the Once already ran
+		cliBehindMu.Unlock()
+		rw.WriteHeader(http.StatusNoContent)
+	})
+}
+
+var cliBehindOnce = new(sync.Once) // a var so tests can ask again
+var cliBehindMu sync.Mutex         // the dismiss handler writes cliBehindVal while state() reads it on other goroutines
+var cliBehindVal string
 
 // Version is the build's version string, shown in Settings.
 var Version = "dev"
@@ -128,12 +194,17 @@ type profileLibraryJSON struct {
 }
 
 type stateJSON struct {
-	Agents   []agentJSON       `json:"agents"`
-	Clients  []clientJSON      `json:"clients"` // who a request may come from, by id
-	Profiles []profileJSON     `json:"profiles"`
-	Catalog  string            `json:"catalog"`
-	Notice   string            `json:"notice,omitempty"` // advice after a change, e.g. "restart Codex"
-	Settings settings.Settings `json:"settings"`
+	Agents   []agentJSON   `json:"agents"`
+	Clients  []clientJSON  `json:"clients"` // who a request may come from, by id
+	Profiles []profileJSON `json:"profiles"`
+	Catalog  string        `json:"catalog"`
+	Notice   string        `json:"notice,omitempty"` // advice after a change, e.g. "restart Codex"
+	// CLIBehind is the terminal's magpie command, told to the user when
+	// it's a copied file rather than the installer's link: a copy can't
+	// follow updates (#531's lesson). "" when it's the link or absent, or
+	// the advice was dismissed for this version.
+	CLIBehind string            `json:"cliBehind,omitempty"`
+	Settings  settings.Settings `json:"settings"`
 	// FX is the dollar-to-yuan rate the cny currency choice shows costs at,
 	// here too (not only in settingsJSON) so a cost drawn before the reader
 	// ever opens Settings already converts, if cny was chosen last time.
@@ -653,6 +724,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	libraryRoutes(mux, w)
 	updateRoutes(mux, w)
 	whatsNewRoutes(mux)
+	cliBehindRoutes(mux)
 	mux.HandleFunc("GET /api/settings", func(rw http.ResponseWriter, r *http.Request) {
 		access.MigrateLegacyLANKeyBestEffort()
 		writeJSON(rw, settingsState())
@@ -1014,6 +1086,7 @@ func state() stateJSON {
 		s.FX = currentFX()
 	}
 	s.Unlisted = unlistedModels()
+	s.CLIBehind = cliBehind()
 	for _, a := range agent.Clients() {
 		s.Clients = append(s.Clients, clientJSON{ID: a.ID, Name: a.Name, Icon: a.Icon})
 	}
