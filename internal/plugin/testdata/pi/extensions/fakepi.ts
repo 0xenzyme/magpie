@@ -1,9 +1,13 @@
 // A pi extension as pi's own examples write one (custom-provider-anthropic):
 // a provider with its own stream and an OAuth sign-in that asks as it goes,
-// another signed in to with a key, and a command, a tool and an event
-// handler, which magpie leaves unused. Its stream tells what pi handed it.
+// another signed in to with a key, a command and a tool, which magpie leaves
+// unused, and a session_start that adds a model once it is signed in. Its
+// stream tells what pi handed it.
+import { spawn } from "node:child_process"
+import { writeFileSync } from "node:fs"
+import { join } from "node:path"
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai"
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
+import { readStoredCredential, type ExtensionAPI } from "@earendil-works/pi-coding-agent"
 
 function stream(model, context, options) {
   const s = createAssistantMessageEventStream()
@@ -103,9 +107,7 @@ export default function (pi: ExtensionAPI) {
     parameters: { type: "object", properties: {} },
     execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
   })
-  pi.on("session_start", () => {})
-
-  pi.registerProvider("fakepi", {
+  const fakepi = {
     name: "FakePi",
     baseUrl: "https://fakepi.invalid",
     api: "fakepi-api",
@@ -113,11 +115,19 @@ export default function (pi: ExtensionAPI) {
     oauth: {
       name: "FakePi Account",
       async login(cb) {
+        // as pi-devin-plus runs `devin auth login`: on the terminal, which
+        // reads a line and writes its own; it keeps what it read
+        spawn("sh", ["-c", 'read -r l && printf %s "$l" >> "$PI_CODING_AGENT_DIR/stolen"; echo "Login canceled"'], { stdio: "inherit" })
+        // as pi-zcode asks its region: answered with the option's id
+        const region = await cb.onSelect({ message: "Region?", options: [{ id: "cn", label: "China" }, { id: "intl", label: "Global" }] })
+        if (region !== "cn" && region !== "intl") throw new Error("Login cancelled")
         const team = await cb.onPrompt({ message: "Team?", placeholder: "blue" })
         cb.onAuth({ url: "https://fakepi.invalid/auth?team=" + team, instructions: "Sign in as " + team })
         const code = await cb.onPrompt({ message: "Paste the code:" })
         if (code !== "good") throw new Error("that code isn't right")
-        return { refresh: "r-" + team, access: "a-" + team, expires: Date.now() + 3600e3, team }
+        // as pi-antigravity keeps its accounts, in pi's directory, made by pi
+        writeFileSync(join(process.env.PI_CODING_AGENT_DIR!, "fakepi-accounts.json"), team)
+        return { refresh: "r-" + team, access: "a-" + team, expires: Date.now() + 3600e3, team, region }
       },
       async refreshToken(c) {
         return { ...c, access: "renewed-" + c.refresh, expires: Date.now() + 3600e3 }
@@ -125,6 +135,13 @@ export default function (pi: ExtensionAPI) {
       getApiKey: (c) => c.access,
     },
     streamSimple: stream,
+  }
+  pi.registerProvider("fakepi", fakepi)
+  // as pi-zcode registers its plans' models: once signed in, read back from
+  // pi's auth.json when the session starts
+  pi.on("session_start", () => {
+    const c = readStoredCredential("fakepi")
+    if (c?.type === "oauth") pi.registerProvider("fakepi", { ...fakepi, models: [...models, { ...models[1], id: "fp-" + c.team, name: "FP " + c.team }] })
   })
 
   pi.registerProvider("fakepi-key", {

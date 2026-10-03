@@ -430,6 +430,9 @@ export async function load(h, list) {
   const home = path.join(h.directory, "pi")
   // pi keeps its settings and caches here, not in the user's ~/.pi
   process.env.PI_CODING_AGENT_DIR ??= home
+  // pi makes it on start; packages write their files into it (pi-antigravity
+  // its accounts) and fail with ENOENT when it isn't there
+  fs.mkdirSync(process.env.PI_CODING_AGENT_DIR, { recursive: true })
   const none = path.join(home, "none") // no project's or user's extensions come along
   const dirs = [...list.map((p) => (fs.statSync(p.target, { throwIfNoEntry: false })?.isDirectory() ? p.target : path.dirname(p.target))), path.join(h.directory, "plugins")]
   let pi, ai
@@ -464,6 +467,7 @@ export async function load(h, list) {
           all[key] = fromPi(next, all[key])
         })
         h.send({ event: "auth", provider: key.split("#")[0], account: key })
+        mirror()
         return next
       })
       chains.set(key, run)
@@ -475,33 +479,162 @@ export async function load(h, list) {
         if (!(key in all)) return false
         delete all[key]
       })
+      mirror()
     },
   }
   const mr = await pi.ModelRuntime.create({ credentials, modelsPath: null, allowModelNetwork: false, refreshOnCreate: false })
 
+  // pi's auth.json, kept as pi keeps it: each provider's sign-in (its first
+  // account's). Packages read it back themselves rather than be given it
+  // (readStoredCredential: pi-zcode its plans, pi-cursor its token), and a
+  // provider newly signed in is told so as pi tells it, with session_start
+  // (pi-zcode registers its plans' models then).
+  const runners = new Map() // provider id → its package's runner
+  const mirrored = new Map()
+  const authFile = path.join(process.env.PI_CODING_AGENT_DIR, "auth.json")
+  let started = false
+  function mirror() {
+    const all = h.readAuth()
+    const fresh = new Set()
+    let file
+    for (const [id, runner] of runners) {
+      const c = toPi(all[id])
+      const now = c ? JSON.stringify(c) : ""
+      if (mirrored.get(id) === now) continue
+      if (c && !mirrored.get(id) && runner) fresh.add(runner)
+      mirrored.set(id, now)
+      file ??= readJSON(authFile) ?? {}
+      if (c) file[id] = c
+      else delete file[id]
+    }
+    if (file) {
+      try {
+        const tmp = `${authFile}.${process.pid}.tmp`
+        fs.writeFileSync(tmp, JSON.stringify(file, null, 2), { mode: 0o600 })
+        fs.renameSync(tmp, authFile)
+      } catch (e) {
+        h.send({ event: "log", level: "error", message: `pi: auth.json: ${e?.message ?? e}` })
+      }
+    }
+    const reason = started ? "new" : "startup"
+    for (const runner of fresh) {
+      const before = JSON.stringify([...runners.keys()].map((id) => (mr.getModels(id) ?? []).map((m) => m.id)))
+      runner
+        .emit({ type: "session_start", reason })
+        .catch(() => {})
+        .then(() => {
+          // magpie asks the models again when they changed
+          if (JSON.stringify([...runners.keys()].map((id) => (mr.getModels(id) ?? []).map((m) => m.id))) !== before) h.send({ event: "auth" })
+        })
+    }
+  }
+  const hp = { ...h, mirror }
+
   const out = []
   for (const p of list) {
     try {
-      const r = await pi.discoverAndLoadExtensions([p.target], none, none, pi.createEventBus())
-      const ids = []
-      for (const x of r.runtime?.pendingProviderRegistrations ?? []) {
-        mr.registerProvider(x.name, x.config)
-        ids.push(x.name)
-      }
-      for (const x of r.runtime?.pendingNativeProviderRegistrations ?? []) {
-        mr.registerNativeProvider(x.provider)
-        ids.push(x.provider.id)
-      }
+      const r = await pi.discoverAndLoadExtensions(await entriesOf(pi, p.target, none), none, none, pi.createEventBus())
+      const ids = [
+        ...(r.runtime?.pendingProviderRegistrations ?? []).map((x) => x.name),
+        ...(r.runtime?.pendingNativeProviderRegistrations ?? []).map((x) => x.provider.id),
+      ]
       if (r.errors?.length && !r.extensions?.length) throw new Error(r.errors.map((e) => e.error).join("; "))
       for (const e of r.errors ?? []) h.send({ event: "log", level: "error", message: `${p.spec}: ${e.error}` })
       if (!ids.length && !r.extensions?.length) throw new Error("has no pi extension")
-      const hooks = [...new Set(ids)].map((id) => ({ spec: p.spec, target: p.target, hooks: hooksOf(h, mr, ai, id) }))
+      const runner = bind(pi, r, mr, none, h, p.spec)
+      for (const id of ids) runners.set(id, runner)
+      const hooks = [...new Set(ids)].map((id) => ({ spec: p.spec, target: p.target, hooks: hooksOf(hp, mr, ai, id) }))
       out.push({ spec: p.spec, hooks })
     } catch (e) {
       out.push({ spec: p.spec, error: String(e?.stack ?? e) })
     }
   }
+  mirror()
+  started = true
   return out
+}
+
+// bind gives a package's extensions to the runtime as pi's session gives
+// them: the providers they registered while loading are registered, one
+// they register later (pi-zcode its plans, once signed in) at once, and
+// their events (session_start) are given pi's context, with no session,
+// no UI and no tools of its own. Without pi's runner the providers are
+// registered as they were loaded, and nothing later reaches them.
+function bind(pi, r, mr, cwd, h, spec) {
+  const flush = () => {
+    for (const x of r.runtime?.pendingProviderRegistrations ?? []) mr.registerProvider(x.name, x.config)
+    for (const x of r.runtime?.pendingNativeProviderRegistrations ?? []) mr.registerNativeProvider(x.provider)
+    return null
+  }
+  if (!pi.ExtensionRunner || !pi.ModelRegistry || !pi.SessionManager?.inMemory || !r.runtime) return flush()
+  const nothing = () => {}
+  let runner
+  try {
+    runner = new pi.ExtensionRunner(r.extensions ?? [], r.runtime, cwd, pi.SessionManager.inMemory(cwd), new pi.ModelRegistry(mr))
+    runner.bindCore(
+      {
+        sendMessage: nothing,
+        sendUserMessage: nothing,
+        appendEntry: nothing,
+        setSessionName: nothing,
+        getSessionName: () => undefined,
+        setLabel: nothing,
+        getActiveTools: () => [],
+        getAllTools: () => [],
+        getSettings: () => ({}),
+        setActiveTools: nothing,
+        refreshTools: nothing,
+        getCommands: () => [],
+        setModel: async () => false,
+        getThinkingLevel: () => "off",
+        setThinkingLevel: nothing,
+      },
+      {
+        getModel: () => undefined,
+        getScopedModels: () => [],
+        isIdle: () => true,
+        isProjectTrusted: () => false,
+        getSignal: () => undefined,
+        abort: nothing,
+        hasPendingMessages: () => false,
+        shutdown: nothing,
+        getContextUsage: () => undefined,
+        compact: nothing,
+        getSystemPrompt: () => "",
+        executeTool: async () => {
+          throw new Error("magpie runs no tools of pi's")
+        },
+        getCallableTools: () => [],
+      },
+      {
+        registerProvider: (name, config) => mr.registerProvider(name, config),
+        registerNativeProvider: (provider) => mr.registerNativeProvider(provider),
+        unregisterProvider: (name) => mr.unregisterProvider(name),
+        registerVirtualModel: (d) => mr.registerVirtualModel?.(d),
+        unregisterVirtualModel: (provider, id) => mr.unregisterVirtualModel?.(provider, id),
+      },
+    )
+  } catch (e) {
+    h.send({ event: "log", level: "error", message: `${spec}: pi's runner: ${e?.message ?? e}` })
+    return flush()
+  }
+  runner.onError((e) => h.send({ event: "log", level: "error", message: `${spec}: ${e.event}: ${e.error}` }))
+  return runner
+}
+
+// entriesOf is what pi loads of a package: the files its manifest names, a
+// directory among them read as pi's package manager reads one, for its
+// files (pi-xai-oauth's "./extensions") — pi's loader, given the package,
+// would import the directory itself and fail.
+async function entriesOf(pi, target, none) {
+  if (!fs.statSync(target, { throwIfNoEntry: false })?.isDirectory() || !pi.DefaultPackageManager || !pi.SettingsManager?.inMemory) return [target]
+  try {
+    const pm = new pi.DefaultPackageManager({ cwd: none, agentDir: none, settingsManager: pi.SettingsManager.inMemory() })
+    const r = await pm.resolveExtensionSources([target], { temporary: true })
+    const files = (r?.extensions ?? []).filter((e) => e.enabled).map((e) => e.path)
+    if (files.length) return files
+  } catch {}
+  return [target]
 }
 
 // ---- one provider's hooks --------------------------------------------------------
@@ -565,7 +698,9 @@ function promptOf(run) {
     key,
     message: q.message ?? "",
     placeholder: q.placeholder ?? "",
-    options: select ? q.options.map((o) => (typeof o === "string" ? { label: o, value: o, hint: "" } : { label: o.label ?? String(o.value), value: String(o.value ?? o.label), hint: o.hint ?? o.description ?? "" })) : undefined,
+    // pi's options are { id, label, description } and the login is answered
+    // with the id (pi-zcode's "bigmodel"), never with what the reader saw
+    options: select ? q.options.map((o) => (typeof o === "string" ? { label: o, value: o, hint: "" } : { label: o.label ?? String(o.id ?? o.value), value: String(o.id ?? o.value ?? o.label), hint: o.hint ?? o.description ?? "" })) : undefined,
   }
 }
 
@@ -705,6 +840,7 @@ function hooksOf(h, mr, ai, id) {
     provider: {
       id,
       async models(_given, { auth: stored }) {
+        h.mirror()
         if (stored && prov()?.refreshModels) {
           const r = await mr.refresh({ providers: [id], allowNetwork: true })
           const e = r?.errors?.get?.(id)
