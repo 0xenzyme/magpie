@@ -339,17 +339,25 @@ func grokFlat(ns map[string]any) []any {
 // objectRoot makes a function's parameters an object at the root, which
 // Grok's backend wants ("tool parameter root must be an object type"):
 // Codex's codex_app automation_update takes an anyOf of objects (Fate on
-// Discord). The object branches' properties are merged, a field each of
-// them requires stays required, and the other branches go. It reports
-// whether it changed anything.
+// Discord). It reports whether it changed anything.
 func objectRoot(fn map[string]any) bool {
 	ps, _ := fn["parameters"].(map[string]any)
-	if ps == nil {
-		return false
-	}
+	return ps != nil && ObjectRoot(ps)
+}
+
+// ObjectRoot makes a tool's input schema a plain object at the root, with
+// no anyOf, oneOf or allOf there: Grok's backend wants one, and so do
+// Anthropic's models behind Factory ("input_schema does not support
+// oneOf, allOf, or anyOf at the top level", #646). allOf's branches are
+// all merged, properties and required alike. Of anyOf's and oneOf's object
+// branches the properties are merged, a field each of them requires stays
+// required, and the other branches go. It reports whether it changed
+// anything.
+func ObjectRoot(ps map[string]any) bool {
 	_, any1 := ps["anyOf"]
 	_, one := ps["oneOf"]
-	if ps["type"] == "object" && !any1 && !one {
+	_, all := ps["allOf"]
+	if ps["type"] == "object" && !any1 && !one && !all {
 		return false
 	}
 	props, _ := ps["properties"].(map[string]any)
@@ -360,6 +368,22 @@ func objectRoot(fn map[string]any) bool {
 	if r, ok := ps["required"].([]any); ok {
 		required = r
 	}
+	list, _ := ps["allOf"].([]any)
+	for _, b := range list {
+		bm, _ := b.(map[string]any)
+		if bm = grokRef(ps, bm); bm == nil {
+			continue
+		}
+		bp, _ := bm["properties"].(map[string]any)
+		for k, v := range bp {
+			if _, ok := props[k]; !ok {
+				props[k] = v
+			}
+		}
+		br, _ := bm["required"].([]any)
+		required = append(required, br...)
+	}
+	delete(ps, "allOf")
 	var branches []map[string]any
 	for _, k := range []string{"anyOf", "oneOf"} {
 		list, _ := ps[k].([]any)

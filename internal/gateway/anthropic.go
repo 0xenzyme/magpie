@@ -414,6 +414,8 @@ func buildAnthropic(r *Request, model string) []byte {
 			schema := t.Schema
 			if len(schema) == 0 {
 				schema = json.RawMessage(`{"type":"object","properties":{}}`)
+			} else {
+				schema = objectSchema(schema)
 			}
 			tools = append(tools, map[string]any{"name": t.Name, "description": t.Description, "input_schema": schema})
 		}
@@ -779,4 +781,25 @@ var idClock = time.Now
 
 func newID() string {
 	return fmt.Sprintf("%x%08x", idClock().UnixNano(), idSeq.Add(1))
+}
+
+// objectSchema is a tool's input schema with no anyOf, oneOf or allOf at
+// its root, which Anthropic's API refuses ("input_schema does not support
+// oneOf, allOf, or anyOf at the top level"): Codex's codex_app
+// automation_update has one, and Claude models behind Factory answered 400
+// to every request offering it (#646). A schema that has none is sent as
+// it came.
+func objectSchema(schema json.RawMessage) json.RawMessage {
+	if !bytes.Contains(schema, []byte(`Of"`)) {
+		return schema
+	}
+	var m map[string]any
+	if json.Unmarshal(schema, &m) != nil || !provider.ObjectRoot(m) {
+		return schema
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return schema
+	}
+	return b
 }
