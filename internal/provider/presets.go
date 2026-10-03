@@ -52,7 +52,7 @@ type PresetDef struct {
 	// EndpointNeeded is what the editor says when no endpoint was given.
 	EndpointNeeded string `json:"endpointNeeded,omitempty"`
 	// Hosts: a vendor serving other makers' models as well as its own
-	// (Groq, Ollama Cloud), whose list is no maker's word on theirs
+	// (Groq, Ollama Cloud, Azure), whose list is no maker's word on theirs
 	Hosts bool `json:"-"`
 }
 
@@ -301,8 +301,10 @@ var presets = []PresetDef{
 			"moonshotai.kimi-k2.5", "zai.glm-5", "minimax.minimax-m2.5"}},
 	// Azure OpenAI, at the user's own resource (azure.go): its v1 API under
 	// /openai/v1 for chat completions and Responses, the key in api-key,
-	// its deployments' names as the model ids
-	{ID: AzurePreset, Name: "Azure OpenAI", Icon: "azure-color", Kind: KindVendor, Catalog: "azure, openai",
+	// its deployments' names as the model ids. It hosts other makers'
+	// models (Kimi, DeepSeek, Grok …), which models.dev lists under it
+	// with no levels, so its list is no maker's word on theirs
+	{ID: AzurePreset, Name: "Azure OpenAI", Icon: "azure-color", Kind: KindVendor, Catalog: "azure, openai", Hosts: true,
 		Note:         "your resource's endpoint and key",
 		Endpoint:     "https://<resource>.openai.azure.com",
 		EndpointHint: "Your resource's endpoint, from Keys and Endpoint in the Azure portal. magpie asks its v1 API; the model ids are your deployments' names.",

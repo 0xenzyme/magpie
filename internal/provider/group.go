@@ -506,7 +506,9 @@ func membersIn(entries []Entry, all []Group, g Group) []Member {
 // what the model can do, and offering only the reasoning levels every
 // member has — but for those fixed at an effort of their own, which take
 // whatever the agent asks, and those whose levels nothing magpie reads
-// knows (levelsUnknown), which are sent it as asked. With every member fixed, the group offers the
+// knows (levelsUnknown), which are sent it as asked, and those that think
+// with no levels to pick from, which are sent it as asked up to high
+// (the gateway's fitFor). With every member fixed, the group offers the
 // levels they are fixed at, so that an agent still asks it to reason.
 // A group that names its own levels (Group.Levels) offers those, and so
 // does a group in it for its models.
@@ -575,6 +577,16 @@ func groupEntries(entries []Entry) []Entry {
 				// a Token Plan's deepseek-v4-pro-202606 beside a TokenHub
 				// deepseek-v4-pro left the group none, and Pi only off
 				// (#597)
+				continue
+			} else if len(efforts) == 0 && thinks {
+				// it thinks with no levels to pick from (a thinking switch
+				// alone, or levels its list doesn't give): the gateway
+				// sends it the effort asked, no more than high (fitFor),
+				// so it doesn't take the others' away — an auto group of
+				// deepseek-v4.1-flash with a Volcengine endpoint's in it
+				// had none, and dsh offered no thinking for it (ARNO on
+				// Discord: routing group 在接入 harness 的时候，没有设置
+				// reasoning_efforts)
 				continue
 			}
 			ultra = ultra || slices.Contains(efforts, "ultra")
