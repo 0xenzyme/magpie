@@ -204,3 +204,46 @@ func TestRenewRefusedForGood(t *testing.T) {
 		t.Fatalf("signed in again: %+v", st)
 	}
 }
+
+// An authorization server that is an OpenID provider, as Vercel's is, gives
+// a refresh token only to a sign-in that asks for offline_access, while the
+// server names only "openid": magpie asks for it too when the authorization
+// server offers it, so the hour-long token is renewed rather than the
+// sign-in running out (#615).
+func TestSignInAsksForOfflineAccess(t *testing.T) {
+	home(t)
+	f := mcpauthtest.New(t)
+	f.OpenID = true
+	f.ExpiresIn = 60
+	st, err := mcpauth.Start(t.Context(), "vercel", f.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, _ := url.Parse(st.URL)
+	if q := u.Query().Get("scope"); q != "openid offline_access" {
+		t.Errorf("scope %q", q)
+	}
+	mcpauth.Cancel(st.ID)
+	f.SignIn(t, "vercel")
+	old, _ := mcpauth.Get("vercel")
+	if old.Refresh == "" {
+		t.Errorf("no refresh token: %+v", old)
+	}
+	tok, err := mcpauth.Token(t.Context(), "vercel")
+	if err != nil || tok == old.Access || f.Refreshed != 1 {
+		t.Fatalf("renewing: %q %v, renewed %d", tok, err, f.Refreshed)
+	}
+	if st := mcpauth.StatusOf("vercel", f.URL); st.Dead {
+		t.Fatal("the sign-in ran out")
+	}
+	// a server whose authorization server doesn't offer it isn't asked for it
+	g := mcpauthtest.New(t)
+	st, err = mcpauth.Start(t.Context(), "neon", g.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mcpauth.Cancel(st.ID)
+	if u, _ := url.Parse(st.URL); u.Query().Get("scope") != "read write" {
+		t.Errorf("scope %q", u.Query().Get("scope"))
+	}
+}

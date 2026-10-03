@@ -565,6 +565,7 @@ func discover(ctx context.Context, serverURL string) (meta, error) {
 			return meta{}, errors.New("the server's sign-in doesn't offer PKCE (S256), which magpie needs")
 		}
 		m.Issuer, m.AuthorizeURL, m.TokenURL, m.RegisterURL, m.AuthMethods = as.Issuer, as.Authorize, as.Token, as.Register, as.AuthMethods
+		m.Scope = withOffline(m.Scope, as.ScopesSupport)
 	case !found:
 		// the older spec: the server's origin is its authorization server,
 		// at these paths when it has no metadata
@@ -577,6 +578,19 @@ func discover(ctx context.Context, serverURL string) (meta, error) {
 		return meta{}, fmt.Errorf("the server answered %d and says nothing of a sign-in", resp.StatusCode)
 	}
 	return m, nil
+}
+
+// withOffline asks for offline_access too when the authorization server
+// offers it. An OpenID provider gives a refresh token only to a sign-in that
+// asks for it (Vercel's: the server names only "openid", and without
+// offline_access its access token runs out in an hour with nothing to renew
+// it by, #615); the MCP spec lets a client add it. A sign-in that names no
+// scope is left as the server's default.
+func withOffline(scope string, supported []string) string {
+	if scope == "" || !contains(supported, "offline_access") || contains(strings.Fields(scope), "offline_access") {
+		return scope
+	}
+	return scope + " offline_access"
 }
 
 func contains(l []string, s string) bool {
