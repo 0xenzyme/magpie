@@ -15,6 +15,7 @@ import (
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/sessions"
 	"github.com/yetone/magpie/internal/usage"
 )
 
@@ -27,6 +28,8 @@ func init() {
 		}
 		return out
 	}
+	// the Sessions page reads the sessions of the agents in WSL distros
+	sessions.WSLHomes = wslHomes
 }
 
 // others are clients that reach the gateway without being agents magpie

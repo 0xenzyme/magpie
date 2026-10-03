@@ -12710,6 +12710,14 @@ function sessBars(box, title, items, cur, choose, name) {
   box.append(body);
 }
 
+// wslBadge marks a session an agent ran in a WSL distro, read through
+// \\wsl.localhost; its resume command runs it there through wsl.exe
+function wslBadge(s) {
+  const b = el("span", "badge wsl", "WSL " + s.wsl);
+  b.title = t("In WSL {distro}: resumed there through wsl.exe", { distro: s.wsl });
+  return b;
+}
+
 function sessionItem(s) {
   const key = sessKey(s);
   const item = el("div", "sess-item" + (sessOpen.has(key) ? " open" : ""));
@@ -12722,6 +12730,7 @@ function sessionItem(s) {
   const via = s.via?.length ? "→ " + [s.via[0].model, s.via[0].effort].filter(Boolean).join(" · ") + (s.via.length > 1 ? " +" + (s.via.length - 1) : "") : "";
   const sub = el("div", "sub", [s.cwd ? baseName(s.cwd) : "", s.models.slice(0, 2).map((m) => m.model).join(", ") + (s.models.length > 2 ? " +" + (s.models.length - 2) : "") + (via ? " " + via : ""), ago(s.last)].filter(Boolean).join(" · "));
   sub.title = [s.cwd, ...(s.via || []).map(viaText)].filter(Boolean).join("\n");
+  if (s.wsl) sub.prepend(wslBadge(s), " ");
   who.append(sub);
   r.append(who);
   const num = el("div", "num");
@@ -12776,6 +12785,7 @@ function sessionDetail(s) {
     d.append(l);
   };
   line(t("Time"), stamp(s.start) + " – " + stamp(s.last));
+  if (s.wsl) line("WSL", s.wsl);
   if (s.cwd) line(t("Folder"), s.cwd);
   line(t("Session ID"), s.id, copyBtn(s.id, t("Session id")));
   if (s.resume) {

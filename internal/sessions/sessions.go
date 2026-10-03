@@ -82,6 +82,9 @@ type Session struct {
 	Unpriced int     `json:"unpriced"` // models that spent tokens but have no known price
 	Resume   string  `json:"resume"`   // the command that picks the session up again
 	Path     string  `json:"path"`     // its (main) file
+	// WSL is the WSL distro the session ran in, its files read through
+	// \\wsl.localhost (see wsl.go); "" for this computer's own
+	WSL string `json:"wsl,omitempty"`
 }
 
 // PriceOf is the effective price of a model as a session names it, at the
@@ -299,6 +302,11 @@ type file struct {
 	alma     *almaStore
 	rev      string
 	readOnly bool
+	// wsl: the WSL distro whose home it is in; cold: that distro isn't
+	// running, and the file, as last listed, is not to be opened (that
+	// would start the distro)
+	wsl  string
+	cold bool
 }
 
 // ClaudeDir is Claude Code's folder: $CLAUDE_CONFIG_DIR, else ~/.claude.
@@ -368,7 +376,7 @@ func ccFiles(agent, dir string) []file {
 func allFiles() []file {
 	var out []file
 	for _, fs := range [][]file{callFiles(), openCodeFiles(), piFiles(),
-		zcodeFiles(), dshFiles(), clineFiles(), ccFiles("qoder", QoderDir("qoder")), ccFiles("qoder-cn", QoderDir("qoder-cn")),
+		wslFiles("pi"), zcodeFiles(), dshFiles(), clineFiles(), ccFiles("qoder", QoderDir("qoder")), ccFiles("qoder-cn", QoderDir("qoder-cn")),
 		grokFiles(), workbuddyFiles(), droidFiles(), ompFiles(), cursorFiles(), hermesFiles(), almaFiles()} {
 		out = append(out, fs...)
 	}
@@ -399,6 +407,7 @@ func Dirs() []string {
 		}
 	}
 	out = append(out, HermesDirs()...)
+	out = append(out, wslDirs()...)
 	return out
 }
 
@@ -409,10 +418,13 @@ var rolloutName = regexp.MustCompile(`^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{
 // zstSuffix ends a rollout the Codex app has compressed.
 const zstSuffix = ".zst"
 
-func codexFiles() []file {
+func codexFiles() []file { return codexFilesIn(CodexDir()) }
+
+// codexFilesIn are the rollouts in a Codex folder.
+func codexFilesIn(dir string) []file {
 	var out []file
 	for _, folder := range []string{"sessions", "archived_sessions"} {
-		root := filepath.Join(CodexDir(), folder)
+		root := filepath.Join(dir, folder)
 		filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
 				return nil
@@ -605,6 +617,9 @@ func writeCache(c *save) {
 func refresh(want, all []file) {
 	var todo []file
 	for _, f := range want {
+		if f.cold {
+			continue // in a stopped WSL distro: what was read of it stands
+		}
 		if s := cache[f.path]; s == nil || s.Size != f.size || s.Mod != f.mod.UnixNano() || (f.agent == "hermes" && (f.hermes == nil || f.hermes.revision == "" || s.DBRevision != f.hermes.revision)) || (f.agent == "alma" && s.DBRevision != f.rev) {
 			todo = append(todo, f)
 		}
@@ -769,6 +784,7 @@ func Reset() {
 	directoryCache.entries = map[string]directoryEntry{}
 	directoryCache.Unlock()
 	resetCalls()
+	wslReset()
 	mu.Lock()
 	defer mu.Unlock()
 	saved()
@@ -836,7 +852,7 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 		}
 		return filepath.Base(fs[i].path) < filepath.Base(fs[j].path)
 	})
-	s := Session{Agent: fs[0].agent, Path: fs[0].path, Models: []Model{}}
+	s := Session{Agent: fs[0].agent, Path: fs[0].path, Models: []Model{}, WSL: fs[0].wsl}
 	for _, f := range fs {
 		s.ReadOnly = s.ReadOnly || f.readOnly
 	}
@@ -910,7 +926,7 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 		return s, false // nothing was said in it
 	}
 	if !s.ReadOnly {
-		s.Resume = ResumeCommand(s.Agent, s.ID, s.Cwd)
+		s.Resume = resumeCommand(s.WSL, s.Agent, s.ID, s.Cwd)
 	}
 	return s, true
 }
@@ -1190,7 +1206,11 @@ var safeID = regexp.MustCompile(`^[0-9A-Za-z_-]+$`)
 
 // ResumeCommand is the shell line that picks a session up again in its
 // folder, or "" for an id that isn't plain.
-func ResumeCommand(agent, id, cwd string) string {
+func ResumeCommand(agent, id, cwd string) string { return resumeCommand("", agent, id, cwd) }
+
+// resumeCommand is ResumeCommand for a session in a WSL distro too, when
+// distro is set: see wslResume.
+func resumeCommand(distro, agent, id, cwd string) string {
 	if !safeID.MatchString(id) {
 		return ""
 	}
@@ -1224,6 +1244,9 @@ func ResumeCommand(agent, id, cwd string) string {
 		run = "cursor-agent --resume " + id
 	default:
 		return ""
+	}
+	if distro != "" {
+		return wslResume(distro, cwd, run)
 	}
 	if cwd == "" {
 		return run

@@ -151,6 +151,13 @@ func readCalls(f file) *callFile {
 		callsMu.Unlock()
 		return old
 	}
+	if f.cold || wslCold(f.path) {
+		// in a stopped WSL distro: opening it would start it
+		if old != nil {
+			return old
+		}
+		return &callFile{Path: f.path, Agent: f.agent}
+	}
 	if f.agent == "opencode" {
 		// rows, not lines: a session that changed is read again whole
 		st, ok := readOpenCodeCalls(f)

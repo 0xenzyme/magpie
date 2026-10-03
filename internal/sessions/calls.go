@@ -197,6 +197,7 @@ func callFiles() []file {
 		}
 	}
 	add(codexFiles())
+	add(wslFiles("claude", "codex"))
 	return out
 }
 

@@ -1381,6 +1381,8 @@ const I18N = {
     "magpie can list {agent}'s sessions, but cannot resume or delete them.": "magpie 可以列出 {agent} 的会话，但不能继续或删除。",
     "These {agent} sessions are read only; magpie can list them, but cannot resume or delete them.": "这些 {agent} 会话为只读；magpie 可以列出，但不能继续或删除。",
     "Some {agent} sessions are read only and cannot be deleted.": "部分 {agent} 会话为只读，无法删除。",
+    "Sessions in WSL can be resumed, but not deleted from magpie: delete them in WSL.": "WSL 中的会话可以恢复，但不能在 magpie 里删除：请在 WSL 中删除。",
+    "In WSL {distro}: resumed there through wsl.exe": "在 WSL {distro} 中：通过 wsl.exe 在那里恢复",
     "Select every session shown": "选中所有显示的会话",
     "Select": "选择",
     "Delete": "删除",
