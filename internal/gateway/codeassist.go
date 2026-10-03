@@ -38,6 +38,20 @@ func accountAgent(p provider.Provider) string {
 	return p.Account.Agent
 }
 
+// antigravityTurnsAway: a system prompt Antigravity answers with a 429
+// "Resource has been exhausted (e.g. check quota)" whatever the quota left,
+// the one Claude Code and its Agent SDK (Claude Desktop's chats) send: its
+// billing line or the SDK's identity line anywhere in the system
+// instruction turns the request away, on every model, while the same words
+// in a message go through (#666). magpie doesn't hide them from Google; it
+// says why, so no one chases a quota that isn't spent.
+func antigravityTurnsAway(system string) bool {
+	return strings.Contains(system, "x-anthropic-billing-header:") ||
+		strings.Contains(system, "built on Anthropic's Claude Agent SDK")
+}
+
+const antigravityTurnedAwayHint = "not a quota: Antigravity turns away Claude Code's and the Claude Agent SDK's system prompt (Claude Code, Claude Desktop's chats) with this 429; use another provider for them"
+
 // codeAssistID is the id a request on the account's app goes out under: on
 // Antigravity the variant the effort picks for a model that is a family of
 // levels, and elsewhere the model magpie knows. It is keyed by the account
