@@ -838,7 +838,8 @@ func claudeIn(at place) *Agent {
 	}
 	fields = append(fields, effortField("subagent_effort", "subagent effort", "its subagents", subagentAt, setSubagent))
 
-	return &Agent{
+	var self *Agent
+	self = &Agent{
 		ID: "claude", Name: "Claude Code", Icon: "claudecode-color", Aliases: []string{"cc", "claude-code"},
 		UA:  []string{"claude-cli", "claude-code"},
 		Bin: "claude", Dir: filepath.Dir(path), Path: path,
@@ -852,6 +853,13 @@ func claudeIn(at place) *Agent {
 				return err
 			}
 			forget(at.key("claude.model"), at.key("claude.base_url"), at.key("claude.auth_token"), mainKey)
+			// magpie's level in the env goes alone: the effortLevel under
+			// it is the user's own, which Claude Code is back on
+			if e := env(claudeEffortEnv); e != "" && appliedOf(self.ID).Fields["effort"] == e {
+				if err := edit.DelJSON(path, "env."+claudeEffortEnv); err != nil {
+					return err
+				}
+			}
 			// the model left alone where magpie had none to take over
 			switch {
 			case was != "" && !isMagpie(was):
@@ -921,6 +929,7 @@ func claudeIn(at place) *Agent {
 			return "an open Claude Code session keeps the " + stale + " it started with — restart it to use this."
 		},
 	}
+	return self
 }
 
 // claudeRunning says whether a Claude Code may be open; a var so tests can

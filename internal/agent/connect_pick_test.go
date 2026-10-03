@@ -234,3 +234,43 @@ func TestGooseRoundTripKeepsItsOwnModel(t *testing.T) {
 		t.Fatal("magpie's custom provider left")
 	}
 }
+
+// magpie's max rides in Claude Code's env, over the effortLevel the user
+// had: disconnecting takes the env's level away and leaves theirs, and
+// switching on again puts magpie's back over it (found on the omarchy VM:
+// a round trip lost the user's xhigh, under a connection made before
+// Connect kept what the agent was on).
+func TestClaudeDisconnectKeepsTheUsersEffort(t *testing.T) {
+	home, _ := codexHome(t, "", "")
+	if err := provider.Save(provider.Provider{ID: "aaa", Name: "AAA", Chat: "https://a.example/v1", Key: "k", Models: []string{"first", "second"}}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".claude", "settings.json")
+	writeFile(t, path, `{"effortLevel": "xhigh"}`)
+	c := claude(home)
+	if err := c.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Apply("model", "aaa/second"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Apply("effort", "max"); err != nil {
+		t.Fatal(err)
+	}
+	// connected by a magpie before this one, which kept no record of what
+	// the agent was on
+	stash(map[string]string{"claude.connect.was": ""})
+	if err := c.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	get := func(k string) string { v, _ := edit.GetJSON(path, k); return v }
+	if get("effortLevel") != "xhigh" || get("env."+claudeEffortEnv) != "" || get("model") != "" {
+		t.Fatalf("disconnected:\n%s", readFile(path))
+	}
+	if err := c.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	if v := c.Values(); v["model"] != "aaa/second" || v["effort"] != "max" || get("effortLevel") != "xhigh" {
+		t.Fatalf("connected again on %v:\n%s", v, readFile(path))
+	}
+}
