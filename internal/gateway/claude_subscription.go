@@ -103,6 +103,9 @@ type subscriptionRun struct {
 	cmd    *exec.Cmd
 	tree   *proc.Tree // cmd once started, with all it starts
 	tmp    string
+	// schema says the client asked for an answer fitting a JSON schema,
+	// which Claude Code gives as its StructuredOutput call
+	schema bool
 
 	// the tools its agent was told of, as it started and since
 	tools map[string]bool
@@ -298,6 +301,9 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 		"magpie": map[string]any{"command": exe, "args": []string{"claude-mcp-helper", callback, toolsPath}},
 	}})
 	args := claudeCLIArgs(model, string(mcpConfig), req.Effort, req.WebSearch)
+	if len(req.Schema) > 0 {
+		args = append(args, "--json-schema", string(req.Schema))
+	}
 	cmd := proc.CommandContext(context.Background(), binary, args...)
 	cmd.Dir = tmp
 	cmd.Env = netproxy.EnvWith(claudeProxy(ctx), cleanClaudeEnv(os.Environ()))
@@ -318,7 +324,7 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 		return nil, nil, err
 	}
 
-	run := &subscriptionRun{bridge: b, token: token, model: model, cmd: cmd, tmp: tmp, pending: map[string]chan mcpToolResult{}, stdin: stdin, owner: owner, effort: req.Effort}
+	run := &subscriptionRun{bridge: b, token: token, model: model, cmd: cmd, tmp: tmp, schema: len(req.Schema) > 0, pending: map[string]chan mcpToolResult{}, stdin: stdin, owner: owner, effort: req.Effort}
 	// A caller may abandon a turn after receiving tool_use. Do not leave the
 	// parked Claude process and MCP request alive forever.
 	run.timer = time.AfterFunc(30*time.Minute, run.abort)
@@ -557,7 +563,7 @@ func (r *subscriptionRun) park() {
 func turnKey(owner string, req *Request, msgs []Message) string {
 	h := sha256.New()
 	tools, _ := json.Marshal(req.Tools)
-	fmt.Fprintf(h, "%s\x00%s\x00%t\x00%s\x00%s\x00%s\x00%t", owner, req.Model, req.Effort != "", req.ToolChoice, req.System, tools, req.WebSearch)
+	fmt.Fprintf(h, "%s\x00%s\x00%t\x00%s\x00%s\x00%s\x00%t\x00%s", owner, req.Model, req.Effort != "", req.ToolChoice, req.System, tools, req.WebSearch, req.Schema)
 	hashMessages(h, msgs, nil)
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -755,8 +761,14 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 	// Code, not the client: its block is left out, and the message it ends
 	// goes on in the next one, so the client hears one reply.
 	own := map[int]bool{} // this message's blocks that are such calls
-	theirs := false       // this message calls a client's tool
-	inside := false       // a message goes on after Claude Code's own call
+	// With a schema the answer is what Claude Code's StructuredOutput call
+	// gave once Claude Code took it as fitting: its result's
+	// structured_output. A call that doesn't fit is told so and made again,
+	// and a reply in words is asked for the call, so every message but one
+	// calling a client's tool goes on into the next, as after Claude Code's
+	// own call, and the text the model writes is left out.
+	theirs := false // this message calls a client's tool
+	inside := false // a message goes on after Claude Code's own call
 	// what the messages before cost, as each message's usage counts only
 	// itself and the client keeps the last it is told
 	var before, this Usage
@@ -772,6 +784,10 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			Subtype string `json:"subtype"`
 			IsError bool   `json:"is_error"`
 			Result  string `json:"result"`
+			// the answer fitting the schema, with --json-schema, and what
+			// went wrong in a turn that ended without one
+			StructuredOutput json.RawMessage `json:"structured_output"`
+			Errors           []string        `json:"errors"`
 			// Anthropic's id for the request, on the messages it answered,
 			// and on a failure the HTTP status Claude Code got and its
 			// name for the kind of error (rate_limit, server_error…)
@@ -824,8 +840,25 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			// a turn that failed — out of quota, rate limited — ends with
 			// this and no message_stop, the CLI waiting on its next input:
 			// the reply ends here, or it would wait with it (#177)
-			if envelope.IsError {
-				r.emit(Event{Kind: KError, Text: envelope.Result, Status: envelope.APIErrorStatus, Code: errKind, RequestID: reqID})
+			waiting := r.schema && inside
+			inside = false
+			switch {
+			case envelope.IsError:
+				text := envelope.Result
+				if text == "" && waiting {
+					text = "Claude Code gave no answer fitting the schema (" + envelope.Subtype + ")"
+					if len(envelope.Errors) > 0 {
+						text += ": " + strings.Join(envelope.Errors, "; ")
+					}
+				}
+				r.emit(Event{Kind: KError, Text: text, Status: envelope.APIErrorStatus, Code: errKind, RequestID: reqID})
+				r.endSegment()
+			case waiting && len(envelope.StructuredOutput) > 0 && string(envelope.StructuredOutput) != "null":
+				r.emit(Event{Kind: KText, Text: string(envelope.StructuredOutput)})
+				r.emit(Event{Kind: KStop, Stop: "stop"})
+				r.endSegment()
+			case waiting:
+				r.emit(Event{Kind: KError, Text: "Claude Code ended the turn with no answer fitting the schema", RequestID: reqID})
 				r.endSegment()
 			}
 			continue
@@ -879,6 +912,10 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 		case "content_block_start":
 			switch e.ContentBlock.Type {
 			case "tool_use":
+				if r.schema && e.ContentBlock.Name == "StructuredOutput" {
+					own[e.Index] = true
+					continue
+				}
 				name, ok := strings.CutPrefix(e.ContentBlock.Name, "mcp__magpie__")
 				r.mu.Lock()
 				search := r.search != nil && name == r.searchName
@@ -895,14 +932,16 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 				r.mu.Unlock()
 				r.emit(Event{Kind: KToolStart, ID: e.ContentBlock.ID, Name: name})
 			case "text":
-				if e.ContentBlock.Text != "" {
+				if e.ContentBlock.Text != "" && !r.schema {
 					r.emit(Event{Kind: KText, Text: e.ContentBlock.Text})
 				}
 			}
 		case "content_block_delta":
 			switch e.Delta.Type {
 			case "text_delta":
-				r.emit(Event{Kind: KText, Text: e.Delta.Text})
+				if !r.schema {
+					r.emit(Event{Kind: KText, Text: e.Delta.Text})
+				}
 			case "thinking_delta":
 				r.emit(Event{Kind: KThink, Text: e.Delta.Thinking})
 			case "signature_delta":
@@ -914,7 +953,9 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			}
 		case "message_delta":
 			r.emit(Event{Kind: KUsage, Usage: usage(e.Usage), RequestID: reqID})
-			if e.Delta.StopReason == "tool_use" && len(own) > 0 && !theirs {
+			if e.Delta.StopReason != "" && r.schema && !theirs {
+				inside = true // the answer is the result's
+			} else if e.Delta.StopReason == "tool_use" && len(own) > 0 && !theirs {
 				inside = true
 			} else if e.Delta.StopReason != "" {
 				r.emit(Event{Kind: KStop, Stop: stopFromAnthropic(e.Delta.StopReason)})
