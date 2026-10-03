@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -137,8 +138,14 @@ func Between(notes []Note, after, upto string) []Note {
 
 var heading = regexp.MustCompile(`^(#{1,6})\s+(.*?)\s*#*\s*$`)
 
-// StripInstall takes a release's "Install" section out of its notes: the
-// download links, which mean nothing to a magpie that just updated itself.
+// installHeadings are the Install section's heading in each language the
+// notes come in: the Chinese notes call it 安装, and every release's own
+// section would otherwise repeat in What's new.
+var installHeadings = []string{"Install", "安装", "安裝", "インストール"}
+
+// StripInstall takes a release's "Install" section (in any language) out of
+// its notes: the download links, which mean nothing to a magpie that just
+// updated itself.
 // The section runs to the next heading of its level or above.
 func StripInstall(md string) string {
 	var out []string
@@ -149,7 +156,7 @@ func StripInstall(md string) string {
 			if skip > 0 && level <= skip {
 				skip = 0
 			}
-			if strings.EqualFold(m[2], "Install") {
+			if slices.ContainsFunc(installHeadings, func(h string) bool { return strings.EqualFold(m[2], h) }) {
 				skip = level
 			}
 		}
