@@ -368,6 +368,7 @@ input.lib-setname:focus { border-color: var(--accent); box-shadow: 0 0 0 3px col
 .mk-have { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px; font-size: 12px; color: var(--muted); }
 .mk-card.have .mk-icon { opacity: .9; }
 .mk-msg { grid-column: 1 / -1; padding: 22px 12px; text-align: center; font-size: 12px; color: var(--muted); }
+.mk-msg.mk-custom { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; padding: 14px 12px; overflow-wrap: anywhere; }
 .mk-msg.err { padding: 8px 12px; color: var(--amber); background: var(--amber-soft); border-radius: 8px; text-align: left; line-height: 1.45; }
 .mk-skel { gap: 12px; min-height: 104px; }
 .mk-skel .mk-who { gap: 7px; }

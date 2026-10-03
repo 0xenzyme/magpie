@@ -46,6 +46,9 @@ func libraryView(res *library.Result) (libraryJSON, error) {
 type marketJSON struct {
 	Items any    `json:"items"`
 	Error string `json:"error,omitempty"`
+	// Custom is a server to add by hand, for a search that is an address
+	// nothing listed is at
+	Custom *library.Custom `json:"custom,omitempty"`
 }
 
 func errText(err error) string {
@@ -104,7 +107,7 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 	// once asked for, which skills.sh gives one at a time
 	mux.HandleFunc("GET /api/library/market/servers", func(rw http.ResponseWriter, r *http.Request) {
 		list, err := library.MarketServers(r.URL.Query().Get("q"))
-		writeJSON(rw, marketJSON{Items: list, Error: errText(err)})
+		writeJSON(rw, marketJSON{Items: list, Error: errText(err), Custom: library.CustomAt(r.URL.Query().Get("q"), list)})
 	})
 	mux.HandleFunc("GET /api/library/market/skills", func(rw http.ResponseWriter, r *http.Request) {
 		list, err := library.MarketSkills(r.URL.Query().Get("q"))

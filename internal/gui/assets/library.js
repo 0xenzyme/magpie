@@ -2890,7 +2890,7 @@
   // What the market offers: popular and featured ones until the reader
   // searches. Kept across renders; asked for the first time a tab shows it.
   const market = {
-    mcp: { q: "", items: null, error: "", loading: false, seq: 0, timer: 0 },
+    mcp: { q: "", items: null, error: "", loading: false, seq: 0, timer: 0, custom: null },
     skills: { q: "", items: null, error: "", loading: false, seq: 0, timer: 0 },
   };
   const asked = new Set(); // skills whose description has been asked for
@@ -2905,9 +2905,13 @@
       if (seq !== m.seq) return;
       m.items = r.items || [];
       m.error = r.error || "";
+      // a search that is an address nothing listed is at: the server
+      // there, to add by hand
+      m.custom = r.custom || null;
     } catch (e) {
       if (seq !== m.seq) return;
       m.items = m.items || [];
+      m.custom = null;
       m.error = e.message;
     }
     m.loading = false;
@@ -2998,11 +3002,25 @@
       return;
     }
     if (m.error) grid.append(el("div", "mk-msg err", m.error));
-    if (!m.items.length && !m.error) {
+    if (kind === "mcp" && q && m.custom) grid.append(customAt(q, m.custom, m.items.length));
+    else if (!m.items.length && !m.error) {
       grid.append(el("div", "mk-msg", q ? t("Nothing matches “{q}”.", { q }) : t("Nothing to show.")));
       return;
     }
     for (const x of m.items) grid.append(kind === "mcp" ? serverCard(x) : skillCard(x));
+  }
+
+  // An address searched for that nothing listed is at: say so, over the
+  // servers found by its name if any, and offer to add it by hand — the
+  // form filled in with what the address says (an endpoint, a package).
+  function customAt(q, c, found) {
+    const box = el("div", "mk-msg mk-custom");
+    box.append(el("span", "", found ? t("None of these is at {q} — they're found by its name.", { q }) : t("Nothing listed is at {q}.", { q })));
+    box.append(button(t("＋ Add it yourself…"), "action", () => editServer(null, {
+      name: c.name || "", transport: c.transport || "stdio", command: c.command || "", args: c.args || [], env: {},
+      url: c.url || "", headers: {}, agents: mcpAgents().map((a) => a.id),
+    })));
+    return box;
   }
 
   // A real picture: the project's own logo or its owner's, through magpie so
