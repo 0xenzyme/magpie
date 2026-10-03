@@ -112,14 +112,17 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const border = await page.evaluate(() => [...document.querySelectorAll(".mchip, .mchip *")].map((e) => getComputedStyle(e).borderLeftWidth).filter((b) => parseFloat(b) > 1));
       assert.deepEqual(border, [], "no border stripes");
 
-      // a click on a chip's rate picks the chip and moves nothing (the
+      // a click on a chip's rate is a click on the chip and moves nothing (the
       // chip brought into view first, as a reader's would be)
       const scrolled = () => page.evaluate(() => [window.scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop > 0).map((e) => `${e.className}:${e.scrollTop}`)].join(" "));
       const badge = editor.locator(".mchip .badge.rate").first();
       await badge.scrollIntoViewIfNeeded();
       const before = await scrolled();
       await badge.click();
-      assert.equal(await editor.locator(".mchips .mchip.on").count(), 1, "the chip picked");
+      // none picked, it was served: the click leaves it out, the rest
+      // picked in its place
+      assert.equal(await editor.locator(".mchips .mchip.on").count(), 4, "the chip left out");
+      assert.equal(await editor.locator(".mchips .mchip.auto").count(), 0);
       assert.equal(await scrolled(), before, "the page moved");
       await page.keyboard.press("Escape");
       await page.locator("#modal").waitFor({ state: "hidden" });

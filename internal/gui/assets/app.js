@@ -5213,9 +5213,21 @@ const modelAPIs = (p) => {
   return urls.length < 2 ? [] : PROTOS.filter(([k]) => urls.includes(k));
 };
 
+// pickedOf: the models the user picked for p, as its editor starts them.
+// Only the picks: with none, agents are served the vendor's list (its
+// first 24), which the models list marks on too; taking those as picks
+// drew them ticked on opening and the next Save wrote them as picks, so
+// Select none and Save came back as 24 ticked (#614).
+function pickedOf(p) {
+  const on = p.models.filter((m) => m.on);
+  if (!Array.isArray(p.chosen)) return on.map((m) => m.id); // no picks said: those served, as before
+  const picks = new Set(p.chosen);
+  return on.filter((m) => picks.has(m.id)).map((m) => m.id);
+}
+
 // draftOf is a saved provider as its editor's form holds it.
 function draftOf(p) {
-  return { id: p.id, name: p.name, preset: p.preset, chat: p.chat, responses: p.responses, anthropic: p.anthropic, catalog: p.catalog, decide: p.decide || "", key: "", api: p.chat ? "openai" : p.anthropic ? "anthropic" : p.responses ? "responses" : p.decide ? "decide" : "openai", chosen: p.models.filter((m) => m.on).map((m) => m.id), extra: [], headers: headerRows(p.headers), icon: p.icon || "", fallback: [...(p.fallback || [])], unlisted: !!p.unlisted, searches: !!p.searches, balanceURL: p.balanceURL || "", balancePath: p.balancePath || "", modelsURL: p.modelsURL || "", contexts: contextsText(p.contexts), keysUrl: p.keysUrl || "", ...proxyDraft(p), ...concurrencyDraft(p) };
+  return { id: p.id, name: p.name, preset: p.preset, chat: p.chat, responses: p.responses, anthropic: p.anthropic, catalog: p.catalog, decide: p.decide || "", key: "", api: p.chat ? "openai" : p.anthropic ? "anthropic" : p.responses ? "responses" : p.decide ? "decide" : "openai", chosen: pickedOf(p), extra: [], headers: headerRows(p.headers), icon: p.icon || "", fallback: [...(p.fallback || [])], unlisted: !!p.unlisted, searches: !!p.searches, balanceURL: p.balanceURL || "", balancePath: p.balancePath || "", modelsURL: p.modelsURL || "", contexts: contextsText(p.contexts), keysUrl: p.keysUrl || "", ...proxyDraft(p), ...concurrencyDraft(p) };
 }
 
 // duplicateProvider opens the Add form on a copy of p (#268): its URLs,
@@ -6541,7 +6553,12 @@ function renderModels(p) {
       if (served.has(m.id)) c.title = (c.title || m.id) + "\n" + t("Agents see it: none are picked, so the vendor's list is used");
       tested(c, m.id);
       menu(c, m.id);
-      c.onclick = () => { draft.chosen = on ? draft.chosen.filter((x) => x !== m.id) : [...draft.chosen, m.id]; draw(); };
+      // a served one is on as a picked one is: a click leaves it out,
+      // the rest of what is served picked in its place
+      c.onclick = () => {
+        draft.chosen = on ? draft.chosen.filter((x) => x !== m.id) : served.has(m.id) ? [...served].filter((x) => x !== m.id) : [...draft.chosen, m.id];
+        draw();
+      };
       chips.append(c);
       if (++shown >= 80 && !f) { chips.append(el("span", "hint", t("… {n} more, filter to find them", { n: p.models.length - shown }))); break; }
     }
