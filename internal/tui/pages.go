@@ -138,6 +138,29 @@ func (m model) updateProviders(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			onEnter: func(v string) tea.Cmd {
 				return saveProvider(p.ID, func(p *provider.Provider) { p.Key = v; provider.ForgetBalances() }, p.Name+" key "+provider.Mask(v))
 			}})
+	case "w":
+		pr := provider.Preset(p.Preset)
+		if pr == nil || pr.Endpoint == "" {
+			m.flash, m.flashOK = p.Name+" is asked at its vendor's address · magpie provider set "+p.ID+" url=… changes a custom one's", false
+			return m, nil
+		}
+		now := p.Chat
+		if now == "" {
+			now = p.Responses
+		}
+		if p.IsRemoteMagpie() {
+			now = p.Anthropic // the address as typed, without /v1
+		}
+		id, name := p.ID, p.Name
+		m.openAsk(endpointAsk(*pr, []string{"providers", name, "address"}, now, func(v string) tea.Cmd {
+			return saveProvider(id, func(p *provider.Provider) {
+				p.Chat, p.Responses = v, v
+				if p.IsRemoteMagpie() {
+					p.Anthropic = "" // put again from the address typed
+				}
+				provider.ForgetBalances()
+			}, name+" address "+v)
+		}))
 	case "f":
 		in := newInput("a tag, e.g. relay")
 		in.SetValue(p.Family)
@@ -341,37 +364,77 @@ func (m *model) openPresets() {
 				if err != nil {
 					return flashMsg{text: err.Error()}
 				}
-				in := newInput("the API key")
-				in.EchoMode = textinput.EchoPassword
-				in.EchoCharacter = '•'
-				hint := "the key is kept in magpie's providers file"
-				if p.KeysURL != "" {
-					hint = "keys: " + p.KeysURL
-				}
-				return askMsg{ask{crumbs: []string{"providers", "add", p.Name}, input: in, hint: hint, empty: true,
-					onEnter: func(key string) tea.Cmd {
+				// a vendor reached at the user's own address (a remote
+				// magpie, Azure OpenAI) has none of the preset's: it is
+				// asked for first, as the app's editor asks it
+				if pr := provider.Preset(id); pr != nil && pr.Endpoint != "" {
+					return askMsg{endpointAsk(*pr, []string{"providers", "add", p.Name, "address"}, "", func(addr string) tea.Cmd {
 						return func() tea.Msg {
-							p.Key = key
-							id, err := provider.Add(p)
-							if err != nil {
-								return flashMsg{text: err.Error()}
-							}
-							ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-							defer cancel()
-							text := "added " + p.Name
-							if saved, err := provider.Find(id); err == nil {
-								if ms, err := saved.Fetch(ctx); err == nil {
-									text += fmt.Sprintf(" · %d models", len(ms))
-								}
-							}
-							return flashMsg{text: text, ok: true}
+							p.Chat, p.Responses = addr, addr
+							return askMsg{addKeyAsk(p)}
 						}
-					}}}
+					})}
+				}
+				return askMsg{addKeyAsk(p)}
 			}
 		},
 	}
 	m.pk.refilter()
 	m.mode = modePick
+}
+
+// addKeyAsk asks for the key of p, a preset's provider, and adds it.
+func addKeyAsk(p provider.Provider) ask {
+	in := newInput("the API key")
+	in.EchoMode = textinput.EchoPassword
+	in.EchoCharacter = '•'
+	hint := "the key is kept in magpie's providers file"
+	if p.KeysURL != "" {
+		hint = "keys: " + p.KeysURL
+	}
+	return ask{crumbs: []string{"providers", "add", p.Name}, input: in, hint: hint, empty: true,
+		onEnter: func(key string) tea.Cmd {
+			return func() tea.Msg {
+				p.Key = key
+				id, err := provider.Add(p)
+				if err != nil {
+					return flashMsg{text: err.Error()}
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+				defer cancel()
+				text := "added " + p.Name
+				if saved, err := provider.Find(id); err == nil {
+					if ms, err := saved.Fetch(ctx); err == nil {
+						text += fmt.Sprintf(" · %d models", len(ms))
+					}
+				}
+				return flashMsg{text: text, ok: true}
+			}
+		}}
+}
+
+// endpointAsk asks for the address of a vendor reached at the user's own
+// (pr.Endpoint is its example): a remote magpie's, as the other
+// computer's magpie shows it in Settings, under Share on local network.
+// Nothing typed is said to be needed, as the app's editor says it.
+func endpointAsk(pr provider.PresetDef, crumbs []string, now string, then func(string) tea.Cmd) ask {
+	in := newInput(pr.Endpoint)
+	in.SetValue(now)
+	hint := pr.EndpointHint
+	if hint == "" {
+		hint = "the address it is reached at, e.g. " + pr.Endpoint
+	}
+	return ask{crumbs: crumbs, input: in, hint: hint, empty: true,
+		onEnter: func(v string) tea.Cmd {
+			if v == "" {
+				need := pr.EndpointNeeded
+				if need == "" {
+					need = "Your resource's endpoint is needed"
+				}
+				return func() tea.Msg { return flashMsg{text: need} }
+			}
+			return then(v)
+		}}
 }
 
 func (m model) viewProviders() string {
