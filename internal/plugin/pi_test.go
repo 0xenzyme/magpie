@@ -171,14 +171,24 @@ func TestPiPackage(t *testing.T) {
 		t.Fatalf("fp-plain = %+v", m)
 	}
 
-	// the login asks its region and its team, shows its page, and waits
-	// for the code
+	// the login asks how on pi's terminal UI (a list, then a field), its
+	// region and its team, shows its page, and waits for the code
 	signIn := func(code string) (Saved, error) {
 		p, err := NextPrompt(ctx, "fakepi", 0, map[string]string{})
-		if err != nil || p == nil || p.Type != "select" || len(p.Options) != 2 || p.Options[0].Label != "China" || p.Options[0].Value != "cn" {
+		if err != nil || p == nil || p.Type != "select" || p.Message != "FakePi Login" || len(p.Options) != 2 || p.Options[1].Label != "Your organization" || p.Options[1].Value != "org" || p.Options[1].Hint != "its start URL" {
 			t.Fatalf("first prompt = %+v, %v", p, err)
 		}
-		in := map[string]string{p.Key: p.Options[0].Value}
+		in := map[string]string{p.Key: "org"}
+		p, err = NextPrompt(ctx, "fakepi", 0, in)
+		if err != nil || p == nil || p.Type != "text" || p.Message != "Start URL (https://…)" {
+			t.Fatalf("the field = %+v, %v", p, err)
+		}
+		in[p.Key] = "https://acme.invalid/start"
+		p, err = NextPrompt(ctx, "fakepi", 0, in)
+		if err != nil || p == nil || p.Type != "select" || len(p.Options) != 2 || p.Options[0].Label != "China" || p.Options[0].Value != "cn" {
+			t.Fatalf("the region = %+v, %v", p, err)
+		}
+		in[p.Key] = p.Options[0].Value
 		p, err = NextPrompt(ctx, "fakepi", 0, in)
 		if err != nil || p == nil || p.Message != "Team?" || p.Placeholder != "blue" {
 			t.Fatalf("second prompt = %+v, %v", p, err)
@@ -205,7 +215,7 @@ func TestPiPackage(t *testing.T) {
 	var saved map[string]map[string]any
 	b, _ := os.ReadFile(AuthPath())
 	json.Unmarshal(b, &saved)
-	if a := saved["fakepi"]; a["type"] != "oauth" || a["refresh"] != "r-blue" || a["access"] != "a-blue" || a["team"] != "blue" || a["region"] != "cn" {
+	if a := saved["fakepi"]; a["type"] != "oauth" || a["refresh"] != "r-blue" || a["access"] != "a-blue" || a["team"] != "blue" || a["region"] != "cn" || a["org"] != "https://acme.invalid/start" {
 		t.Fatalf("saved %v", saved)
 	}
 	// pi's auth.json has the sign-in as pi keeps it, and the package, told
@@ -307,6 +317,11 @@ func TestPiPackage(t *testing.T) {
 	r = piAsk(t, ctx, "fakepi", "fp-think", map[string]any{"max_tokens": 100, "stream": true, "messages": []map[string]any{{"role": "user", "content": "fail429"}}})
 	if e, _ := r.body["error"].(map[string]any); r.status != 429 || r.header["retry-after"] != "7" || e["type"] != "rate_limit_error" || !strings.Contains(e["message"].(string), "slow down") {
 		t.Fatalf("a 429: %d %v %v", r.status, r.header, r.body)
+	}
+	// a refusal the package didn't read, with nothing said, is told
+	r = piAsk(t, ctx, "fakepi", "fp-plain", map[string]any{"max_tokens": 100, "stream": true, "messages": []map[string]any{{"role": "user", "content": "quota"}}})
+	if e, _ := r.body["error"].(map[string]any); r.status != 429 || e["message"] != "exceed quota limit (1005)" {
+		t.Fatalf("a refusal sent as JSON: %d %v", r.status, r.body)
 	}
 	if r := piAsk(t, ctx, "fakepi", "nope", map[string]any{"max_tokens": 100, "messages": []map[string]any{{"role": "user", "content": "hi"}}}); r.status != 404 {
 		t.Fatalf("an unknown model: %d %v", r.status, r.body)
