@@ -21,7 +21,7 @@ import (
 func init() {
 	movers["kiro"] = &mover{
 		pkg:    "@magpie-community/opencode-kiro-auth",
-		min:    "0.1.5", // a failure's status and its sign-in mark as the built-in's
+		min:    "0.1.6", // a failure's status and its sign-in mark as the built-in's; the sign-in renewed ahead of time through auth.refresh
 		agents: []string{"kiro"},
 		out: func() ([]Moving, error) {
 			var out []Moving
