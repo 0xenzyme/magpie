@@ -9805,6 +9805,7 @@ function renderPanelUse() {
   const box = $("#panelUsage");
   if (mode !== "panel" || !box) return;
   const v = $("#view-agents"), keep = v.scrollTop;
+  const focusDay = box.contains(document.activeElement) ? document.activeElement.dataset.day : "";
   const l = panelUse;
   box.hidden = false;
   const bar = el("div", "pu-bar");
@@ -9897,9 +9898,9 @@ function renderPanelUse() {
     slide(per, "puPeriod");
     slide(met, "puMetric");
     drawLedColumns(chart, l, split, panelUseMetric, true, (day) => {
-      panelUseDay = day;
+      panelUseDay = panelUseDay === day ? "" : day;
       loadPanelUse().catch(() => {});
-    });
+    }, focusDay);
     rank.chart = chart;
     drawLedRank(rank, l, split, panelUseMetric, "", (x) => {
       if (split !== "provider") return; // a model is not a way in: the picker has the providers
@@ -10870,7 +10871,8 @@ function sv(tag, attrs, style) {
 // the columns: one per point of the answer's series, its part of each thing
 // told apart stacked in the colours of the ranking. box is where it goes, its
 // size the plot's; compact is for the tray panel, which has little room.
-function drawLedColumns(box, l, split, metric, compact, chooseDay) {
+function drawLedColumns(box, l, split, metric, compact, chooseDay, focusDay) {
+  focusDay ??= box.contains(document.activeElement) ? document.activeElement.dataset.day : "";
   if (chooseDay) box.chooseDay = chooseDay;
   box.replaceChildren();
   const plot = el("div", "plot");
@@ -10939,8 +10941,8 @@ function drawLedColumns(box, l, split, metric, compact, chooseDay) {
   });
   if (selectable) pts.forEach((p, i) => {
     const day = p.time.slice(0, 10);
-    const hit = sv("rect", { class: "led-day", x: M.l + slot * i, y: M.t, width: slot, height: ph, fill: "transparent", role: "button", tabindex: 0, "aria-label": ledWhen(p, l.bucket), "aria-pressed": day === l.day });
-    const pick = () => box.chooseDay(day === l.day ? "" : day);
+    const hit = sv("rect", { class: "led-day", x: M.l + slot * i, y: M.t, width: slot, height: ph, fill: "transparent", role: "button", tabindex: 0, "aria-label": ledWhen(p, l.bucket), "aria-pressed": day === l.day, "data-day": day });
+    const pick = () => box.chooseDay(day);
     hit.onclick = pick;
     hit.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
     g.append(hit);
@@ -10987,6 +10989,7 @@ function drawLedColumns(box, l, split, metric, compact, chooseDay) {
     }
   };
   box.emphasize(null);
+  if (focusDay) box.querySelector(`.led-day[data-day="${CSS.escape(focusDay)}"]`)?.focus({ preventScroll: true });
 }
 
 // the ranking: who the requests were of, by the metric, the most first —
@@ -11139,7 +11142,7 @@ function drawLedTrend() {
   pill($("#ledSplit"), "ledSplit", LED_SPLITS, ledSplit, (id) => { ledSplit = id; drawLedTrend(); });
   const chart = $("#ledChart"), rank = $("#ledRank");
   drawLedColumns(chart, l, ledSplit, ledMetric, false, (day) => {
-    ledDay = day;
+    ledDay = ledDay === day ? "" : day;
     ledOffset = 0;
     loadLedger().catch((e) => status(e.message, "err"));
   });
