@@ -96,11 +96,11 @@ type providerJSON struct {
 		Masked   string `json:"masked"`
 		Optional bool   `json:"optional"`
 	} `json:"key"`
-	Ready    bool        `json:"ready"`
-	Chosen   []string    `json:"chosen"`            // the user's explicit picks, if any
-	Fallback []string    `json:"fallback"`          // where requests go when this one can't take them
-	Routing  string      `json:"routing"`           // how requests spread over its keys or accounts
-	Affinity string      `json:"affinity"`          // how long a conversation stays with who answered it
+	Ready    bool     `json:"ready"`
+	Chosen   []string `json:"chosen"`   // the user's explicit picks, if any
+	Fallback []string `json:"fallback"` // where requests go when this one can't take them
+	Routing  string   `json:"routing"`  // how requests spread over its keys or accounts
+	Affinity string   `json:"affinity"` // how long a conversation stays with who answered it
 	// KeepLogin: magpie keeps Codex or Claude Code signed in to the first
 	// account rather than moving it on when that runs low (#524)
 	KeepLogin bool `json:"keepLogin,omitempty"`
@@ -110,13 +110,13 @@ type providerJSON struct {
 	// how many requests each of its keys or accounts has out at once, the
 	// rest queued: the user's (null: not set), and what its plugin says
 	// when the user set none (provider.Concurrency)
-	MaxConcurrency    *int `json:"maxConcurrency"`
-	PluginConcurrency int  `json:"pluginConcurrency,omitempty"`
-	Models   []modelJSON `json:"models"`            // everything the vendor lists, exposed ones flagged
-	Exposed  int         `json:"exposed"`           // how many reach the agents
-	Draws    int         `json:"draws,omitempty"`   // how many of its models draw images (gateway.Drawers)
-	DrawIDs  []string    `json:"drawIds,omitempty"` // those models' ids, listed apart in its editor
-	Unlisted bool        `json:"unlisted"`          // its models serve only through routing groups
+	MaxConcurrency    *int        `json:"maxConcurrency"`
+	PluginConcurrency int         `json:"pluginConcurrency,omitempty"`
+	Models            []modelJSON `json:"models"`            // everything the vendor lists, exposed ones flagged
+	Exposed           int         `json:"exposed"`           // how many reach the agents
+	Draws             int         `json:"draws,omitempty"`   // how many of its models draw images (gateway.Drawers)
+	DrawIDs           []string    `json:"drawIds,omitempty"` // those models' ids, listed apart in its editor
+	Unlisted          bool        `json:"unlisted"`          // its models serve only through routing groups
 	// Groups are the routing groups ("group/<id>") each of its models is
 	// in, by model id: what an unlisted one is still used through, and the
 	// editor names those in none
@@ -181,13 +181,13 @@ type presetJSON struct {
 }
 
 type gatewayJSON struct {
-	URL     string         `json:"url"`
-	LAN     bool           `json:"lan"`
-	LANURLs []string       `json:"lanURLs,omitempty"`
-	Open    bool           `json:"open,omitempty"` // listens beyond loopback with no key: anyone reaching it is let in
-	Running bool           `json:"running"`
-	Mine    bool           `json:"mine"`   // this process serves it
-	Window  bool           `json:"window"` // the magpie serving it shows its routing
+	URL     string   `json:"url"`
+	LAN     bool     `json:"lan"`
+	LANURLs []string `json:"lanURLs,omitempty"`
+	Open    bool     `json:"open,omitempty"` // listens beyond loopback with no key: anyone reaching it is let in
+	Running bool     `json:"running"`
+	Mine    bool     `json:"mine"`   // this process serves it
+	Window  bool     `json:"window"` // the magpie serving it shows its routing
 	// Version is another magpie's, serving it, and Older says it is older
 	// than this one: agents' requests are then sent as that version sends
 	// them, without this one's fixes (#506)
@@ -205,6 +205,14 @@ type gwGroupJSON struct {
 	Name      string   `json:"name"`
 	Icons     []string `json:"icons"`     // its providers', one each
 	Providers []string `json:"providers"` // their names, in the group's order
+	// what agents are told of it, as of a model: its reasoning levels,
+	// whether it takes images (every member does) and the context and
+	// output its members all hold
+	Efforts []string `json:"efforts,omitempty"`
+	Images  bool     `json:"images,omitempty"`
+	Context int      `json:"context,omitempty"`
+	Output  int      `json:"output,omitempty"`
+	Members []string `json:"members,omitempty"` // the models it sends to, provider/model, in its order
 }
 
 type excludedJSON struct {
@@ -502,9 +510,12 @@ func providersState() providersJSON {
 		if e.Group == "" {
 			continue
 		}
-		g := gwGroupJSON{ID: e.ID, Name: e.Name, Icons: e.Icons}
+		g := gwGroupJSON{ID: e.ID, Name: e.Name, Icons: e.Icons, Efforts: e.Efforts, Images: e.Images, Context: e.Context, Output: e.Output}
 		if _, ms, ok := findGroup(e.ID); ok {
 			for _, m := range ms {
+				if id := m.Provider.ID + "/" + m.Model; !slices.Contains(g.Members, id) {
+					g.Members = append(g.Members, id)
+				}
 				if !slices.Contains(g.Providers, m.Provider.Name) {
 					g.Providers = append(g.Providers, m.Provider.Name)
 				}
@@ -838,7 +849,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 					}
 					in.KeepLogin = old.KeepLogin // set on its own, with keeplogin
 					in.KeepLoginAs = old.KeepLoginAs
-					in.Off = old.Off             // and this with off and on
+					in.Off = old.Off // and this with off and on
 					if in.Contexts == nil {
 						in.Contexts = old.Contexts // a save that doesn't say
 					}

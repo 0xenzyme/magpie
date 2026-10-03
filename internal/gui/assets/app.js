@@ -3679,13 +3679,17 @@ function envSnippet(vars) {
 function gatewayModels() {
   // the routing groups first, as the agents' pickers list them
   const out = (providers.gateway.groups || []).map((g) => ({ id: g.id, name: g.name, icons: g.icons, group: true,
-    provider: { name: [t("routing group"), g.providers.join(", ")].filter(Boolean).join(" · ") } }));
+    provider: { name: [t("routing group"), g.providers.join(", ")].filter(Boolean).join(" · ") },
+    efforts: g.efforts || [], images: !!g.images, context: g.context, output: g.output, members: g.members || [] }));
   // a provider switched off is skipped: the gateway refuses its models, so
   // they are not ids an agent can use, and listing them here would show a
   // model the picker's own list, the Gateway count and the Connect example
   // all say works but a request to it turns away (the same off gate the
   // backend's providerEntries and the fallback picker already honour).
-  for (const p of providers.providers) { if (p.off) continue; for (const m of p.models) if (m.on) out.push({ id: `${p.id}/${m.id}`, name: m.name, provider: p, context: m.context }); }
+  // the levels agents are offered: those kept, else all it has; one whose
+  // levels aren't known (given) offers only those it was given
+  const offered = (m) => m.kept?.length || m.given ? m.kept || [] : m.efforts || [];
+  for (const p of providers.providers) { if (p.off) continue; for (const m of p.models) if (m.on) out.push({ id: `${p.id}/${m.id}`, name: m.name, provider: p, context: m.context, efforts: offered(m), images: !!m.images }); }
   return out;
 }
 
@@ -3904,10 +3908,11 @@ function renderGatewayModels() {
     q.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape" && q.value) { q.value = modelQuery = ""; renderGatewayModels(); } };
     $("#copyModels").before(q);
   }
-  q.hidden = all.length < 8 || list.hidden;
+  q.hidden = all.length < 5 || list.hidden;
+  q.title = t("Words match a model's id, name, provider or a group's models");
   const words = modelQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const models = q.hidden ? all : all.filter((m) => {
-    const hay = `${m.id} ${m.name || ""} ${m.provider.name}`.toLowerCase();
+    const hay = `${m.id} ${m.name || ""} ${m.provider.name} ${(m.members || []).join(" ")}`.toLowerCase();
     return words.every((w) => hay.includes(w));
   });
   $("#copyModels").hidden = !models.length || list.hidden;
@@ -3927,14 +3932,46 @@ function renderGatewayModels() {
     const who = el("div", "who");
     const name = el("div", "name", m.id);
     if (namedFree(m.id, m.name)) name.append(freeBadge(false));
-    const ctx = contextTag(m.context, m.name);
-    if (ctx) name.append(ctx);
     who.append(name, el("div", "sub", m.name && m.name !== m.id.split("/")[1] ? `${m.name} · ${m.provider.name}` : m.provider.name));
-    row.append(m.group ? stackIcon(m.icons) : icon(m.provider.icon || "generic"), who, copyBtn(m.id, t("Model id")));
+    row.append(m.group ? stackIcon(m.icons) : icon(m.provider.icon || "generic"), who, modelInfo(m), copyBtn(m.id, t("Model id")));
     row.title = t("Use this model in the snippets");
     row.onclick = () => { exampleModel = m.id; localStorage.setItem("magpie.model", m.id); renderConnect(); renderGatewayModels(); };
     list.append(row);
   }
+}
+
+// What agents are told of a model on the Gateway list (ARNO on Discord:
+// 支持显示模型或者模型组更多的信息): its reasoning levels, whether it takes
+// images and the context it holds, as small chips at the row's end, and in
+// full in their tooltip; a group's are what its members all have, and the
+// tooltip names its models.
+const IMAGE_GLYPH = "M2.5 3.5h11v9h-11zM2.5 10.5l3.25-3.25 3 3 2-2 2.75 2.75M10.25 6.75a.75.75 0 1 0 0-.01";
+function effortSpan(levels) {
+  const say = levels.map((l) => t(l));
+  return say.length > 2 ? `${say[0]}–${say[say.length - 1]}` : say.join(" / ");
+}
+function modelInfo(m) {
+  const box = el("span", "minfo");
+  const lines = [];
+  const levels = m.efforts || [];
+  if (levels.length) {
+    box.append(el("span", "badge mi-effort", effortSpan(levels)));
+    lines.push(t("Reasoning: {levels}", { levels: levels.map((l) => t(l)).join(", ") }));
+  } else lines.push(t("Reasoning levels: none known"));
+  if (m.images) {
+    const c = el("span", "badge mi-img");
+    c.append(svg(IMAGE_GLYPH, 11, 1.4));
+    box.append(c);
+  }
+  lines.push(t(m.images ? (m.group ? "Accepts images (every model in it does)" : "Accepts images") : "Text only"));
+  if (m.context) {
+    box.append(el("span", "badge mi-ctx", ctxShort(m.context)));
+    lines.push(t(m.group ? "Context: {n} tokens (the least of its models')" : "Context: {n} tokens", { n: m.context.toLocaleString() }));
+  }
+  if (m.output) lines.push(t("Output: up to {n} tokens", { n: m.output.toLocaleString() }));
+  if (m.group && m.members?.length) lines.push(t("Models: {models}", { models: m.members.join(", ") }));
+  box.title = lines.join("\n");
+  return box;
 }
 
 function formatWireBody(raw) {
