@@ -122,9 +122,16 @@ func claudeModel(e provider.Entry) string {
 // gets its effort picker when the model has reasoning levels, else as it is
 // when it already reads as a Claude model's, else its alias (unprefixed
 // serves each again).
+//
+// A routing group is never listed as the Claude model its first member
+// is: Desktop names an id it finds in its own model catalog by the
+// catalog's name, so two groups led by claude-opus-5-5 read "Opus 5.5"
+// there like the model itself, and the group's id would change each time
+// its members are reordered. Its mythos-magpie-<n> keeps the picker and
+// the group's own name.
 func claudeLooking(e provider.Entry) string {
 	if len(e.Efforts) > 0 {
-		if m := claudeModel(e); m != "" {
+		if m := claudeModel(e); m != "" && e.Group == "" {
 			return "magpie-" + aliasNumber(e.ID) + desktopClaudeInfix + m
 		}
 		return desktopEffortAlias + aliasNumber(e.ID)
