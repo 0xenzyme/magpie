@@ -1948,6 +1948,7 @@ const I18N = {
     "request not understood": "请求格式不被接受",
     "proxy not reachable": "代理连不上",
     "reasoning effort not in its plan": "套餐不支持该思考强度",
+    "too long for its model": "超出该模型上下文",
     "{who} answered {status}: its plan doesn't take the reasoning effort asked for, so another account goes on with it before any of the reply reaches {agent}. {who} serves other efforts, so it doesn't rest.": "{who} 返回 {status}：它的套餐不支持请求的思考强度，所以在任何回复到达 {agent} 之前就转给了另一个账号。{who} 仍可服务其他强度，所以不用休息。",
     "{who} answered {status}: its plan doesn't take the reasoning effort asked for, and no account left that does could answer, so {agent} gets an error saying so.": "{who} 返回 {status}：它的套餐不支持请求的思考强度，剩下也没有支持它且能应答的账号，所以 {agent} 收到一条说明原因的错误。",
     "{who}: the proxy magpie goes through didn't take the connection, so the request never reached the vendor and goes on to the next. Nothing is wrong with {who}, so it doesn't rest: once the proxy is up it is asked first again.": "{who}：magpie 所走的代理没有接受连接，请求根本没到厂商，所以转给了下一个。{who} 本身没出问题，所以不用休息：代理恢复后它仍会最先被问。",

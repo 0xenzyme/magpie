@@ -688,6 +688,24 @@ func passing(status int, header http.Header, body []byte, again int) (time.Durat
 	return 0, false
 }
 
+// withRoom is, of the candidates left, those another member than c's may
+// answer a request of about tokens that c's model found too long: not an
+// account of c's model at c's provider, which holds it no better, nor one
+// whose window it is known to be past.
+func withRoom(left []candidate, c candidate, tokens int) []candidate {
+	var out []candidate
+	for _, x := range left {
+		if x.p.ID == c.p.ID && x.model == c.model {
+			continue
+		}
+		if w := windowOf(x.p, x.model); w > 0 && tokens >= w {
+			continue
+		}
+		out = append(out, x)
+	}
+	return out
+}
+
 // matesFirst puts first, of the candidates left, the other keys or
 // accounts of the member c is of — its model, at its effort — that aren't
 // resting: what one account's safety filter refused, another may answer

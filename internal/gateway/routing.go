@@ -157,6 +157,9 @@ const (
 	// *_PROXY variables, the system's) didn't take the connection (#381) —
 	// nothing reached the vendor, so the next one is asked, and nobody rests
 	failProxy = "proxy"
+	// failOverflow: the conversation is too long for the member's model
+	// (#700) — another member, with room for it, is asked, and nobody rests
+	failOverflow = "overflow"
 )
 
 // proxyDown is the error Go gives when the proxy itself can't be reached,

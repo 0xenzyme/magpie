@@ -1602,6 +1602,29 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				break
 			}
 		}
+		if !last && !hw.passing && !hw.refused && overflowed(hw.code(), hw.errBody()) {
+			// too long for this member's model, and as long on every
+			// account of it, but another member — another model, or this
+			// one at another vendor — may hold it (#700: the overflow went
+			// to Kimi Code, which took 0.85 of the request for the model's
+			// window, where the next member would have answered). Only
+			// those not known to be too small are left to ask; none, and
+			// the agent is told, to compact. Nobody rests.
+			tokens := 0
+			if req, err := parse(from, attemptBody); err == nil {
+				tokens = estimate(req)
+			}
+			if left := withRoom(cands[i+1:], c, tokens); len(left) > 0 {
+				if other == nil {
+					other = &Try{Status: call.Status, Error: call.Error}
+				}
+				try.Fail = failOverflow
+				s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+				skipped = append(skipped, c.label()+": "+call.Error)
+				cands = append(cands[:i+1:i+1], left...)
+				continue
+			}
+		}
 		if !last && hw.failed() && shapeRefused(hw.code(), hw.errBody()) {
 			// a request this vendor's API can't read (xAI's 422 over an
 			// input item it doesn't know, #350) another's may: the next is
