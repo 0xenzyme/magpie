@@ -12691,6 +12691,15 @@ if (!web) addEventListener("keydown", (e) => {
   setTextSize(n);
   status(t("Text size {n}%", { n }));
 }, true);
+// Cmd+, (Ctrl+, off the Mac) opens Settings, as it does in a Mac app
+// (#670), from the window or the panel alike and from a text box too; in a
+// browser tab it is the browser's.
+if (!web) addEventListener("keydown", (e) => {
+  const mod = /^Mac/.test(navigator.platform) ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+  if (!mod || e.altKey || e.shiftKey || e.repeat || (e.key !== "," && e.code !== "Comma")) return;
+  e.preventDefault();
+  openSettings();
+}, true);
 
 // applyPrefs paints and speaks as the saved settings say, costs at the
 // exchange rate given (rate, /api/state's fx) or the settings' own. A
@@ -14447,7 +14456,15 @@ function syncURL() {
   if (s !== location.search) history.replaceState(null, "", s);
 }
 if (mode === "window") for (const b of $("#nav").querySelectorAll("button")) b.onclick = () => { show(b.dataset.view); b.blur(); };
-$("#prefs").onclick = () => { if (mode === "window") show("settings"); else api("window/main?view=settings", {}); $("#prefs").blur(); };
+// openSettings: the Settings page, in the window (the panel opens it there)
+function openSettings() {
+  if (mode !== "window") { api("window/main?view=settings", {}); return; }
+  // a pick list or a menu open over the page is put away with it
+  closeProtoMenu();
+  closeAgentMenu();
+  show("settings");
+}
+$("#prefs").onclick = () => { openSettings(); $("#prefs").blur(); };
 
 $("#sync").onclick = async () => {
   const b = $("#sync");

@@ -2662,6 +2662,10 @@ function translateStatic() {
   for (const e of document.querySelectorAll("[data-tt]")) {
     if (e.dataset.enTitle === undefined) e.dataset.enTitle = e.dataset.tt || e.title;
     e.title = t(e.dataset.enTitle);
+    // data-keys: its shortcut, the Mac's before the | and the others' after
+    // (Settings' ⌘, #670); a browser tab keeps its own
+    const keys = e.dataset.keys?.split("|")[/^Mac/.test(navigator.platform) ? 0 : 1];
+    if (keys && !window.bootPrefs?.web) e.title += " (" + keys + ")";
   }
   for (const e of document.querySelectorAll("[data-tp]")) {
     if (e.dataset.enPlaceholder === undefined) e.dataset.enPlaceholder = e.placeholder;
