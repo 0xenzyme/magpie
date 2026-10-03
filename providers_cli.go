@@ -28,7 +28,7 @@ const providerUsage = `usage:
   magpie provider <id>                    show one provider and its models
   magpie provider add <preset> <key>      add a preset vendor   e.g. magpie provider add deepseek sk-…
                                           again, it adds another (deepseek-2); k=v pairs too: id, name, header.X-Foo
-  magpie provider add <name> k=v…         add a custom vendor   k: url, anthropic, responses, key, models, catalog, icon, header.X-Foo, balance, balance.path, balance.token, models.url, search
+  magpie provider add <name> k=v…         add a custom vendor   k: url, anthropic, responses, decide, key, models, catalog, icon, header.X-Foo, balance, balance.path, balance.token, models.url, search
   magpie provider set <id> k=v…           change a provider's settings, with the same k=v pairs as add
   magpie provider key <id> <key>          change the API key
   magpie provider icon <id> <file|name>   give a custom provider a picture (PNG, JPEG, SVG…) or a built-in icon
@@ -47,6 +47,9 @@ const providerUsage = `usage:
        magpie provider add remote-magpie sk-magpie-… url=http://192.168.1.20:3425 id=office
                                    (another computer's magpie, shared on its network: its models and routing
                                     groups as office/…, each request sent on in the API the agent spoke)
+       magpie provider add bailian-decision sk-… workspace=<workspace id>   (or region=ap-southeast-1, or region=token-plan with an sk-sp- key)
+       magpie provider add "My Decider" decide=https://decide.example.com/v1 key=sk-… models=my-decision-model
+                                   (a System One API, POST …/systemone: it routes groups, its models are never an agent's)
        magpie provider add anthropic sk-… id=anthropic-ws2 name="Anthropic WS2" header.anthropic-workspace-id=wrkspc_…
        magpie provider set my-relay models.url=https://relay.example.com/api/models catalog=
        magpie provider set my-relay search=yes
@@ -549,7 +552,7 @@ func announce(id string) error {
 	}
 	n := len(saved.Exposed())
 	if saved.Decides() {
-		fmt.Println("  it routes groups: magpie group set <id> effort=auto classifier="+saved.ID+"/"+provider.JevLatest,
+		fmt.Println("  it routes groups: magpie group set <id> effort=auto classifier="+saved.ID+"/"+saved.Jev(),
 			muted.Render("· or a rule's intent=…"))
 		return nil
 	}
@@ -647,6 +650,7 @@ func showProvider(p provider.Provider) error {
 }
 
 func applyPairs(p *provider.Provider, pairs []string) error {
+	workspace := ""
 	for _, kv := range pairs {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok {
@@ -663,6 +667,30 @@ func applyPairs(p *provider.Provider, pairs []string) error {
 			p.Responses = v
 		case "anthropic":
 			p.Anthropic = v
+		case "decide":
+			// a System One root (…/systemone is asked under it): the
+			// provider routes groups, its models any name (#647)
+			p.Decide = v
+		case "workspace":
+			workspace = strings.TrimSpace(v)
+		case "region", "plan":
+			pr := provider.Preset(p.Preset)
+			if pr == nil || len(pr.Regions) == 0 {
+				return fmt.Errorf("%s has no regions or plans to pick", p.Name)
+			}
+			var ids []string
+			for _, r := range pr.Regions {
+				ids = append(ids, r.ID)
+			}
+			i := slices.IndexFunc(pr.Regions, func(r provider.Region) bool { return strings.EqualFold(r.ID, v) })
+			if i < 0 {
+				return fmt.Errorf("%s=%s: %s's are %s", k, v, pr.Name, strings.Join(ids, ", "))
+			}
+			r := pr.Regions[i]
+			p.Chat, p.Responses, p.Anthropic, p.Decide = r.Chat, r.Responses, r.Anthropic, r.Decide
+			if r.KeysURL != "" {
+				p.KeysURL = r.KeysURL
+			}
 		case "key":
 			p.Key = v
 		case "catalog":
@@ -734,6 +762,13 @@ func applyPairs(p *provider.Provider, pairs []string) error {
 			}
 			return fmt.Errorf("unknown field %q\n\n%s", k, providerUsage)
 		}
+	}
+	if workspace != "" {
+		// Bailian's decision model is asked at the workspace's own host
+		if !strings.Contains(p.Decide, provider.WorkspaceID) {
+			return fmt.Errorf("workspace= fills in a Bailian workspace's host, and %s's decision API names none", p.Name)
+		}
+		p.Decide = strings.ReplaceAll(p.Decide, provider.WorkspaceID, workspace)
 	}
 	return nil
 }

@@ -29,6 +29,36 @@ import (
 // picked none: TypeSafe's latest stable one.
 const JevLatest = "jev-latest"
 
+// BailianDecision is Alibaba Cloud Bailian's decision model, asked on the
+// same System One API as Jev (#647).
+const BailianDecision = "decision-model-preview"
+
+// bailianDecides reports whether base is Bailian's: a workspace's host or
+// the Token Plan's, <x>.<region>.maas.aliyuncs.com. Its /models lists
+// Qwen's chat models, never the decision model.
+func bailianDecides(base string) bool {
+	h := HostOf(base)
+	return strings.HasSuffix(h, ".maas.aliyuncs.com") || strings.HasSuffix(h, ".maas.qianwenaiapi.com")
+}
+
+// ownDecideModels are a System One provider's models that its vendor's
+// list may not name: the ones picked for a decision-only provider (a
+// vendor's own decision model needn't be called jev-…), else Bailian's.
+func (p Provider) ownDecideModels() []catalog.Model {
+	var out []catalog.Model
+	if p.DecideOnly() {
+		for _, m := range p.Models {
+			if m = strings.TrimSpace(m); m != "" {
+				out = append(out, catalog.Model{ID: m})
+			}
+		}
+	}
+	if len(out) == 0 && bailianDecides(p.Decide) {
+		out = []catalog.Model{{ID: BailianDecision, Name: "Decision model (preview)"}}
+	}
+	return out
+}
+
 // Decides reports whether the provider is a decision API.
 func (p Provider) Decides() bool { return p.Decide != "" }
 
@@ -82,6 +112,9 @@ func (p Provider) Jev() string {
 	case ViaCloudflare:
 		return "typesafe/jev"
 	}
+	if own := p.ownDecideModels(); len(own) > 0 {
+		return own[0].ID
+	}
 	return JevLatest
 }
 
@@ -102,6 +135,9 @@ func (p Provider) decideModels() []catalog.Model {
 	}
 	if p.DecideVia() != ViaSystemOne {
 		return []catalog.Model{{ID: p.Jev(), Name: "Jev"}}
+	}
+	if own := p.ownDecideModels(); len(own) > 0 {
+		return own
 	}
 	return []catalog.Model{{ID: JevLatest, Name: "Jev"}, {ID: "jev-preview", Name: "Jev (preview)"}}
 }
@@ -428,6 +464,10 @@ func (p Provider) fetchDecide(ctx context.Context) ([]catalog.Model, error) {
 		}
 		return p.decideModels(), nil
 	}
+	// Bailian lists its chat models only: its decision model is asked
+	if bailianDecides(p.Decide) {
+		return p.decideAsked(ctx)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.Decide+"/models", nil)
 	if err != nil {
 		return nil, err
@@ -441,10 +481,19 @@ func (p Provider) fetchDecide(ctx context.Context) ([]catalog.Model, error) {
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	// a vendor's own decision model, picked by name, is asked when its
+	// list isn't there or doesn't name it
+	own := len(p.ownDecideModels()) > 0
 	if res.StatusCode != http.StatusOK {
+		if own && res.StatusCode != http.StatusUnauthorized && res.StatusCode != http.StatusForbidden {
+			return p.decideAsked(ctx)
+		}
 		return nil, fmt.Errorf("%s: %s", p.Name, APIError(b, res.Status))
 	}
 	ms, err := listedDecide(b)
+	if (err != nil || len(ms) == 0) && own {
+		return p.decideAsked(ctx)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %s", p.Name, err)
 	}
@@ -455,6 +504,59 @@ func (p Provider) fetchDecide(ctx context.Context) ([]catalog.Model, error) {
 		return ms, nil // do not replace a mixed provider's full model list
 	}
 	return ms, catalog.SaveLive(p.ID, p.Decide, ms)
+}
+
+// decideAsked is a System One provider's own models once the first of
+// them answered the smallest question, a yes-or-no, at POST …/systemone:
+// what checks its key and model when no list names them.
+func (p Provider) decideAsked(ctx context.Context) ([]catalog.Model, error) {
+	ms := p.ownDecideModels()
+	if len(ms) == 0 {
+		ms = []catalog.Model{{ID: p.Jev()}}
+	}
+	if err := p.AskSystemOne(ctx, ms[0].ID); err != nil {
+		return nil, err
+	}
+	if !p.DecideOnly() {
+		return ms, nil
+	}
+	return ms, catalog.SaveLive(p.ID, p.Decide, ms)
+}
+
+// AskSystemOne sends model the smallest System One question at p's
+// decision API, and says why it wasn't answered.
+func (p Provider) AskSystemOne(ctx context.Context, model string) error {
+	u, err := p.DecideURL(ctx)
+	if err != nil {
+		return err
+	}
+	body, _ := json.Marshal(map[string]any{"model": model,
+		"state":     map[string]any{"text": "ping"},
+		"questions": map[string]any{"ok": map[string]any{"type": "noul", "instructions": "Is this a test?"}}})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if err := p.Sign(ctx, req, Chat, nil); err != nil {
+		return err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("%s: %v", p.Name, err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("%s: %s", p.Name, APIError(b, res.Status))
+	}
+	var out struct {
+		Answers map[string]json.RawMessage `json:"answers"`
+	}
+	if json.Unmarshal(b, &out) != nil || len(out.Answers) == 0 {
+		return fmt.Errorf("%s: no System One answers at %s", p.Name, u)
+	}
+	return nil
 }
 
 // listedDecide reads a decision provider's model list. TypeSafe's is
