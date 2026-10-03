@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -304,6 +305,15 @@ func (a *Agent) Connect() error {
 	if len(a.Fields) == 0 || a.Wired() {
 		return nil
 	}
+	// what it is on now, for Disconnect to put back what it can't
+	// otherwise (Goose's own model)
+	now := a.Values()
+	b, _ := json.Marshal(now)
+	stash(map[string]string{a.ID + ".connect.was": string(b)})
+	// switched off and on again: the models it was on, as they were
+	if ok, err := a.reconnect(now); ok || err != nil {
+		return err
+	}
 	// the model it is on stays, where the agent can have magpie's models
 	// beside it (the owner: Codex keeps its own last pick)
 	if a.Join != nil {
@@ -449,8 +459,89 @@ func (a *Agent) Disconnect() error {
 			return fmt.Errorf("%s: %w", f.Label, err)
 		}
 	}
+	// a field its own Set left empty goes back to what it was on before
+	// Connect (Goose's own provider and model)
+	var was map[string]string
+	json.Unmarshal([]byte(unstash(a.ID+".connect.was")), &was)
+	after := a.Values()
+	for _, f := range a.Fields {
+		if w := was[f.Key]; w != "" && after[f.Key] == "" && w != magpieID && !magpieValue(a, f, w, was) {
+			if err := f.Set(w); err != nil {
+				return fmt.Errorf("%s: %w", f.Label, err)
+			}
+		}
+	}
+	// what it was on through magpie, for switching it on again
+	back := reconnection{Magpie: map[string]string{}, Left: a.Values()}
+	for _, f := range a.Fields {
+		if v := before[f.Key]; v != back.Left[f.Key] {
+			back.Magpie[f.Key] = v
+			if v == magpieID || magpieValue(a, f, v, before) {
+				back.Routed = append(back.Routed, f.Key)
+			}
+		}
+	}
+	b, _ := json.Marshal(back)
+	stash(map[string]string{a.ID + ".reconnect": string(b)})
 	a.Keep()
 	return nil
+}
+
+// reconnection is what Disconnect took an agent off: the values of its
+// fields it changed (Routed: those that were magpie's) and what it left
+// every field at.
+type reconnection struct {
+	Magpie map[string]string `json:"magpie"`
+	Routed []string          `json:"routed,omitempty"`
+	Left   map[string]string `json:"left"`
+}
+
+// reconnect puts back the models an agent was on when it was disconnected
+// (the owner: an agent remembers its last pick), if nothing has changed
+// it since and magpie still routes them; false when it doesn't apply.
+func (a *Agent) reconnect(now map[string]string) (bool, error) {
+	var rec reconnection
+	if json.Unmarshal([]byte(unstash(a.ID+".reconnect")), &rec) != nil || len(rec.Routed) == 0 {
+		return false, nil
+	}
+	for k, v := range rec.Left {
+		if now[k] != v {
+			return false, nil
+		}
+	}
+	for _, k := range rec.Routed {
+		f := a.Field(k)
+		if f == nil || rec.Magpie[k] != magpieID && !magpieValue(a, *f, rec.Magpie[k], rec.Magpie) {
+			return false, nil
+		}
+	}
+	// the models on magpie first, as Connect sets them (setting Gemini
+	// CLI's model signs it in through magpie, which its sign-in field
+	// can't), then the rest that aren't so by then
+	var keys []string
+	for _, k := range rec.Routed {
+		if rec.Magpie[k] != magpieID {
+			keys = append(keys, k)
+		}
+	}
+	for _, f := range a.Fields {
+		if _, ok := rec.Magpie[f.Key]; ok && !slices.Contains(keys, f.Key) {
+			keys = append(keys, f.Key)
+		}
+	}
+	for _, k := range keys {
+		v := rec.Magpie[k]
+		if v != a.Values()[k] {
+			if err := a.Apply(k, v); err != nil {
+				return true, err
+			}
+		} else {
+			// set along with the model (Codex's effort): magpie's as before,
+			// for Disconnect to take out again
+			record(a.ID, k, v)
+		}
+	}
+	return a.Wired(), nil
 }
 
 // lastJSONLTime reads the newest Unix timestamp (seconds or milliseconds)

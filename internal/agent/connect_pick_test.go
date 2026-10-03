@@ -61,6 +61,10 @@ func TestGeminiConnectRoundTrip(t *testing.T) {
 			t.Fatalf("magpie's key left: %q", k)
 		}
 	}
+	// and on again, on the model it was on (its sign-in follows the model)
+	if err := g.Connect(); err != nil || !g.Wired() {
+		t.Fatalf("connected again: %v\n%s", err, readFile(filepath.Join(dir, "settings.json")))
+	}
 }
 
 // Of the providers serving the model the agent is on, Connect takes the
@@ -152,5 +156,81 @@ func TestCodexConnectKeepsItsPick(t *testing.T) {
 	// connected again, on that pick still
 	if err := cx.Connect(); err != nil || !cx.Wired() || !strings.Contains(read(), `model = "gpt-5.4"`) {
 		t.Fatalf("again (%v):\n%s", err, read())
+	}
+}
+
+// The 「接入」 switch off and on again leaves the agent on the models it was
+// on (the owner: an agent remembers its last pick): Claude Code on a second
+// magpie model and its effort, not the one Connect would pick. One the user
+// changed while it was off is theirs, and Connect picks as it does at first.
+func TestReconnectKeepsTheLastPick(t *testing.T) {
+	home, _ := codexHome(t, "", "")
+	if err := provider.Save(provider.Provider{ID: "aaa", Name: "AAA", Chat: "https://a.example/v1", Key: "k", Models: []string{"first", "claude-opus-5-5", "second"}}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".claude", "settings.json")
+	writeFile(t, path, `{"model": "opus"}`)
+	c := claude(home)
+	if err := c.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Apply("model", "aaa/second"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Apply("effort", "low"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := edit.GetJSON(path, "model"); m != "opus" {
+		t.Fatalf("disconnected on %q:\n%s", m, readFile(path))
+	}
+	if err := c.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	if v := c.Values(); v["model"] != "aaa/second" || v["effort"] != "low" {
+		t.Fatalf("connected again on %v:\n%s", v, readFile(path))
+	}
+	if err := c.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, path, `{"model": "sonnet"}`)
+	if err := c.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	if v := c.Values(); v["model"] == "aaa/second" || v["effort"] == "low" {
+		t.Fatalf("a model picked while off was replaced by the last pick: %v", v)
+	}
+}
+
+// Goose's own provider and model come back when it is disconnected: its
+// field's empty value takes both keys out, and it was on anthropic before.
+func TestGooseRoundTripKeepsItsOwnModel(t *testing.T) {
+	home := syncHome(t)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	if err := provider.Save(provider.Provider{ID: "oa", Name: "OA", Key: "k", Chat: "http://127.0.0.1:1/v1", Models: []string{"gpt-5.5"}}); err != nil {
+		t.Fatal(err)
+	}
+	a := goose(home, filepath.Join(home, ".config"))
+	writeFile(t, a.Path, "GOOSE_PROVIDER: anthropic\nGOOSE_MODEL: claude-opus-5-5\nGOOSE_MODE: auto\n")
+	for i := 0; i < 2; i++ { // and again, through its last pick
+		if err := a.Connect(); err != nil {
+			t.Fatal(err)
+		}
+		if !a.Wired() {
+			t.Fatalf("not connected:\n%s", readFile(a.Path))
+		}
+		if err := a.Disconnect(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for k, want := range map[string]string{"GOOSE_PROVIDER": "anthropic", "GOOSE_MODEL": "claude-opus-5-5", "GOOSE_MODE": "auto"} {
+		if v, _ := edit.GetYAMLTop(a.Path, k); v != want {
+			t.Fatalf("%s = %q after the round trip:\n%s", k, v, readFile(a.Path))
+		}
+	}
+	if _, err := os.Stat(gooseProviderPath(a.Path)); err == nil {
+		t.Fatal("magpie's custom provider left")
 	}
 }
