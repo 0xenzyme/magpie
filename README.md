@@ -122,6 +122,7 @@ magpie provider add "My Relay" url=https://relay.example.com/v1 key=sk-… model
 magpie providers                        # host, key, exposed models, who uses what
 magpie provider deepseek                # one provider in detail
 magpie provider models deepseek         # re-fetch the vendor's list (add ids to choose which to expose)
+magpie provider refresh deepseek        # re-fetch it, and drop picks it no longer has (the TUI: m)
 magpie provider test deepseek           # one tiny request per API, with latency
 magpie provider key deepseek sk-…       # replace the key
 magpie provider rm deepseek
@@ -160,7 +161,8 @@ inferred from today's sign-in. OTLP export never carries the account.
 One magpie can serve several computers (an office one, a personal one):
 share it on the network (Settings → Share on local network), and on each
 other computer add it as a **Remote magpie** — in the app's Add sheet, on the
-TUI's Providers page (`a`, then its address and key; `w` changes the address), or
+TUI's Providers page (`a`, then its address and key; `w` changes the address,
+`m` fetches its list again), or
 `magpie provider add remote-magpie sk-magpie-… url=http://192.168.1.20:3425 id=office`.
 Each computer's own magpie still wires its agents, while the providers,
 routing groups (`office/group/…`) and usage are the shared one's. A request
@@ -168,7 +170,8 @@ goes on in the API the agent spoke — Anthropic Messages, Responses, Chat
 Completions, token counting — and a model the shared magpie's provider serves
 on another API only is turned into that API once, never on both computers.
 Its list is the models the shared magpie's agents are shown, each named with
-its provider there (`Claude Sonnet 5 · Relay A · office`), and its image
+its provider there (`Claude Sonnet 5 · Relay A · office`) — the ids stay ids
+(`office/relay-a/claude-sonnet-5`), only these labels carry the names — and its image
 models are listed under Settings → Images and draw through it.
 
 The gateway issues **gateway keys** for clients, separate from a provider's

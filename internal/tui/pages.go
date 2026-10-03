@@ -187,6 +187,10 @@ func (m model) updateProviders(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "t":
 		m.flash, m.flashOK = "testing "+p.Name+"…", true
 		return m, testCmd(p)
+	case "m":
+		// the vendor's list asked again, as the app editor's Refresh does
+		m.flash, m.flashOK = "asking "+p.Name+" for its models…", true
+		return m, refetchCmd(p.ID)
 	case "d":
 		if m.confirm != "provider/"+p.ID {
 			m.confirm = "provider/" + p.ID
@@ -232,6 +236,53 @@ func saveProvider(id string, change func(*provider.Provider), done string) tea.C
 		}
 		return flashMsg{text: done, ok: true}
 	}
+}
+
+// refetchCmd asks the provider's vendor for its model list again and says
+// how many it has and how many agents are offered, or why there is none:
+// the app editor's Refresh, which the TUI had no way to do (akic404 on
+// Discord: a provider added here had 0 models and nothing to fetch them).
+func refetchCmd(id string) tea.Cmd {
+	return func() tea.Msg {
+		p, err := provider.Find(id)
+		if err != nil {
+			return flashMsg{text: err.Error()}
+		}
+		if p.IsPlugin() {
+			return flashMsg{text: p.Name + "'s models are what its plugin lists"}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		ms, dropped, err := p.Refetch(ctx)
+		if err != nil {
+			return flashMsg{text: p.Name + ": " + fetchNote(err)}
+		}
+		text := p.Name + ": " + modelsNote(id, len(ms))
+		if len(dropped) > 0 {
+			text += " · gone from its list, so no longer picked: " + strings.Join(dropped, ", ")
+		}
+		return flashMsg{text: text, ok: len(ms) > 0}
+	}
+}
+
+// modelsNote says how many models the vendor's list had and how many of
+// them agents are offered.
+func modelsNote(id string, fetched int) string {
+	text := fmt.Sprintf("%d models from its list", fetched)
+	if p, err := provider.Find(id); err == nil {
+		text += fmt.Sprintf(" · %d for agents (↵ picks)", len(p.Exposed()))
+	}
+	return text
+}
+
+// fetchNote is why a model list wasn't had, short enough for the status
+// line: the first URL's answer.
+func fetchNote(err error) string {
+	e, _, _ := strings.Cut(err.Error(), "; ")
+	if r := []rune(e); len(r) > 140 {
+		e = string(r[:140]) + "…"
+	}
+	return "no model list · " + strings.TrimPrefix(e, "no model list: ") + " · m asks again"
 }
 
 func testCmd(p provider.Provider) tea.Cmd {
@@ -309,7 +360,7 @@ func (m *model) openProviderModels(id string) {
 		crumbs: []string{"providers", p.Name, "models"},
 		input:  newInput("filter models"),
 		items:  modelOptions(id),
-		empty:  "no models known yet · t tests it, which asks the vendor for them",
+		empty:  "no models known yet · m on the providers list asks the vendor for them",
 		toggle: func(model string) ([]agent.Option, string, bool) {
 			p, err := provider.Find(id)
 			if err != nil {
@@ -402,13 +453,23 @@ func addKeyAsk(p provider.Provider) ask {
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 				defer cancel()
-				text := "added " + p.Name
-				if saved, err := provider.Find(id); err == nil {
-					if ms, err := saved.Fetch(ctx); err == nil {
-						text += fmt.Sprintf(" · %d models", len(ms))
-					}
+				saved, err := provider.Find(id)
+				if err != nil {
+					return flashMsg{text: err.Error()}
 				}
-				return flashMsg{text: text, ok: true}
+				// the vendor's list, and what came of asking it: a list
+				// that failed said so, not an "added" over 0 models
+				// (akic404 on Discord)
+				text := "added " + saved.Name
+				ms, err := saved.Fetch(ctx)
+				if err != nil && saved.Decides() {
+					// a System One API: its list isn't what it is for
+					return flashMsg{text: text, ok: true}
+				}
+				if err != nil {
+					return flashMsg{text: text + " · " + fetchNote(err)}
+				}
+				return flashMsg{text: text + " · " + modelsNote(id, len(ms)), ok: len(ms) > 0}
 			}
 		}}
 }
