@@ -594,7 +594,7 @@ const I18N = {
     "Accepts images (every model in it does)": "支持图片输入（组内每个模型都支持）",
     "Text only": "仅文本",
     "Context: {n} tokens": "上下文：{n} tokens",
-    "Context: {n} tokens (the least of its models')": "上下文：{n} tokens（组内模型中最小的）",
+    "Context: {n} tokens (the largest of its models')": "上下文：{n} tokens（组内模型中最大的）",
     "Output: up to {n} tokens": "输出：最多 {n} tokens",
     "Models: {models}": "模型：{models}",
     "No models match “{q}”": "没有和“{q}”匹配的模型",

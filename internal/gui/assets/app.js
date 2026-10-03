@@ -4552,7 +4552,7 @@ function modelInfo(m) {
   lines.push(t(m.images ? (m.group ? "Accepts images (every model in it does)" : "Accepts images") : "Text only"));
   if (m.context) {
     box.append(el("span", "badge mi-ctx", ctxShort(m.context)));
-    lines.push(t(m.group ? "Context: {n} tokens (the least of its models')" : "Context: {n} tokens", { n: m.context.toLocaleString() }));
+    lines.push(t(m.group ? "Context: {n} tokens (the largest of its models')" : "Context: {n} tokens", { n: m.context.toLocaleString() }));
   }
   if (m.output) lines.push(t("Output: up to {n} tokens", { n: m.output.toLocaleString() }));
   if (m.group && m.members?.length) lines.push(t("Models: {models}", { models: m.members.join(", ") }));

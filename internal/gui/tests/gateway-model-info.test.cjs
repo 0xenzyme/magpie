@@ -100,7 +100,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     assert.equal(i.img, 1);
     i = await info("group/smart");
     assert.deepEqual(i.chips, ["low–high", "", "272K"]);
-    assert.equal(i.tip, "Reasoning: low, medium, high\nAccepts images (every model in it does)\nContext: 272,000 tokens (the least of its models')\nOutput: up to 64,000 tokens\nModels: acme/gpt-5.5-mini, zeta/kimi-k3");
+    assert.equal(i.tip, "Reasoning: low, medium, high\nAccepts images (every model in it does)\nContext: 272,000 tokens (the largest of its models')\nOutput: up to 64,000 tokens\nModels: acme/gpt-5.5-mini, zeta/kimi-k3");
     // the chips sit at the row's end, before its copy button
     const [infoBox, copyBox, whoBox] = await Promise.all([".minfo", ".copy", ".who"].map((s) => rowOf(page, "acme/gpt-5.5").locator(s).boundingBox()));
     assert(infoBox.x > whoBox.x && infoBox.x + infoBox.width <= copyBox.x + 1, "info between the name and the copy button");
