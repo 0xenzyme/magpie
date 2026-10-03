@@ -173,14 +173,23 @@ function cacheFor(got) {
   return { "Cache-Control": `public, max-age=${got.degraded ? BRIEF : TTL}` };
 }
 
-// cached and remember are the edge's cache (caches.default) by name.
+// cached and remember are the edge's cache (caches.default) by name. The
+// names carry a version: an entry an older worker kept in another shape is
+// never read as this one's. Anything unreadable is a miss.
+const CACHE = "https://usemagpie.ai/__v2/";
+
 async function cached(name) {
-  const hit = await caches.default.match(new Request(`https://usemagpie.ai/__${name}`));
-  return hit ? hit.json() : null;
+  try {
+    const hit = await caches.default.match(new Request(CACHE + name));
+    return hit ? await hit.json() : null;
+  } catch (e) {
+    console.log("cache", name, e);
+    return null;
+  }
 }
 
 function remember(ctx, name, v, ttl) {
-  ctx.waitUntil(caches.default.put(new Request(`https://usemagpie.ai/__${name}`), json(v, 200, { "Cache-Control": `max-age=${ttl}` })));
+  ctx.waitUntil(caches.default.put(new Request(CACHE + name), json(v, 200, { "Cache-Control": `max-age=${ttl}` })).catch((e) => console.log("cache put", name, e)));
 }
 
 // latest is the newest release, condensed, with each file's SHA-256 taken
@@ -193,7 +202,7 @@ function remember(ctx, name, v, ttl) {
 // whole answer is kept, and stands in for a degraded one of its version.
 async function latest(ctx, env) {
   const hit = await cached("latest");
-  if (hit) return hit;
+  if (hit && hit.rel && hit.rel.version) return hit;
   const full = await fromAPI(env);
   if (full) {
     const got = { rel: full, degraded: false };
@@ -201,7 +210,8 @@ async function latest(ctx, env) {
     remember(ctx, "latest-good", full, KEEP);
     return got;
   }
-  const good = await cached("latest-good");
+  let good = await cached("latest-good");
+  if (!good || !good.version || !good.assets) good = null;
   const pages = await fromPages();
   let rel = pages;
   if (good && (!pages || !newer(pages.version, good.version))) rel = good;
@@ -276,7 +286,7 @@ async function fromPages() {
 // list stand in.
 async function releases(ctx, env) {
   const hit = await cached("releases");
-  if (hit) return hit;
+  if (hit && Array.isArray(hit.list)) return hit;
   let res = null;
   try {
     res = await api("releases?per_page=100", env);
@@ -293,7 +303,8 @@ async function releases(ctx, env) {
     return got;
   }
   if (res) console.log("github api releases", res.status, await res.text());
-  const [good, feed] = await Promise.all([cached("releases-good"), fromFeed()]);
+  let [good, feed] = await Promise.all([cached("releases-good"), fromFeed()]);
+  if (!Array.isArray(good)) good = null;
   if (!good && !feed) return null;
   // the last whole list's notes (markdown, both languages) where it has the
   // release, the feed's for the newer ones
