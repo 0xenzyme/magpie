@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,45 @@ import (
 	"github.com/yetone/magpie/internal/sessions"
 	"github.com/yetone/magpie/internal/usage"
 )
+
+func TestUsageLedgerDayRoutes(t *testing.T) {
+	sandboxHome(t)
+	start := usage.Today.Since(time.Now()).AddDate(0, 0, -1)
+	for i, at := range []time.Time{start.Add(-time.Second), start, start.Add(12 * time.Hour), start.AddDate(0, 0, 1)} {
+		usage.Append(usage.Record{Time: at, Agent: "codex", Provider: "relay", Model: "m", Input: 10 + i, Output: 1, Status: 200})
+	}
+	mux := http.NewServeMux()
+	usageRoutes(mux, folderOnly{})
+	q := url.Values{"period": {"7d"}, "day": {start.Format(time.DateOnly)}, "limit": {"1"}, "offset": {"1"}, "provider": {"relay"}}
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("GET", "/api/usage/requests?"+q.Encode(), nil))
+	var l ledgerJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &l); w.Code != 200 || err != nil {
+		t.Fatalf("day: %d %s", w.Code, w.Body)
+	}
+	if l.Day != q.Get("day") || l.Total != 2 || l.Calls != 2 || l.Input != 23 || len(l.Rows) != 1 || l.Rows[0].Input != 11 {
+		t.Fatalf("day's page: %+v", l)
+	}
+	var calls int
+	for _, p := range l.Series {
+		calls += p.Calls
+	}
+	if l.Bucket != "day" || len(l.Series) != 7 || calls != 4 || len(l.ChartBy["provider"]) != 1 || l.ChartBy["provider"][0].Calls != 4 {
+		t.Fatalf("the whole chart: %+v", l)
+	}
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("GET", "/api/usage/requests.csv?"+q.Encode(), nil))
+	rows, err := csv.NewReader(w.Body).ReadAll()
+	if w.Code != 200 || err != nil || len(rows) != 3 {
+		t.Fatalf("day's CSV: %d %s (%v)", w.Code, w.Body, err)
+	}
+	for _, row := range rows[1:] {
+		at, err := time.Parse(time.RFC3339Nano, row[0])
+		if err != nil || at.In(time.Local).Format(time.DateOnly) != l.Day {
+			t.Fatalf("CSV included another day: %v", row)
+		}
+	}
+}
 
 // The Usage page's Requests: a page of the ledger at a time, newest first,
 // with the filters' rows counted on every page, and Export CSV writing all

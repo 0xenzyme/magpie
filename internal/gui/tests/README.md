@@ -691,6 +691,8 @@ keeps the others in sight; the metric and the split are remembered; a click
 moves nothing. At 560 the ranking goes under the chart and the totals two to a
 row, a wider window redraws it, a metric with no price says so, and with no
 request listed there is nothing; in English and Chinese, light and dark.
+The daily chart also checks selection, gray bars on other days, filtered rows
+and CSV, an empty day, clearing a selection, keyboard input and resizing.
 
 `usage-chart-axis.test.cjs` checks the usage chart's side labels, in the
 window's Requests tab (1180 and 560 wide) and the tray panel's Usage tab (440
@@ -719,6 +721,9 @@ panel where it is, Open Usage takes the window to that provider's requests,
 and the window opened so has the Requests tab with that provider and agent
 picked and an address without them. Nothing is cut off at 320, where the
 totals go two to a row; available allowances keep their tab; in English and Chinese.
+Daily bars select that day's totals and ranking while keeping the whole chart;
+refresh and metric changes keep the selection, a period change clears it, and
+clicking the selected day clears it too, including days with no calls.
 
 `usage-refresh.test.cjs` sets the Usage page's refresh period, with a clock in
 place of time: every 5 s to begin with and no read before that, the picker's

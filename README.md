@@ -834,6 +834,10 @@ each; click a row to change the key or the exposed models, *Test* it, or
 click an agent icon to point that agent at one of its models. *Add
 provider* shows the presets as tiles: pick one, paste the key.
 
+In *Usage → Requests* and the tray's *Usage* tab, click a daily bar to see
+that day's totals and details. Other days turn gray; click the selected day
+again to return to the whole period. Changing the period clears the selection.
+
 On macOS, *Settings → Preferences → Session terminal* chooses which installed
 app opens a session from the terminal button in *Usage → Sessions*. The list
 contains apps registered to open `.command` files, with the current system

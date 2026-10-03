@@ -116,7 +116,7 @@ func periodOf(s string) usage.Period {
 
 func ledgerFilter(q url.Values) usage.Filter {
 	id, _ := strconv.ParseInt(q.Get("route"), 10, 64)
-	return usage.Filter{RouteID: id, Model: q.Get("model"), Agent: q.Get("agent"), Provider: q.Get("provider"), Account: q.Get("account"), CallerKey: q.Get("callerKey"), Failed: q.Get("failed") == "1", Query: q.Get("q"), Computer: q.Get("computer")}
+	return usage.Filter{Day: q.Get("day"), RouteID: id, Model: q.Get("model"), Agent: q.Get("agent"), Provider: q.Get("provider"), Account: q.Get("account"), CallerKey: q.Get("callerKey"), Failed: q.Get("failed") == "1", Query: q.Get("q"), Computer: q.Get("computer")}
 }
 
 // ledgerRow is a usage.Row with the names the page shows it by.
@@ -138,13 +138,15 @@ type ledgerJSON struct {
 	Rows       []ledgerRow  `json:"rows"`
 	Offset     int          `json:"offset"`
 	Total      int          `json:"total"` // the rows the filter keeps, on every page
-	// Series: those rows by hour, day or week (Bucket), for the chart
+	// Series: the period by hour, day or week (Bucket), before the day filter
 	Bucket string              `json:"bucket"`
 	Series []usage.SeriesPoint `json:"series"`
 	// By: the rows told apart by provider, agent and model, the most tokens
 	// first. The one by a dimension the filter has picked is of the rows
 	// without that pick, so the others are still there to switch to.
-	By map[string][]ledgerShare `json:"by"`
+	By      map[string][]ledgerShare `json:"by"`
+	ChartBy map[string][]ledgerShare `json:"chartBy,omitempty"`
+	Day     string                   `json:"day,omitempty"`
 	usage.Totals
 	// Agents and Providers: those with calls in the period, for the filters
 	Agents    []ledgerAgent `json:"agents"`
@@ -217,6 +219,7 @@ func ledgerPage(p usage.Period, f usage.Filter, offset, limit int) ledgerJSON {
 	}
 	out := ledgerJSON{Period: p, Rows: make([]ledgerRow, 0, len(page)), Offset: offset, Total: l.Total, Totals: l.Sum, Agents: []ledgerAgent{}, Providers: []ledgerAgent{}, Accounts: []ledgerAccount{}}
 	out.Bucket, out.Series = l.Bucket, l.Series
+	out.Day = f.Day
 	out.CallerKeys = callerUsageGroups(usage.Summary{CallerKeys: l.CallerKeys})
 	callerLabels := map[string]string{}
 	for _, g := range out.CallerKeys {
@@ -267,22 +270,29 @@ func ledgerPage(p usage.Period, f usage.Filter, offset, limit int) ledgerJSON {
 	}
 	// what each is of: the rows of the filter, or, for the dimension the
 	// filter has picked, of the rows without that pick
-	out.By = map[string][]ledgerShare{}
-	for _, d := range usage.Dimensions {
-		shares := []ledgerShare{}
-		for _, s := range l.By[d] {
-			ls := ledgerShare{Share: s, Name: s.ID}
-			switch d {
-			case "provider":
-				a := which(s.ID)
-				ls.Name, ls.Icon = a.Name, a.Icon
-			case "agent":
-				a := who(s.ID)
-				ls.Name, ls.Icon = a.Name, a.Icon
+	sharesJSON := func(by map[string][]usage.Share) map[string][]ledgerShare {
+		out := map[string][]ledgerShare{}
+		for _, d := range usage.Dimensions {
+			shares := []ledgerShare{}
+			for _, s := range by[d] {
+				ls := ledgerShare{Share: s, Name: s.ID}
+				switch d {
+				case "provider":
+					a := which(s.ID)
+					ls.Name, ls.Icon = a.Name, a.Icon
+				case "agent":
+					a := who(s.ID)
+					ls.Name, ls.Icon = a.Name, a.Icon
+				}
+				shares = append(shares, ls)
 			}
-			shares = append(shares, ls)
+			out[d] = shares
 		}
-		out.By[d] = shares
+		return out
+	}
+	out.By = sharesJSON(l.By)
+	if l.ChartBy != nil {
+		out.ChartBy = sharesJSON(l.ChartBy)
 	}
 	for _, s := range l.Computers {
 		ls := ledgerShare{Share: s, Name: l.Names[s.ID]}

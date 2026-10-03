@@ -44,6 +44,7 @@ func (r Record) Failed() bool { return r.Status >= 400 || r.Error != "" }
 // one provider, to the failed calls, and to the rows whose models, provider, host or
 // session hold Query (any case).
 type Filter struct {
+	Day       string // YYYY-MM-DD in the chart's local time zone; "" is the whole period
 	CallerKey string
 	RouteID   int64
 	Model     string // exact model selected in the ranking
@@ -76,6 +77,9 @@ func (f Filter) computer(r Record) bool {
 }
 
 func (f Filter) keeps(r Record) bool {
+	if f.Day != "" && r.Time.In(time.Local).Format(time.DateOnly) != f.Day {
+		return false
+	}
 	if f.CallerKey != "" && r.CallerKeyID != f.CallerKey {
 		return false
 	}

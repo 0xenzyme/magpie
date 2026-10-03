@@ -56,20 +56,39 @@ const allTokens = TOTALS.input + TOTALS.output + TOTALS.cache_write + TOTALS.cac
 const ROWS = [{ t: new Date().toISOString(), agent: "claude", agentName: "Claude Code", icon: "claudecode-color", provider: "anthropic", providerName: "Claude", model: "claude-sonnet-5", req: "sonnet", in: 2, out: 600, cache_write: 900, cache_read: 390000, ms: 2380, status: 200, cost: 0.087, priced: true }];
 
 function page(q, variant) {
+  if (q.has("day")) {
+    const whole = new URLSearchParams(q);
+    whole.delete("day");
+    const l = page(whole, variant), point = l.series.find((p) => p.time.slice(0, 10) === q.get("day"));
+    const rows = l.rows.filter((r) => r.t.slice(0, 10) === q.get("day"));
+    const by = Object.fromEntries(Object.entries(l.by).map(([dim, shares]) => [dim, shares.flatMap((s) => {
+      const part = point?.by[dim][s.id];
+      return part ? [share(s.id, s.name, s.icon, part.calls, part.tokens, part.cost)] : [];
+    })]));
+    return { ...l, calls: 0, errors: 0, input: 0, output: 0, cache_write: 0, cache_read: 0, cost: 0,
+      ...point, day: q.get("day"), series: l.series, chartBy: l.by, by, rows, total: rows.length };
+  }
   const none = variant === "none";
   const noPrice = variant === "unpriced";
   // more providers than the chart's height holds in its ranking
   const many = variant === "many" ? Array.from({ length: 9 }, (_, i) => share("p" + i, "Provider " + i, "generic", 90 - i, 9e6 - i * 8e5, 9 - i, i % 3 ? 0 : 2)) : null;
-  const series = SERIES.map((p) => (noPrice ? { ...p, cost: 0, by: { ...p.by, provider: Object.fromEntries(Object.entries(p.by.provider).map(([k, v]) => [k, { ...v, cost: 0 }])) } } : p));
+  const daily = variant === "daily" && q.get("period") === "7d";
+  const points = daily ? Array.from({ length: 7 }, (_, i) => {
+    const at = new Date(midnight);
+    at.setDate(at.getDate() - 6 + i);
+    return { ...SERIES[i === 1 ? 0 : i % 2 ? 8 : 20], time: at.toISOString() };
+  }) : SERIES;
+  const series = points.map((p) => (noPrice ? { ...p, cost: 0, by: { ...p.by, provider: Object.fromEntries(Object.entries(p.by.provider).map(([k, v]) => [k, { ...v, cost: 0 }])) } } : p));
   return {
     period: "today", rows: none ? [] : ROWS, offset: 0, total: none ? 0 : ROWS.length, ...TOTALS, ...(none ? { calls: 0, errors: 0, input: 0, output: 0, cache_write: 0, cache_read: 0, cost: 0 } : {}),
     ...(noPrice ? { cost: 0, unpriced: 40 } : {}),
-    bucket: "hour", series: none ? [] : series, by: none ? { provider: [], agent: [], model: [] } : many ? { ...BY, provider: many } : BY,
+    ...(daily ? { rows: series.filter((p) => p.calls).map((p) => ({ ...ROWS[0], t: p.time })), total: 6 } : {}),
+    bucket: daily ? "day" : "hour", series: none ? [] : series, by: none ? { provider: [], agent: [], model: [] } : many ? { ...BY, provider: many } : BY,
     agents: Object.entries(AGENTS).map(([id, a]) => ({ id, ...a })), providers: (many || WHO).map((w) => ({ id: w.id, name: w.name, icon: w.icon })),
   };
 }
 
-function server(lang, theme, variant, asked) {
+function server(lang, theme, variant, asked, exported) {
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
     const json = (data) => route.fulfill({ json: data });
@@ -77,6 +96,7 @@ function server(lang, theme, variant, asked) {
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings: { lang, theme }, fx: { rate: 7.2, at: new Date().toISOString() } });
     if (url.pathname === "/api/usage/requests") { asked.push(url.searchParams); return json(page(url.searchParams, variant)); }
+    if (url.pathname === "/api/usage/requests/export") { exported.push(url.searchParams); return json({ rows: 1, path: "/test/requests.csv" }); }
     if (url.pathname === "/api/usage/quotas") return json([]);
     if (url.pathname === "/api/usage") return json({ calls: 1, errors: 0, input: 1, output: 1, cache_read: 0, cache_write: 0, reasoning: 0, unpriced: 0, cost: 1, bucket: "day", series: [], agents: [], models: [], path: "~/.config/magpie/usage.jsonl" });
     if (url.pathname === "/api/sessions") return json({ sessions: [], dirs: [] });
@@ -103,18 +123,18 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     if (shots) await fs.mkdir(shots, { recursive: true });
 
     const open = async (lang, theme, { width = 1180, variant = "", ctx } = {}) => {
-      const errors = [], asked = [];
+      const errors = [], asked = [], exported = [];
       const context = ctx || (await browser.newContext({ viewport: { width, height: 760 }, reducedMotion: "reduce" }));
       const p = await context.newPage();
       p.setDefaultTimeout(5000);
       p.on("pageerror", (e) => errors.push(e.message));
-      await p.route("**/*", server(lang, theme, variant, asked));
+      await p.route("**/*", server(lang, theme, variant, asked, exported));
       await p.goto("http://magpie.test/");
       await p.locator('[data-view="usage"]').first().click();
       await p.locator("#usageTab .opt").nth(1).click();
       if (variant !== "none") await p.locator("#ledRank .rk").first().waitFor();
       if (["many", "unpriced"].includes(variant)) await p.locator("#ledSplit .opt").nth(1).click();
-      return { p, errors, asked, context };
+      return { p, errors, asked, exported, context };
     };
     const lastAsked = async (asked, want) => {
       for (let i = 0; i < 60 && !(asked.length && want(asked.at(-1))); i++) await new Promise((r) => setTimeout(r, 40));
@@ -252,6 +272,50 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.deepEqual(errors, []);
       });
     }
+
+    for (const lang of ["en", "zh"]) await t.test(lang + ": a day filters details while keeping the whole chart", async () => {
+      const { p, asked, exported, errors } = await open(lang, lang === "zh" ? "dark" : "light", { variant: "daily" });
+      await p.locator("#period .opt").nth(1).click();
+      const days = p.locator("#ledChart .led-day");
+      await days.nth(6).waitFor();
+      const initial = await p.locator("#ledChart rect.col").evaluateAll((rs) => rs.map((r) => [r.dataset.day, r.dataset.k, r.getAttribute("height"), r.dataset.color]));
+      const scroll = await p.locator("#view-usage").evaluate((v) => v.scrollTop);
+      await days.nth(4).click();
+      await lastAsked(asked, (q) => q.has("day") && q.get("offset") === "0");
+      await p.locator('#ledChart .led-day[aria-pressed="true"]').waitFor();
+      const day = asked.at(-1).get("day");
+      assert.equal(await p.locator("#ledWrap tr.led-row").count(), 1, "only the selected day's requests");
+      assert.deepEqual(await names(p), ["claude-sonnet-5", "gpt-6-luna"]);
+      assert.equal(await p.locator("#ledKpi .blk").nth(1).locator(".v").textContent(), "6");
+      assert.deepEqual(await p.locator("#ledChart rect.col").evaluateAll((rs) => rs.map((r) => [r.dataset.day, r.dataset.k, r.getAttribute("height"), r.dataset.color])), initial);
+      await p.locator("#ledRank .rk").first().hover();
+      await p.mouse.move(5, 5);
+      assert(await p.locator("#ledChart rect.col").evaluateAll((rs, day) => rs.every((r) => r.dataset.day === day ? r.style.opacity === "" && r.style.fill === r.dataset.color : r.style.opacity === "0.22" && r.style.fill === "var(--faint)"), day), "hovering the ranking keeps the day selection");
+      assert.equal(await p.locator("#view-usage").evaluate((v) => v.scrollTop), scroll, "selecting a day moves nothing");
+      await p.locator("#ledMetric .opt").nth(1).click();
+      assert.equal(await p.locator('#ledChart .led-day[aria-pressed="true"]').count(), 1, "the metric keeps selection");
+      if (shots) await p.locator("#ledDash").screenshot({ path: path.join(shots, `day-${engine}-${lang}.png`) });
+      await p.setViewportSize({ width: 1100, height: 760 });
+      await p.waitForTimeout(100);
+      assert.equal(await p.locator('#ledChart .led-day[aria-pressed="true"]').count(), 1, "resize keeps selection");
+      await p.locator("#ledExport").click();
+      await lastAsked(exported, (q) => q.get("day") === day);
+      await p.locator('#ledChart .led-day[aria-pressed="true"]').click();
+      await lastAsked(asked, (q) => !q.has("day"));
+      await p.waitForFunction(() => document.querySelectorAll("#ledWrap tr.led-row").length === 6);
+      assert.equal(await p.locator('#ledChart .led-day[aria-pressed="true"]').count(), 0, "clicking the selected day clears it");
+      await days.nth(1).focus();
+      await p.keyboard.press("Space");
+      await lastAsked(asked, (q) => q.has("day"));
+      await p.waitForFunction(() => document.querySelectorAll("#ledWrap tr.led-row").length === 0);
+      assert(await p.locator("#ledDash").isVisible(), "the empty day keeps the chart");
+      assert.equal(await names(p).then((x) => x.length), 0, "the empty day clears the ranking");
+      await days.nth(2).click();
+      await p.waitForFunction(() => document.querySelectorAll("#ledWrap tr.led-row").length === 1);
+      await p.locator("#period .opt").nth(0).click();
+      await lastAsked(asked, (q) => q.get("period") === "today" && !q.has("day"));
+      assert.deepEqual(errors, []);
+    });
 
     await t.test("the metric is remembered, while today and model are defaults", async () => {
       const first = await open("en", "light");

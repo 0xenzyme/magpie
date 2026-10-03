@@ -705,6 +705,8 @@ body.window .field.solo { grid-column: auto; }
 .led-chart .axis { fill: var(--muted); font-size: 10.5px; }
 .led-chart .hot { fill: var(--pill); }
 .led-chart rect.col { transition: opacity .12s; }
+.led-chart .led-day { cursor: pointer; }
+.led-chart .led-day:focus-visible { outline: none; stroke: var(--accent); stroke-width: 1; }
 .led-chart .tip { position: absolute; top: 2px; z-index: 2; min-width: 172px; max-width: 260px; padding: 8px 10px 7px; background: var(--pop-bg); border-radius: 9px; box-shadow: var(--shadow); font-size: 11.5px; pointer-events: none; }
 .led-chart .tip[hidden] { display: none; }
 .led-chart .tip b { display: block; margin-bottom: 4px; font-weight: 600; }

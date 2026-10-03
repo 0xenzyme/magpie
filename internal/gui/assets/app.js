@@ -9000,7 +9000,7 @@ function renderPeriod(loading) {
   for (const [id, name] of PERIODS) {
     const b = el("button", "opt" + (id === period ? " on" : ""), t(name));
     b.disabled = !!loading;
-    b.onclick = () => { for (const x of seg.querySelectorAll(".opt")) x.classList.toggle("on", x === b); slide(seg, "period"); period = id; ledOffset = 0; loadUsage().catch((e) => status(e.message, "err")); };
+    b.onclick = () => { for (const x of seg.querySelectorAll(".opt")) x.classList.toggle("on", x === b); slide(seg, "period"); period = id; ledDay = ""; ledOffset = 0; loadUsage().catch((e) => status(e.message, "err")); };
     seg.append(b);
   }
   slide(seg, "period");
@@ -9734,7 +9734,7 @@ if (mode === "panel") {
 // the chart then tells its models apart. A click on someone in the ranking
 // picks them; "Open Usage" takes the window to their requests.
 let panelUse = null; // the answer for the period, and provider, shown
-let panelUsePeriod = "today", panelUseProvider = "", panelUseMetric = "tokens", panelUseComputer = "";
+let panelUsePeriod = "today", panelUseProvider = "", panelUseMetric = "tokens", panelUseComputer = "", panelUseDay = "";
 try {
   const p = localStorage.getItem("magpie.panelUsePeriod"), m = localStorage.getItem("magpie.panelUseMetric");
   if (["today", "7d", "30d"].includes(p)) panelUsePeriod = p;
@@ -9753,6 +9753,7 @@ function loadPanelUse() {
   const q = new URLSearchParams({ period: panelUsePeriod, limit: "1" });
   if (panelUseProvider) q.set("provider", panelUseProvider);
   if (panelUseComputer) q.set("computer", panelUseComputer);
+  if (panelUseDay) q.set("day", panelUseDay);
   const want = q.toString();
   panelUseAt = performance.now();
   // what is shown stays, dimmed, till the answer comes: the panel doesn't
@@ -9764,6 +9765,7 @@ function loadPanelUse() {
       const now = new URLSearchParams({ period: panelUsePeriod, limit: "1" });
       if (panelUseProvider) now.set("provider", panelUseProvider);
       if (panelUseComputer) now.set("computer", panelUseComputer);
+      if (panelUseDay) now.set("day", panelUseDay);
       if (now.toString() !== want) return; // another period or provider was picked meanwhile
       panelUse = l;
       $("#panelUsage").classList.remove("pu-loading");
@@ -9812,6 +9814,7 @@ function renderPanelUse() {
     b.onclick = () => {
       if (id === panelUsePeriod) return;
       panelUsePeriod = id;
+      panelUseDay = "";
       try { localStorage.setItem("magpie.panelUsePeriod", id); } catch {}
       renderPanelUse();
       loadPanelUse().catch(() => {});
@@ -9851,7 +9854,7 @@ function renderPanelUse() {
   const out = [bar, el("p", "usage-note", t("Gateway and session-log calls; local rejections excluded from totals."))];
   if (!l) {
     out.push(el("span", "skeleton pu-sk"), el("span", "skeleton pu-sk"));
-  } else if (!l.total) {
+  } else if (!l.total && !l.day) {
     const none = el("div", "pu-none");
     none.append(el("b", "", t(panelUseProvider || panelUsePeriod !== "today" ? "No requests here" : "No requests today")), t("Every request an agent sends to magpie, and every call the agents' own session files record, is counted here."));
     out.push(none);
@@ -9893,7 +9896,10 @@ function renderPanelUse() {
     box.replaceChildren(...out);
     slide(per, "puPeriod");
     slide(met, "puMetric");
-    drawLedColumns(chart, l, split, panelUseMetric, true);
+    drawLedColumns(chart, l, split, panelUseMetric, true, (day) => {
+      panelUseDay = day;
+      loadPanelUse().catch(() => {});
+    });
     rank.chart = chart;
     drawLedRank(rank, l, split, panelUseMetric, "", (x) => {
       if (split !== "provider") return; // a model is not a way in: the picker has the providers
@@ -10547,7 +10553,7 @@ function renderUsage() {
 // server pages it (/api/usage/requests) and saves it whole as CSV.
 
 let ledger = null; // the page shown: { rows, offset, total, agents, …totals }
-let ledOffset = 0, ledAgent = "", ledProvider = "", ledAccount = "", ledCallerKey = "", ledFailed = false, ledQuery = "", ledModel = "", ledRoute = 0, ledComputer = "";
+let ledOffset = 0, ledAgent = "", ledProvider = "", ledAccount = "", ledCallerKey = "", ledFailed = false, ledQuery = "", ledModel = "", ledRoute = 0, ledComputer = "", ledDay = "";
 
 // computerOpts are the Computer filter's choices: this computer, the others
 // together, and each other one, as sync shares their usage (#542); none
@@ -10569,10 +10575,11 @@ try {
 
 let ledRouteInfo = null, ledBeforeRoute = null;
 window.openUsageRoute = (route) => {
-  if (!ledBeforeRoute) ledBeforeRoute = { period, ledOffset, ledAgent, ledProvider, ledAccount, ledCallerKey, ledFailed, ledQuery, ledModel, ledComputer };
+  if (!ledBeforeRoute) ledBeforeRoute = { period, ledOffset, ledAgent, ledProvider, ledAccount, ledCallerKey, ledFailed, ledQuery, ledModel, ledComputer, ledDay };
   ledRoute = route.id;
   ledRouteInfo = route;
   ledOffset = 0; ledAgent = ""; ledProvider = ""; ledAccount = ""; ledCallerKey = ""; ledFailed = false; ledQuery = ""; ledModel = ""; ledComputer = "";
+  ledDay = "";
   $("#ledQ").value = "";
   period = "all";
   usageTab = "requests";
@@ -10582,6 +10589,7 @@ window.openUsageRoute = (route) => {
 
 function ledParams(extra) {
   const q = new URLSearchParams({ period });
+  if (ledDay) q.set("day", ledDay);
   if (ledAgent) q.set("agent", ledAgent);
   if (ledProvider) q.set("provider", ledProvider);
   if (ledAccount) q.set("account", ledAccount);
@@ -10862,13 +10870,14 @@ function sv(tag, attrs, style) {
 // the columns: one per point of the answer's series, its part of each thing
 // told apart stacked in the colours of the ranking. box is where it goes, its
 // size the plot's; compact is for the tray panel, which has little room.
-function drawLedColumns(box, l, split, metric, compact) {
+function drawLedColumns(box, l, split, metric, compact, chooseDay) {
+  if (chooseDay) box.chooseDay = chooseDay;
   box.replaceChildren();
   const plot = el("div", "plot");
   box.append(plot);
   const W = plot.clientWidth, H = plot.clientHeight, pts = l.series || [], n = pts.length;
   if (W < 100 || !n) return;
-  const { top } = ledCategories(l, split, metric);
+  const { top } = ledCategories(l.chartBy ? { by: l.chartBy } : l, split, metric);
   const totals = pts.map((p) => ledValue(metric, p));
   const max = Math.max(0, ...totals);
   if (!(max > 0)) {
@@ -10876,7 +10885,8 @@ function drawLedColumns(box, l, split, metric, compact) {
     return;
   }
   const topV = ledAxis(max);
-  const g = sv("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" });
+  const selectable = l.bucket === "day" && !!box.chooseDay;
+  const g = sv("svg", { viewBox: `0 0 ${W} ${H}`, role: selectable ? "group" : "img" });
   g.setAttribute("aria-label", t("Usage trend"));
   // the side's labels, measured as drawn: the plot starts where the widest
   // ends ("8000 万", "¥1250" are wider than "80M"), so none reaches past the
@@ -10907,6 +10917,8 @@ function drawLedColumns(box, l, split, metric, compact) {
   });
   const hot = sv("rect", { class: "hot", y: M.t, height: ph, rx: 3, width: slot }, { display: "none" });
   g.append(hot);
+  const selected = pts.findIndex((p) => p.time.slice(0, 10) === l.day);
+  if (selectable && selected >= 0) g.append(sv("rect", { class: "hot", x: M.l + slot * selected, y: M.t, height: ph, rx: 3, width: slot }));
   // each column: what the top of the ranking had of it, from the bottom up,
   // and what is left of its total as "Other"
   const segs = [];
@@ -10915,7 +10927,7 @@ function drawLedColumns(box, l, split, metric, compact) {
     let y0 = 0;
     const draw = (key, color, v) => {
       if (!(v > 0)) return;
-      const r = sv("rect", { x, width: bw, y: Y(y0 + v), height: Math.max(0.5, Y(y0) - Y(y0 + v)), rx: 1, class: "col", "data-k": key }, { fill: color });
+      const r = sv("rect", { x, width: bw, y: Y(y0 + v), height: Math.max(0.5, Y(y0) - Y(y0 + v)), rx: 1, class: "col", "data-k": key, "data-day": p.time.slice(0, 10), "data-color": color }, { fill: color });
       g.append(r);
       segs.push(r);
       y0 += v;
@@ -10924,6 +10936,14 @@ function drawLedColumns(box, l, split, metric, compact) {
     let stacked = 0;
     for (const c of top) { const v = ledPart(metric, by[c.id] || {}); stacked += v; draw(c.id, c.color, v); }
     draw("\0other", "var(--faint)", Math.max(0, totals[i] - stacked));
+  });
+  if (selectable) pts.forEach((p, i) => {
+    const day = p.time.slice(0, 10);
+    const hit = sv("rect", { class: "led-day", x: M.l + slot * i, y: M.t, width: slot, height: ph, fill: "transparent", role: "button", tabindex: 0, "aria-label": ledWhen(p, l.bucket), "aria-pressed": day === l.day });
+    const pick = () => box.chooseDay(day === l.day ? "" : day);
+    hit.onclick = pick;
+    hit.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
+    g.append(hit);
   });
 
   const tip = el("div", "tip");
@@ -10959,7 +10979,14 @@ function drawLedColumns(box, l, split, metric, compact) {
   g.onpointerdown = at;
   g.onpointerleave = () => { hot.style.display = "none"; tip.hidden = true; };
   // the ranking asks for one thing to stand out
-  box.emphasize = (key) => { for (const r of segs) r.style.opacity = key == null || r.dataset.k === key ? "" : ".22"; };
+  box.emphasize = (key) => {
+    for (const r of segs) {
+      const dimDay = l.day && r.dataset.day !== l.day;
+      r.style.opacity = dimDay || key != null && r.dataset.k !== key ? ".22" : "";
+      r.style.fill = dimDay ? "var(--faint)" : r.dataset.color;
+    }
+  };
+  box.emphasize(null);
 }
 
 // the ranking: who the requests were of, by the metric, the most first —
@@ -10972,6 +10999,10 @@ function drawLedRank(box, l, split, metric, picked, choose, compact) {
   const kept = box.scrollTop;
   box.replaceChildren();
   const { top, rest, list } = ledCategories(l, split, metric);
+  if (l.chartBy) {
+    const colors = ledCategories({ by: l.chartBy }, split, metric).top;
+    for (const x of top) x.color = colors.find((c) => c.id === x.id)?.color || "var(--faint)";
+  }
   if (!list.length) return;
   const sum = list.reduce((a, x) => a + ledValue(metric, x), 0) || 1;
   const leader = Math.max(1, ledValue(metric, top[0]));
@@ -11063,8 +11094,8 @@ function ledRail(rail, box) {
 
 function renderLedgerDash(l) {
   const dash = $("#ledDash");
-  dash.hidden = !l.total;
-  if (!l.total) return;
+  dash.hidden = !l.total && !l.day;
+  if (dash.hidden) return;
   const total = allTokens(l);
   const prompt = l.input + l.cache_write + l.cache_read;
   const rate = prompt ? l.cache_read / prompt : 0;
@@ -11107,7 +11138,11 @@ function drawLedTrend() {
   pill($("#ledMetric"), "ledMetric", LED_METRICS, ledMetric, (id) => { ledMetric = id; try { localStorage.setItem("magpie.ledMetric", id); } catch {} drawLedTrend(); });
   pill($("#ledSplit"), "ledSplit", LED_SPLITS, ledSplit, (id) => { ledSplit = id; drawLedTrend(); });
   const chart = $("#ledChart"), rank = $("#ledRank");
-  drawLedColumns(chart, l, ledSplit, ledMetric, false);
+  drawLedColumns(chart, l, ledSplit, ledMetric, false, (day) => {
+    ledDay = day;
+    ledOffset = 0;
+    loadLedger().catch((e) => status(e.message, "err"));
+  });
   rank.chart = chart;
   if (!rank.rail) ledRail($("#ledRail"), rank);
   const picked = ledSplit === "provider" ? ledProvider : ledSplit === "agent" ? ledAgent : ledModel;
@@ -11207,7 +11242,7 @@ function renderLedger() {
   $("#ledRouteClear").setAttribute("aria-label", t("Clear filter"));
   $("#ledRouteClear").onclick = () => {
     ledRoute = 0; ledRouteInfo = null;
-    if (ledBeforeRoute) ({ period, ledOffset, ledAgent, ledProvider, ledAccount = "", ledCallerKey, ledFailed, ledQuery, ledModel, ledComputer = "" } = ledBeforeRoute);
+    if (ledBeforeRoute) ({ period, ledOffset, ledAgent, ledProvider, ledAccount = "", ledCallerKey, ledFailed, ledQuery, ledModel, ledComputer = "", ledDay = "" } = ledBeforeRoute);
     ledBeforeRoute = null;
     $("#ledQ").value = ledQuery;
     loadLedger().catch((e) => status(e.message, "err"));
@@ -11218,7 +11253,7 @@ function renderLedger() {
   const pager = $("#ledPager");
   if (!l.total) {
     wrap.classList.add("none");
-    const filtered = ledRoute || ledAgent || ledProvider || ledAccount || ledComputer || ledCallerKey || ledModel || ledFailed || ledQuery.trim();
+    const filtered = ledDay || ledRoute || ledAgent || ledProvider || ledAccount || ledComputer || ledCallerKey || ledModel || ledFailed || ledQuery.trim();
     const none = { today: "No calls today.", "7d": "No calls in the last 7 days.", "30d": "No calls in the last 30 days.", all: "No calls yet." }[period];
     wrap.replaceChildren(el("div", "led-none", filtered ? t("No requests match these filters.") : t(none)));
     pager.hidden = true;

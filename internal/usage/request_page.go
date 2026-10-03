@@ -39,6 +39,7 @@ type RequestPage struct {
 	Bucket   string
 	Series   []SeriesPoint
 	By       map[string][]Share
+	ChartBy  map[string][]Share // the whole period's legend while a day is selected
 	// Computers are the rows told apart by the computer they were made on,
 	// ThisComputer's and each other's by id, of the rows without the
 	// filter's computer, and Names what the others are called: none when no
@@ -733,9 +734,11 @@ func buildRequestBlocks(p Period, f Filter, offset, limit int, gateways, chunks,
 	accounts := map[string]*Group{}
 	computers := map[string]*Share{}
 	groups := map[string]map[string]*Share{}
+	chartGroups := map[string]map[string]*Share{}
 	seriesGroups := map[string]map[string]*Share{}
 	for _, d := range Dimensions {
 		groups[d] = map[string]*Share{}
+		chartGroups[d] = map[string]*Share{}
 		seriesGroups[d] = map[string]*Share{}
 	}
 	// Bound the requested prefix before adding limit: external offsets can
@@ -749,6 +752,8 @@ func buildRequestBlocks(p Period, f Filter, offset, limit int, gateways, chunks,
 		take = offset + min(limit, maxRows-offset)
 	}
 	selected := newestHeap{}
+	chartFilter := f
+	chartFilter.Day = ""
 	var first time.Time
 	visit(func(ref rowRef, r Row) {
 		agents[r.Agent] = true
@@ -768,25 +773,28 @@ func buildRequestBlocks(p Period, f Filter, offset, limit int, gateways, chunks,
 			}
 			if !r.IsRejected() {
 				out.Sum.addRow(r)
-				for _, d := range Dimensions {
-					k := r.key(d)
-					s := seriesGroups[d][k]
-					if s == nil {
-						s = &Share{ID: k}
-						seriesGroups[d][k] = s
-					}
-					s.addRow(r)
-				}
-				if first.IsZero() || r.Time.Before(first) {
-					first = r.Time
-				}
 			}
 		}
 		if r.IsRejected() {
 			return
 		}
+		if keep || f.Day != "" && chartFilter.keeps(r.Record) {
+			for _, d := range Dimensions {
+				k := r.key(d)
+				s := seriesGroups[d][k]
+				if s == nil {
+					s = &Share{ID: k}
+					seriesGroups[d][k] = s
+				}
+				s.addRow(r)
+			}
+			if first.IsZero() || r.Time.Before(first) {
+				first = r.Time
+			}
+		}
 		if g := f; names != nil {
 			g.Computer = ""
+			g.Day = ""
 			if g.keeps(r.Record) {
 				k := r.key("computer")
 				if computers[k] == nil {
@@ -805,6 +813,17 @@ func buildRequestBlocks(p Period, f Filter, offset, limit int, gateways, chunks,
 			}
 			if d == "model" {
 				g.Model = ""
+			}
+			if f.Day != "" {
+				g.Day = ""
+				if g.keeps(r.Record) {
+					k := r.key(d)
+					if chartGroups[d][k] == nil {
+						chartGroups[d][k] = &Share{ID: k}
+					}
+					chartGroups[d][k].addRow(r)
+				}
+				g.Day = f.Day
 			}
 			if !g.keeps(r.Record) {
 				continue
@@ -843,6 +862,12 @@ func buildRequestBlocks(p Period, f Filter, offset, limit int, gateways, chunks,
 	for _, d := range Dimensions {
 		out.By[d] = sharesOf(groups[d])
 	}
+	if f.Day != "" {
+		out.ChartBy = map[string][]Share{}
+		for _, d := range Dimensions {
+			out.ChartBy[d] = sharesOf(chartGroups[d])
+		}
+	}
 	out.Computers, out.Names = computerShares(computers, names)
 	var base []Point
 	chartSince := since
@@ -855,7 +880,7 @@ func buildRequestBlocks(p Period, f Filter, offset, limit int, gateways, chunks,
 		}
 	}
 	visit(func(_ rowRef, r Row) {
-		if !f.keeps(r.Record) || r.IsRejected() {
+		if !chartFilter.keeps(r.Record) || r.IsRejected() {
 			return
 		}
 		t := r.Time.In(time.Local)
@@ -909,7 +934,14 @@ func pageFromLedger(p Period, f Filter, offset, limit int, all Ledgered) Request
 	out.Accounts = callerGroups(accounts)
 	offset = min(offset, len(l.Rows))
 	out.Rows = l.Rows[offset:min(len(l.Rows), offset+limit)]
-	out.Bucket, out.Series = LedgerSeries(p, l.Rows)
+	chartRows := l.Rows
+	if f.Day != "" {
+		chartFilter := f
+		chartFilter.Day = ""
+		chartRows = all.Filtered(chartFilter).Rows
+		out.ChartBy = map[string][]Share{}
+	}
+	out.Bucket, out.Series = LedgerSeries(p, chartRows)
 	for _, d := range Dimensions {
 		g := f
 		if d == "provider" {
@@ -922,10 +954,15 @@ func pageFromLedger(p Period, f Filter, offset, limit int, all Ledgered) Request
 			g.Model = ""
 		}
 		out.By[d] = Breakdown(all.Filtered(g).Rows, d)
+		if f.Day != "" {
+			g.Day = ""
+			out.ChartBy[d] = Breakdown(all.Filtered(g).Rows, d)
+		}
 	}
 	if names := sharedNames(); len(names) > 0 {
 		g := f
 		g.Computer = ""
+		g.Day = ""
 		computers := map[string]*Share{}
 		for _, s := range Breakdown(all.Filtered(g).Rows, "computer") {
 			computers[s.ID] = &s
