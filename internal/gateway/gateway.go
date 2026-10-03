@@ -2104,6 +2104,10 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		}
 	case provider.Chat:
 		body = developerAsSystem(body)
+		// Gemini's thought signatures, which came to the client in its
+		// calls' ids, go back where Gemini wants them; another upstream
+		// gets the calls' own ids (#687)
+		body = chatCallSignatures(body, geminiCompat(p.Host(), model))
 		if p.Preset == "mistral" || p.Host() == "api.mistral.ai" {
 			// an earlier turn's reasoning_content, which Mistral turns
 			// away, as the thinking part it takes (#494)
@@ -2283,6 +2287,10 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	if proto == provider.Chat && !sse && strings.Contains(res.Header.Get("Content-Type"), "json") {
 		whole = &chatWhole{}
 	}
+	var sigs *sigTidy
+	if proto == provider.Chat && geminiCompat(p.Host(), model) {
+		sigs = &sigTidy{sse: sse}
+	}
 	var search *searchTidy
 	if searchFn && sse {
 		search = &searchTidy{}
@@ -2310,6 +2318,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			if spaces != nil {
 				out = spaces.write(out)
 			}
+			if sigs != nil {
+				out = sigs.write(out)
+			}
 			if _, werr := w.Write(out); werr != nil {
 				return res.StatusCode, "", true
 			}
@@ -2322,25 +2333,36 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			break
 		}
 	}
+	// what's held at the end goes through the filters after the one
+	// that held it
+	sign := func(out []byte) []byte {
+		if sigs != nil {
+			return sigs.write(out)
+		}
+		return out
+	}
 	if tidy != nil {
-		w.Write(tidy.flush())
+		w.Write(sign(tidy.flush()))
 	}
 	if whole != nil {
 		out := whole.flush()
 		if spaces != nil {
 			out = spaces.write(out)
 		}
-		w.Write(out)
+		w.Write(sign(out))
 	}
 	if search != nil {
 		out := search.flush()
 		if spaces != nil {
 			out = spaces.write(out)
 		}
-		w.Write(out)
+		w.Write(sign(out))
 	}
 	if spaces != nil {
-		w.Write(spaces.flush())
+		w.Write(sign(spaces.flush()))
+	}
+	if sigs != nil {
+		w.Write(sigs.flush())
 	}
 	if sse {
 		sniff.drain()
@@ -3087,6 +3109,8 @@ func parse(proto provider.Protocol, body []byte) (*Request, error) {
 	if err != nil {
 		return nil, err
 	}
+	// a call's id may carry Gemini's thought signature (gemini_signature.go)
+	unsignCalls(req)
 	if req.ToolChoice == "required" && len(req.Tools) == 0 && !req.WebSearch && requiredAllowlist(proto, body) {
 		return nil, fmt.Errorf("required tool choice has no callable tools after filtering")
 	}
