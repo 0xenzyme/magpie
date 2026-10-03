@@ -331,6 +331,9 @@ func Restore(b Bundle, parts Parts) (Result, error) {
 		if err := provider.RestoreGroups(b.Groups); err != nil {
 			return r, err
 		}
+		if err := provider.MirrorOrder(b.Order); err != nil {
+			return r, err
+		}
 		if b.Searches != nil {
 			if err := provider.RestoreSearchAPIs(*b.Searches); err != nil {
 				return r, err
