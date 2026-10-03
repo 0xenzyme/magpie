@@ -9042,6 +9042,9 @@ function renderQuotas() {
   }
   for (const subs of groups) {
     const first = subs[0];
+    // several accounts: one in sight, the others behind a button (whqtian)
+    const folded = subs.length > 1 && !usageOpen.has(first.provider);
+    const pick = folded ? usageShown(subs) : null;
     const card = el("div", "subscription-card" + (first.user ? " several" : ""));
     card.dataset.key = first.provider;
     const head = el("div", "subscription-head");
@@ -9049,6 +9052,7 @@ function renderQuotas() {
     if (!first.user && (first.plan || first.until)) head.append(planSpan(first));
     card.append(head);
     for (const sub of subs) {
+      const from = card.childElementCount;
       // "Every model" by the account, or the card's name: where the click
       // was, whichever way the meters under it grow or shrink
       const [meters, every] = familyQuota(sub);
@@ -9088,9 +9092,40 @@ function renderQuotas() {
         }
         card.append(r);
       }
+      if (folded && sub !== pick) for (const n of [...card.children].slice(from)) n.hidden = true;
     }
+    if (subs.length > 1) card.append(usageMore(first.provider, subs.length - 1, folded, "text quota-more"));
     subscriptions.append(card);
   }
+}
+
+// A subscription with several accounts shows one of them, the others behind
+// a button (whqtian on Discord: 只显示一个账号即可，其他的可以点击展开): the
+// one that answered last, else the first. Opened is remembered by provider,
+// for the window and the tray panel alike.
+let usageOpen = new Set();
+try { usageOpen = new Set(JSON.parse(localStorage.getItem("magpie.usageOpen") || "[]")); } catch {}
+addEventListener("storage", (e) => {
+  if (e.key !== "magpie.usageOpen") return;
+  try { usageOpen = new Set(JSON.parse(e.newValue || "[]")); } catch {}
+  renderQuotas();
+});
+function usageShown(subs) {
+  let pick = subs[0];
+  for (const q of subs) if (q.lastServedAt && (!pick.lastServedAt || q.lastServedAt > pick.lastServedAt)) pick = q;
+  return pick;
+}
+function usageMore(provider, more, folded, cls) {
+  const b = el("button", cls, folded ? t(more === 1 ? "Show 1 more account" : "Show {n} more accounts", { n: more }) : t("Show fewer accounts"));
+  b.type = "button";
+  b.setAttribute("aria-expanded", String(!folded));
+  b.onclick = () => {
+    if (folded) usageOpen.add(provider); else usageOpen.delete(provider);
+    try { localStorage.setItem("magpie.usageOpen", JSON.stringify([...usageOpen])); } catch {}
+    renderQuotas();
+    if (mode !== "panel") backToReader($("#view-usage"));
+  };
+  return b;
 }
 
 // The Usage page's cards in the order they were dragged to (settings
@@ -9720,7 +9755,10 @@ function renderPanelQuota() {
       head.append(m);
     }
     g.append(head);
-    for (const q of qs) g.append(panelQuotaCard(q));
+    const folded = qs.length > 1 && !usageOpen.has(qs[0].provider);
+    const pick = folded ? usageShown(qs) : null;
+    for (const q of qs) if (!folded || q === pick) g.append(panelQuotaCard(q));
+    if (qs.length > 1) g.append(usageMore(qs[0].provider, qs.length - 1, folded, "pq-more"));
     box.append(g);
   }
   if (bals.length) {
