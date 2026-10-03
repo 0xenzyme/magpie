@@ -324,11 +324,6 @@ func SaveServer(old string, s Server) (*Result, error) {
 	if err := s.check(); err != nil {
 		return nil, err
 	}
-	// magpie's sign-in goes with a renamed server, before the agents are
-	// given it under its new name
-	if old != "" && old != s.Name {
-		_ = mcpauth.Rename(old, s.Name)
-	}
 	return change(func(l *Library) error {
 		if s.Name != old && l.server(s.Name) != nil {
 			return fmt.Errorf("the library already has a server called %s", s.Name)
@@ -337,6 +332,13 @@ func SaveServer(old string, s Server) (*Result, error) {
 			i := slices.IndexFunc(l.MCP, func(x *Server) bool { return x.Name == old })
 			if i < 0 {
 				return fmt.Errorf("no server called %s", old)
+			}
+			// magpie's sign-in goes with a renamed server, before the agents
+			// are given it under its new name
+			if old != s.Name {
+				if err := mcpauth.Rename(old, s.Name); err != nil {
+					return err
+				}
 			}
 			l.MCP = slices.Delete(l.MCP, i, i+1)
 			if old != s.Name {
