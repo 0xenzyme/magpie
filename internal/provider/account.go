@@ -114,6 +114,12 @@ func (p Provider) APIs(model string) []Protocol {
 	if proto, ok := p.ModelAPI(model); ok {
 		return []Protocol{proto}
 	}
+	return p.ListedAPIs(model)
+}
+
+// ListedAPIs are the APIs model is served on as its vendor says, whatever
+// the user set: what APIs gives with nothing set (the editor's Auto).
+func (p Provider) ListedAPIs(model string) []Protocol {
 	if p.IsPlugin() {
 		return p.pluginAPIs(model)
 	}

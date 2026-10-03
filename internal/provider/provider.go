@@ -711,6 +711,13 @@ func normalize(p Provider) Provider {
 	if p.Preset == "opencode-zen" && p.Key == "" {
 		p.Key = OpenCodeAnonymousKey
 	}
+	// a Zen provider saved before its preset had System One for Jev
+	// (01huadalang: its Jev was asked as a chat model, and failed)
+	if p.Preset == "opencode-zen" && p.Decide == "" && p.Chat != "" {
+		if pr := Preset(p.Preset); pr != nil {
+			p.Decide = pr.Decide
+		}
+	}
 	if p.Routing != Ordered && p.Routing != Rotate && p.Routing != LeastUsed && p.Routing != Pace {
 		p.Routing = ""
 	}

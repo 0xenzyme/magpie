@@ -337,6 +337,11 @@ var presets = []PresetDef{
 	{ID: "opencode-zen", Name: "OpenCode Zen", Icon: "opencode", Kind: KindRelay, Catalog: "opencode", NoKey: true,
 		KeyHint: "optional: free models need no key",
 		Chat:    "https://opencode.ai/zen/v1", Responses: "https://opencode.ai/zen/v1", Anthropic: "https://opencode.ai/zen",
+		// TypeSafe's Jev (jev-1.13, jev-1.13-free) is no chat model there:
+		// Zen serves it on System One at /zen/v1/systemone alone, as its
+		// docs' model table says (packages/web/src/content/docs/zen.mdx),
+		// so it routes groups like TypeSafe's own (#609's mixed provider)
+		Decide: "https://opencode.ai/zen/v1",
 		// its free models (-free) are served to OpenCode alone, which
 		// magpie asks them as (OpenCodeFree)
 		Website: "https://opencode.ai/docs/zen", KeysURL: "https://opencode.ai/auth"},

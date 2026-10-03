@@ -1580,6 +1580,8 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 /* a model's credit rate (0.5×): grey, a fact to pick by; a discount's price before it struck through */
 .badge.rate { background: var(--pill); color: var(--muted); letter-spacing: .02em; text-transform: none; font-variant-numeric: tabular-nums; display: inline-flex; gap: 3px; }
 .badge.rate s { font-weight: 500; opacity: .75; }
+/* the one API a model is asked on, picked by the user: the accent, as a choice made */
+.badge.mapi-tag { background: var(--accent-soft); color: var(--accent); letter-spacing: .02em; text-transform: none; }
 .mchip .badge { margin: 0 -3px 0 1px; padding: 0 4px; font-size: 9px; line-height: 14px; }
 .row.model .name .badge { margin-left: 6px; padding: 0 4px; font: 600 9px/14px var(--font); }
 .provider .pswitch { margin-left: 8px; }

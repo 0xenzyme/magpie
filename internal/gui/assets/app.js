@@ -5175,6 +5175,14 @@ const PROTOS = [["chat", "OpenAI", "Chat Completions — most agents"], ["respon
 const apiLabel = (proto) => (PROTOS.find(([k]) => k === proto) || [])[1] || proto;
 const decideOnly = (p) => !!p?.decide && !(p.chat || p.responses || p.anthropic);
 const decidesModel = (p, id) => !!p.decide && (decideOnly(p) || id.split("/").some((s) => /^jev(?:-|$)/i.test(s)));
+// modelAPIs: the APIs one of p's models can be asked on alone, those it has
+// a URL for when it has more than one — a custom provider's, a preset's or
+// a subscription's alike (01huadalang on Discord: 一个 api 里有很多模型但是不同协议;
+// OpenCode Go's DeepSeek answers on Responses too)
+const modelAPIs = (p) => {
+  const urls = ["chat", "responses", "anthropic"].filter((k) => ((draft?.id === p.id ? draft[k] : undefined) ?? p[k] ?? "").trim());
+  return urls.length < 2 ? [] : PROTOS.filter(([k]) => urls.includes(k));
+};
 
 // draftOf is a saved provider as its editor's form holds it.
 function draftOf(p) {
@@ -6425,16 +6433,50 @@ function renderModels(p) {
   // sent the menu still opens, its item off and saying why (ARNO, Discord:
   // 有些provider里的模型可以右击检测，有些却不可以)
   const noTest = modelTestWhy(p);
+  // the API a model is asked on, set beside its test (01huadalang: a
+  // preset's or a subscription's model, not only a custom provider's):
+  // staged as Names & levels stages it, and made with the Save
+  const apis = modelAPIs(p);
+  const apiNow = (id) => draft.modelPrefs?.[id]?.api ?? p.models.find((m) => m.id === id)?.api ?? "";
+  const pickAPI = (c, id) => {
+    const m = p.models.find((x) => x.id === id) || { id };
+    const auto = (m.auto || []).map(apiLabel).join(" · ");
+    const opts = [{ v: "", name: "Auto", note: auto ? t("As its vendor's list says: {apis}", { apis: auto }) : "Each API the provider has, as it answers" },
+      ...apis.map(([k, l, hint]) => ({ v: k, name: l, note: hint }))];
+    openProtoMenu(c, opts, apiNow(id), (v) => {
+      if (v === apiNow(id)) return;
+      const prefs = draft.modelPrefs = draft.modelPrefs || {};
+      prefs[id] = prefs[id] || {};
+      if (v === (m.api || "")) delete prefs[id].api; else prefs[id].api = v;
+      if (!Object.keys(prefs[id]).length) delete prefs[id];
+      draw();
+      status(v ? t("{model} is asked on {api} once saved", { model: id, api: apiLabel(v) }) : t("{model} is asked as its vendor's list says once saved", { model: id }), "ok");
+    }, "API this model is asked on", "model-api-menu");
+  };
   const menu = (c, id) => {
     const noTest = decidesModel(p, id) ? modelTestWhy({ modelTest: "decide" }) : modelTestWhy(p);
     if (!noTest) c.title = (c.title ? c.title + "\n" : "") + t("Right-click to test just this model");
     c.oncontextmenu = (e) => {
       e.preventDefault();
-      const again = agentMenu?.anchor === c;
+      const again = agentMenu?.anchor === c || protoMenu?.anchor === c;
       closeAgentMenu();
-      if (!again) openRowMenu(c, [noTest ? { name: "Test this model", icon: "M5.5 3.75v8.5L12.25 8z", off: true, why: noTest, run() {} }
-        : { name: "Test this model", icon: "M5.5 3.75v8.5L12.25 8z", run: () => testOne(id) }]);
+      closeProtoMenu();
+      if (again) return;
+      const acts = [noTest ? { name: "Test this model", icon: "M5.5 3.75v8.5L12.25 8z", off: true, why: noTest, run() {} }
+        : { name: "Test this model", icon: "M5.5 3.75v8.5L12.25 8z", run: () => testOne(id) }];
+      if (apis.length && !decidesModel(p, id)) {
+        const now = apiNow(id);
+        acts.push({ name: now ? t("Asked on {api}…", { api: apiLabel(now) }) : t("Asked on: Auto…"), icon: "M2.5 5h11M2.5 11h11M10.5 2.5 13.5 5l-3 2.5M5.5 8.5 2.5 11l3 2.5", tip: t("Pick the API this model is asked on"), run: () => pickAPI(c, id) });
+      }
+      openRowMenu(c, acts);
     };
+    // the API it is asked on, when one is picked (or staged)
+    const now = apis.length && !decidesModel(p, id) ? apiNow(id) : "";
+    if (now) {
+      const tag = el("span", "badge mapi-tag", apiLabel(now));
+      tag.title = t("Asked on {api} alone; right-click to change", { api: apiLabel(now) });
+      c.append(tag);
+    }
   };
   const box = el("div", "models");
   const chips = el("div", "mchips");
@@ -6528,8 +6570,7 @@ function renderModels(p) {
     // the APIs a model can be asked on alone: those of a key's provider
     // it has a URL for, when it has more than one (01huadalang on Discord:
     // 一个 api 里有很多模型但是不同协议)
-    const urls = ["chat", "responses", "anthropic"].filter((k) => (draft[k] ?? p[k] ?? "").trim());
-    const apis = p.account || urls.length < 2 ? [] : PROTOS.filter(([k]) => urls.includes(k));
+    const apis = modelAPIs(p);
     for (const id of ids) {
       const m = p.models.find((x) => x.id === id) || { id, name: id };
       const own = m.default || m.name || m.id;

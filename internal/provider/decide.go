@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -114,6 +115,27 @@ func (p Provider) Jev() string {
 	}
 	if own := p.ownDecideModels(); len(own) > 0 {
 		return own[0].ID
+	}
+	// a gateway that serves conversations too names its Jev its own way
+	// (OpenCode Zen's jev-1.13): the one its list has, the free one where
+	// it is asked with no key of the user's
+	if !p.DecideOnly() {
+		if live, _, ok := catalog.Live(p.ID); ok {
+			var jevs []string
+			for _, m := range live {
+				if jevID(m.ID) {
+					jevs = append(jevs, m.ID)
+				}
+			}
+			if len(jevs) > 0 {
+				if p.IsOpenCode() && p.Key == OpenCodeAnonymousKey {
+					if i := slices.IndexFunc(jevs, func(id string) bool { return strings.HasSuffix(id, "-free") }); i >= 0 {
+						return jevs[i]
+					}
+				}
+				return jevs[0]
+			}
+		}
 	}
 	return JevLatest
 }
