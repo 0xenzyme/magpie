@@ -2927,7 +2927,7 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 		msg := p.Name + ": " + err.Error()
 		return writeError(w, from, 502, msg), msg
 	}
-	if col.err != "" && len(col.res.Parts) == 0 {
+	if col.err != "" && !saidAnything(col.res.Parts) {
 		return writeError(w, from, 502, p.Name+": "+col.err), col.err
 	}
 	if zen != nil {

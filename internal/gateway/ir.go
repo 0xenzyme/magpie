@@ -331,6 +331,18 @@ func (c *collector) finish() Result {
 	return c.res
 }
 
+// saidAnything reports whether a reply has more than thinking: text, a
+// call, a search or an image. A turn that only thought and then failed is
+// the failure, not an answer with nothing in it.
+func saidAnything(parts []Part) bool {
+	for _, p := range parts {
+		if p.Kind != Thinking {
+			return true
+		}
+	}
+	return false
+}
+
 // hasTool reports whether a result calls any tool.
 func hasTool(parts []Part) bool {
 	for _, p := range parts {
