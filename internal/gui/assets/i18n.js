@@ -1685,6 +1685,7 @@ const I18N = {
     "{date}: not counted — magpie began counting on {since}": "{date}：未统计——magpie 从 {since} 开始统计",
     "Counted since {date}": "从 {date} 开始统计",
     "Accounts hidden": "账号已打码",
+    "Accounts are masked for a screenshot — click to show them": "账号已打码，方便截图分享，点一下即可显示",
     "Add a model": "添加模型",
     "Add another model": "再添加一个模型",
     "{api} only · after the others": "仅 {api} · 排在其他之后",
@@ -2625,14 +2626,15 @@ function t(s, vars) {
 
 // Static text in index.html: elements marked data-t (text) or data-tt
 // (title) keep their English in a data attribute and are re-rendered on a
-// language change.
+// language change. A data-tt with a value is the title's English itself
+// (#653: the Hide accounts buttons had no title, so no tooltip showed).
 function translateStatic() {
   for (const e of document.querySelectorAll("[data-t]")) {
     if (e.dataset.en === undefined) e.dataset.en = e.textContent;
     e.textContent = t(e.dataset.en);
   }
   for (const e of document.querySelectorAll("[data-tt]")) {
-    if (e.dataset.enTitle === undefined) e.dataset.enTitle = e.title;
+    if (e.dataset.enTitle === undefined) e.dataset.enTitle = e.dataset.tt || e.title;
     e.title = t(e.dataset.enTitle);
   }
   for (const e of document.querySelectorAll("[data-tp]")) {

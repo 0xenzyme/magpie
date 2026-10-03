@@ -14409,6 +14409,10 @@ window.noteAccounts = noteAccounts;
         const label = btn.querySelector("[data-t]");
         label.dataset.en = on ? "Accounts hidden" : "Hide accounts";
         label.textContent = t(label.dataset.en);
+        // and how to have them back, for one who never turned it on (#653)
+        btn.dataset.enTitle = on ? "Accounts are masked for a screenshot — click to show them"
+          : "Mask the accounts on this page — email addresses and account names — for a screenshot to share";
+        btn.title = t(btn.dataset.enTitle);
       }
       view.classList.toggle("masked", on);
       // a name learnt since it was masked: hidden afresh
