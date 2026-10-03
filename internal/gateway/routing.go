@@ -89,6 +89,13 @@ const (
 	// says when it's back: a week's window, and a day over
 	longestQuota = 8 * 24 * time.Hour
 	longestRetry = 10 * time.Minute // failing again and again
+	// longestRateRest is the most a rate limit that keeps coming back as
+	// soon as its rest is over is waited out, when the vendor says nothing
+	// of when (rateRest)
+	longestRateRest = 30 * time.Minute
+	// rateForget: a rate limit this long after the last one's rest ended
+	// is a new one, a minute again
+	rateForget = 30 * time.Minute
 	// verifyRest: an account Google wants verified (#152) is out until
 	// someone does, or lifts its rest in the app
 	verifyRest = 30 * time.Minute
@@ -202,7 +209,8 @@ type Rest struct {
 	// By is what set how long: "credit" (half an hour), "retry-after" (the
 	// vendor's own headers), "resets" (the time Claude Code gave), "window"
 	// (the allowance window it filled renews), "quota" (no word of when),
-	// "cooldown" (a minute), "backoff" (longer each time it fails again).
+	// "cooldown" (a minute), "backoff" (longer each time it fails again,
+	// or is rate limited again as soon as it is back).
 	By       string `json:"by"`
 	Failures int    `json:"failures,omitempty"` // in a row, for a backoff
 	// Key is what it rests by, for the app to lift the rest (Unrest)
@@ -326,9 +334,7 @@ func (s *Server) restAfterMarked(c candidate, status int, header http.Header, bo
 		}
 		d = min(d, longestQuota)
 	case failRate:
-		if w := retryAfter(header, now); w > 0 {
-			d, r.By = w, "retry-after"
-		}
+		d, r.By, r.Failures = s.rateRest(c, header, body, sharedPool, now)
 	case failVerify:
 		d, r.By = verifyRest, "verify"
 		// the error as the agent was given it, and the link in it
@@ -371,6 +377,49 @@ func (s *Server) restAfterMarked(c candidate, status int, header http.Header, bo
 	restingUntil.note[id] = r
 	restingUntil.Unlock()
 	return r
+}
+
+// rateRest is how long a rate-limited candidate sits out: as long as the
+// vendor says (Retry-After, a reset header or a reset time in its error),
+// and a minute when it says nothing. One limited again as soon as its rest
+// is over sits out twice as long as the last time, up to longestRateRest,
+// until it answers: a free model WorkBuddy keeps refusing with 429 while
+// the account still has credits was asked every minute, a request lost
+// each time before the next model of the group was (01huadalang). Failing
+// again while still resting — tried anyway, the last one left — keeps the
+// count where it is, so one request's own retries don't stretch it.
+func (s *Server) rateRest(c candidate, header http.Header, body []byte, sharedPool bool, now time.Time) (time.Duration, string, int) {
+	id := c.restKey()
+	if c.isOpenRouterFree() && sharedPool {
+		id = c.restID()
+	}
+	n := 1
+	restingUntil.Lock()
+	if prev, ok := restingUntil.note[id]; ok && prev.Why == failRate {
+		until := restingUntil.m[id]
+		switch {
+		case now.Before(until):
+			n = max(prev.Failures, 1)
+		case now.Sub(until) < rateForget:
+			n = max(prev.Failures, 1) + 1
+		}
+	}
+	restingUntil.Unlock()
+	d, by := min(fallbackCooldown<<min(n-1, 10), longestRateRest), "cooldown"
+	if n > 1 {
+		by = "backoff"
+	}
+	said := retryAfter(header, now)
+	if w := resetsNoted(header, now); w > said {
+		said = min(w, longestWait)
+	}
+	if w := resetsAt(body, now); w > said {
+		said = min(w, longestWait)
+	}
+	if said > 0 && said >= d {
+		d, by = said, "retry-after"
+	}
+	return d, by, n
 }
 
 // full is when a subscription whose allowance, as last known, has a window

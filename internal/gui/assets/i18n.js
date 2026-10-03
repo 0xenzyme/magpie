@@ -2033,6 +2033,7 @@ const I18N = {
     "It rests {d}, longer if it fails again": "它休息 {d}，再失败就更久",
     "It rests {d}": "它休息 {d}",
     "It cools down {d}: the vendor didn't say for how long": "它冷却 {d}：厂商没说要多久",
+    "It was rate limited again as soon as it was back ({n} times in a row): it rests {d}, longer each time until it answers": "它刚恢复就又被限流（连续 {n} 次）：休息 {d}，每次更久，直到它正常应答",
     "With {rested} resting after a failure, {who} goes first: ": "{rested} 失败后正在休息，{who} 排第一：",
     "the others go in their order.": "其余按顺序排。",
     "In order: with {rested} resting after a failure, {who} is the first that can answer.": "按顺序：{rested} 失败后正在休息，{who} 是第一个能答的。",

@@ -226,7 +226,9 @@
       case "resets": return t("It rests until {time}, when the vendor says the limit resets", { time });
       case "quota": return t("It rests 15 minutes: out of quota, with no word of when it resets");
       case "verify": return t("The vendor wants the account verified first: it rests half an hour, or until you say it's verified");
-      case "backoff": return rest.failures > 1
+      case "backoff": return rest.why === "rate"
+        ? t("It was rate limited again as soon as it was back ({n} times in a row): it rests {d}, longer each time until it answers", { n: rest.failures, d })
+        : rest.failures > 1
         ? t("It has failed {n} times in a row: it rests {d}, longer each time", { n: rest.failures, d })
         : t("It rests {d}, longer if it fails again", { d });
       case "cooldown": return rest.why === "rate"
