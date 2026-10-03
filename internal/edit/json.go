@@ -91,7 +91,7 @@ func splice(raw []byte, at, n int, with []byte) ([]byte, error) {
 // at or after position from.
 func insertKey(raw, stripped []byte, from int, key string, value any) ([]byte, error) {
 	open := from
-	for open < len(raw) && raw[open] != '{' {
+	for open < len(raw) && stripped[open] != '{' {
 		open++
 	}
 	close := matchBrace(stripped, open)
