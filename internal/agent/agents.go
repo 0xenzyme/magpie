@@ -266,6 +266,9 @@ func magpieProviderJSONAt(shape, catalog, gw string) any {
 			if m.Context > 0 {
 				e["limit"] = map[string]any{"context": m.Context, "output": maxTokens(m)}
 			}
+			if openCodeReasons(m) {
+				e["reasoning"] = true
+			}
 			e["variants"] = openCodeVariants(m.Efforts)
 			ms[m.ID] = e
 		}
@@ -372,6 +375,29 @@ func openCodeVariants(efforts []string) orderedJSON {
 		}
 	}
 	return out
+}
+
+// openCodeReasons is whether a model of magpie's is marked reasoning in
+// opencode.json, which OpenCode 1 shows as 支持推理 in its model tooltip
+// and takes for a model that thinks (#725: OpenCode Zen's
+// mimo-v2.6-flash-free, which thinks with no levels to pick, said 不支持推理
+// through magpie where it says it reasons under OpenCode's own Zen). OpenCode
+// 1 also adds low, medium and high of its own to the variants of a reasoning
+// model (ProviderTransform.variants; checked with 1.18.34), so one with levels
+// is marked only when it has those three, else it would be offered levels it
+// doesn't have; one with none gets them as it does under OpenCode's own
+// provider, and the gateway asks a model with a thinking switch alone no more
+// than high (fitFor). OpenCode 2 doesn't read the flag.
+func openCodeReasons(m catalog.Model) bool {
+	if len(m.Efforts) == 0 {
+		return m.Reasoning
+	}
+	for _, e := range []string{"low", "medium", "high"} {
+		if !slices.Contains(m.Efforts, e) {
+			return false
+		}
+	}
+	return true
 }
 
 // orderedJSON is a JSON object that keeps its keys in the order given,

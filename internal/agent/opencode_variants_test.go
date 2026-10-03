@@ -306,3 +306,67 @@ func TestOpenCodeNoResellerLevelsForSwitchModel(t *testing.T) {
 		t.Errorf("pi models: %s", pi)
 	}
 }
+
+// TestOpenCodeZenModelReasons: an OpenCode Zen model that thinks with no
+// levels to pick (mimo-v2.6-flash-free, models.dev: reasoning true, no
+// reasoning_options) is marked reasoning in opencode.json, which OpenCode's
+// model tooltip showed as 不支持推理 through magpie (#725); so is one whose
+// levels hold OpenCode's own low, medium and high. One with fewer levels
+// isn't (OpenCode would add the levels it lacks), nor one that doesn't think.
+func TestOpenCodeZenModelReasons(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	os.MkdirAll(filepath.Dir(catalog.CachePath()), 0o755)
+	os.WriteFile(catalog.CachePath(), []byte(`{
+	  "opencode": {"models": {
+	    "mimo-v2.6-flash-free": {"id":"mimo-v2.6-flash-free","reasoning":true,"reasoning_options":[]},
+	    "deepseek-v4-flash-free": {"id":"deepseek-v4-flash-free","reasoning":true,"reasoning_options":[{"type":"effort","values":["low","high","max"]}]},
+	    "laguna-s-2.1-free": {"id":"laguna-s-2.1-free","reasoning":true,"reasoning_options":[{"type":"effort","values":["low","medium","high"]}]},
+	    "ling-2.6-flash-free": {"id":"ling-2.6-flash-free","reasoning":false}}}
+	}`), 0o644)
+	catalog.Reset()
+	t.Cleanup(catalog.Reset)
+	zen, err := provider.FromPreset("opencode-zen")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zen.Models = []string{"mimo-v2.6-flash-free", "deepseek-v4-flash-free", "laguna-s-2.1-free", "ling-2.6-flash-free"}
+	if err := provider.Save(zen); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".config", "opencode", "opencode.json")
+	writeFile(t, path, `{}`)
+	if err := opencode(home, filepath.Join(home, ".config")).Field("model").Set("magpie/opencode-zen/mimo-v2.6-flash-free"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Provider map[string]struct {
+			Models map[string]struct {
+				Reasoning *bool          `json:"reasoning"`
+				Variants  map[string]any `json:"variants"`
+			} `json:"models"`
+		} `json:"provider"`
+	}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	ms := cfg.Provider["magpie"].Models
+	for id, want := range map[string]bool{"mimo-v2.6-flash-free": true, "laguna-s-2.1-free": true,
+		"deepseek-v4-flash-free": false, "ling-2.6-flash-free": false} {
+		m, ok := ms["opencode-zen/"+id]
+		if !ok {
+			t.Errorf("%s missing: %s", id, b)
+			continue
+		}
+		if got := m.Reasoning != nil && *m.Reasoning; got != want {
+			t.Errorf("%s: reasoning %v, want %v (variants %v)", id, got, want, m.Variants)
+		}
+	}
+}
