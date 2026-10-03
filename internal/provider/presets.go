@@ -70,6 +70,17 @@ type Region struct {
 	// on another page than the preset's, is where its Get-a-key link goes.
 	Lists   bool   `json:"lists,omitempty"`
 	KeysURL string `json:"keysUrl,omitempty"`
+	// Decide is the region's decision API, for a preset that routes groups
+	Decide string `json:"decide,omitempty"`
+}
+
+// WorkspaceID stands in a decision API's address for the user's Bailian
+// workspace id (#647), which the editor and `workspace=` fill in.
+const WorkspaceID = "{WorkspaceId}"
+
+// bailianWorkspace is Bailian's System One root in a workspace of region.
+func bailianWorkspace(region string) string {
+	return "https://" + WorkspaceID + "." + region + ".maas.aliyuncs.com/compatible-mode/v1"
 }
 
 // presets are ordered as they appear in the picker.
@@ -411,6 +422,20 @@ var presets = []PresetDef{
 		Decide:  "https://api.cloudflare.com/client/v4",
 		Note:    "routes groups · picks model and effort",
 		Website: "https://developers.cloudflare.com/ai/models/typesafe/jev/", KeysURL: "https://dash.cloudflare.com/profile/api-tokens"},
+	// Alibaba Cloud Bailian's decision model (#647), on Jev's System One
+	// API: at the host of the key's workspace (Beijing or Singapore), or
+	// the Token Plan's for its sk-sp- keys
+	{ID: "bailian-decision", Name: "Bailian Decision Model", Short: "Bailian Decision", Icon: "qwen-color", Kind: KindVendor,
+		Decide:      bailianWorkspace("cn-beijing"),
+		Note:        "routes groups · picks model and effort",
+		RegionLabel: "Plan", Regions: []Region{
+			{ID: "cn-beijing", Name: "Workspace · Beijing", Decide: bailianWorkspace("cn-beijing")},
+			{ID: "ap-southeast-1", Name: "Workspace · Singapore", Decide: bailianWorkspace("ap-southeast-1"),
+				KeysURL: "https://modelstudio.console.alibabacloud.com/?tab=playground#/api-key"},
+			{ID: "token-plan", Name: "Token Plan · Beijing", Decide: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+				KeysURL: "https://bailian.console.aliyun.com/cn-beijing/subscription/token-plan/personal"},
+		},
+		Website: "https://help.aliyun.com/zh/model-studio/decision-model-preview", KeysURL: "https://bailian.console.aliyun.com/?tab=model#/api-key"},
 	{ID: "ollama", Name: "Ollama", Icon: "ollama", Kind: KindLocal, NoKey: true,
 		Chat: "http://localhost:11434/v1", Anthropic: "http://localhost:11434",
 		Note: "your local models", Website: "https://ollama.com"},

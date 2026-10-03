@@ -429,6 +429,9 @@ func Save(p Provider) error {
 			}
 			return errors.New("a provider needs a base URL")
 		}
+		if strings.Contains(p.Decide, WorkspaceID) {
+			return errors.New("Bailian's decision model is asked at your workspace's host: give its workspace ID (workspace=… or the editor's Workspace ID), or pick the Token Plan")
+		}
 		if p.Key == "" && !keyOptional(p) {
 			return fmt.Errorf("%s needs an API key", p.Name)
 		}

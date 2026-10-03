@@ -993,6 +993,14 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				p = *saved
 			}
 			p = typed(p, in, req.Proxy)
+			if strings.TrimSpace(in.Decide) != "" {
+				// a decision API is asked its smallest question, at
+				// POST …/systemone (#647)
+				ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+				defer cancel()
+				writeJSON(rw, map[string]any{"results": []provider.Detection{p.DetectDecide(ctx, req.Model)}})
+				return
+			}
 			if len(req.DetectModels) > 0 {
 				// model by model, a few at a time (01huadalang: 应该能
 				// 看出来选择的模型支持情况)
@@ -1362,7 +1370,7 @@ func typed(p, in provider.Provider, proxy *string) provider.Provider {
 	for _, f := range []struct {
 		to *string
 		v  string
-	}{{&p.Chat, in.Chat}, {&p.Responses, in.Responses}, {&p.Anthropic, in.Anthropic}, {&p.ModelsURL, in.ModelsURL}} {
+	}{{&p.Chat, in.Chat}, {&p.Responses, in.Responses}, {&p.Anthropic, in.Anthropic}, {&p.Decide, in.Decide}, {&p.ModelsURL, in.ModelsURL}} {
 		if v := strings.TrimSpace(f.v); v != "" {
 			*f.to = v
 		}
