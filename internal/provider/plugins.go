@@ -297,6 +297,35 @@ func (p Provider) pluginAPIs(model string) []Protocol {
 	return nil
 }
 
+// Origin is the scheme and host p's requests go to, for a URL of the
+// vendor's own outside its API (WorkBuddy's /v3/config beside its /v2): a
+// plugin's where its loader sends them, which p.Do then takes there through
+// the plugin; any other's its API's. "" when it has none.
+func (p Provider) Origin(ctx context.Context) string {
+	base := ""
+	if p.IsPlugin() {
+		pp := *p.Account.plugin
+		if cur, ok := PluginOf(p.ID); ok {
+			pp = cur
+		}
+		base = pp.API
+		if o, err := plugin.LoaderOptions(ctx, pp.ID, p.Account.pluginKey); err == nil {
+			base = firstOf(o.BaseURL, pp.API)
+		}
+	} else {
+		for _, pr := range p.Speaks() {
+			if base = p.Base(pr); base != "" {
+				break
+			}
+		}
+	}
+	scheme, rest, ok := strings.Cut(strings.TrimSpace(base), "://")
+	if !ok || HostOf(rest) == "" {
+		return ""
+	}
+	return scheme + "://" + HostOf(rest)
+}
+
 // pluginFetch sends a request the gateway made for a plugin's provider
 // through the plugin: to the base URL its loader gave (else the model's,
 // the provider's, the AI SDK package's), with what the loader adds.
@@ -357,6 +386,14 @@ func pluginFetch(pp plugin.Provider, account string, req *http.Request) (*http.R
 		// chat, responses and Anthropic's messages: the AI SDK's base
 		// ends where magpie's /v1 does
 		url = base + strings.TrimPrefix(rest, "/v1")
+	case strings.HasPrefix(rest, "https://") || strings.HasPrefix(rest, "http://"):
+		// a URL of the vendor's own outside the base (Provider.Origin's),
+		// signed by the plugin as its other requests: only at the host the
+		// plugin sends to, never anywhere else with the account's sign-in
+		if HostOf(rest) != HostOf(base) {
+			return nil, fmt.Errorf("%s's plugin sends to %s, not %s", pp.Name, HostOf(base), HostOf(rest))
+		}
+		url = rest
 	default:
 		url = base + rest
 	}

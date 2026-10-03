@@ -132,6 +132,17 @@ var (
 		authID: "workbuddy-desktop-ai", platform: "workbuddy-ai", endpoint: &wbAIEndpoint, models: wbAIModels}
 )
 
+// WorkBuddyBaseForTest points WorkBuddy's API at cn, and WorkBuddy AI's at
+// ai, until the returned function runs. A provider built after the call
+// uses them. Tests outside this package use it.
+func WorkBuddyBaseForTest(cn, ai string) func() {
+	oldC, oldA := wbEndpoint, wbAIEndpoint
+	wbEndpoint, wbAIEndpoint = cn, ai
+	return func() {
+		wbEndpoint, wbAIEndpoint = oldC, oldA
+	}
+}
+
 // WorkBuddyAIID is WorkBuddy AI's subscription, the international build's.
 const WorkBuddyAIID = "workbuddy-ai"
 

@@ -96,8 +96,11 @@ func drawsCodex(p provider.Provider) bool {
 // Drawers are the models a provider can draw with: its catalogs' models
 // that make images, those its own model list names that do, and those of
 // its own picks named for images; a ChatGPT account's GPT Image, a Grok
-// subscription's Grok Imagine.
+// subscription's Grok Imagine, a WorkBuddy plan's those its config lists.
 func Drawers(p provider.Provider) []catalog.Model {
+	if drawsWorkBuddy(p) {
+		return wbDrawers(p)
+	}
 	if drawsCodex(p) || drawsGrok(p) {
 		out := slices.Clone(codexDrawers)
 		if drawsGrok(p) {
@@ -146,7 +149,9 @@ func Drawers(p provider.Provider) []catalog.Model {
 func AutoDrawer() string {
 	best, bestCost, bestDate := "", 0.0, ""
 	for _, p := range provider.All() {
-		if !p.On() || p.DecideOnly() {
+		if !p.On() || p.DecideOnly() || drawsWorkBuddy(p) {
+			// WorkBuddy's images cost the plan's credits: it draws only
+			// with its model picked or named
 			continue
 		}
 		for _, m := range Drawers(p) {
@@ -552,6 +557,9 @@ func accountRefusedDrawing(code int) bool {
 // draw asks the provider for d's images, on the API model draws on there,
 // and on the other when that one isn't served.
 func (s *Server) draw(ctx context.Context, p provider.Provider, model string, d drawing) (drawn, int, error) {
+	if drawsWorkBuddy(p) {
+		return s.drawWorkBuddy(ctx, p, model, d)
+	}
 	if drawsCodex(p) || drawsGrok(p) {
 		return s.drawImages(ctx, p, model, d)
 	}
@@ -656,9 +664,16 @@ func vendorMessage(b []byte) string {
 		Errors struct {
 			Message string `json:"message"`
 		} `json:"errors"` // ModelScope's
+		Code json.RawMessage `json:"code"` // WorkBuddy's {code, msg}
+		Msg  string          `json:"msg"`
 	}
 	if json.Unmarshal(b, &e) == nil && e.Errors.Message != "" {
 		return e.Errors.Message
+	}
+	if json.Unmarshal(b, &e) == nil && len(e.Error) == 0 && e.Msg != "" {
+		if code := strings.Trim(string(e.Code), `"`); code != "" && code != "0" && code != "null" {
+			return e.Msg + " (" + code + ")"
+		}
 	}
 	if json.Unmarshal(b, &e) == nil && len(e.Error) > 0 {
 		var m struct {
@@ -780,6 +795,12 @@ func (s *Server) drawImages(ctx context.Context, p provider.Provider, model stri
 	if err != nil {
 		return drawn{}, code, err
 	}
+	return readImagesAnswer(p, url, b, code)
+}
+
+// readImagesAnswer reads an images API's answer to url: its images, as bytes
+// or the URLs the vendor keeps them at, and what they cost.
+func readImagesAnswer(p provider.Provider, url string, b []byte, code int) (drawn, int, error) {
 	var res struct {
 		Data []struct {
 			B64     string `json:"b64_json"`
