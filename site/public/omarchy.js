@@ -124,6 +124,30 @@
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = p.bg;
     render();
+    shots();
+  }
+
+  // magpie's screenshots as magpie draws itself on Omarchy: its own windows
+  // shot in tokyo-night (dark) and catppuccin-latte (light), in place of the
+  // page's, as wide as before; shots not taken there keep the page's
+  const SHOTS = {
+    "add": [2016, 1600], "agents": [2080, 1078], "import": [1280, 1120], "panel": [880, 1000], "picker": [880, 1110],
+    "providers": [2080, 1004], "routing": [2080, 1666], "routing-zh": [2080, 1592], "usage": [2080, 1004],
+  };
+  const ZH = new Set(["add", "agents", "import", "routing", "usage"]);
+  let shot = false;
+  function shots() {
+    if (shot) return;
+    if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", shots, { once: true }); return; }
+    shot = true;
+    for (const img of document.querySelectorAll('img[src^="/img/"]')) {
+      const m = img.getAttribute("src").match(/^\/img\/([a-z]+)(-zh)?-(dark|light)\.png$/);
+      if (!m || !SHOTS[m[1]] || (m[2] && !ZH.has(m[1]))) continue;
+      const [w, h] = SHOTS[m[1] + (m[2] || "")] || SHOTS[m[1]];
+      const width = +img.getAttribute("width");
+      if (width) img.setAttribute("height", Math.round((width * h) / w));
+      img.src = `/img/omarchy/${m[1]}${m[2] || ""}-${m[3]}.png`;
+    }
   }
   // the page's own light/dark switch follows the system; Omarchy's mode wins
   new MutationObserver(() => {
