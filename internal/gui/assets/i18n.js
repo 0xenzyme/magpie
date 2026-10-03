@@ -444,6 +444,7 @@ const I18N = {
     "Look for the icon of the site the base URL is on": "按上面填的 Base URL 找到对应网站的图标",
     "Looking…": "查找中…",
     "what {agent} ships with": "{agent} 自带的默认值",
+    "clears the default model; {agent} picks one on its own": "清除显式默认模型，由 {agent} 自动选择",
     "current value": "当前值",
     "use as typed": "按输入使用",
     "Filter models…": "筛选模型…",

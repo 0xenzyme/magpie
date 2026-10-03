@@ -175,6 +175,14 @@ func static(vals ...string) []Option {
 // ownOptions lists provider/model pairs an agent reaches on its own: the
 // providers in its auth file, plus whatever the current value already uses.
 func ownOptions(authFile string, cur string, extra ...string) []Option {
+	return ownOptionsFrom(nil, authFile, cur, extra...)
+}
+
+// ownOptionsFrom is ownOptions for an agent with a model registry of its
+// own (Pi, omp: nativemodels.go): a provider's models are the registry's
+// when it has them, else models.dev's, and for openai-codex, which
+// models.dev doesn't list, Codex CLI's (#709).
+func ownOptionsFrom(native func(p string) []catalog.Model, authFile string, cur string, extra ...string) []Option {
 	set := map[string]bool{}
 	for _, p := range extra {
 		set[p] = true
@@ -199,9 +207,22 @@ func ownOptions(authFile string, cur string, extra ...string) []Option {
 	for _, p := range providers {
 		name := catalog.ProviderName(p)
 		if name == "" {
+			name = nativeProviderNames[p]
+		}
+		if name == "" {
 			name = p
 		}
-		opts := group(name, options(catalog.Provider(p), p+"/"))
+		var ms []catalog.Model
+		if native != nil {
+			ms = native(p)
+		}
+		if len(ms) == 0 {
+			ms = catalog.Provider(p)
+		}
+		if len(ms) == 0 {
+			ms = codexServed(p)
+		}
+		opts := group(name, options(ms, p+"/"))
 		if ic := providerIcon(p); ic != "" {
 			for i := range opts {
 				opts[i].GroupIcon = ic
@@ -662,7 +683,7 @@ func piLike(at place, id, name, dir string) *Agent {
 					return piScopeWith(path, v)
 				},
 				Options: func(cur map[string]string) []Option {
-					return append(ownOptions(auth, cur["model"]), viaMagpie(id, magpieID+"/")...)
+					return append(ownOptionsFrom(piRegistry(id), auth, cur["model"]), viaMagpie(id, magpieID+"/")...)
 				},
 			},
 			{
