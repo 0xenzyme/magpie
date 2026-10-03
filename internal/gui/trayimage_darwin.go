@@ -320,6 +320,31 @@ static void mpHide(void) {
 	});
 }
 
+// mpHighlight lights the item while its panel is open, as the system's own
+// items do.
+static void mpHighlight(int on) {
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[mpButton() highlight:on != 0];
+	});
+}
+
+// mpOwnClicks hands a left click on the item to its action before the
+// button sees it: the button's own tracking would light it on mouse-down
+// and put it out on mouse-up, a flicker before mpHighlight's.
+static void mpOwnClicks(void) {
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^NSEvent *(NSEvent *e) {
+				NSStatusBarButton *b = mpButton();
+				if (b == nil || e.window != b.window) return e;
+				[NSApp sendAction:b.action to:b.target from:b];
+				return nil;
+			}];
+		});
+	});
+}
+
 // mpPNG draws the image as the menu bar would at scale, light or dark, on
 // the bar's colour when bg is set: for tests and previews.
 static void *mpPNG(mpTrayCell *cells, int n, const void *bird, int len, CGFloat h, CGFloat scale, int dark, int bg, int *outLen, int *pxW, int *pxH) {
@@ -430,6 +455,12 @@ func trayImageFrame(bird []byte) bool {
 
 // trayImageHide takes the cells down; the icon set next is the bird alone.
 func trayImageHide() { C.mpHide() }
+
+// trayHighlight lights the tray icon, or puts it out.
+func trayHighlight(on bool) { C.mpHighlight(cBool(on)) }
+
+// trayOwnClicks keeps the button's own highlight out of a click (mpOwnClicks).
+func trayOwnClicks() { C.mpOwnClicks() }
 
 // trayImagePNG is the image as the menu bar h points high draws it at
 // scale (2 for a Retina screen), light or dark, on the bar's colour when
