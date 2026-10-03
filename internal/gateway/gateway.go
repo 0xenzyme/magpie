@@ -1206,7 +1206,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	// the rules of the groups in the group, down the one that goes first
 	var nested []NestedRule
 	var nestedAt []string
-	if ruleReq != nil {
+	if ruleReq != nil && !modelRuled(hit, ms, cands) {
 		nested, nestedAt, cands, pl = s.nestedRules(ruleAt, ruleReq, agent, ask, ms, cands, pl, aff)
 	}
 	// the effort a group's decision model picked for the turn: the
