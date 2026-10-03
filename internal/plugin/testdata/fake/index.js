@@ -101,7 +101,7 @@ export const FakePlugin = async ({ client }) => ({
         resets: full ? { count: 3, byWindow: true, fiveHour: 2, weekly: 1 } : undefined,
         windows: [
           { name: "5 hours", used: full ? 100 : 25, resetsAt: Date.now() + 3600e3, span: 5 * 3600, models: ["fake-claude"] },
-          { name: "Week", used: 10, resetsAt: Math.floor(Date.now() / 1000) + 86400, span: 7 * 86400 },
+          { name: "Week", used: 10, resetsAt: Math.floor(Date.now() / 1000) + 86400, span: 7 * 86400, amount: 120, limit: 1200, unit: "credits" },
           { name: "Extra", used: 250, display: "$2.50", aside: true },
         ],
       }

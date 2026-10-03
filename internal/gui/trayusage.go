@@ -88,8 +88,8 @@ func trayUsageText(q provider.SubscriptionQuota, now time.Time, left bool) (labe
 			tipPct = fmt.Sprintf("%.1f%%", used)
 		}
 		line := w.Name + " " + tipPct + " " + word
-		if w.Display != "" {
-			line = w.Name + " " + w.Display + " · " + tipPct + " " + word
+		if c := w.Count(left); c != "" {
+			line = w.Name + " " + c + " · " + tipPct + " " + word
 		}
 		if at := resetAt(w, now); !at.IsZero() && at.After(now) {
 			line += " · resets in " + until(at.Sub(now))

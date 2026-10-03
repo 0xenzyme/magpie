@@ -95,6 +95,11 @@ type QuotaSpan struct {
 	Remaining float64    `json:"remaining"`
 	ResetsAt  *time.Time `json:"resetsAt,omitempty"`
 	Display   string     `json:"display,omitempty"` // the vendor's own count, "1.2k / 3k"
+	// Amount of Limit in Unit: the window's count, used, when the vendor
+	// counts it so ("credits")
+	Amount float64 `json:"amount,omitempty"`
+	Limit  float64 `json:"limit,omitempty"`
+	Unit   string  `json:"unit,omitempty"`
 }
 
 // QuotaReport is Quotas as Quota, the reset times made absolute from now.
@@ -109,7 +114,8 @@ func QuotaReport(ctx context.Context, now time.Time) []Quota {
 			r := Quota{Provider: q.Provider, Name: q.Name, Kind: g.kind, Plan: q.Plan, User: q.User, AsOf: q.AsOf,
 				Windows: []QuotaSpan{}, Balance: q.Balance, Error: q.Error, Until: q.Until, Renew: q.Renew, Resets: q.Resets}
 			for _, w := range q.Windows {
-				s := QuotaSpan{Unlimited: w.Unlimited, Name: w.Name, Used: w.Used, Remaining: max(0, 100-w.Used), ResetsAt: w.ResetsAt, Display: w.Display}
+				s := QuotaSpan{Unlimited: w.Unlimited, Name: w.Name, Used: w.Used, Remaining: max(0, 100-w.Used), ResetsAt: w.ResetsAt, Display: w.Display,
+					Amount: w.Amount, Limit: w.Limit, Unit: w.Unit}
 				if s.ResetsAt == nil && w.ResetSecs > 0 {
 					t := now.Add(time.Duration(w.ResetSecs) * time.Second)
 					s.ResetsAt = &t

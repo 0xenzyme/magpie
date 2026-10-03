@@ -821,6 +821,9 @@ type UsageWindow struct {
 	ResetsAt  string   `json:"resetsAt"` // RFC 3339
 	ResetSecs int64    `json:"resetSecs"`
 	Display   string   `json:"display"`
+	Amount    float64  `json:"amount"` // of Limit, in Unit: the window's own count, used
+	Limit     float64  `json:"limit"`
+	Unit      string   `json:"unit"`
 	Span      float64  `json:"span"` // seconds
 	Model     string   `json:"model"`
 	Models    []string `json:"models"`

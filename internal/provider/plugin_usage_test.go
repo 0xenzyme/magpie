@@ -65,6 +65,10 @@ func TestPluginUsage(t *testing.T) {
 		if week.ResetsAt == nil || time.Until(*week.ResetsAt) < 23*time.Hour || time.Until(*week.ResetsAt) > 25*time.Hour {
 			t.Fatalf("%s: week = %+v", agent, week)
 		}
+		// its count, through the host (#659)
+		if week.Amount != 120 || week.Limit != 1200 || week.Unit != "credits" || w.Limit != 0 {
+			t.Fatalf("%s: week = %+v", agent, week)
+		}
 		if extra.Used != 250 || extra.Display != "$2.50" || !extra.Aside {
 			t.Fatalf("%s: extra = %+v", agent, extra)
 		}

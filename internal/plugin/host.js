@@ -1073,7 +1073,9 @@ async function load({ provider, account, proxy }) {
 //     resets?: { count, until?, byWindow?, fiveHour?, weekly? } (the
 //       rate-limit resets the account may spend),
 //     windows?: [{ name, used (percent, 0–100), resetsAt? (ISO or ms),
-//       resetSecs?, display?, span? (seconds the window runs), model? (a
+//       resetSecs?, display?, amount? / limit? / unit? (the window's own
+//       count, when it counts in amounts: amount of limit used, in unit,
+//       "credits"), span? (seconds the window runs), model? (a
 //       word in the ids of the only models it counts), models? / notModels?
 //       (the ids it counts, or all but these), aside? (using it up doesn't
 //       stop the account) }],
@@ -1121,6 +1123,9 @@ async function usageOf(provider, account) {
       resetsAt: when(w?.resetsAt),
       resetSecs: Math.max(0, Math.round(num(w?.resetSecs))),
       display: text(w?.display),
+      amount: Math.max(0, num(w?.amount)),
+      limit: Math.max(0, num(w?.limit)),
+      unit: text(w?.unit),
       span: Math.max(0, num(w?.span)),
       model: text(w?.model),
       models: ids(w?.models),

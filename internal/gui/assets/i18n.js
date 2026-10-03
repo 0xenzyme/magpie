@@ -2614,6 +2614,7 @@ const I18N = {
     "Subscriptions magpie doesn't sign in to itself: install a plugin for one in the Plugins tab": "magpie 未内置的订阅：在「插件」页安装对应插件即可",
     "look for a plugin": "找找插件",
     ", or ": "，或",
+    "credits": "积分",
   },
 };
 

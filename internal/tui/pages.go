@@ -732,8 +732,8 @@ func quotaCell(w provider.QuotaWindow, left bool, now time.Time) string {
 		fill = sBad
 	}
 	pct := fmt.Sprintf("%d%% %s", n, word)
-	if w.Display != "" {
-		pct = w.Display + " · " + pct
+	if c := w.Count(left); c != "" {
+		pct = c + " · " + pct
 	}
 	c := sMuted.Render(w.Name) + " " + fill.Render(strings.Repeat("█", on)) + sFaint.Render(strings.Repeat("░", cells-on)) + " " + sText.Render(pct)
 	var at time.Time

@@ -29,6 +29,12 @@ type QuotaWindow struct {
 	ResetsAt  *time.Time `json:"resetsAt,omitempty"`
 	ResetSecs int64      `json:"resetSecs,omitempty"`
 	Display   string     `json:"display,omitempty"`
+	// Amount of Limit is the window's own count in Unit, when the vendor
+	// counts it so (WorkBuddy's credits): Used is Amount as a share of
+	// Limit. The GUI says it as used or left, as it says the share (#659).
+	Amount float64 `json:"amount,omitempty"`
+	Limit  float64 `json:"limit,omitempty"`
+	Unit   string  `json:"unit,omitempty"`
 	// Family is the model family a per-model window belongs to (Antigravity's
 	// "Gemini 3.1 Pro (High)" is Gemini's), for the GUI to show one figure a
 	// family, the tightest; each window is still here, and routing reads
@@ -825,4 +831,36 @@ func compactNumber(n float64) string {
 		return fmt.Sprintf("%d", int64(n))
 	}
 	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.2f", n), "0"), ".")
+}
+
+// Count is the window's own count as the GUI says it, beside its share:
+// "355 / 500 credits" used, or what is left of it when left (#659); the
+// vendor's Display when it doesn't count in amounts.
+func (w QuotaWindow) Count(left bool) string {
+	if w.Limit <= 0 {
+		return w.Display
+	}
+	n := w.Amount
+	if left {
+		n = max(0, w.Limit-w.Amount)
+	}
+	return strings.TrimSpace(groupedNumber(n) + " / " + groupedNumber(w.Limit) + " " + w.Unit)
+}
+
+// groupedNumber is n with its thousands apart, "12,345.5", to two places.
+func groupedNumber(n float64) string {
+	s := compactNumber(math.Round(n*100) / 100)
+	whole, frac, _ := strings.Cut(s, ".")
+	neg := strings.HasPrefix(whole, "-")
+	whole = strings.TrimPrefix(whole, "-")
+	for i := len(whole) - 3; i > 0; i -= 3 {
+		whole = whole[:i] + "," + whole[i:]
+	}
+	if neg {
+		whole = "-" + whole
+	}
+	if frac != "" {
+		return whole + "." + frac
+	}
+	return whole
 }

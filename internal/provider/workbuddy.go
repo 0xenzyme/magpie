@@ -622,7 +622,8 @@ func wbQuota(ctx context.Context, a wbAccount) SubscriptionQuota {
 		used += float64(p.CycleUsedCapacity)
 	}
 	if total > 0 {
-		w := QuotaWindow{Name: "Credits", Used: 100 * used / total, Display: fmt.Sprintf("%s / %s", compactNumber(used), compactNumber(total))}
+		w := QuotaWindow{Name: "Credits", Used: 100 * used / total, Display: fmt.Sprintf("%s / %s", compactNumber(used), compactNumber(total)),
+			Amount: used, Limit: total, Unit: "credits"}
 		q.Windows = append(q.Windows, w)
 	}
 	return q

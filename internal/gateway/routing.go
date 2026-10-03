@@ -501,6 +501,10 @@ type left struct {
 	soon   []time.Time // renews as Smart ranks them (Allowance.Renewal)
 	pace   float64     // weekly pace: share of its week left per hour until it renews
 	due    time.Time   // when the window that pace went by renews; zero when not known
+	// the count used is the share of, when the vendor counts it so
+	// (Allowance.Count): amount of of, in unit
+	amount, of float64
+	unit       string
 }
 
 // learns: c is a subscription whose allowance isn't known yet, of an agent
@@ -532,7 +536,8 @@ func weigh(p provider.Provider, cs []candidate, model string, from provider.Prot
 		if a, ok := known[ag][c.p.Account.User]; ok {
 			u, r := a.For(c.model, now)
 			pc, due := a.Pace(c.model, now)
-			wg.lefts[c.allowanceKey()] = left{u, r, a.Renewal(c.model, now), pc, due} // one not known counts as unused
+			amt, of, unit := a.Count(c.model, now)
+			wg.lefts[c.allowanceKey()] = left{u, r, a.Renewal(c.model, now), pc, due, amt, of, unit} // one not known counts as unused
 		}
 	}
 	lefts := wg.lefts

@@ -8138,7 +8138,17 @@ function quotaText(w) {
   const used = Math.max(0, Math.min(100, w.used));
   const n = quotaLeft ? 100 - used : used;
   const pct = t(quotaLeft ? "{n} left" : "{n} used", { n: (Number.isInteger(n) ? n : n.toFixed(1)) + "%" });
-  return w.display ? w.display + " · " + pct : pct;
+  const count = quotaCount(w);
+  return count ? count + " · " + pct : pct;
+}
+// quotaCount: a window's own count, when its vendor counts in amounts
+// (WorkBuddy's credits, #659) — "355 / 500 credits" used, or what is left
+// of them, as the share beside it says; the vendor's own text otherwise.
+const countFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+function quotaCount(w) {
+  if (!(w.limit > 0)) return w.display || "";
+  const amount = Math.max(0, w.amount || 0), n = quotaLeft ? Math.max(0, w.limit - amount) : amount;
+  return (countFormat.format(n) + " / " + countFormat.format(w.limit) + (w.unit ? " " + t(w.unit) : "")).trim();
 }
 // familyWindows: an account's per-model windows as one a model family.
 // Antigravity reports each level of each model (Gemini 3.1 Pro (High), (Low),

@@ -88,12 +88,16 @@ type Allowance []Limit
 
 // Limit is one window of an allowance.
 type Limit struct {
-	Used    float64       // share used, 0–100
-	Resets  time.Time     // zero when not known
-	Span    time.Duration // how long the window runs; zero when not known
-	Model   string        // the only models it counts, by a word in their ids
-	matches func(string) bool
-	partial bool // of a reading that may leave windows out (QuotaWindow.partial)
+	Used   float64       // share used, 0–100
+	Resets time.Time     // zero when not known
+	Span   time.Duration // how long the window runs; zero when not known
+	Model  string        // the only models it counts, by a word in their ids
+	// Amount of Of in Unit: the window's own count, used, when the vendor
+	// counts it so (QuotaWindow.Amount)
+	Amount, Of float64
+	Unit       string
+	matches    func(string) bool
+	partial    bool // of a reading that may leave windows out (QuotaWindow.partial)
 }
 
 func (l Limit) applies(model string) bool {
@@ -127,6 +131,27 @@ func (a Allowance) For(model string, now time.Time) (used float64, renews []time
 		renews = append(renews, l.Resets)
 	}
 	return used, renews
+}
+
+// Count is the count of the window For's share is of — the fullest that
+// counts model — when the vendor counts it (WorkBuddy's credits): how much
+// of of is used, in unit; of is zero when it isn't counted so. A window
+// whose reset has passed is empty again.
+func (a Allowance) Count(model string, now time.Time) (amount, of float64, unit string) {
+	model = strings.ToLower(model)
+	used := -1.0
+	for _, l := range a {
+		if !l.applies(model) {
+			continue
+		}
+		if !l.Resets.IsZero() && !l.Resets.After(now) {
+			l.Used, l.Amount = 0, 0
+		}
+		if l.Used > used {
+			used, amount, of, unit = l.Used, l.Amount, l.Of, l.Unit
+		}
+	}
+	return amount, of, unit
 }
 
 // Renewal is For's renews as routing ranks them: a window not started,
@@ -377,7 +402,7 @@ func allowanceOf(ws []QuotaWindow, now time.Time) Allowance {
 		if w.Aside {
 			continue
 		}
-		l := Limit{Used: w.Used, Span: w.Span, Model: w.Model, matches: w.matches, partial: w.partial}
+		l := Limit{Used: w.Used, Span: w.Span, Model: w.Model, Amount: w.Amount, Of: w.Limit, Unit: w.Unit, matches: w.matches, partial: w.partial}
 		if ids := families[w.Model]; ids != nil && w.Family != "" && w.matches == nil {
 			l.Model = ""
 			l.matches = func(model string) bool { return ids[model] }
