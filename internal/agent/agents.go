@@ -710,9 +710,25 @@ func goose(home, cfg string) *Agent {
 	}
 	get := func(k string) (string, bool) { return edit.GetYAMLTop(path, k) }
 	set := func(kvs ...edit.KV) error { return edit.SetYAMLTop(path, kvs...) }
+	provider := gooseProviderPath(path)
 	return &Agent{
 		ID: "goose", Name: "Goose", Icon: "goose", Bin: "goose", Dir: filepath.Dir(path), Path: path,
 		UA: []string{"goose"},
+		Check: func() string {
+			if p, _ := get("GOOSE_PROVIDER"); p != gooseProviderID {
+				return ""
+			}
+			return wiringOff("Goose", provider, func(k string) (string, bool) { return edit.GetJSON(provider, k) },
+				"base_url", gatewayV1(), "headers.Authorization", "Bearer "+gateway.Token)
+		},
+		Sync: func() error { return syncGooseProvider(provider) },
+		// goose loads custom_providers when it starts
+		Notice: func() string {
+			if p, _ := get("GOOSE_PROVIDER"); p == gooseProviderID && Running(`Goose\.app/`, `(^|/)goose( |$)`) {
+				return "Goose loads its providers at start-up — quit and reopen Goose (and open goose sessions) to use magpie's models."
+			}
+			return ""
+		},
 		// a goose on PATH may be pressly's database migration tool, a Go
 		// program; Block's goose is Rust, so a Go goose is not the agent
 		detect: func() bool {
@@ -727,12 +743,23 @@ func goose(home, cfg string) *Agent {
 			Get: pairGet(get, "GOOSE_PROVIDER", "GOOSE_MODEL"),
 			Set: func(v string) error {
 				if v == "" {
-					return edit.DelYAMLTop(path, "GOOSE_PROVIDER", "GOOSE_MODEL")
+					if err := edit.DelYAMLTop(path, "GOOSE_PROVIDER", "GOOSE_MODEL"); err != nil {
+						return err
+					}
+					return removeGooseProvider(provider)
+				}
+				// a model of magpie's: magpie as a custom provider of
+				// Goose's, each model with its window and whether Goose
+				// can send it a thinking level (see goose.go)
+				if ref, ok := strings.CutPrefix(v, gooseProviderID+"/"); ok && isMagpie(ref) {
+					if err := writeGooseProvider(provider); err != nil {
+						return err
+					}
 				}
 				return pairSet(set, "GOOSE_PROVIDER", "GOOSE_MODEL")(v)
 			},
 			Options: func(cur map[string]string) []Option {
-				return ownOptions("", cur["model"], "anthropic", "openai", "google", "openrouter")
+				return append(ownOptions("", cur["model"], "anthropic", "openai", "google", "openrouter"), viaMagpie("goose", gooseProviderID+"/")...)
 			},
 		}, {
 			// GOOSE_THINKING_EFFORT, the effort goose asks of a model that
