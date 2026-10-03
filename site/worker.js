@@ -13,7 +13,7 @@
 //   /download/windows      the Windows app (x64);  /download/windows-arm64
 //   /download/linux        the Linux app (x86-64); /download/linux-arm64
 //   /download/<file>       any file of the newest release, by name
-//   /docs, /docs/zh        the getting-started guide: /docs/start, /docs/zh/start
+//   /docs, /docs/zh, /docs/ja  the getting-started guide: /docs/start, /docs/<lang>/start
 //   /zh/, /ja/             the home page in Chinese, Japanese (i18n.js); / sends
 //                          a browser that prefers one of them there, until a
 //                          language is picked on the page (the lang cookie)
@@ -38,7 +38,7 @@ const SHORT = {
 };
 
 // The bare docs paths open the getting-started guide.
-const DOCS = { "/docs": "/docs/start", "/docs/zh": "/docs/zh/start" };
+const DOCS = { "/docs": "/docs/start", "/docs/zh": "/docs/zh/start", "/docs/ja": "/docs/ja/start" };
 
 export default {
   async fetch(req, env, ctx) {

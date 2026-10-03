@@ -95,3 +95,11 @@ test("home: / sends a browser that prefers Chinese or Japanese to its page, unti
   assert.equal(res.status, 301);
   assert.equal(new URL(res.headers.get("Location")).pathname, "/zh/");
 });
+
+test("docs: the bare docs paths open each language's guide", async () => {
+  const env = { ASSETS: { fetch: async () => new Response("asset") } };
+  for (const [from, to] of [["/docs", "/docs/start"], ["/docs/zh/", "/docs/zh/start"], ["/docs/ja", "/docs/ja/start"]]) {
+    const res = await worker.fetch(new Request("https://usemagpie.ai" + from), env, ctx);
+    assert.equal(new URL(res.headers.get("Location"), "https://usemagpie.ai").pathname, to, from);
+  }
+});
