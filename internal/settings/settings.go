@@ -201,6 +201,12 @@ type Settings struct {
 	// V2's are sealed by OpenAI's server. Codex's features.multi_agent_v2
 	// still wins, and a thread keeps the version it started with.
 	CodexAgentsV1 bool `json:"codexAgentsV1,omitempty"`
+	// CodexTitles is where the requests Codex makes for a thread's title
+	// (thread_title, thread_title_reconsideration: a hidden turn of their
+	// own, on Codex's own model through its ChatGPT sign-in) go (#705): ""
+	// as Codex sends them, "off" answered by magpie with no title and sent
+	// nowhere, or a model's id (provider/model, group/<id>) that writes it.
+	CodexTitles string `json:"codexTitles,omitempty"`
 	// ChinaMirror is the Plugins page's 「国内镜像」 switch: the plugin list,
 	// npm (the plugins' packages and what npm says of them) and Bun's
 	// downloads are asked of mirrors in China first, and of their official
@@ -639,6 +645,10 @@ func Save(s Settings) error {
 	s.Vision = strings.TrimSpace(s.Vision)
 	if s.Vision != "" && s.Vision != "off" && !strings.Contains(s.Vision, "/") {
 		return fmt.Errorf("the vision model must be a model's id such as openai/gpt-5-mini, or off, not %q", s.Vision)
+	}
+	s.CodexTitles = strings.TrimSpace(s.CodexTitles)
+	if s.CodexTitles != "" && s.CodexTitles != "off" && !strings.Contains(s.CodexTitles, "/") {
+		return fmt.Errorf("the model for Codex's titles must be a model's id such as openai/gpt-5-mini, or off, not %q", s.CodexTitles)
 	}
 	s.Searcher = strings.TrimSpace(s.Searcher)
 	s.ImageGen = strings.TrimSpace(s.ImageGen)

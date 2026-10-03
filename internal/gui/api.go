@@ -287,6 +287,8 @@ type settingsJSON struct {
 	// that can be named
 	VisionAuto   string     `json:"visionAuto,omitempty"`
 	VisionModels []modelRef `json:"visionModels"`
+	// the models Codex's thread titles may be sent to (CodexTitles, #705)
+	TitleModels []modelRef `json:"titleModels"`
 	// the model magpie's generate_image tool draws with when ImageGen
 	// names none, and those that can be named
 	ImageGenAuto   string     `json:"imageGenAuto,omitempty"`
@@ -421,6 +423,16 @@ func settingsState() settingsJSON {
 				m.Provider, m.PName = "", e.Group
 			}
 			s.VisionModels = append(s.VisionModels, m)
+		}
+	}
+	s.TitleModels = []modelRef{}
+	for _, e := range provider.Served() {
+		if e.Group != "" || e.Provider.Ready() && !e.Provider.DecideOnly() {
+			m := modelRef{ID: e.ID, Name: e.Name, Provider: e.Provider.ID, PName: e.Provider.Name, Icon: e.Provider.Icon}
+			if e.Group != "" {
+				m.Provider, m.PName = "", e.Group
+			}
+			s.TitleModels = append(s.TitleModels, m)
 		}
 	}
 	searchState(&s)
@@ -762,6 +774,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// how agents' lists name models, set on its own for the agents to be told
 		in.PlainNames, in.PlainOwnNames = cur.PlainNames, cur.PlainOwnNames
 		in.CodexAgentsV1 = cur.CodexAgentsV1
+		in.CodexTitles = cur.CodexTitles // set on its own (codex-titles below)
 		in.ChinaMirror = cur.ChinaMirror // the Plugins page's, set on its own
 		// which Codex accounts spend a reset by themselves, set on the Usage card
 		in.CodexAutoReset = cur.CodexAutoReset
@@ -895,6 +908,29 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			return
 		}
 		if err := provider.SetCodexAgentsV1(in.On); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, settingsState())
+	})
+	// where Codex's requests for a thread's title go (#705): "" as Codex
+	// sends them, "off", or a model's id
+	mux.HandleFunc("POST /api/settings/codex-titles", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ Model string }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		v := strings.TrimSpace(in.Model)
+		if v != "" && v != "off" {
+			if _, _, ok := provider.Resolve(v); !ok {
+				fail(rw, fmt.Errorf("no model %s to write Codex's titles", v))
+				return
+			}
+		}
+		s := settings.Load()
+		s.CodexTitles = v
+		if err := settings.Save(s); err != nil {
 			fail(rw, err)
 			return
 		}

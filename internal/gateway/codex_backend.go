@@ -81,6 +81,15 @@ func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 			writeError(w, provider.Responses, 400, err.Error())
 			return
 		}
+		// a thread's title, where Settings sends it (#705) — the request
+		// still on Codex's own model, through its sign-in, when it says
+		// nothing of them
+		if rest == "/responses" {
+			if to := codexTitlesTo(r.Header, body); to != "" {
+				s.codexTitle(w, r, body, to)
+				return
+			}
+		}
 		// The namespace owns the route even if a model is not in the catalog.
 		// Unknown providers/groups must fail locally, never fall through to OpenAI.
 		if strings.Contains(model, "/") {

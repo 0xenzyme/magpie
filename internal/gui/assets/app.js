@@ -13680,6 +13680,7 @@ function renderTrayUsage(s, keep) {
   // magpie's other models (#141)
   $("#codexAgentsV1Segs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.codexAgentsV1 ? "on" : "off", (v) =>
     writingPrefs(api("settings/codex-agents-v1", { on: v === "on" })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
+  renderCodexTitles(s);
   const rate = s.fx?.rate;
   const currencySub = $("#currencySub");
   currencySub.textContent = t("What a cost — the Usage page's, the tray panel's, the TUI's and the CLI's — is shown as; a vendor's own balance, already in its own currency, is never converted");
@@ -13878,6 +13879,38 @@ function renderAlerts(s, keep) {
   field($("#balanceAlertSegs"), s.balanceAlert || 0, t("Amount"), "", (n) => Number.isFinite(n) && n > 0,
     (n) => savePrefs({ ...keep, balanceAlert: n }))
     .append(segs([["off", t("Off")], ["on", t("On")]], s.balanceAlert ? "on" : "off", (v) => savePrefs({ ...keep, balanceAlert: v === "on" ? s.balanceAlert || 5 : 0 })));
+}
+
+// renderCodexTitles: where Codex's requests for a thread's title go (#705)
+// — as Codex sends them, to its own model through its ChatGPT sign-in; off,
+// answered by magpie with no title; or to a model of magpie's — set on its
+// own, as Codex's subagents are.
+function renderCodexTitles(s) {
+  const models = s.titleModels || [];
+  const named = (id) => {
+    const m = models.find((x) => x.id === id);
+    return m ? `${m.name || m.id} · ${m.providerName}` : id;
+  };
+  const v = s.codexTitles || "";
+  $("#codexTitlesSub").textContent = v === "off" ? t("Codex’s title requests are answered by magpie with no title and sent nowhere; new threads stay unnamed")
+    : v ? t("Codex’s title requests go to this model, not to its ChatGPT sign-in; the Usage and Routing views still show them as titles")
+    : t("Codex asks its own model for each thread’s title through its ChatGPT sign-in, even while the conversation is on magpie’s models");
+  const b = el("button", "rt-cond on");
+  b.type = "button";
+  b.setAttribute("aria-label", t("Codex thread titles"));
+  if (v === "off") b.append(el("span", "", t("Off")));
+  else if (v) b.append(icon(models.find((x) => x.id === v)?.icon || "generic"), el("span", "", named(v)));
+  else b.append(icon("openai"), el("span", "", t("Codex’s own (ChatGPT)")));
+  const opt = (x) => ({ value: x.id, label: x.name || x.id, note: x.providerName, icon: x.icon, group: x.provider ? x.providerName : ROUTING_GROUPS, ref: x.id });
+  b.onclick = (ev) => openPicker({ id: "", name: "", fields: [] }, { key: "codexTitles", label: "model", value: v, options: [
+    { value: "", label: t("Codex’s own (ChatGPT)"), note: t("as Codex sends them"), icon: "openai", reset: true },
+    { value: "off", label: t("Off"), note: t("no title, nothing sent"), reset: true },
+    ...models.map(opt)],
+  onPick: (id) => {
+    if (id === v) return;
+    writingPrefs(api("settings/codex-titles", { model: id })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); });
+  } }, b, ev);
+  $("#codexTitlesPick").replaceChildren(b);
 }
 
 // renderImages: the model that describes images to a model that can't see
