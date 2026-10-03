@@ -364,3 +364,66 @@ func TestWorkBuddyCheckinOnTheCard(t *testing.T) {
 		t.Fatalf("an unnamed card of two accounts: %+v", two[0])
 	}
 }
+
+// The WorkBuddy plugin signed in under its own id, not moved (signed in
+// before the move was, or moved back), has its accounts checked in too and
+// its cards ("workbuddy-plugin") say so, beside the built-in's; one account
+// signed in to both is checked in once (#694, Dazzle-sys on 0.1.774: two
+// accounts on the card, credits by day, no check-in).
+func TestWorkBuddyCheckinPluginUnderItsOwnID(t *testing.T) {
+	movedPlugin(t, "workbuddy", map[string]map[string]any{
+		"workbuddy":     {"type": "oauth", "access": "a", "refresh": "r", "expires": 0, "accountId": "Ann", "uid": "u1"},
+		"workbuddy#abc": {"type": "oauth", "access": "b", "refresh": "r", "expires": 0, "accountId": "Bob", "uid": "u2"},
+	})
+	_ = setMigration("workbuddy", func(m *Migration) { m.State = MovedBack })
+	loginsMu.Lock()
+	_ = writeLogins([]savedLogin{{Agent: "workbuddy", User: "Cat", On: true, First: true, Auth: []byte(`{"uid":"u3","accessToken":"c"}`)}})
+	loginsMu.Unlock()
+	if Moved("workbuddy") || PluginID("workbuddy") != "workbuddy-plugin" {
+		t.Fatalf("set up as moved: %q", PluginID("workbuddy"))
+	}
+	var users []string
+	for _, a := range wbCheckinAccounts() {
+		users = append(users, a.User)
+	}
+	if strings.Join(users, ",") != "Cat,Ann,Bob" {
+		t.Fatalf("accounts checked in: %v", users)
+	}
+	if !HasWorkBuddy() {
+		t.Fatal("Settings has no check-in")
+	}
+	st := map[string]WorkBuddyCheckin{"workbuddy|u2": {Day: "2026-10-04", Outcome: CheckinClaimed, Credit: 100, Streak: 5}}
+	qs := []SubscriptionQuota{
+		{Provider: "workbuddy", User: "Cat"},
+		{Provider: "workbuddy-plugin", User: "Ann"},
+		{Provider: "workbuddy-plugin", User: "Bob"},
+		{Provider: "workbuddy-ai-plugin", User: "Ann"},
+		{Provider: "workbuddy-plugin", User: "Cat"},
+	}
+	got := withCheckins(qs, wbCheckinAccounts(), st)
+	for i, want := range []bool{true, true, true, false, false} {
+		if got[i].Checkins != want {
+			t.Fatalf("card %d %s %s: checkins %v, want %v", i, got[i].Provider, got[i].User, got[i].Checkins, want)
+		}
+	}
+	if got[2].Checkin == nil || got[2].Checkin.Credit != 100 || got[1].Checkin != nil {
+		t.Fatalf("Bob's check-in: %+v, Ann's %+v", got[2].Checkin, got[1].Checkin)
+	}
+
+	// the same account on the built-in and the plugin: asked once
+	var asked int
+	via := func(req *http.Request) (*http.Response, error) {
+		asked++
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"code":0,"data":{"active":true,"today_checked_in":true,"today_credit":100,"streak_days":2}}`)), Header: http.Header{}}, nil
+	}
+	now := time.Date(2026, 10, 4, 3, 0, 0, 0, time.UTC)
+	c := wbCheckiner{path: filepath.Join(t.TempDir(), "c.json"), now: func() time.Time { return now }, accounts: func() []wbAccount {
+		return []wbAccount{
+			{Login: Login{User: "Ann", On: true}, site: wbCN, creds: wbCreds{UID: "u1"}, via: via},
+			{Login: Login{User: "Ann", On: true}, site: wbCN, card: "workbuddy-plugin", creds: wbCreds{UID: "u1"}, via: via},
+		}
+	}}
+	if rs := c.checkinNow(context.Background(), true); len(rs) != 1 || asked != 1 || rs[0].Outcome != CheckinDone {
+		t.Fatalf("one account twice: %d asked, %+v", asked, rs)
+	}
+}

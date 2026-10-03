@@ -183,11 +183,18 @@ func (c wbCheckiner) checkinNow(ctx context.Context, soon bool) []WorkBuddyCheck
 	day := wbCheckinDay(now)
 	var out []WorkBuddyCheckin
 	changed := false
+	// one account signed in to both the built-in and the plugin is
+	// checked in once
+	asked := map[string]bool{}
 	for _, a := range c.accounts() {
 		if !a.On || a.creds.UID == "" {
 			continue
 		}
 		key := wbCheckinKey(a)
+		if asked[key] {
+			continue
+		}
+		asked[key] = true
 		prev, seen := st[key]
 		if seen && prev.settled(day, now, soon) {
 			prev.User = a.User
@@ -283,8 +290,11 @@ func CheckInWorkBuddy(ctx context.Context) []WorkBuddyCheckin {
 func WorkBuddyCheckins() []WorkBuddyCheckin {
 	st := readCheckins(wbCheckinPath())
 	var out []WorkBuddyCheckin
+	listed := map[string]bool{}
 	for _, a := range wbCheckinAccounts() {
-		if r, ok := st[wbCheckinKey(a)]; ok && a.On {
+		key := wbCheckinKey(a)
+		if r, ok := st[key]; ok && a.On && !listed[key] {
+			listed[key] = true
 			r.User = a.User
 			out = append(out, r)
 		}
@@ -315,14 +325,18 @@ func withCheckins(qs []SubscriptionQuota, accts []wbAccount, st map[string]WorkB
 	}
 	out := slices.Clone(qs)
 	for i, q := range out {
-		if q.Provider != wbCN.id {
-			continue
+		// the card's accounts: the site's, or the plugin's under its own id
+		var mine []wbAccount
+		for _, a := range on {
+			if a.card == q.Provider || a.card == "" && a.site.id == q.Provider {
+				mine = append(mine, a)
+			}
 		}
 		var a *wbAccount
-		for j := range on {
+		for j := range mine {
 			// a card without an account's name is the only account's
-			if strings.EqualFold(on[j].User, q.User) || q.User == "" && len(on) == 1 {
-				a = &on[j]
+			if strings.EqualFold(mine[j].User, q.User) || q.User == "" && len(mine) == 1 {
+				a = &mine[j]
 				break
 			}
 		}
@@ -342,20 +356,36 @@ func withCheckins(qs []SubscriptionQuota, accts []wbAccount, st map[string]WorkB
 func HasWorkBuddy() bool { return len(wbCheckinAccounts()) > 0 }
 
 // wbCheckinAccounts are the WorkBuddy (China) accounts checked in: the
-// plugin's once WorkBuddy is moved onto it, checked in through it.
+// plugin's once WorkBuddy is moved onto it, checked in through it; not
+// moved, the built-in's, and the plugin's too where it is signed in under
+// its own id, "workbuddy-plugin" (signed in before the move existed, or
+// moved back), whose cards had their credits by day but no check-in
+// (#694, Dazzle-sys on 0.1.774: 没看到).
 func wbCheckinAccounts() []wbAccount {
-	if !Moved(wbCN.id) {
-		return wbLogins(wbCN)
+	if Moved(wbCN.id) {
+		pp, ok := PluginOf(wbCN.id)
+		if !ok {
+			return nil
+		}
+		return wbPluginAccounts(pp)
 	}
-	pp, ok := PluginOf(wbCN.id)
-	if !ok {
-		return nil
+	out := wbLogins(wbCN)
+	if pp, ok := PluginOf(PluginID(wbCN.id)); ok && pp.ID == wbCN.id {
+		out = append(out, wbPluginAccounts(pp)...)
 	}
+	return out
+}
+
+// wbPluginAccounts are the WorkBuddy plugin's accounts of pp, each sent
+// through the plugin's fetch, which signs it, and told by the card its
+// usage is on.
+func wbPluginAccounts(pp plugin.Provider) []wbAccount {
 	auths := plugin.Auths(pp.ID)
+	card := PluginID(pp.ID)
 	var out []wbAccount
 	for _, l := range pluginLogins(pp) {
 		key := l.acct.Key
-		out = append(out, wbAccount{Login: l.Login, site: wbCN, creds: wbCreds{UID: str(auths[key]["uid"])},
+		out = append(out, wbAccount{Login: l.Login, site: wbCN, card: card, creds: wbCreds{UID: str(auths[key]["uid"])},
 			via: func(req *http.Request) (*http.Response, error) {
 				h := map[string]string{}
 				for k, vs := range req.Header {
