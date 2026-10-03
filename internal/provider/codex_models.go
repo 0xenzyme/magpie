@@ -370,8 +370,8 @@ func CodexNativeHidden() map[string]bool {
 	return out
 }
 
-// CodexListTag names the list Codex is handed, for its ETag: magpie's models
-// and the account's own taken out of it, and whether its OpenAI models say
+// CodexListTag names the list Codex is handed, for its ETag: magpie's models,
+// the account's own taken out of it, the windows set on them, and whether its OpenAI models say
 // multi-agent V1 (settings.CodexAgentsV1), so any of them changing has
 // Codex ask for the list again.
 func CodexListTag() string {
@@ -380,6 +380,7 @@ func CodexListTag() string {
 	for _, slug := range off {
 		ms = append(ms, catalog.Model{ID: "-" + slug})
 	}
+	ms = append(ms, codexWindowsTag()...)
 	return codexcat.PolicyTag(codexcat.Tag(ms))
 }
 
@@ -402,6 +403,45 @@ func CodexNativePicked() (map[string]bool, bool) {
 		keep[id] = true
 	}
 	return keep, true
+}
+
+// CodexNativeWindow is the context window Codex is handed for one of the
+// ChatGPT account's own models, by the backend's slug, and the most it may
+// be raised to (0: as the entry says): the window the user set on the codex
+// provider (Provider.ContextOf), as /v1/models says it (#674). ok is false
+// for a model the user set none for, whose entry keeps the backend's window
+// — unless restore, for an entry not fresh from the backend: Codex's
+// models_cache.json keeps what magpie last handed it, a window since taken
+// away among it, so such an entry takes the account's own list's again.
+func CodexNativeWindow(restore bool) func(slug string) (n, most int, ok bool) {
+	p, _ := find(All(), "codex")
+	live, _, _ := catalog.Live("codex")
+	return func(slug string) (int, int, bool) {
+		if n := p.ContextOf(slug); n > 0 {
+			return n, 0, true
+		}
+		if !restore {
+			return 0, 0, false
+		}
+		for _, m := range live {
+			if m.ID == slug && m.Context > 0 {
+				return m.Context, max(m.MaxContext, m.Context), true
+			}
+		}
+		return 0, 0, false
+	}
+}
+
+// codexWindowsTag is the windows the user set on the codex provider, for
+// the ETag of Codex's list: setting one, or taking it away, has Codex ask
+// for the list again.
+func codexWindowsTag() []catalog.Model {
+	p, _ := find(All(), "codex")
+	var out []catalog.Model
+	for _, k := range slices.Sorted(maps.Keys(p.Contexts)) {
+		out = append(out, catalog.Model{ID: "=" + k, Context: p.Contexts[k]})
+	}
+	return out
 }
 
 // codexListed marks a group Fast when a ChatGPT account's GPT model is in

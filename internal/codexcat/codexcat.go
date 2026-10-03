@@ -112,6 +112,10 @@ func Entries(ms []catalog.Model, after int) []any {
 	for i, m := range ms {
 		if raw, ok := own[strings.TrimPrefix(m.ID, "codex/")]; ok && strings.HasPrefix(m.ID, "codex/") {
 			e := ownEntry(raw, m.ID, m.Name, after+i+1)
+			// the window as magpie resolves it — the one the user set,
+			// else the account's list's — not the cache's, which is what
+			// magpie last handed Codex (#674)
+			Window(e, m.Context, 0)
 			if v1 {
 				Stamp(e)
 			}
@@ -294,6 +298,27 @@ func ownEntry(raw map[string]any, id, name string, priority int) map[string]any 
 		e["base_instructions"] = Prompt
 	}
 	return e
+}
+
+// Window has one of Codex's own entries say a context window of n tokens
+// (none: as it says), and most at the most it may be raised to (0: as it
+// says). Only those two fields change. An entry whose max_context_window is
+// below its window — one the user set past what OpenAI lists — would say
+// two things at once, and Codex may hold the window to the max, so the max
+// is raised to it.
+func Window(e map[string]any, n, most int) {
+	if n <= 0 {
+		return
+	}
+	e["context_window"] = n
+	if most > 0 {
+		e["max_context_window"] = most
+	}
+	if cur, ok := e["max_context_window"].(float64); ok && int(cur) < n {
+		e["max_context_window"] = n
+	} else if cur, ok := e["max_context_window"].(int); ok && cur < n {
+		e["max_context_window"] = n
+	}
 }
 
 // Codex keeps the model list it was handed in models_cache.json, with the

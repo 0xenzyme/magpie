@@ -695,9 +695,22 @@ func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if own == nil {
+	cached := own == nil
+	if cached {
 		for _, e := range codexcat.CacheEntries() {
 			own = append(own, e)
+		}
+	}
+	// the windows the user set on the codex provider, as /v1/models says
+	// them (#674); a cached entry, which keeps what magpie handed Codex
+	// last, takes the account's own list's back when none is set
+	window := provider.CodexNativeWindow(cached)
+	for _, m := range own {
+		if o, ok := m.(map[string]any); ok {
+			slug, _ := o["slug"].(string)
+			if n, most, ok := window(slug); ok {
+				codexcat.Window(o, n, most)
+			}
 		}
 	}
 	// The backend lists every model the ChatGPT account can reach. When the
