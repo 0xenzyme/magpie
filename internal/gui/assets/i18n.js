@@ -113,6 +113,7 @@ const I18N = {
     "Add magpie": "添加 magpie",
     "{agent} hidden · find it under Hidden at the bottom": "已隐藏 {agent} · 可在列表底部「已隐藏」里找回",
     "Drag to reorder · Alt+↑/↓ to move": "按住拖动调整位置 · Alt+↑/↓ 移动",
+    "Drag to reorder · Alt+arrow keys to move": "按住拖动调整位置 · Alt+方向键移动",
     "Account order saved": "账号位置已保存",
     "Drag to reorder — a model several providers serve goes to the higher one first · Alt+↑/↓ to move": "拖动调整顺序——多个供应商都有的模型，优先用排在前面的 · Alt+↑/↓ 移动",
     "Provider order saved": "供应商顺序已保存",

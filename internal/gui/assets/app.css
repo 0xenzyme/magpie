@@ -2398,8 +2398,16 @@ body.panel .modal { padding: 16px 12px; }
 .accts.sorting > [data-account-id] { animation: none; transition: transform .16s cubic-bezier(.22, 1, .36, 1); }
 .accts.sorting > .dragging { position: relative; z-index: 2; background: var(--card-2); box-shadow: 0 0 0 1px var(--line); cursor: grabbing; transition: none; will-change: transform; }
 .accts[aria-busy=true] > [data-account-id] { cursor: progress; }
+/* the Usage page's cards, dragged by their logos: a grip by the logo on hover */
+.subscription-head .us-handle { position: relative; width: 24px; height: 24px; margin: -4px -3px; }
+.subscription-head .us-handle::before { content: ""; position: absolute; left: -7px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; opacity: 0; transition: opacity .15s; }
+.subscription-card:is(:hover, .dragging) .us-handle::before, .us-handle:focus-visible::before { opacity: 1; }
+.subscription-usage.sorting { user-select: none; -webkit-user-select: none; }
+.subscription-usage.sorting > .subscription-card { transition: transform .22s cubic-bezier(.22, 1, .36, 1); }
+.subscription-usage.sorting .us-handle { cursor: grabbing; }
+.subscription-usage > .subscription-card.dragging { position: relative; z-index: 2; box-shadow: 0 8px 22px rgba(20, 22, 30, .14), 0 0 0 1px var(--line); transition: none; }
 @media (prefers-reduced-motion: reduce) {
-  .accts.sorting > [data-account-id], #agents.sorting > .row { transition: none; }
+  .accts.sorting > [data-account-id], #agents.sorting > .row, .subscription-usage.sorting > .subscription-card { transition: none; }
 }
 /* the show while the session files are indexed: the words on the left, a
    field of dots that light up as the files land on the right, a hairline

@@ -1096,6 +1096,102 @@ function dragRows(e, handle, row, list, rows, commit, start = () => {}, idle = (
   return true;
 }
 
+// dragCards is dragRows for cards laid out in a grid: the card follows the
+// pointer both ways, the slot nearest its middle is where it goes, and the
+// cards between move a slot over to make room.
+function dragCards(e, handle, card, list, cards, commit, idle = () => {}) {
+  if (e.button !== 0 || e.isPrimary === false || cards.length < 2) return false;
+  const from = cards.indexOf(card);
+  if (from < 0) return false;
+  const rects = cards.map((c) => c.getBoundingClientRect());
+  let scroll = list.parentElement;
+  while (scroll && !/(auto|scroll)/.test(getComputedStyle(scroll).overflowY)) scroll = scroll.parentElement;
+  scroll ||= document.scrollingElement;
+  const bounds = scroll.getBoundingClientRect(), scroll0 = scroll.scrollTop;
+  let dragging = false, ended = false, to = from, x = e.clientX, y = e.clientY, frame = 0, lastTime = 0;
+  const x0 = x, y0 = y, pointer = e.pointerId;
+  const r0 = rects[from];
+  const paint = (time) => {
+    frame = 0;
+    if (!card.isConnected) return finish(false);
+    if (!dragging) return;
+    const dt = Math.min(32, lastTime ? time - lastTime : 16);
+    lastTime = time;
+    const edge = 36;
+    const speed = y < bounds.top + edge ? -Math.min(1, (bounds.top + edge - y) / edge)
+      : y > bounds.bottom - edge ? Math.min(1, (y - bounds.bottom + edge) / edge) : 0;
+    if (speed) scroll.scrollTop += speed * dt * .6;
+    const dx = x - x0, dy = y - y0 + scroll.scrollTop - scroll0;
+    card.style.transform = `translate(${dx}px, ${dy}px)`;
+    const cx = r0.left + r0.width / 2 + dx, cy = r0.top + r0.height / 2 + dy;
+    let best = Infinity;
+    rects.forEach((r, i) => {
+      const d = (cx - r.left - r.width / 2) ** 2 + (cy - r.top - r.height / 2) ** 2;
+      if (d < best) { best = d; to = i; }
+    });
+    cards.forEach((c, i) => {
+      if (i === from) return;
+      const j = i > from && i <= to ? i - 1 : i < from && i >= to ? i + 1 : i;
+      c.style.transform = j !== i ? `translate(${rects[j].left - rects[i].left}px, ${rects[j].top - rects[i].top}px)` : "";
+    });
+    if (speed) frame = requestAnimationFrame(paint);
+  };
+  const move = (ev) => {
+    if (ev.pointerId !== pointer) return;
+    if (!card.isConnected || !handle.isConnected) return finish(false, ev);
+    x = ev.clientX;
+    y = ev.clientY;
+    if (!dragging) {
+      if (Math.hypot(x - x0, y - y0) < 4) return;
+      dragging = true;
+      handle.dataset.dragged = "1";
+      list.classList.add("sorting");
+      card.classList.add("dragging");
+      getSelection()?.removeAllRanges();
+      handle.setPointerCapture(pointer);
+    }
+    ev.preventDefault();
+    if (!frame) frame = requestAnimationFrame(paint);
+  };
+  const finish = (save, ev) => {
+    if (ended || (ev?.pointerId != null && ev.pointerId !== pointer)) return;
+    if (save && dragging && ev) {
+      x = ev.clientX;
+      y = ev.clientY;
+      cancelAnimationFrame(frame);
+      paint(performance.now());
+    }
+    if (ended) return;
+    ended = true;
+    cancelAnimationFrame(frame);
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", up);
+    document.removeEventListener("pointercancel", cancel);
+    document.removeEventListener("keydown", keys, true);
+    handle.removeEventListener("lostpointercapture", cancel);
+    removeEventListener("blur", cancel);
+    removeEventListener("resize", cancel);
+    if (handle.hasPointerCapture(pointer)) handle.releasePointerCapture(pointer);
+    list.classList.remove("sorting");
+    card.classList.remove("dragging");
+    cards.forEach((c) => { c.style.transform = ""; });
+    if (save && dragging && to !== from) commit(to);
+    idle();
+    setTimeout(() => delete handle.dataset.dragged, 0);
+  };
+  const up = (ev) => finish(true, ev);
+  const cancel = (ev) => finish(false, ev);
+  const keys = (ev) => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopImmediatePropagation(); finish(false); } };
+  document.addEventListener("pointermove", move, { passive: false });
+  document.addEventListener("pointerup", up);
+  document.addEventListener("pointercancel", cancel);
+  document.addEventListener("keydown", keys, true);
+  handle.addEventListener("lostpointercapture", cancel);
+  addEventListener("blur", cancel);
+  addEventListener("resize", cancel);
+  return true;
+}
+
 // ---------- an agent's model list ----------
 
 // modelsEntry: the line under an agent's name counting the models its
@@ -8885,18 +8981,20 @@ function renderQuotas() {
     }
     return;
   }
+  if (usageArranging) { usageRenderPending = true; return; }
   subscriptions.hidden = !quotas.length;
   // an agent with several accounts is one card, a section per account
   const groups = [];
-  for (const sub of quotas) {
+  for (const sub of byUsageOrder(quotas)) {
     const g = sub.user && groups.find((x) => x[0].user && x[0].provider === sub.provider);
     if (g) g.push(sub); else groups.push([sub]);
   }
   for (const subs of groups) {
     const first = subs[0];
     const card = el("div", "subscription-card" + (first.user ? " several" : ""));
+    card.dataset.key = first.provider;
     const head = el("div", "subscription-head");
-    head.append(icon(first.icon), el("b", "", first.name));
+    head.append(groups.length > 1 ? usageHandle(first, card) : icon(first.icon), el("b", "", first.name));
     if (!first.user && (first.plan || first.until)) head.append(planSpan(first));
     card.append(head);
     for (const sub of subs) {
@@ -8941,6 +9039,70 @@ function renderQuotas() {
       }
     }
     subscriptions.append(card);
+  }
+}
+
+// The Usage page's cards in the order they were dragged to (settings
+// usageOrder, by provider id), as the Agents page's rows are; one it doesn't
+// name keeps magpie's own order after them. The tray panel's Usage tab
+// follows it too.
+function byUsageOrder(list) {
+  const order = state.settings?.usageOrder || [];
+  const rank = (q) => { const i = order.indexOf(q.provider); return i < 0 ? order.length : i; };
+  return list.map((q, i) => [q, i]).sort(([a, i], [b, j]) => rank(a) - rank(b) || i - j).map(([q]) => q);
+}
+
+// usageHandle is a card's logo, which is also its handle: drag it to move
+// the card among the others, Alt+arrows move it from the keyboard. The grip
+// that says so shows by the logo on hover (app.css).
+let usageArranging = false, usageRenderPending = false;
+function usageHandle(sub, card) {
+  const b = el("button", "ag-handle us-handle");
+  b.type = "button";
+  b.setAttribute("aria-label", t("Arrange {agent}", { agent: sub.name }));
+  b.title = t("Drag to reorder · Alt+arrow keys to move");
+  b.append(icon(sub.icon));
+  b.onkeydown = (e) => {
+    const step = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 }[e.key];
+    if (!e.altKey || !step) return;
+    e.preventDefault();
+    const keys = usageKeys();
+    moveUsage(sub.provider, keys.indexOf(sub.provider) + step);
+    // the cards were drawn anew: keep the keyboard on this one
+    $(`#subscriptionUsage > [data-key="${CSS.escape(sub.provider)}"] .us-handle`)?.focus({ preventScroll: true });
+  };
+  b.onpointerdown = (e) => {
+    if (usageArranging) return;
+    const list = $("#subscriptionUsage");
+    usageArranging = dragCards(e, b, card, list, [...list.children], (to) => moveUsage(sub.provider, to), () => {
+      usageArranging = false;
+      if (usageRenderPending) { usageRenderPending = false; renderQuotas(); }
+    });
+  };
+  return b;
+}
+
+const usageKeys = () => [...new Set([...$("#subscriptionUsage").children].map((c) => c.dataset.key))];
+
+// moveUsage puts the card at index `to` among those on the page; what the
+// order named that isn't on it now (an account signed out) keeps its place
+// after them. Drawn at once, put back if the save fails.
+async function moveUsage(key, to) {
+  const keys = usageKeys();
+  const from = keys.indexOf(key);
+  if (from < 0 || to < 0 || to >= keys.length || to === from) return;
+  keys.splice(to, 0, ...keys.splice(from, 1));
+  const prev = state.settings;
+  const order = [...keys, ...(prev.usageOrder || []).filter((k) => !keys.includes(k))];
+  state.settings = { ...prev, usageOrder: order };
+  renderQuotas();
+  try {
+    const s = await api("usage/arrange", { order });
+    state.settings = { ...state.settings, usageOrder: s.usageOrder || [] };
+  } catch (e) {
+    state.settings = prev;
+    renderQuotas();
+    status(e.message, "err");
   }
 }
 
@@ -9454,7 +9616,7 @@ function renderPanelUse() {
 function renderPanelQuota() {
   const box = $("#panelQuota");
   if (mode !== "panel" || !box) return;
-  const subs = (quotas || []).filter((q) => q.balance || q.error || q.windows?.length);
+  const subs = byUsageOrder((quotas || []).filter((q) => q.balance || q.error || q.windows?.length));
   const none = !!quotas && !subs.length;
   const usageTab = $('#ptabs [data-ptab="usage"]');
   if (usageTab.hidden !== none) {

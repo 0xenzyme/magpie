@@ -211,6 +211,11 @@ type Settings struct {
 	AgentOrder   []string `json:"agentOrder,omitempty"`
 	AgentsHidden []string `json:"agentsHidden,omitempty"`
 	AgentsShown  []string `json:"agentsShown,omitempty"`
+	// UsageOrder is how the Usage page's cards are listed, by provider id,
+	// as they were dragged there; one it doesn't name follows in magpie's
+	// own order. Only the page's: the order providers are tried in is the
+	// Providers page's.
+	UsageOrder []string `json:"usageOrder,omitempty"`
 	// Visible narrows the models an agent is shown, by agent id: the
 	// families (the tag a provider or group is given), provider ids and
 	// group ids its lists hold. An agent it doesn't name is shown them all.
@@ -634,6 +639,7 @@ func Save(s Settings) error {
 	}
 	s.RedactRules = rules
 	s.AgentOrder, s.AgentsHidden, s.AgentsShown = ids(s.AgentOrder), ids(s.AgentsHidden), ids(s.AgentsShown)
+	s.UsageOrder = ids(s.UsageOrder)
 	s.TrayUsages = ids(s.TrayUsages)
 	for i, u := range s.CodexAutoReset {
 		s.CodexAutoReset[i] = strings.ToLower(u)
