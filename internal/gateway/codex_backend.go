@@ -98,7 +98,7 @@ func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 			s.serve(w, r, provider.Responses, body)
 			return
 		}
-		body = searchCallIDs(body)
+		body = callItemIDs(body)
 		if rest == "/responses/compact" {
 			break // preserve native compaction's existing passthrough
 		}
@@ -814,16 +814,24 @@ func codexInput(body []byte, magpieModel bool) (_ []byte, compact bool) {
 	return nb, compact
 }
 
-// searchCallIDs is a Responses request whose tool_search_call items have
-// ids OpenAI takes. A vendor's reply that magpie, or the vendor, gave the
-// call as a function_call's (fc_…) came back to Codex as Codex's
-// tool_search_call with that id, and Codex hands it back on every later
-// turn: OpenAI's own models and the ChatGPT backend turn the whole request
-// away ("Invalid 'input[98].id': 'fc_…'. Expected an ID that begins with
-// 'tsc'"), Codex's compaction with it. Such an id goes as a tsc_ one; the
-// rest of the request goes byte for byte.
-func searchCallIDs(body []byte) []byte {
-	if !bytes.Contains(body, []byte(`"tool_search_call"`)) {
+// openaiItemPrefix is the id prefix OpenAI takes for each kind of call item
+// a vendor's reply may have handed Codex with another: magpie, or the
+// vendor, gave a tool search's and a custom tool's call a function_call's
+// id (fc_…), and Codex hands the item back on every later turn. OpenAI's
+// own models and the ChatGPT backend turn the whole request away ("Invalid
+// 'input[98].id': 'fc_…'. Expected an ID that begins with 'tsc'", "…with
+// 'ctc'"), Codex's compaction with it.
+var openaiItemPrefix = map[string]string{
+	"tool_search_call": "tsc_",
+	"custom_tool_call": "ctc_",
+}
+
+// callItemIDs is a Responses request whose call items have ids OpenAI
+// takes (openaiItemPrefix): fc_X goes as tsc_X or ctc_X, the call_id the
+// call's output names it by as it was, and the rest of the request byte
+// for byte.
+func callItemIDs(body []byte) []byte {
+	if !bytes.Contains(body, []byte(`"tool_search_call"`)) && !bytes.Contains(body, []byte(`"custom_tool_call"`)) {
 		return body
 	}
 	var q map[string]json.RawMessage
@@ -837,17 +845,18 @@ func searchCallIDs(body []byte) []byte {
 	changed := false
 	for i, raw := range items {
 		var it map[string]json.RawMessage
-		if json.Unmarshal(raw, &it) != nil || string(it["type"]) != `"tool_search_call"` {
+		var typ, id string
+		if json.Unmarshal(raw, &it) != nil || json.Unmarshal(it["type"], &typ) != nil {
 			continue
 		}
-		var id string
-		if json.Unmarshal(it["id"], &id) != nil || id == "" || strings.HasPrefix(id, "tsc_") {
+		prefix := openaiItemPrefix[typ]
+		if prefix == "" || json.Unmarshal(it["id"], &id) != nil || id == "" || strings.HasPrefix(id, prefix) {
 			continue
 		}
 		if _, rest, ok := strings.Cut(id, "_"); ok && rest != "" {
-			id = "tsc_" + rest
+			id = prefix + rest
 		} else {
-			id = "tsc_" + id
+			id = prefix + id
 		}
 		it["id"], _ = json.Marshal(id)
 		if b, err := marshalPlain(it); err == nil {
