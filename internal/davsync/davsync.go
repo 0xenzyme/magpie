@@ -32,6 +32,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/access"
 	"github.com/yetone/magpie/internal/agent"
 	"github.com/yetone/magpie/internal/backup"
 	"github.com/yetone/magpie/internal/edit"
@@ -577,6 +578,10 @@ func hashes(b backup.Bundle) map[string]string {
 		s = *b.Settings
 	}
 	s.KeepOwn(settings.Settings{}) // this computer's own: never synced
+	settingsHash := h(s)
+	if b.GatewayKeys != nil { // a missing store keeps older bundles' hash
+		settingsHash = h([]any{s, *b.GatewayKeys})
+	}
 	providers := []any{b.Providers, b.Icons, b.Groups}
 	if b.Searches != nil && len(*b.Searches) > 0 { // as before them, without one
 		providers = append(providers, *b.Searches)
@@ -586,7 +591,7 @@ func hashes(b backup.Bundle) map[string]string {
 	}
 	return map[string]string{
 		"providers": h(providers),
-		"settings":  h(s),
+		"settings":  settingsHash,
 		"profiles":  h(orEmpty(b.Profiles)),
 		"agents":    h(orEmpty(b.Agents)),
 		"library":   h(b.Library),
@@ -637,7 +642,25 @@ func take(to *backup.Bundle, from backup.Bundle, part string) {
 		to.Providers, to.Icons, to.Groups, to.Searches, to.Order = ps, from.Icons, from.Groups, searches, from.Order
 		to.Keys = to.Keys || from.Keys
 	case "settings":
-		to.Settings = from.Settings
+		s := from.Settings
+		if s != nil && !from.Keys && to.Keys && to.Settings != nil {
+			// Sent without keys: keep the ones the server has, as for providers.
+			copy := *s
+			copy.LANKey, copy.LANKeyID = to.Settings.LANKey, to.Settings.LANKeyID
+			copy.GitHubToken = to.Settings.GitHubToken
+			copy.OTel.Headers = nil
+			if strings.TrimRight(strings.TrimSpace(copy.OTel.Endpoint), "/") == to.Settings.OTel.Endpoint {
+				copy.OTel.Headers = to.Settings.OTel.Headers
+			}
+			s = &copy
+		}
+		if s != nil {
+			to.Settings = s
+		}
+		if from.Keys && from.GatewayKeys != nil {
+			to.GatewayKeys = from.GatewayKeys // an explicit empty store clears it
+		}
+		to.Keys = to.Keys || from.Keys
 	case "profiles":
 		to.Profiles = from.Profiles
 	case "agents":
@@ -652,7 +675,7 @@ func take(to *backup.Bundle, from backup.Bundle, part string) {
 }
 
 // changed is when a part was last changed here, as its files say.
-func changed(part string) time.Time {
+func changed(part string, keys bool) time.Time {
 	mtime := func(p string) time.Time {
 		if fi, err := os.Stat(p); err == nil {
 			return fi.ModTime()
@@ -663,7 +686,11 @@ func changed(part string) time.Time {
 	case "providers":
 		return mtime(provider.Path())
 	case "settings":
-		return mtime(settings.Path())
+		m := mtime(settings.Path())
+		if k := mtime(access.Path()); keys && k.After(m) {
+			m = k
+		}
+		return m
 	case "profiles":
 		return mtime(profile.Path())
 	case "library":
@@ -865,7 +892,7 @@ func syncOnce(ctx context.Context, c Config, st *state) error {
 				here = append(here, p)
 			}
 		case lc && rc: // both: the newer stays
-			if changed(p).After(remote.Created) {
+			if changed(p, c.Keys).After(remote.Created) {
 				take(&merged, local, p)
 				there = append(there, p)
 			} else {
