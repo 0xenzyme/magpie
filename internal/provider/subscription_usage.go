@@ -776,7 +776,7 @@ func (w codexWindow) window() QuotaWindow {
 	return out
 }
 
-func copilotSubscriptionUsage(ctx context.Context, githubToken string) SubscriptionQuota {
+func copilotSubscriptionUsage(ctx context.Context, githubToken, host string) SubscriptionQuota {
 	q := SubscriptionQuota{Provider: "copilot", Name: "Copilot", Icon: "githubcopilot", Windows: []QuotaWindow{}}
 	var data struct {
 		copilotEntitlement
@@ -784,7 +784,7 @@ func copilotSubscriptionUsage(ctx context.Context, githubToken string) Subscript
 		Reset     string                      `json:"quota_reset_date_utc"`
 		ResetDay  string                      `json:"quota_reset_date"`
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, CopilotUserURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, copilotUserURL(host), nil)
 	if err == nil {
 		req.Header.Set("Authorization", "token "+githubToken)
 		req.Header.Set("Accept", "application/json")

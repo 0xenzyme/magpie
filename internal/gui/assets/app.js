@@ -8198,6 +8198,66 @@ function cancelSignIn() {
   renderProviders();
 }
 
+// A Copilot account on GitHub Enterprise Cloud with data residency signs in
+// at its enterprise's <name>.ghe.com, not github.com (#723): the device
+// code's panel offers that, and the host is asked in place of the code.
+const GHE_HOST = /^(https?:\/\/)?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.ghe\.com\/?$/i;
+
+// copilotHostSwitch: the link from a Copilot sign-in to the other place it
+// can be — an enterprise's GHE.com, or back to github.com.
+function copilotHostSwitch(sub) {
+  if (sub.agent !== "copilot" || sub.plugin) return null;
+  const site = signing.site;
+  const b = el("button", "link", site ? t("Sign in on github.com instead") : t("Account on GHE.com?"));
+  b.dataset.ghe = site ? "github" : "ghe";
+  b.title = site ? t("Signing in on {host}", { host: site }) : t("An account of an enterprise on GitHub Enterprise Cloud with data residency signs in at its <name>.ghe.com");
+  b.onclick = () => {
+    if (site) return startSignIn("copilot", true); // which ends this one
+    if (signing?.id) api("signin/" + signing.id + "/cancel", {}).catch(() => {});
+    signing = { agent: "copilot", state: "ghe" };
+    renderProviders();
+  };
+  return b;
+}
+
+// renderCopilotGHE: the enterprise's host asked before its sign-in starts.
+function renderCopilotGHE(sub) {
+  const box = el("div", "signing copilot-ghe");
+  const tt = el("span", "tt");
+  box.append(tt);
+  const flow = signing;
+  const label = t("Your enterprise on GHE.com");
+  tt.append(el("span", "n", label),
+    el("span", "s", t("The address you sign in to GitHub at, like acme.ghe.com. An account on github.com doesn't need it.")));
+  const form = el("form", "callback-form");
+  const inp = input(flow.host || "", "acme.ghe.com");
+  inp.setAttribute("aria-label", label);
+  const go = el("button", "text primary", t("Sign in"));
+  go.type = "submit";
+  go.disabled = !GHE_HOST.test(inp.value.trim());
+  const why = el("span", "s why", "");
+  inp.oninput = () => { flow.host = inp.value; go.disabled = !GHE_HOST.test(inp.value.trim()); why.textContent = ""; };
+  const submit = (e) => {
+    e.preventDefault();
+    if (signing !== flow) return;
+    const host = inp.value.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "").toLowerCase();
+    if (!GHE_HOST.test(host)) { why.textContent = t("Type your enterprise's <name>.ghe.com"); return; }
+    startSignIn("copilot", true, host);
+  };
+  form.onsubmit = submit;
+  go.onclick = submit;
+  form.append(inp, go);
+  tt.append(form, why);
+  const close = el("button", "text", t("Cancel"));
+  close.onclick = cancelSignIn;
+  const back = el("button", "text", "github.com");
+  back.title = t("Sign in on github.com instead");
+  back.onclick = () => startSignIn("copilot", true);
+  box.append(close, back);
+  setTimeout(() => { if (inp.isConnected) inp.focus({ preventScroll: true }); });
+  return box;
+}
+
 // dropSigningIn: the editor of provider id closing (Cancel, Save, Remove)
 // leaves no sign-in of its account waiting behind it, to come back with the
 // editor (#526: 无论我点击底部的移除、取消、保存都没办法); an import being
@@ -8249,6 +8309,7 @@ function renderSigning(sub) {
     }
     return box;
   }
+  if (signing.state === "ghe") return renderCopilotGHE(sub);
   if (signing.state === "import" || signing.state === "importing" || signing.state === "imported") return renderLoginImport(sub);
   if (signing.state === "method" || signing.state === "prompt" || signing.state === "key") return renderPluginAsk(sub);
   if (signing.state === "failed") {
@@ -8259,6 +8320,8 @@ function renderSigning(sub) {
     again.onclick = () => sub.plugin ? startPluginSignIn(sub, signing.method) : startSignIn(sub.agent, true, signing.site);
     const close = el("button", "text", t("Cancel"));
     close.onclick = cancelSignIn;
+    const ghe = copilotHostSwitch(sub);
+    if (ghe) tt.append(el("span", "acts", ghe));
     box.append(close, again);
     return box;
   }
@@ -8298,6 +8361,8 @@ function renderSigning(sub) {
     const open = el("button", "link", t("Open again"));
     open.onclick = () => api("open", { url: signing.url }).catch(() => {});
     acts.append(open);
+    const ghe = copilotHostSwitch(sub);
+    if (ghe) acts.append(ghe);
     tt.append(acts);
   }
   if (signing.pasteCallback || signing.pasteCode || signing.pasteKey) {

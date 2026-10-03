@@ -954,11 +954,15 @@ var (
 type copilotApp struct {
 	User  string `json:"user"`
 	Token string `json:"oauth_token"`
-	cli   bool   // the standalone Copilot CLI's sign-in
+	// Host is an enterprise's <name>.ghe.com the account is on, "" for
+	// github.com (copilot_ghe.go)
+	Host string `json:"host,omitempty"`
+	cli  bool   // the standalone Copilot CLI's sign-in
 }
 
 // copilotLogin finds the GitHub token Copilot's editors and CLI keep.
 func copilotLogin(cfg string) (copilotApp, bool) {
+	var ghe *copilotApp // an editor's sign-in on an enterprise's <name>.ghe.com
 	for _, name := range []string{"apps.json", "hosts.json"} {
 		var apps map[string]copilotApp
 		if !readJSON(filepath.Join(cfg, "github-copilot", name), &apps) {
@@ -971,19 +975,31 @@ func copilotLogin(cfg string) (copilotApp, bool) {
 		sort.Strings(keys)
 		for _, k := range keys {
 			if strings.HasPrefix(k, "github.com") && apps[k].Token != "" {
-				return apps[k], true
+				app := apps[k]
+				app.Host = ""
+				return app, true
+			}
+			// "acme.ghe.com:Iv1…", as copilot.lua keeps one (#723)
+			host, _, _ := strings.Cut(k, ":")
+			if h, err := CopilotHost(host); ghe == nil && err == nil && h != "" && apps[k].Token != "" {
+				app := apps[k]
+				app.Host = h
+				ghe = &app
 			}
 		}
 	}
-	return copilotCLILogin()
+	if app, ok := copilotCLILogin(); ok || ghe == nil {
+		return app, ok
+	}
+	return *ghe, true
 }
 
 // session is what this sign-in's requests carry.
 func (a copilotApp) session(ctx context.Context) (copilotSession, error) {
 	if a.cli {
-		return copilotDirect(ctx, a.Token)
+		return copilotDirect(ctx, a)
 	}
-	return copilotToken(ctx, a.Token)
+	return copilotToken(ctx, a)
 }
 
 // copilotProvider is Copilot as one GitHub account serves it.
@@ -997,8 +1013,8 @@ func copilotProvider(app copilotApp, plan string) Provider {
 		if err != nil {
 			return err
 		}
-		if s.Endpoints.API != "" {
-			if u, err := url.Parse(s.Endpoints.API + req.URL.Path); err == nil {
+		if s.Endpoints.API != "" || app.Host != "" {
+			if u, err := url.Parse(s.apiBase(app.Host) + req.URL.Path); err == nil {
 				req.URL, req.Host = u, u.Host
 			}
 		}
@@ -1046,7 +1062,8 @@ func copilotProvider(app copilotApp, plan string) Provider {
 	// each model is served on some of these: the newest GPT models on
 	// /responses alone, Claude's on /v1/messages and /chat/completions (its
 	// model list says; see Provider.APIs)
-	return Provider{ID: "copilot", Name: "Copilot", Icon: "githubcopilot", Chat: copilotBase, Responses: copilotBase, Anthropic: copilotBase, Website: "https://github.com/features/copilot", Account: acct}
+	base := copilotBaseOf(app.Host)
+	return Provider{ID: "copilot", Name: "Copilot", Icon: "githubcopilot", Chat: base, Responses: base, Anthropic: base, Website: "https://github.com/features/copilot", Account: acct}
 }
 
 // bodyModel is the model a request asks for.
@@ -1103,13 +1120,14 @@ func lastRole(body []byte) string {
 	return items[len(items)-1].Role
 }
 
-func copilotToken(ctx context.Context, github string) (copilotSession, error) {
+func copilotToken(ctx context.Context, app copilotApp) (copilotSession, error) {
+	github := app.Token
 	copilotMu.Lock()
 	defer copilotMu.Unlock()
 	if s, ok := copilotSessions[github]; ok && time.Until(time.Unix(s.ExpiresAt, 0)) > 2*time.Minute {
 		return s, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, CopilotTokenURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, copilotTokenURL(app.Host), nil)
 	if err != nil {
 		return copilotSession{}, err
 	}
@@ -1169,10 +1187,7 @@ func copilotAccept(ctx context.Context, app copilotApp, s copilotSession, model 
 	if !waiting[model] {
 		return
 	}
-	base := s.Endpoints.API
-	if base == "" {
-		base = copilotBase
-	}
+	base := s.apiBase(app.Host)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/models/"+url.PathEscape(model)+"/policy", strings.NewReader(`{"state":"enabled"}`))
 	if err != nil {
 		return
@@ -1200,10 +1215,7 @@ func copilotModels(ctx context.Context, app copilotApp) ([]catalog.Model, error)
 	if err != nil {
 		return nil, err
 	}
-	base := s.Endpoints.API
-	if base == "" {
-		base = copilotBase
-	}
+	base := s.apiBase(app.Host)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/models", nil)
 	if err != nil {
 		return nil, err

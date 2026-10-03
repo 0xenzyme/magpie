@@ -189,7 +189,7 @@ func loginQuota(ctx context.Context, l Login) SubscriptionQuota {
 	if l.Agent == "copilot" {
 		for _, c := range copilotLogins(copilotConfigDir()) {
 			if strings.EqualFold(c.User, l.User) {
-				q := copilotSubscriptionUsage(ctx, c.app.Token)
+				q := copilotSubscriptionUsage(ctx, c.app.Token, c.app.Host)
 				if q.Error == "" {
 					refreshCopilotEntitlement(c.app, q.Plan, q.AccessSKU)
 				}

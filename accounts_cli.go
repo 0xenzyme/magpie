@@ -24,7 +24,7 @@ import (
 // — the subscriptions magpie remembers, how much of each one's allowance is
 // used, and switching the agent between them.
 func accountsCmd(args []string) error {
-	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity|zed|factory|mimo|<plugin>] [--json] | magpie accounts add <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> | magpie accounts refresh [--json] | magpie accounts checkin [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> <email> | magpie accounts project <gemini|antigravity> <email> <gcp-project-id>"
+	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity|zed|factory|mimo|<plugin>] [--json] | magpie accounts add <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> | magpie accounts add copilot [--host <name>.ghe.com] | magpie accounts refresh [--json] | magpie accounts checkin [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> <email> | magpie accounts project <gemini|antigravity> <email> <gcp-project-id>"
 	agentID := func(s string) (string, error) {
 		switch strings.ToLower(s) {
 		case "claude", "cc":
@@ -73,6 +73,27 @@ func accountsCmd(args []string) error {
 		return checkinWorkBuddy(len(args) > 2 && args[2] == "--json")
 	}
 	if len(args) > 1 && args[1] == "add" {
+		// a Copilot account by GitHub's device code, on github.com or an
+		// enterprise's <name>.ghe.com (#723)
+		if len(args) >= 3 && strings.EqualFold(args[2], "copilot") {
+			var host string
+			switch {
+			case len(args) == 5 && args[3] == "--host":
+				host = args[4]
+			case len(args) == 4 && strings.HasPrefix(args[3], "--host="):
+				host = strings.TrimPrefix(args[3], "--host=")
+			case len(args) != 3:
+				return fmt.Errorf("usage: magpie accounts add copilot [--host <name>.ghe.com]")
+			}
+			h, err := provider.CopilotHost(host)
+			if err != nil {
+				return err
+			}
+			if h != "" {
+				return addAccount("copilot:" + h)
+			}
+			return addAccount("copilot")
+		}
 		if len(args) != 3 {
 			return fmt.Errorf("%s", usage)
 		}
@@ -357,6 +378,8 @@ func addAccount(agentID string) error {
 			fmt.Println(green.Render("✓"), st.User, "is already listed — its sign-in was renewed")
 		} else if st.Using {
 			fmt.Println(green.Render("✓"), agentID, "is signed in as", st.User)
+		} else if strings.HasPrefix(agentID, "copilot") {
+			fmt.Println(green.Render("✓"), "added", st.User, muted.Render("· with the other Copilot accounts in magpie's window"))
 		} else {
 			fmt.Println(green.Render("✓"), "added", st.User, muted.Render("· use it: magpie accounts switch "+agentID+" "+st.User))
 		}
