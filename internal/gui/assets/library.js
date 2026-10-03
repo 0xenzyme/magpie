@@ -236,7 +236,10 @@
       let tip = has ? t("{agent} has it — click to take it away", { agent: a.name }) : t("Give it to {agent}", { agent: a.name });
       if (via) { c.classList.add("via"); tip = t("{agent} reads it through {other} — click to give it its own", { agent: a.name, other: via }); }
       if (problem) { c.classList.add("warn"); tip = a.name + ": " + problem; }
-      if (blocked) { c.classList.add("blocked"); c.disabled = true; tip = blocked; }
+      // not disabled: a disabled button tells nothing on a click, and
+      // WebKit shows it no tooltip either — 蓝猫 clicked Claude Desktop's
+      // grey chip for a remote server and nothing said why
+      if (blocked) { c.classList.add("blocked"); c.setAttribute("aria-disabled", "true"); tip = blocked; }
       c.title = a.aside && !problem && !blocked ? tip + "\n" + a.aside : tip;
       c.setAttribute("aria-pressed", has ? "true" : "false");
       // What's lit is read off the chips clicked, not the list they were
@@ -246,6 +249,7 @@
       c.onclick = (e) => {
         e.stopPropagation();
         const me = e.currentTarget;
+        if (cannot(me)) { status(me.title, "warn", 8000); return; }
         const lit = litOf(me.parentElement);
         const kept = keptOf(me.parentElement, all, on);
         onChange([...kept, ...(lit.includes(a.id) ? lit.filter((x) => x !== a.id) : [...lit, a.id])], me);
@@ -255,6 +259,10 @@
     if (opts.all) allChip(box, all, on, onChange);
     return box;
   }
+
+  // cannot says a chip's agent can't be given the item, or has it whatever
+  // is ticked: a click says why rather than switching it
+  const cannot = (c) => c.getAttribute("aria-disabled") === "true";
 
   // The agents a row's chips have lit by a click: not one lit because it
   // has the item whatever is ticked.
@@ -273,7 +281,7 @@
   // remote server), and when they all have it, takes it from every one.
   // An agent not shown keeps what it has, as with a chip.
   function allChip(box, all, on, onChange) {
-    const can = [...box.children].filter((c) => !c.disabled).map((c) => c.dataset.agent);
+    const can = [...box.children].filter((c) => !cannot(c)).map((c) => c.dataset.agent);
     if (can.length < 2) return;
     const c = el("button", "lib-ag all", t("All"));
     c.dataset.all = "1";
@@ -291,7 +299,7 @@
   function paintAll(box) {
     const c = box.querySelector(":scope > .lib-ag.all");
     if (!c) return;
-    const can = [...box.children].filter((x) => x.dataset.agent && !x.disabled);
+    const can = [...box.children].filter((x) => x.dataset.agent && !cannot(x));
     const n = can.length, full = can.every((x) => x.getAttribute("aria-pressed") === "true");
     c.classList.toggle("on", full);
     c.setAttribute("aria-pressed", full ? "true" : "false");
@@ -356,7 +364,7 @@
   // to, and which of them couldn't be given it, and why.
   function reportAll(v, me) {
     const what = (me.list === "servers" ? "mcp:" : "skill:") + me.name;
-    const shown = [...me.box.children].filter((x) => x.dataset.agent && !x.disabled).map((x) => x.dataset.agent);
+    const shown = [...me.box.children].filter((x) => x.dataset.agent && !cannot(x)).map((x) => x.dataset.agent);
     const n = shown.filter((id) => me.want.includes(id)).length;
     const bad = (v.result?.problems || []).filter((p) => p.what === what && shown.includes(p.agent));
     if (!bad.length) {
@@ -396,7 +404,7 @@
       const n = now[i];
       c.className = n.className;
       c.title = n.title;
-      c.disabled = n.disabled;
+      if (cannot(n)) c.setAttribute("aria-disabled", "true"); else c.removeAttribute("aria-disabled");
       c.setAttribute("aria-pressed", n.getAttribute("aria-pressed"));
       c.onclick = n.onclick;
     });

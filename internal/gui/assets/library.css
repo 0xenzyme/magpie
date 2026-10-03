@@ -187,7 +187,7 @@ input.lib-setname:focus { border-color: var(--accent); box-shadow: 0 0 0 3px col
 .lib-ag.warn::after { content: ""; position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 2px var(--card); }
 .lib-ag.blocked { opacity: .35; }
 .lib-ag.blocked:hover { background: none; }
-.lib-ag:active:not(:disabled) { transform: scale(.92); }
+.lib-ag:active:not(.blocked) { transform: scale(.92); }
 .editor .lib-agents { max-width: none; justify-content: flex-start; gap: 5px; }
 .editor .lib-ag { padding: 0 9px 0 6px; border-color: var(--line); }
 .editor .lib-ag.on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--fg) 30%, transparent); }
