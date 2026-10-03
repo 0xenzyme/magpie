@@ -5775,6 +5775,27 @@ document.addEventListener("pointerdown", (e) => {
   const find = at.dataset.pick ? `[data-pick="${CSS.escape(at.dataset.pick)}"]` : at.matches(".row.provider") ? `.row.provider[data-id="${CSS.escape(at.dataset.id)}"]` : null;
   pressed = { el: at, find, time: performance.now() };
 }, true);
+// Text cut short with an ellipsis says its whole self on hover (#721): an
+// agent's status line, a long model name. Which lines are cut depends on the
+// window's width, so it is measured when the pointer comes over one, and the
+// title follows: set while the text is cut, gone again once it fits. A title
+// the app wrote itself is never touched: data-full-tip keeps the text put here,
+// and a title that no longer reads the same was written by the app since.
+document.addEventListener("mouseover", (e) => {
+  let el = e.target instanceof Element ? e.target : null;
+  for (let i = 0; el && i < 4 && getComputedStyle(el).textOverflow !== "ellipsis"; i++) el = el.parentElement;
+  if (!el || getComputedStyle(el).textOverflow !== "ellipsis") return;
+  const ours = el.hasAttribute("title") && el.getAttribute("title") === el.dataset.fullTip;
+  if (el.hasAttribute("title") && !ours) return;
+  const full = el.textContent.replace(/\s+/g, " ").trim();
+  if (el.scrollWidth > el.clientWidth && full) {
+    el.title = full;
+    el.dataset.fullTip = full;
+  } else if (ours) {
+    el.removeAttribute("title");
+    el.removeAttribute("data-full-tip");
+  }
+}, { passive: true });
 let modalOrigin = null, modalDone = null;
 // originRect: where the dialog came from, as it is now, or null when it's gone
 function originRect(o) {
