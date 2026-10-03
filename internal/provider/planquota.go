@@ -514,6 +514,7 @@ func PlanQuotas(ctx context.Context) []SubscriptionQuota {
 	}
 	out = append(out, <-stepfun...)
 	if ctx.Err() == nil {
+		noteQuotaHistory(out, time.Now())
 		c.Lock()
 		c.at, c.data = time.Now(), out
 		c.Unlock()

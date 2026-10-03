@@ -128,6 +128,7 @@ func SubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 			start := time.Now()
 			out := fetchSubscriptionUsage()
 			noteDailyCredits(out, time.Now())
+			noteQuotaHistory(out, time.Now())
 			c.Lock()
 			c.at, c.data, c.pending = time.Now(), out, nil
 			if claudeAsked.Load() > start.UnixNano() {

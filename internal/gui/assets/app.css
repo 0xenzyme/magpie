@@ -555,6 +555,20 @@ body.window .field.solo { grid-column: auto; }
 .credit-days .cd-day.unknown { background: none; outline: 1px dashed var(--line); outline-offset: -1px; }
 .credit-days .cd-day i { display: block; width: 100%; border-radius: 2px; background: var(--accent); }
 .credit-days .cd-note { margin-top: 4px; font-size: 10px; color: var(--faint); }
+/* what was left over time (#651): a line a window, an even burn dashed, now upright */
+.quota-curve { margin-top: 10px; }
+.quota-curve .qc-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); }
+.quota-curve .qc-range .opt { height: 20px; padding: 0 9px; font-size: 11px; }
+.quota-curve .qc-plot { display: block; width: 100%; height: 64px; margin-top: 6px; overflow: hidden; }
+.qc-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.qc-line { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.qc-even { stroke-width: 1; stroke-dasharray: 3 3; opacity: .55; vector-effect: non-scaling-stroke; }
+.qc-now { stroke: var(--faint); stroke-width: 1; stroke-dasharray: 1 2; vector-effect: non-scaling-stroke; }
+.quota-curve .qc-axis { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.quota-curve .qc-legend { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 4px; font-size: 10.5px; color: var(--muted); }
+.qc-key { display: inline-flex; align-items: center; gap: 5px; }
+.qc-key i { width: 7px; height: 7px; border-radius: 50%; }
+.qc-key b { color: var(--fg-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .quota-resets { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 10.5px; font-variant-numeric: tabular-nums; }
 .quota-resets .text { margin-left: auto; flex: none; font-size: 11px; padding: 2px 7px; }
 .subscription-card.several .quota-resets + .subscription-account { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
@@ -1146,6 +1160,10 @@ body.panel .profiles #save { height: 25px; } /* the field's: the line keeps its 
 .pq-rn { max-width: 44px; font-size: 9.5px; line-height: 1.2; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pq-rn2 { display: flex; flex-direction: column; align-items: center; }
 .pq-rn2 > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* the first window's current cycle, a thin line across the card (#651) */
+.pq-spark-box { grid-column: 1 / -1; display: block; height: 16px; }
+.pq-spark { display: block; width: 100%; height: 16px; overflow: hidden; }
+.pq-spark .qc-line { stroke-width: 1.2; }
 /* a Codex account's rate-limit resets, under a hairline across the card */
 .pq-resets { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin-top: 5px; padding-top: 7px; border-top: 1px solid var(--line-2); font-size: 11px; font-variant-numeric: tabular-nums; }
 .resets-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
