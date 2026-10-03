@@ -6845,6 +6845,10 @@ function renderModels(p) {
     try {
       const r = await api("provider/models", { ...asTyped(), id: p.id });
       status(t("{p}: {n} models", { p: p.name, n: r.count }), "ok");
+      // picks the vendor no longer lists were dropped from the saved
+      // provider: out of this editor's draft too, if it is still this
+      // provider's, or its Save put them back
+      if (r.dropped?.length && editing === p.id && draft) draft.chosen = draft.chosen.filter((x) => !r.dropped.includes(x));
       // the redraw keeps the editor's draft, the picks in it with it: none
       // are put back by hand, which put them in whichever editor was open
       // by then, another provider's too (#464)

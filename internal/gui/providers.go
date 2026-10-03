@@ -1119,15 +1119,22 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			if req.Typed {
 				ask = typed(*p, in, req.Proxy)
 			}
-			var ms []catalog.Model
-			if ms, err = ask.Fetch(ctx); err != nil {
+			ms, dropped, err := ask.Refetch(ctx)
+			if err != nil {
 				fail(rw, err)
 				return
 			}
+			// the picks the vendor's list no longer has are gone from
+			// the saved provider: the editor takes them out of its draft
+			// too, or its Save wrote them back
+			if q, err := provider.Find(p.ID); err == nil {
+				p = q
+			}
 			writeJSON(rw, struct {
 				Count    int          `json:"count"`
+				Dropped  []string     `json:"dropped,omitempty"`
 				Provider providerJSON `json:"provider"`
-			}{len(ms), providerInfo(*p, agentUses(agent.Detected(), provider.GroupFinder()))})
+			}{len(ms), dropped, providerInfo(*p, agentUses(agent.Detected(), provider.GroupFinder()))})
 			return
 		default:
 			http.NotFound(rw, r)
