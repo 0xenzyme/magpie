@@ -351,6 +351,56 @@ func TestCodexDrawRefused(t *testing.T) {
 	}
 }
 
+// A ChatGPT account whose plan won't draw (chatgpt.com: 403
+// {"detail":"Forbidden"}) hands the drawing to the next account on, as a
+// Plus account further down draws it (#545); the one refused doesn't rest
+// for text over it, and the next drawing asks it first again.
+func TestCodexDrawMovesToNextAccount(t *testing.T) {
+	codexSignedIn(t, "plus@example.com")
+	var mu sync.Mutex
+	var tried []string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		mu.Lock()
+		tried = append(tried, r.Header.Get("chatgpt-account-id"))
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if r.Header.Get("chatgpt-account-id") == "acct-1" {
+			w.WriteHeader(http.StatusForbidden)
+			io.WriteString(w, `{"detail":"Forbidden"}`)
+			return
+		}
+		io.WriteString(w, `{"created":1,"data":[{"b64_json":"`+base64.StdEncoding.EncodeToString(pngBytes)+`"}],"usage":{"input_tokens":5,"output_tokens":196}}`)
+	}))
+	defer up.Close()
+	was := provider.CodexBase
+	provider.CodexBase = up.URL + "/backend-api/codex"
+	defer func() { provider.CodexBase = was }()
+	s := New()
+	code, a, raw := postImages(t, s, "/v1/images/generations", "application/json", `{"prompt":"a magpie"}`)
+	if code != 200 || len(a.Data) != 1 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	mu.Lock()
+	if strings.Join(tried, ",") != "acct-1,acct-2" {
+		t.Fatalf("tried %v", tried)
+	}
+	tried = nil
+	mu.Unlock()
+	restingUntil.Lock()
+	rests := len(restingUntil.m)
+	restingUntil.Unlock()
+	if rests != 0 {
+		t.Fatalf("%d accounts rest after a drawing was refused", rests)
+	}
+	postImages(t, s, "/v1/images/generations", "application/json", `{"prompt":"a magpie"}`)
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Join(tried, ",") != "acct-1,acct-2" {
+		t.Fatalf("second drawing tried %v", tried)
+	}
+}
+
 // grokSignedIn gives the test's HOME the Grok CLI's sign-in, and a CLI to find.
 func grokSignedIn(t *testing.T) {
 	t.Helper()

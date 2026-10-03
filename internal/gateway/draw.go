@@ -254,7 +254,9 @@ func (s *Server) images(edit bool) http.HandlerFunc {
 		call.Provider, call.To = p.ID, provider.Chat
 		ctx, cancel := context.WithTimeout(r.Context(), drawTimeout)
 		defer cancel()
-		out, code, err := s.draw(ctx, p, model, d)
+		// the account that drew, or refused last, is the one recorded
+		drew, out, code, err := s.drawOnAccounts(ctx, p, model, d)
+		p = drew
 		call.Millis = time.Since(start).Milliseconds()
 		call.Status, call.Usage.Input, call.Usage.Output = code, out.Input, out.Output
 		if err == nil && len(out.Images) == 0 {
@@ -494,6 +496,57 @@ func viaFor(p provider.Provider, model string) drawVia {
 		return viaImages
 	}
 	return viaChat
+}
+
+// drawOnAccounts is draw on a subscription's accounts in the order its
+// text requests go over them (the provider's candidates, without its
+// fallback models): one whose plan won't draw (chatgpt.com's 403
+// {"detail":"Forbidden"} for a plan without images) or is out of them
+// hands the request to the next, as a Plus account further down draws
+// what the pinned one may not (#545). The refusal is of images alone, so
+// no account rests for text over it. It answers with the account that
+// drew, or the last one's error when every one refused.
+func (s *Server) drawOnAccounts(ctx context.Context, p provider.Provider, model string, d drawing) (provider.Provider, drawn, int, error) {
+	if p.Account == nil {
+		out, code, err := s.draw(ctx, p, model, d)
+		return p, out, code, err
+	}
+	q := p
+	q.Fallback = nil
+	cs := s.candidates(q, model, provider.Chat)
+	// an account whose list lacks the image model is put aside for text
+	// when another's list is unknown; for drawing it is asked last
+	_, _, left, _ := perKeyBarred(q, model, provider.Chat)
+	for _, c := range left {
+		if !slices.ContainsFunc(cs, func(o candidate) bool { return accountOf(o.p) == accountOf(c.p) }) {
+			cs = append(cs, c)
+		}
+	}
+	if len(cs) == 0 {
+		cs = []candidate{{p: p, model: model, rest: p.ID}}
+	}
+	var out drawn
+	var code int
+	var err error
+	for i, c := range cs {
+		p = c.p
+		out, code, err = s.draw(ctx, p, model, d)
+		if err == nil || ctx.Err() != nil || i+1 == len(cs) || !accountRefusedDrawing(code) {
+			break
+		}
+	}
+	return p, out, code, err
+}
+
+// accountRefusedDrawing says a failure to draw was the account's — its
+// sign-in, its plan, its allowance — not the request's, so another
+// account of the subscription may draw it.
+func accountRefusedDrawing(code int) bool {
+	switch code {
+	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden, http.StatusTooManyRequests:
+		return true
+	}
+	return false
 }
 
 // draw asks the provider for d's images, on the API model draws on there,
