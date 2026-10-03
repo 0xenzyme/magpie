@@ -1,7 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  = -s -w -X main.version=$(VERSION)
 TAGS     = production
-TARGETS  = darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64
+TARGETS  = darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64 android/arm64
 
 # The GUI links the platform webview through cgo, so it is built natively.
 # `nogui` builds the terminal-only magpie, which cross-compiles anywhere.
@@ -14,6 +14,11 @@ endif
 # Wails' default GTK 4 and WebKitGTK 6 would leave them out.
 ifeq ($(shell uname -s),Linux)
   TAGS += gtk3
+endif
+# Termux uses Android's libc and has no desktop webview. Keep the web UI
+# and terminal commands, without linking GTK or Wails.
+ifeq ($(shell go env GOOS),android)
+  TAGS = nogui
 endif
 
 .PHONY: build cli install test app icons release release-cli release-windows release-linux clean dev dev-once
@@ -28,7 +33,7 @@ install:
 	go install -tags "$(TAGS)" -trimpath -ldflags="$(LDFLAGS)" .
 
 test:
-	go vet ./... && go test ./...
+	go vet -tags "$(TAGS)" ./... && go test -tags "$(TAGS)" ./...
 
 # macOS bundle: menu bar app with no Dock icon (LSUIElement).
 app: build
@@ -69,7 +74,7 @@ release-cli:
 	@for t in $(TARGETS); do \
 		os=$${t%/*}; arch=$${t#*/}; ext=""; [ $$os = windows ] && ext=.exe; \
 		echo "  $$os/$$arch (cli)"; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -tags nogui -trimpath -ldflags="$(LDFLAGS)" -o dist/magpie-cli-$$os-$$arch$$ext . ; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -tags nogui -trimpath -ldflags="$(LDFLAGS)" -o dist/magpie-cli-$$os-$$arch$$ext . || exit 1; \
 	done
 
 # The desktop app for Windows: the system WebView2 needs no cgo, so both

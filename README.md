@@ -716,6 +716,11 @@ Linux needs `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` for the app build
 (the Makefile adds the `gtk3` tag; with plain `go build`, pass `-tags gtk3`);
 Windows uses the WebView2 runtime that ships with the OS.
 
+Termux uses the Android terminal build: the installer puts it in
+`$PREFIX/bin`, and `make build` selects it automatically. With plain
+`go build` or `go install`, pass `-tags nogui`; use `magpie web` or
+`magpie tui` for the interface. `magpie autostart on` requires Termux:Boot.
+
 ### Docker
 
 `docker build` makes a server image: the terminal-only binary on
