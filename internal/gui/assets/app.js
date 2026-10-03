@@ -14077,6 +14077,7 @@ function renderSearcher(s, keep, box) {
     const [pid, ...rest] = id.split("/");
     const c = choices.find((x) => x.id === pid);
     if (!c) return id;
+    if (c.service) return `${c.name} · ${t("its web search")}`;
     if (!rest.length) return `${c.name} · ${c.small}`;
     const m = c.models.find((x) => x.id === id);
     return `${m ? m.name : rest.join("/")} · ${c.name}`;
@@ -14089,6 +14090,9 @@ function renderSearcher(s, keep, box) {
     const why = { gone: t("it is no longer in magpie"), off: t("it is turned off"), cant: t("it can't search the web by itself"), nomodel: t("it lists no model") }[s.searchUnused] || s.searchUnused;
     sub.append(" · ", el("span", "warn searcher-unused", t("{who} isn't used: {why}, so magpie picks one", { who: named(v), why })));
   }
+  const plans = choices.filter((c) => c.service).map((c) => c.name);
+  if (plans.length) sub.append(" · ", el("span", "searcher-own",
+    t("A Kimi Code plan ({names}) searches for its own models first, with its web search; for other models only when named here", { names: plans.join(", ") })));
   if (s.searchRelays?.length) sub.append(" · ", el("span", "searcher-relays",
     t("Relays said to search ({names}) are never picked automatically: they would spend the relay's quota on other models' searches; if one refuses magpie's own request, magpie falls back", { names: s.searchRelays.join(", ") })));
   who.append(el("div", "name", t("Searches for other models")), sub);
@@ -14102,6 +14106,10 @@ function renderSearcher(s, keep, box) {
   }
   const options = [{ value: "", label: t("Automatic"), note: s.searchAuto || t("no provider that searches"), reset: true }];
   for (const c of choices) {
+    if (c.service) {
+      options.push({ value: c.id, label: t("its web search"), note: c.name, icon: c.icon, group: c.name });
+      continue;
+    }
     options.push({ value: c.id, label: t("{model}, its small model", { model: c.small }), note: c.name, icon: c.icon, group: c.name });
     for (const m of c.models) options.push({ value: m.id, label: m.name || m.id, note: c.name, icon: c.icon, group: c.name, ref: m.id });
   }

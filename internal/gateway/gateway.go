@@ -2942,11 +2942,13 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 				break
 			}
 		}
-		if !searching(r.Context()) && canSearch() && !searchesItself(p, to) {
+		if !searching(r.Context()) && canSearchFor(p) && !searchesItself(p, to) {
 			ask := s.askTranslated(p, to, model, r.Header, w.Header())
 			if zen != nil {
 				ask = zenRound(zen.z, ask)
 			}
+			// a Kimi Code plan's own searches stay on it
+			r = r.WithContext(searchingOn(r.Context(), p))
 			return s.searchReply(w, r, from, p.Name, request, u, ask)
 		}
 	}

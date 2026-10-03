@@ -364,6 +364,8 @@ const I18N = {
     "When a model can't search the web, this provider searches for it, and gives it what it found": "模型自己不能联网搜索时，由这个供应商替它搜，把搜到的结果交给模型",
     "no provider that searches": "没有能搜索的供应商",
     "{model}, its small model": "{model}（它的小模型）",
+    "its web search": "它自带的联网搜索",
+    "A Kimi Code plan ({names}) searches for its own models first, with its web search; for other models only when named here": "Kimi Code 套餐（{names}）的模型先用套餐自带的联网搜索；别的模型只有在这里选了它才用",
     "it is no longer in magpie": "它已不在 magpie 里",
     "it is turned off": "它已关闭",
     "it can't search the web by itself": "它自己不能联网搜索",

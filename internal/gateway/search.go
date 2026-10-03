@@ -26,6 +26,8 @@ import (
 // magpie's, which a model that can search — the Claude subscription, a
 // Codex account, OpenAI, Anthropic's API, OpenRouter — answers for it, or,
 // with none of them, a search API the user gave a key to (search_api.go).
+// A Kimi Code plan searches for its own models first, with its search
+// service (search_kimi.go).
 
 // searchRounds is how many times a reply may go back to its model with
 // what a search found.
@@ -134,11 +136,15 @@ func searchRank(p provider.Provider) int {
 // itself: a relay said to search is offered only to be named (#359).
 const manualRelayRank = 5
 
-// namedSearcherRank is searchRank as Settings may name it: a relay said to
-// search on Anthropic's or Responses' API comes last, and only by hand.
+// namedSearcherRank is searchRank as Settings may name it: a Kimi Code
+// plan, by its search service, and a relay said to search on Anthropic's or
+// Responses' API come last, and only by hand.
 func namedSearcherRank(p provider.Provider) (int, bool) {
 	if r := searchRank(p); r >= 0 {
 		return r, false
+	}
+	if provider.KimiCodeSearch(p) != "" {
+		return manualRelayRank, true
 	}
 	if p.Searches && (searchesItself(p, provider.Anthropic) || searchesItself(p, provider.Responses)) {
 		return manualRelayRank, true
@@ -193,6 +199,9 @@ func chosenSearcher() (*provider.Provider, string, string) {
 		return &p, "", SearcherOff
 	case r < 0:
 		return &p, "", SearcherCant
+	case provider.KimiCodeSearch(p) != "":
+		// it searches with no model
+		return &p, "", ""
 	}
 	if model != "" && slices.ContainsFunc(p.Available(), func(m catalog.Model) bool { return m.ID == model }) {
 		return &p, model, ""
@@ -214,6 +223,10 @@ func Searchers() []SearcherChoice {
 	for _, p := range provider.All() {
 		r, manualOnly := namedSearcherRank(p)
 		if r < 0 || !p.On() {
+			continue
+		}
+		if provider.KimiCodeSearch(p) != "" {
+			out = append(out, SearcherChoice{Provider: p, rank: r, ManualOnly: manualOnly, Service: true})
 			continue
 		}
 		var ms []catalog.Model
@@ -238,6 +251,9 @@ type SearcherChoice struct {
 	Models     []catalog.Model
 	rank       int
 	ManualOnly bool // a relay said to search, which only Settings may name
+	// Service is a Kimi Code plan, which searches by its search service,
+	// with no model (and no Small or Models)
+	Service bool
 }
 
 // RelaysSaidToSearch are the providers on that are said to search by
@@ -314,19 +330,33 @@ func searchTool(tools []Tool) Tool {
 const searchSystem = "You are a web search tool. Search the web for what is asked and report what the results say: the facts that answer it, as specifically as they are given (numbers, dates, versions, names), each with the title and URL of its page. Report only what the pages say; don't answer from memory, don't add advice. Be concise."
 
 // webSearch searches the web and says what it found, and on which pages:
-// with the searcher's model, or, without one or when it fails, with the
-// search APIs the user set up (#419).
+// for a model of a Kimi Code plan, with the plan's search service first;
+// then with the searcher's model, or, without one or when it fails, with
+// the search APIs the user set up (#419).
 func (s *Server) webSearch(ctx context.Context, query string) (string, []Hit, error) {
-	said, hits, err := s.modelSearch(ctx, query)
-	if err == nil || len(provider.SearchAPIs()) == 0 {
-		return said, hits, err
-	}
-	said, hits, apiErr := s.apiSearch(ctx, query)
-	if apiErr != nil {
-		if errors.Is(err, errNoSearcher) {
-			return "", nil, apiErr
+	var errs []error
+	if p, ok := ownSearcher(ctx); ok {
+		said, hits, err := s.kimiSearch(ctx, p, query)
+		if err == nil {
+			return said, hits, nil
 		}
-		return "", nil, errors.Join(err, apiErr)
+		errs = append(errs, err)
+	}
+	said, hits, err := s.modelSearch(ctx, query)
+	if err == nil {
+		return said, hits, nil
+	}
+	apis := len(provider.SearchAPIs()) > 0
+	// that no provider searches is news only when nothing else was tried
+	if !errors.Is(err, errNoSearcher) || len(errs) == 0 && !apis {
+		errs = append(errs, err)
+	}
+	if !apis {
+		return "", nil, errors.Join(errs...)
+	}
+	said, hits, err = s.apiSearch(ctx, query)
+	if err != nil {
+		return "", nil, errors.Join(append(errs, err)...)
 	}
 	return said, hits, nil
 }
@@ -349,7 +379,7 @@ func (s *Server) modelSearch(ctx context.Context, query string) (string, []Hit, 
 	defer cancel()
 	type pick struct{ id, model string }
 	tried := []pick{{p.ID, model}}
-	said, hits, err := s.searchWith(ctx, p, model, query)
+	said, hits, err := s.searchBy(ctx, p, model, query)
 	for _, c := range Searchers() {
 		if c.ManualOnly {
 			continue
@@ -575,7 +605,7 @@ func (s *Server) searchRounds(ctx context.Context, q *Request, tool string, in <
 					results[i].Text, results[i].IsError = "query is empty", true
 					return
 				}
-				found, hits, err := s.webSearch(ctx, a.Query)
+				found, hits, err := s.webSearch(context.WithValue(ctx, searchCallKey{}, c.ID), a.Query)
 				if err != nil {
 					results[i].Text, results[i].IsError = "search failed: "+err.Error(), true
 					return
