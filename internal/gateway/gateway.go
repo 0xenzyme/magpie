@@ -1907,16 +1907,23 @@ func (s *Server) forward(ctx context.Context, p provider.Provider, to provider.P
 			}
 		}
 	}
-	if err != nil || to != provider.Anthropic || res.StatusCode != http.StatusBadRequest {
-		return res, err
+	// and what of Claude Code's newest asks it turns away (thinking.display
+	// "updates", a turn's output_config in messages: anthropic_shapes.go),
+	// each learned once
+	for range 3 {
+		if err != nil || to != provider.Anthropic || res.StatusCode != http.StatusBadRequest {
+			return res, err
+		}
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		res.Body.Close()
+		res.Body = io.NopCloser(bytes.NewReader(b))
+		betas := len(s.refuseBetas(p, b)) > 0
+		if shapes := s.refuseShapes(p, b, body); !betas && !shapes {
+			return res, nil
+		}
+		res, err = s.forwardOnce(ctx, p, to, path, body, in)
 	}
-	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	res.Body.Close()
-	res.Body = io.NopCloser(bytes.NewReader(b))
-	if len(s.refuseBetas(p, b)) == 0 {
-		return res, nil
-	}
-	return s.forwardOnce(ctx, p, to, path, body, in)
+	return res, err
 }
 
 // forwardOnce is one request to the provider, as forward makes it.
@@ -1925,6 +1932,7 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	body = deepseekToolPatterns(p, to, body)
 	if to == provider.Anthropic {
 		body = s.bodyBetas(p, body)
+		body = s.withoutRefusedShapes(p, body)
 		// what every path to an Anthropic endpoint sends, relayed or
 		// built, with the model named as the vendor names it
 		body = adaptiveThinking(body)
