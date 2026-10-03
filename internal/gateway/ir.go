@@ -480,12 +480,13 @@ var effortRank = []string{"none", "minimal", "low", "medium", "high", "xhigh", "
 // setting can outlive the model it was picked for; GLM-5.3 takes low, high
 // and max only.
 //
-// Codex's ultra is max to a model without an ultra of its own (a routing
-// group offers it when a ChatGPT model in it does): sent as max, or the
-// nearest the model has below it.
+// Codex's ultra is no API's level, whatever a list says (ChatGPT's lists
+// it for Codex's picker; magpie offers it on Copilot's gpt-6.1-sol, #656):
+// it is sent as max, or the nearest the model has below it.
 func fitEffort(want string, levels []string) string {
-	if want == "ultra" && !slices.Contains(levels, want) {
+	if want == "ultra" {
 		want = "max"
+		levels = slices.DeleteFunc(slices.Clone(levels), func(l string) bool { return l == "ultra" })
 	}
 	if len(levels) == 0 || slices.Contains(levels, want) {
 		return want

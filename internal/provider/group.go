@@ -525,11 +525,14 @@ func groupEntries(entries []Entry) []Entry {
 		var fixed []string // the efforts members are fixed at
 		levelled := false  // a member that follows the agent's effort was met
 		// Codex's ultra (max, with Codex handing parts of the task to agents
-		// of its own) is a level of ChatGPT's own models alone; a group with
-		// one of them in it, every member at max, offers it too, and the
+		// of its own) is a level of OpenAI's models that offer it (a ChatGPT
+		// account's, or one served elsewhere: OffersUltra); a group with one
+		// of them in it, every member at max, offers it too, and the
 		// gateway sends max to the members that have no ultra
 		ultra := false
+		chatgpt := false // a ChatGPT account answers for a member
 		for i, m := range ms {
+			chatgpt = chatgpt || m.Provider.Account != nil && m.Provider.Account.Agent == "codex"
 			if !slices.ContainsFunc(ms[:i], func(o Member) bool { return o.Provider.ID == m.Provider.ID }) {
 				e.Icons = append(e.Icons, m.Provider.Icon) // each provider once, "" for one without
 			}
@@ -591,6 +594,9 @@ func groupEntries(entries []Entry) []Entry {
 		if ultra && slices.Contains(e.Efforts, "max") && !slices.Contains(e.Efforts, "ultra") {
 			e.Efforts = append(e.Efforts, "ultra")
 		}
+		// V2 for Ultra only when no member is a ChatGPT account's: a lead
+		// it answers seals its subagents' tasks (#141)
+		e.AgentsV2 = !chatgpt && slices.Contains(e.Efforts, "ultra")
 		e.Reasoning = e.Reasoning || len(e.Efforts) > 0
 		if e.ImageInput != nil && !*e.ImageInput {
 			e.Images = false

@@ -99,8 +99,11 @@ func Entries(ms []catalog.Model, after int) []any {
 		// fails to load); later Codex ask for parallel calls whatever it
 		// says, so it says what they do.
 		Parallel bool `json:"supports_parallel_tool_calls"`
-		// Set only with settings.CodexAgentsV1, on an OpenAI model's
-		// entry (see V1).
+		// "v1" only with settings.CodexAgentsV1, on an OpenAI model's
+		// entry (see V1); "v2" on a model offering Ultra that no ChatGPT
+		// account answers for (catalog.Model.AgentsV2), as Codex's own
+		// entry for it says: Ultra hands work to Codex's agents in V2
+		// alone, and a magpie-served lead writes their tasks as text.
 		MultiAgent string `json:"multi_agent_version,omitempty"`
 	}
 	own := CacheEntries()
@@ -132,6 +135,8 @@ func Entries(ms []catalog.Model, after int) []any {
 		// in (Fast, see provider.codexListed)
 		if v1 && (strings.HasPrefix(m.ID, "codex/") || m.Fast) {
 			e.MultiAgent = "v1"
+		} else if m.AgentsV2 {
+			e.MultiAgent = "v2"
 		}
 		if m.Images {
 			e.Modalities = append(e.Modalities, "image")

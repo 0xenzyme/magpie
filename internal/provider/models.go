@@ -873,6 +873,11 @@ type Entry struct {
 	// thinking switch alone has it and no Efforts (a group's: every
 	// member thinks).
 	Reasoning bool `json:"reasoning,omitempty"`
+	// AgentsV2 is set on a model offering Codex's Ultra that no ChatGPT
+	// account answers for (a group's: none of its members): Codex is told
+	// multi-agent V2 for it, so Ultra hands work to its agents, whose
+	// tasks a magpie-served lead writes as text.
+	AgentsV2 bool `json:"-"`
 }
 
 // Catalog lists the routing groups, then every exposed model of every ready
@@ -972,6 +977,15 @@ func entryFor(p Provider, m catalog.Model, s settings.Settings) Entry {
 	// providers serving it say (#402)
 	e.Reasoning = m.Reasoning || len(e.Efforts) > 0 || catalog.Thinks(m.ID)
 	e.Efforts = effortsKept(e.Efforts, s.ModelEfforts[e.ID])
+	// Codex's Ultra on a model OpenAI offers it on, served by another
+	// vendor (Copilot's gpt-6.1-sol, #656): a ChatGPT account's list says it
+	// already. Its subagents take their tasks as text from a magpie-served
+	// lead, so Codex is told V2 for it, where Ultra hands work to them
+	// (codexcat.Entries).
+	if p.Account == nil || p.Account.Agent != "codex" {
+		e.Efforts = withUltra(m.ID, e.Efforts)
+		e.AgentsV2 = slices.Contains(e.Efforts, "ultra")
+	}
 	return e
 }
 
