@@ -119,9 +119,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await badge.scrollIntoViewIfNeeded();
       const before = await scrolled();
       await badge.click();
-      // none picked, it was served: the click leaves it out, the rest
-      // picked in its place
-      assert.equal(await editor.locator(".mchips .mchip.on").count(), 4, "the chip left out");
+      // none picked, it was served: the click picks it alone (#681)
+      assert.equal(await editor.locator(".mchips .mchip.on").count(), 1, "the chip picked alone");
       assert.equal(await editor.locator(".mchips .mchip.auto").count(), 0);
       assert.equal(await scrolled(), before, "the page moved");
       await page.keyboard.press("Escape");

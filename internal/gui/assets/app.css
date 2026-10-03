@@ -2081,8 +2081,9 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .mchip.on { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); font-weight: 500; }
 .mchip.on::before { content: "✓"; font-size: 10px; }
 .mchip.own.on::before { content: "＋"; }
-/* served with none picked: the vendor's list stands in for the picks */
-.mchip.auto { color: var(--accent); border-style: dashed; border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+/* served with none picked: the vendor's list stands in for the picks. Drawn
+   apart from a pick (no tick, no accent): a click picks it alone (#681) */
+.mchip.auto { border-style: dashed; border-color: var(--muted); }
 /* an image model in the editor: listed, not picked */
 .mchip.ro, .mchip.ro:hover { cursor: default; color: var(--muted); border-color: var(--line); }
 .mchip.ro:active { transform: none; }

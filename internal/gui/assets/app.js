@@ -6689,13 +6689,15 @@ function renderModels(p) {
       if (m.default) c.title = `${m.id} · ${m.default}`;
       else if (m.name && m.name !== m.id) c.title = m.id;
       if (free) c.title = (c.title || m.id) + " · " + t(m.free ? "free: it doesn't use the plan's credits" : "free: so its name says");
-      if (served.has(m.id)) c.title = (c.title || m.id) + "\n" + t("Agents see it: none are picked, so the vendor's list is used");
+      if (served.has(m.id)) c.title = (c.title || m.id) + "\n" + t("Agents see it: none are picked, so the vendor's list is used") + "\n" + t("Click to pick just this model");
       tested(c, m.id);
       menu(c, m.id);
-      // a served one is on as a picked one is: a click leaves it out,
-      // the rest of what is served picked in its place
+      // a click picks the model, a served one too: with none picked it
+      // becomes the only pick. A served one clicked used to be left out,
+      // the rest of what was served picked in its place, so a click on
+      // the one model wanted ticked every other (#681)
       c.onclick = () => {
-        draft.chosen = on ? draft.chosen.filter((x) => x !== m.id) : served.has(m.id) ? [...served].filter((x) => x !== m.id) : [...draft.chosen, m.id];
+        draft.chosen = on ? draft.chosen.filter((x) => x !== m.id) : [...draft.chosen, m.id];
         draw();
       };
       chips.append(c);
@@ -6719,7 +6721,7 @@ function renderModels(p) {
     drawNames();
     why.textContent = decideOnly(p) ? t("Agents never see them: a routing group picks one as its classifier.")
       : draft.unlisted ? t("Agents don't see them: only the routing groups they are in use them.")
-      : t(draft.chosen.length ? "Agents see the models picked." : "None picked: agents see the vendor's list, up to {n}. To show them none, tick Only through routing groups, or switch the provider off.", { n: 24 });
+      : t(draft.chosen.length ? "Agents see the models picked." : "None picked: agents see the vendor's list, up to {n} (dashed). Click a model to pick just it. To show them none, tick Only through routing groups, or switch the provider off.", { n: 24 });
     drawLost();
   };
   // those of its models in no routing group, while it is kept for groups:
