@@ -1187,6 +1187,9 @@ func state() stateJSON {
 		s.Clients = append(s.Clients, clientJSON{ID: a.ID, Name: a.Name, Icon: a.Icon})
 	}
 	for _, a := range agent.Detected() {
+		if a.Follow != nil {
+			_ = a.Follow()
+		}
 		vals := a.Values()
 		aj := agentJSON{ID: a.ID, Name: a.Name, Icon: a.Icon, Path: tilde(a.Path), Fields: agentFields(a, vals)}
 		aj.Models = agentModelCount(a.ID, aj.Fields)

@@ -100,6 +100,11 @@ type Agent struct {
 	// kept: the endpoint, provider and model the user had. Disconnect runs
 	// it before the fields' defaults.
 	Unwire func() error
+	// Follow, for an agent whose own picker moves its main model where
+	// magpie keeps other settings following it (Claude Code's /model and
+	// its tiers), brings those along to the model picked there. Run as the
+	// Agents page is drawn.
+	Follow func() error
 	// RenameRefs, for an agent whose config names magpie's models beyond
 	// its fields (omp's other roles and fallback chains), moves those names
 	// off provider from onto to, the rest of each kept; it answers whether
@@ -380,6 +385,9 @@ func atomic(a *Agent, paths ...string) *Agent {
 	}
 	if sync := a.Sync; sync != nil {
 		a.Sync = func() error { return edit.Atomically(sync, paths...) }
+	}
+	if follow := a.Follow; follow != nil {
+		a.Follow = func() error { return edit.Atomically(follow, paths...) }
 	}
 	if unwire := a.Unwire; unwire != nil {
 		a.Unwire = func() error { return edit.Atomically(unwire, paths...) }
