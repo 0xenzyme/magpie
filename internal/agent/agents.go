@@ -360,13 +360,46 @@ func piModelJSON(m catalog.Model, gw string, native bool) map[string]any {
 // config/plugin/provider.ts), so a model whose levels are none/high/max, or
 // go past high to xhigh and max, or that has none, was offered levels it
 // doesn't have and not the ones it has. A model without levels gets an
-// empty set, which OpenCode 2 takes as none rather than guessing.
-func openCodeVariants(efforts []string) map[string]any {
-	out := map[string]any{}
-	for _, e := range efforts {
-		out[e] = map[string]any{"reasoningEffort": e}
+// empty set, which OpenCode 2 takes as none rather than guessing. They are
+// written weakest first: OpenCode and OpenChamber list a model's variants in
+// the object's key order, and a map had them alphabetical — default, high,
+// low, max, medium, ultra, xhigh (#713).
+func openCodeVariants(efforts []string) orderedJSON {
+	out := orderedJSON{}
+	for _, e := range gateway.ByStrength(efforts) {
+		if !slices.ContainsFunc(out, func(p jsonPair) bool { return p.k == e }) {
+			out = append(out, jsonPair{e, map[string]any{"reasoningEffort": e}})
+		}
 	}
 	return out
+}
+
+// orderedJSON is a JSON object that keeps its keys in the order given,
+// where a map's would come out sorted.
+type orderedJSON []jsonPair
+
+type jsonPair struct {
+	k string
+	v any
+}
+
+func (o orderedJSON) MarshalJSON() ([]byte, error) {
+	b := []byte{'{'}
+	for i, p := range o {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		k, err := json.Marshal(p.k)
+		if err != nil {
+			return nil, err
+		}
+		v, err := json.Marshal(p.v)
+		if err != nil {
+			return nil, err
+		}
+		b = append(append(append(b, k...), ':'), v...)
+	}
+	return append(b, '}'), nil
 }
 
 // piThinkingLevels is the thinkingLevelMap for a model's efforts: every one
@@ -470,7 +503,7 @@ func openCodeLike(at place, id, name, icon, bin, dir, auth string, ua []string, 
 			if _, ok := edit.GetJSON(path, "provider."+magpieID); !ok && onMagpie() {
 				return edit.SetJSON(path, edit.KV{Path: "provider." + magpieID, Value: provider()})
 			}
-			return syncJSON(path, "provider."+magpieID, provider)
+			return syncJSONInOrder(path, "provider."+magpieID, provider)
 		},
 		Fields: []Field{
 			{Key: "model", Label: "model", Get: jsonGet(path, "model"), Set: set("model"), Options: opts("model")},

@@ -1,40 +1,127 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/provider"
 )
 
 func TestOpenCodeVariants(t *testing.T) {
 	for _, c := range []struct {
 		efforts []string
-		want    map[string]any
+		want    string
 	}{
-		{[]string{"none", "high", "max"}, map[string]any{
-			"none": map[string]any{"reasoningEffort": "none"},
-			"high": map[string]any{"reasoningEffort": "high"},
-			"max":  map[string]any{"reasoningEffort": "max"},
-		}},
-		{[]string{"low", "medium", "high", "xhigh"}, map[string]any{
-			"low":    map[string]any{"reasoningEffort": "low"},
-			"medium": map[string]any{"reasoningEffort": "medium"},
-			"high":   map[string]any{"reasoningEffort": "high"},
-			"xhigh":  map[string]any{"reasoningEffort": "xhigh"},
-		}},
+		{[]string{"none", "high", "max"}, `{"none":{"reasoningEffort":"none"},"high":{"reasoningEffort":"high"},"max":{"reasoningEffort":"max"}}`},
+		{[]string{"low", "medium", "high", "xhigh"}, `{"low":{"reasoningEffort":"low"},"medium":{"reasoningEffort":"medium"},"high":{"reasoningEffort":"high"},"xhigh":{"reasoningEffort":"xhigh"}}`},
+		// weakest first whatever order the model lists them in (#713)
+		{[]string{"max", "ultra", "low", "xhigh", "medium", "high"}, `{"low":{"reasoningEffort":"low"},"medium":{"reasoningEffort":"medium"},"high":{"reasoningEffort":"high"},"xhigh":{"reasoningEffort":"xhigh"},"max":{"reasoningEffort":"max"},"ultra":{"reasoningEffort":"ultra"}}`},
 		// none at all: an empty set, so OpenCode 2 doesn't make low, medium
 		// and high of its own
-		{nil, map[string]any{}},
+		{nil, `{}`},
 	} {
-		if got := openCodeVariants(c.efforts); !reflect.DeepEqual(got, c.want) {
-			t.Errorf("%v: got %v, want %v", c.efforts, got, c.want)
+		b, err := json.Marshal(openCodeVariants(c.efforts))
+		if err != nil || string(b) != c.want {
+			t.Errorf("%v: got %s (%v), want %s", c.efforts, b, err, c.want)
 		}
 	}
+}
+
+// variantOrder is the variants of the one model in an opencode.json, in the
+// order the file's bytes list them.
+func variantOrder(t *testing.T, b []byte) []string {
+	t.Helper()
+	i := bytes.Index(b, []byte(`"variants"`))
+	if i < 0 {
+		t.Fatalf("no variants: %s", b)
+	}
+	rest := b[i:]
+	at := map[string]int{}
+	var got []string
+	for _, e := range []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"} {
+		if j := bytes.Index(rest, []byte(`"`+e+`":`)); j >= 0 {
+			at[e] = j
+			got = append(got, e)
+		}
+	}
+	slices.SortFunc(got, func(x, y string) int { return at[x] - at[y] })
+	return got
+}
+
+// TestOpenCodeVariantsInOrder: opencode.json lists a model's variants weakest
+// first, as OpenCode and OpenChamber show them in the file's order; they
+// were alphabetical — high, low, max, medium, ultra, xhigh (#713). A file an
+// older magpie wrote so is put in order by the next sync, and one in order
+// is left alone.
+func TestOpenCodeVariantsInOrder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	if err := provider.Save(provider.Provider{
+		ID: "think", Name: "Think", Chat: "https://example.test/v1", Key: "key", Models: []string{"deep"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.SaveLive("think", "https://example.test/v1", []catalog.Model{
+		{ID: "deep", Efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"low", "medium", "high", "xhigh", "max", "ultra"}
+	path := filepath.Join(home, ".config", "opencode", "opencode.json")
+	writeFile(t, path, "{\n  \"theme\": \"dark\"\n}\n")
+	oc := opencode(home, filepath.Join(home, ".config"))
+	if err := oc.Field("model").Set("magpie/think/deep"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	if got := variantOrder(t, b); !slices.Equal(got, want) {
+		t.Fatalf("written: %v, want %v\n%s", got, want, b)
+	}
+
+	// as an older magpie wrote it: the same block from a map, keys sorted
+	var block map[string]any
+	if err := json.Unmarshal([]byte(mustJSON(t, magpieProviderJSON("opencode"))), &block); err != nil {
+		t.Fatal(err)
+	}
+	if err := edit.SetJSON(path, edit.KV{Path: "provider.magpie", Value: block}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(path)
+	if got := variantOrder(t, b); !slices.Equal(got, []string{"high", "low", "max", "medium", "ultra", "xhigh"}) {
+		t.Fatalf("old block: %v\n%s", got, b)
+	}
+	if err := oc.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(path)
+	if got := variantOrder(t, b); !slices.Equal(got, want) {
+		t.Fatalf("synced: %v, want %v\n%s", got, want, b)
+	}
+	if err := oc.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if b2, _ := os.ReadFile(path); !bytes.Equal(b, b2) {
+		t.Fatalf("rewritten though in order:\n%s\n%s", b, b2)
+	}
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 // TestOpenCodeWritesVariants: each model of magpie's in opencode.json names

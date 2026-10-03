@@ -493,6 +493,20 @@ func effortOf(s string) string {
 // effortRank orders the reasoning levels agents and vendors name.
 var effortRank = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
 
+// ByStrength is efforts weakest first, in effortRank's order; a level it
+// doesn't know keeps its place among the others of its kind, after them.
+func ByStrength(efforts []string) []string {
+	rank := func(e string) int {
+		if i := slices.Index(effortRank, e); i >= 0 {
+			return i
+		}
+		return len(effortRank)
+	}
+	out := slices.Clone(efforts)
+	slices.SortStableFunc(out, func(a, b string) int { return rank(a) - rank(b) })
+	return out
+}
+
 // fitEffort is the level of the model's own nearest the one asked for — a
 // tie goes up — or the one asked for when the model's aren't known. Codex
 // asks "medium" of a model it was given no levels for, and an agent's
