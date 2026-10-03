@@ -9902,6 +9902,9 @@ function renderQuotas() {
         const u = el("span", "user", sub.user);
         u.title = sub.user;
         who.append(u);
+        // in brief, its resets and whether it uses them by itself (#719)
+        const auto = brief && autoResetBrief(sub);
+        if (auto) who.append(auto);
         if (sub.plan || sub.until) who.append(planSpan(sub));
         if (every) who.append(every);
         if (several) who.append(usageAcctFold(sub, !brief));
@@ -9928,19 +9931,20 @@ function renderQuotas() {
       if (read) card.append(read);
       if (!brief && sub.resets?.count) {
         const r = el("div", "quota-resets");
-        r.append(resetsWords(sub.resets));
-        const use = el("button", "text", t("Use a reset"));
-        use.title = resetUseTitle(sub);
-        use.onclick = () => askReset(sub);
+        r.append(resetsWords(sub.resets, sub));
         // only Codex's are spent from here: a GLM team's are spent on
         // bigmodel.cn, a plugin's wherever its vendor spends them
         if (!sub.resets.byWindow && sub.provider === "codex") {
-          const auto = autoResetButton(sub, "text auto-reset");
-          if (auto) r.append(auto);
+          const use = el("button", "text", t("Use a reset"));
+          use.title = resetUseTitle(sub);
+          use.onclick = () => askReset(sub);
           r.append(use);
         }
         card.append(r);
       }
+      // the account's standing say on its resets, held or not (#719)
+      const policy = !brief && autoResetRow(sub, "quota-autoreset");
+      if (policy) card.append(policy);
     }
     // in the card's head, beside its name: no line of its own
     if (several) head.append(usageMore(subs, "text quota-more"));
@@ -10878,17 +10882,17 @@ function panelQuotaCard(q) {
   if (q.asOf) card.append(el("span", "pq-sub pq-asof", asOfText(q, true)));
   if (q.resets?.count) {
     const r = el("div", "pq-resets");
-    r.append(resetsWords(q.resets));
-    const use = el("button", "pq-use", t("Use one…"));
-    use.title = resetUseTitle(q);
-    use.onclick = () => askReset(q);
+    r.append(resetsWords(q.resets, q));
     if (!q.resets.byWindow && q.provider === "codex") { // as on the Usage page
-      const auto = autoResetButton(q, "pq-use pq-auto");
-      if (auto) r.append(auto);
+      const use = el("button", "pq-use", t("Use one…"));
+      use.title = resetUseTitle(q);
+      use.onclick = () => askReset(q);
       r.append(use);
     }
     card.append(r);
   }
+  const policy = autoResetRow(q, "pq-autoreset");
+  if (policy) card.append(policy);
   return card;
 }
 
@@ -10896,7 +10900,7 @@ function panelQuotaCard(q) {
 // Sat 22:30", the date only when one of them runs out. A GLM Coding team
 // plan's are counted by window, "↺ 2 five-hour resets · 1 weekly reset",
 // and spent on the vendor's page, not here.
-function resetsWords(r) {
+function resetsWords(r, q) {
   const w = el("span", "resets-words");
   if (r.byWindow) {
     const parts = [];
@@ -10916,6 +10920,14 @@ function resetsWords(r) {
     const at = new Date(r.until);
     w.append(el("span", "resets-until", " · " + t("until {when}", { when: resetClock(at) })));
     w.title = t("The first runs out {when}", { when: at.toLocaleString() });
+    // whether the one that runs out first is kept from going to waste:
+    // with Auto-use on it is used shortly before it does (#624, #719)
+    if (q && autoResetKept(q)) {
+      const on = autoResetOn(q);
+      w.append(el("span", "resets-kept" + (on ? " on" : ""), " · " + t(on ? "auto-used before it expires" : "not auto-used")));
+      w.title += "\n" + t(on ? "Auto-use is on: the reset that runs out first is used about 3 hours before it does, if this account's windows have been used, so it isn't lost."
+        : "Auto-use is off: the reset that runs out first is lost unless it's used by hand before then.");
+    }
   }
   return w;
 }
@@ -10930,27 +10942,69 @@ function resetUseTitle(q) {
     + "\n" + t("This account's windows start again at once, as if none had been used. You're asked before anything is spent.");
 }
 
-// autoResetButton turns on or off a Codex account spending a
-// reset by itself: once its week is used up and no other account can
-// answer, one a week at most, and one about to run out unused shortly
-// before it does. Off unless the user turns it on; nothing for
-// an account with no name to keep it by.
-function autoResetButton(q, cls) {
-  const kept = { codex: "codexAutoReset" }[q.provider];
-  if (!q.user || !kept) return null;
-  const who = q.user.toLowerCase();
-  const on = !!(state.settings?.[kept] || []).includes(who);
-  const b = el("button", cls + (on ? " on" : ""), t("Auto-use"));
-  b.setAttribute("aria-pressed", String(on));
-  b.title = t(on ? "On: a reset is used by itself when this account's week is used up and no other account can answer, one a week at most, and one about to run out unused is used shortly before it does. Click to turn it off."
-    : "Use a reset by itself when this account's week is used up and no other account can answer, one a week at most. A reset about to run out is used shortly before it does, if the account has been used. The five hours running out never uses one.");
+// A Codex account spending a reset by itself is a standing say of the
+// account's, kept by its name (settings' codexAutoReset, the CLI's quota
+// auto-reset): when its week is used up and no other account can answer,
+// one a week at most, and the one about to run out unused shortly before
+// it does. Off unless the user turns it on; nothing for an account with no
+// name to keep it by. autoResetKept: the accounts that can have it.
+const AUTO_RESET_KEPT = { codex: "codexAutoReset" };
+function autoResetKept(q) {
+  return !!(q.user && AUTO_RESET_KEPT[q.provider] && !q.resets?.byWindow);
+}
+function autoResetOn(q) {
+  return autoResetKept(q) && !!(state.settings?.[AUTO_RESET_KEPT[q.provider]] || []).includes(q.user.toLowerCase());
+}
+
+// autoResetRow is that say on an account's card, whether or not it holds a
+// reset now, so it can be set ahead of one (#719): both times it uses one,
+// in words, and the switch.
+function autoResetRow(q, cls) {
+  if (!autoResetKept(q)) return null;
+  const on = autoResetOn(q);
+  const row = el("div", cls + (on ? " on" : ""));
+  const say = el("span", "ar-say");
+  say.append(el("b", "", t("Auto-use resets:")), document.createTextNode(" " + t("when the week runs out, or before one expires")));
+  say.title = autoResetTitle(on);
+  row.dataset.user = q.user;
+  row.append(say, autoResetButton(q));
+  return row;
+}
+function autoResetTitle(on) {
+  return t(on ? "On: a reset is used by itself when this account's week is used up and no other account can answer, one a week at most, and the one about to run out is used about 3 hours before it does, if the account has been used. The five hours running out never uses one. Click to turn it off."
+    : "Off: this account's resets are used only by hand. Turned on, one is used by itself when its week is used up and no other account can answer, one a week at most, and the one about to run out about 3 hours before it does, if the account has been used. The five hours running out never uses one.");
+}
+
+// autoResetBrief: an account in brief says it too, beside its name — the
+// resets it holds and the say, on or off — its switch a click away in full.
+function autoResetBrief(q) {
+  if (!autoResetKept(q)) return null;
+  const on = autoResetOn(q);
+  const s = el("span", "acct-auto" + (on ? " on" : ""));
+  if (q.resets?.count) s.append(el("span", "acct-auto-n", "↺ " + q.resets.count + " · "));
+  s.append(document.createTextNode(t(on ? "Auto-use: on" : "Auto-use: off")));
+  s.title = (q.resets?.count ? t(q.resets.count === 1 ? "1 reset" : "{n} resets", { n: q.resets.count }) + "\n" : "") + autoResetTitle(on);
+  return s;
+}
+
+// autoResetButton turns that on or off: a switch, its words beside it.
+function autoResetButton(q) {
+  const on = autoResetOn(q);
+  const b = el("button", "lib-switch auto-reset" + (on ? " on" : ""));
+  b.type = "button";
+  b.setAttribute("role", "switch");
+  b.setAttribute("aria-checked", String(on));
+  b.setAttribute("aria-label", t("Auto-use resets"));
+  b.title = autoResetTitle(on);
+  b.append(el("i"));
   b.onclick = async (e) => {
     e.stopPropagation();
+    if (b.disabled) return;
     b.disabled = true;
     try {
       prefs = await writingPrefs(api("settings/" + q.provider + "-auto-reset", { user: q.user, on: !on }));
       state.settings = prefs;
-      status(t(on ? "{who} no longer uses a reset by itself" : "{who} uses a reset by itself once its week is used up", { who: q.user }), "ok");
+      status(t(on ? "{who} no longer uses a reset by itself" : "{who} uses a reset by itself when its week runs out, or before one expires", { who: q.user }), "ok");
       renderQuotas();
     } catch (err) {
       b.disabled = false;

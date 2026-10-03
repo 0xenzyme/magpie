@@ -30,7 +30,10 @@ const quotaUsage = `usage: magpie quota [<provider>…] [--json]
   named). It can't be undone, so it asks first; --yes doesn't. quota auto-reset on lets
   the account spend one by itself when its weekly window is used up and no other
   account can take a request, one a week at most (the five hours running out never
-  does); off stops it, and alone it says which accounts do. It is off until turned on.
+  does), and spend the one about to expire about 3 hours before it does, if the
+  account's windows have been used, so it isn't lost. It is the account's standing
+  setting, held resets or not; off stops it, and alone it says which accounts have it
+  on. It is off until turned on.
   quota alert 80 has the magpie app notify when any window of a subscription or plan
   reaches 80% used, once each time the window runs (not windows set aside, such as
   on-demand spending); --balance 5 when a balance falls to 5 or under, in its own
@@ -224,7 +227,7 @@ func quotaAutoResetCmd(args []string) error {
 			return nil
 		}
 		for _, u := range on {
-			fmt.Println(green.Render("●"), u, muted.Render("uses a reset by itself once its week is used up"))
+			fmt.Println(green.Render("●"), u, muted.Render("uses a reset by itself when its week runs out, or before one expires"))
 		}
 		return nil
 	}
@@ -241,7 +244,7 @@ func quotaAutoResetCmd(args []string) error {
 	}
 	if !set {
 		if provider.CodexAutoReset(user) {
-			fmt.Println(user, "uses a reset by itself once its week is used up")
+			fmt.Println(user, "uses a reset by itself when its week runs out, or before one expires")
 		} else {
 			fmt.Println(user, "uses its resets only when told to")
 		}
@@ -251,7 +254,7 @@ func quotaAutoResetCmd(args []string) error {
 		return err
 	}
 	if on {
-		fmt.Println(green.Render("✓"), user+":", "uses a reset by itself once its week is used up and no other account can answer, one a week at most")
+		fmt.Println(green.Render("✓"), user+":", "uses a reset by itself once its week is used up and no other account can answer, one a week at most, and the one about to expire shortly before it does")
 	} else {
 		fmt.Println(green.Render("✓"), user+":", "no longer uses a reset by itself")
 	}
