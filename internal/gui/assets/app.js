@@ -870,7 +870,11 @@ async function updateCLI(a, btn) {
 let agentsGlide = null; // how the panel's edge moves after the next render
 let panelOpenAgent = null; // the one agent row the panel has opened
 
-const agentUsed = (a) => a.added || a.fields.some((f) => f.value);
+// set up: a model, a provider, a role given one — what magpie is there for.
+// How the agent's own model is run (ultracode, an effort) is not: turning
+// Claude Code's ultracode on folded every other agent away under Show more
+const tweak = (f) => f.key === "ultracode" || f.key === "effort" || f.key.endsWith("_effort");
+const agentUsed = (a) => a.added || a.fields.some((f) => f.value && !tweak(f));
 
 // importButton: the one control of an app magpie is added to by its import
 // link: magpie, once the app has it, or an offer to add it
