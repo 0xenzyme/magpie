@@ -1907,6 +1907,9 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	body = deepseekToolPatterns(p, to, body)
 	if to == provider.Anthropic {
 		body = s.bodyBetas(p, body)
+		// what every path to an Anthropic endpoint sends, relayed or
+		// built, with the model named as the vendor names it
+		body = adaptiveThinking(body)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.Base(to)+path, bytes.NewReader(body))
 	if err != nil {

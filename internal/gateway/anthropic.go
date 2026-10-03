@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tidwall/gjson"
 	"github.com/yetone/magpie/internal/provider"
 )
 
@@ -222,8 +223,9 @@ func withoutThinkingOff(body []byte) ([]byte, bool) {
 }
 
 // claudeVersion finds the family's version in a Claude model id however a
-// relay spells it: claude-opus-4-6, claude-opus-5, anthropic.claude-sonnet-4.6-v1.
-var claudeVersion = regexp.MustCompile(`claude-(?:opus|sonnet|haiku)-(\d+)(?:[-.](\d{1,2}))?(?:[^0-9]|$)`)
+// relay spells it: claude-opus-4-6, claude-opus-5, anthropic.claude-sonnet-4.6-v1,
+// a relay's opus-5.5, or the old order, claude-3-7-sonnet.
+var claudeVersion = regexp.MustCompile(`(?:^|[^a-z0-9])(?:claude-)?(?:opus|sonnet|haiku)-(\d{1,2})(?:[-.](\d{1,2}))?(?:[^0-9]|$)|claude-(\d+)(?:[-.](\d))?-(?:opus|sonnet|haiku)`)
 
 // adaptiveOnly is a Claude model from 4.6 on, which thinks adaptively:
 // claude-opus-5-5 refuses thinking.type=enabled with a budget ("requires
@@ -233,9 +235,48 @@ func adaptiveOnly(model string) bool {
 	if m == nil {
 		return false
 	}
-	major, _ := strconv.Atoi(m[1])
-	minor, _ := strconv.Atoi(m[2])
+	v := m[1:3]
+	if m[3] != "" {
+		v = m[3:5]
+	}
+	major, _ := strconv.Atoi(v[0])
+	minor, _ := strconv.Atoi(v[1])
 	return major > 4 || major == 4 && minor >= 6
+}
+
+// adaptiveThinking is an Anthropic request as a model that thinks only
+// adaptively takes it: thinking.type=enabled with a budget — sent by an
+// agent that doesn't know the model (its name in magpie, an alias, or a
+// group's member, mapped to the vendor's later), or by magpie fitting an
+// effort to it — goes as thinking.type=adaptive, with the budget as the
+// effort it is nearest in output_config.effort unless one is there (Keenc
+// on Discord: claude-opus-5-5 answered 400). Read off the model the body
+// is sent with, the vendor's own name; any other request, older Claudes'
+// included, goes as it came, and "disabled" stays.
+func adaptiveThinking(body []byte) []byte {
+	th := gjson.GetBytes(body, "thinking")
+	if th.Get("type").String() != "enabled" || !adaptiveOnly(gjson.GetBytes(body, "model").String()) {
+		return body
+	}
+	thinking := map[string]any{"type": "adaptive"}
+	if d := th.Get("display"); d.Exists() {
+		thinking["display"] = d.Value()
+	}
+	fields := map[string]any{"thinking": thinking}
+	if gjson.GetBytes(body, "output_config.effort").String() == "" {
+		if e := effortOfBudget(int(th.Get("budget_tokens").Int())); e != "" {
+			if e == "xhigh" {
+				e = "max" // as buildAnthropic asks it: 4.6 has no xhigh
+			}
+			oc, _ := gjson.GetBytes(body, "output_config").Value().(map[string]any)
+			if oc == nil {
+				oc = map[string]any{}
+			}
+			oc["effort"] = e
+			fields["output_config"] = oc
+		}
+	}
+	return withFields(body, fields)
 }
 
 // AdaptiveThinking is adaptiveOnly for agents told how to ask a model: a
