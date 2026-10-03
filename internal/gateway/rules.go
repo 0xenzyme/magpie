@@ -53,6 +53,11 @@ type RuleHit struct {
 	// Pick: the reasoning the group's decision model picked for the turn,
 	// which its requests ask their model for (provider.EffortAuto)
 	Pick string `json:"pick,omitempty"`
+	// Wanted: the reasoning the decision model picked for the turn when
+	// the conversation kept a higher one (Pick) for the vendor's cache of
+	// it (#617) — sent instead where the change goes as an effort update
+	// that keeps the cache (takesEffortUpdates)
+	Wanted string `json:"wanted,omitempty"`
 	// Compact: the request is the agent compacting its conversation, looked
 	// at on its own; Small, the members of rules it matched that take less
 	// than it is long, passed over
@@ -88,6 +93,11 @@ type turnRule struct {
 	// intent is what the classifier said the turn's first message is
 	intent string
 	effort string // the reasoning it picked for the turn
+	wanted string // what it would have picked, kept from (RuleHit.Wanted)
+	// answered is when the vendor last answered the conversation: its
+	// cache of it is read from then (ruleAnswered)
+	answered time.Time
+	size     int // how long magpie took the conversation's last request to be (estimate)
 }
 
 var turnRules = struct {
@@ -136,7 +146,8 @@ func ruleFor(key string, g provider.Group, ms []provider.Member, req *Request, a
 	}
 	turn, within := turnIn(req)
 	now := ruleClock()
-	q := provider.RuleRequest{Tokens: estimate(req), Thinking: req.Thinking, Effort: req.Effort, Agent: agent, At: now}
+	size := estimate(req)
+	q := provider.RuleRequest{Tokens: size, Thinking: req.Thinking, Effort: req.Effort, Agent: agent, At: now}
 	for _, m := range req.Messages {
 		if slices.ContainsFunc(m.Parts, func(p Part) bool { return p.Kind == Image }) {
 			q.Images = true
@@ -203,16 +214,16 @@ func ruleFor(key string, g provider.Group, ms []provider.Member, req *Request, a
 			hit.Waits = true
 		}
 		if !hit.Waits && hit.Effort != "" {
-			hit.Pick = tr.effort
+			hit.Pick, hit.Wanted = tr.effort, tr.wanted
 		}
 		if grown, ok := outgrown(g, ctx, hit, q); ok {
 			hit = grown
-			turnRules.m[key] = turnRule{turn: turn, use: hit.Use, n: hit.N, at: now, input: tr.input, intent: q.Intent, effort: tr.effort}
+			turnRules.m[key] = turnRule{turn: turn, use: hit.Use, n: hit.N, at: now, input: tr.input, intent: q.Intent, effort: tr.effort, wanted: tr.wanted, answered: tr.answered, size: size}
 			return hit
 		}
 		if had {
 			if cur, ok := turnRules.m[key]; ok {
-				cur.at = now
+				cur.at, cur.size = now, size
 				turnRules.m[key] = cur
 			}
 		}
@@ -257,17 +268,20 @@ func ruleFor(key string, g provider.Group, ms []provider.Member, req *Request, a
 		}
 		q.Intent = c.Intent
 		hit.Classified, hit.Pick = c, c.Effort
+		if effort && had && keepsEffort(tr, c.Effort, size, now) {
+			hit.Pick, hit.Wanted = tr.effort, c.Effort
+		}
 	}
 	if i := provider.MatchRule(g.Rules, q); i >= 0 {
 		hit.N, hit.Use, hit.When = i+1, g.Rules[i].Use, g.Rules[i].Conditions()
 	}
 	turnRules.Lock()
 	defer turnRules.Unlock()
-	input := tr.input
+	input, answered := tr.input, tr.answered
 	if cur, ok := turnRules.m[key]; ok {
-		input = cur.input // answered while the classifier was asked
+		input, answered = cur.input, cur.answered // answered while the classifier was asked
 	}
-	turnRules.m[key] = turnRule{turn: turn, use: hit.Use, n: hit.N, at: now, input: input, intent: q.Intent, effort: hit.Pick}
+	turnRules.m[key] = turnRule{turn: turn, use: hit.Use, n: hit.N, at: now, input: input, intent: q.Intent, effort: hit.Pick, wanted: hit.Wanted, answered: answered, size: size}
 	if len(turnRules.m) > 4096 {
 		for k, tr := range turnRules.m {
 			if now.Sub(tr.at) > stickKeep {
@@ -340,9 +354,40 @@ func ruleAnswered(key string, u Usage) {
 	turnRules.Lock()
 	defer turnRules.Unlock()
 	if tr, ok := turnRules.m[key]; ok {
-		tr.input = n
+		tr.input, tr.answered = n, ruleClock()
 		turnRules.m[key] = tr
 	}
+}
+
+// keepsEffort is whether a new turn of a conversation keeps the reasoning
+// its turn before was asked for, rather than the lower one the decision
+// model picked now (#617). The reasoning is part of what the vendor caches
+// a conversation under: a turn asking for another reads none of it back —
+// with group effort "auto", 40 of 42 changes between a Pi session's turns
+// on gpt-6.1-sol read 0 cached tokens, against 4 of 834 without one. So
+// while the cache is warm the effort only goes up — a hard turn still gets
+// the reasoning it needs, and a conversation pays for at most one miss per
+// level — and a lower pick waits for a turn the cache is lost to anyway:
+// one after cacheCold without an answer, or after the agent compacted the
+// conversation (it is now under half as long as its last request).
+func keepsEffort(tr turnRule, pick string, tokens int, now time.Time) bool {
+	if tr.effort == "" || pick == "" || pick == tr.effort {
+		return false
+	}
+	if slices.Index(effortRank, pick) > slices.Index(effortRank, tr.effort) {
+		return false // up: the turn wants more than the conversation had
+	}
+	last := tr.at
+	if tr.answered.After(last) {
+		last = tr.answered
+	}
+	if now.Sub(last) > cacheCold {
+		return false
+	}
+	if tr.size > 0 && tokens < tr.size/2 {
+		return false
+	}
+	return true
 }
 
 // nestedRules looks at the rules of each group in the group that the one

@@ -1239,13 +1239,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	}
 	// the effort a group's decision model picked for the turn: the
 	// outermost group's that did
-	effort := ""
+	effort, wanted := "", ""
 	if hit != nil {
-		effort = hit.Pick
+		effort, wanted = hit.Pick, hit.Wanted
 	}
 	for _, n := range nested {
 		if effort == "" && n.Rule != nil {
-			effort = n.Rule.Pick
+			effort, wanted = n.Rule.Pick, n.Rule.Wanted
 		}
 	}
 	// A vision rule may choose a vision model even when the group has
@@ -1382,8 +1382,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		} else if effort != "" {
 			// the level this model has nearest to the one picked; one whose
 			// levels aren't known isn't asked for more than high, which
-			// every vendor with levels takes
-			if b := withEffort(from, attemptBody, fitLevel(withinLevels(effort, levels), c.p.Efforts(c.model))); !bytes.Equal(b, attemptBody) {
+			// every vendor with levels takes. The conversation kept a
+			// higher one for its cache (keepsEffort) unless an effort
+			// update carries the turn's own without losing it.
+			pick := effort
+			if wanted != "" && from == provider.Responses && plainFor != c.who()+"|"+c.model && takesEffortUpdates(c.p, c.model) {
+				pick = wanted
+			}
+			if b := withEffort(from, attemptBody, fitLevel(withinLevels(pick, levels), c.p.Efforts(c.model))); !bytes.Equal(b, attemptBody) {
 				attemptBody, picked = b, true
 			}
 		} else if e := agentEffort(from, attemptBody); e != "" && e != "none" {
