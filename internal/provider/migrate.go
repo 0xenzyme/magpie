@@ -354,6 +354,7 @@ func setMigration(id string, f func(m *Migration)) error {
 	if err != nil {
 		return err
 	}
+	defer Changed()
 	return writePrivate(migrationsPath(), append(b, '\n'))
 }
 

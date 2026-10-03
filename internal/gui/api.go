@@ -988,7 +988,21 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	})
 	agentModelsAPI(mux)
 	devListen(mux)
-	return mux
+	return held(mux)
+}
+
+// held has a page's reads share one build of the catalog, which every row
+// resolving its model rebuilt (provider.Hold): /api/state took 4s with a
+// few hundred models. Anything else may have written, and drops it.
+func held(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/") {
+			defer provider.Hold()()
+		} else {
+			defer provider.Changed()
+		}
+		h.ServeHTTP(rw, r)
+	})
 }
 
 func state() stateJSON {

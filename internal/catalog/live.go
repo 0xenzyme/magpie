@@ -127,8 +127,15 @@ func SaveLive(provider, base string, models []Model) error {
 // of their own up to date.
 var Changed func()
 
-// Touched tells Changed, if set.
+// Forget, when set, is told so first: the provider package drops the
+// catalog a request holds (provider.Hold).
+var Forget func()
+
+// Touched tells Forget and Changed, if set.
 func Touched() {
+	if Forget != nil {
+		Forget()
+	}
 	if Changed != nil {
 		Changed()
 	}

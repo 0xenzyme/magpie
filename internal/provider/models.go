@@ -910,6 +910,10 @@ func Unlisted() []Entry {
 
 // providerEntries is the catalog without its groups.
 func providerEntries() []Entry {
+	return heldEntries(buildEntries)
+}
+
+func buildEntries() []Entry {
 	var out []Entry
 	s := settings.Load()
 	for _, p := range All() {
@@ -1043,7 +1047,9 @@ func resolveIn(entries []Entry, id string) (Provider, string, bool) {
 		}
 	}
 	if pid, model, ok := strings.Cut(id, "/"); ok {
-		if p, err := Find(pid); err == nil && p.On() {
+		// the providers a request holds: an agent's value of a model not
+		// listed lands here, and All is read anew each time
+		if p, err := findIn(heldOf("all", All), pid); err == nil && p.On() {
 			return *p, model, true
 		}
 	}
@@ -1058,21 +1064,33 @@ func resolveIn(entries []Entry, id string) (Provider, string, bool) {
 	}
 	// not exposed, but some provider lists it
 	var found []Provider
-	for _, p := range All() {
-		if !p.On() || p.DecidesModel(id) {
-			continue
-		}
-		for _, m := range p.Available() {
-			if m.ID == id {
-				found = append(found, p)
-				break
-			}
+	for _, p := range heldOf("listed", listedBy)[id] {
+		if !p.DecidesModel(id) {
+			found = append(found, p)
 		}
 	}
 	if len(found) == 1 {
 		return found[0], id, true
 	}
 	return Provider{}, "", false
+}
+
+// listedBy is the providers on that list each model, in order, each once.
+func listedBy() map[string][]Provider {
+	out := map[string][]Provider{}
+	for _, p := range All() {
+		if !p.On() {
+			continue
+		}
+		seen := map[string]bool{}
+		for _, m := range p.Available() {
+			if !seen[m.ID] {
+				seen[m.ID] = true
+				out[m.ID] = append(out[m.ID], p)
+			}
+		}
+	}
+	return out
 }
 
 // IDs lists the catalog ids, for error messages.
