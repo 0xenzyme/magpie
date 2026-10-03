@@ -3338,7 +3338,10 @@ function renderExcluded() {
       const quiet = el("button", "link", t("Don't remind me"));
       quiet.title = t("Hide this line; Add a provider still offers it back");
       quiet.onclick = () => providerAction("quiet", { id: x.provider });
-      r.lastChild.append(" ", back, " · ", quiet);
+      const out = el("button", "link", t("Sign out"));
+      out.title = t("magpie signs out the accounts it keeps for {name}; adding it again signs in afresh", { name: x.agentName });
+      out.onclick = () => askForgetAccount(x);
+      r.lastChild.append(" ", back, " · ", quiet, " · ", out);
     }
     // an agent signed out here (a banned account logged out, say) lists
     // its saved accounts nowhere else, so this is where they are removed
@@ -3386,6 +3389,49 @@ function askForgetSaved(x) {
   openModal(ed);
   $("#modal").classList.add("lib");
   cancel.focus();
+}
+
+// removedMenu is what the add sheet offers of an account removed from
+// magpie: back as it was, or signed out for good (#694).
+function removedMenu(anchor, x) {
+  if (protoMenu?.anchor === anchor) return closeProtoMenu(); // a second click puts it away
+  const opts = [
+    { v: "show", name: "Add it back", note: "its accounts and model picks as they were" },
+    { v: "forget", name: "Sign out…", note: "magpie forgets its accounts; adding it again signs in afresh" },
+  ];
+  openProtoMenu(anchor, opts, null, (v) => {
+    if (v === "show") providerAction("show", { id: x.provider }, t("{name} added back", { name: x.agentName }));
+    else askForgetAccount(x);
+  }, "Removed from magpie");
+}
+
+// askForgetAccount asks before magpie signs a removed account out for
+// good: what magpie keeps of its sign-ins goes, so adding it again signs in
+// afresh rather than bringing the old account back (#694). The vendor's
+// account itself is left as it is.
+function askForgetAccount(x) {
+  const ed = el("div", "editor forget-ask");
+  const head = el("div", "ehead");
+  head.append(icon(x.agentIcon), el("b", "", t("Sign {name} out of magpie?", { name: x.agentName })));
+  ed.append(head);
+  ed.append(el("p", "lib-confirm", t("magpie signs out the accounts it keeps for {name} and forgets them; adding {name} again signs in afresh. The account itself is left as it is.", { name: x.agentName })));
+  const bar = el("div", "bar");
+  const go = el("button", "text primary danger-fill", t("Sign out"));
+  go.onclick = async (e) => {
+    e.stopPropagation();
+    go.disabled = true;
+    go.classList.add("busy");
+    await providerAction("forget", { id: x.provider }, t("{name} signed out", { name: x.agentName }));
+    closeConfirmAsk();
+  };
+  const cancel = el("button", "text", t("Cancel"));
+  cancel.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); };
+  bar.append(el("span", "grow"), cancel, go);
+  ed.append(bar);
+  confirmAsk = ed;
+  openModal(ed);
+  $("#modal").classList.add("lib");
+  cancel.focus({ preventScroll: true });
 }
 
 // accountPlan is the account's chip: its vendor and plan, the plan alone
@@ -4533,10 +4579,15 @@ function renderAdd() {
     if (gone.length) {
       any = true;
       const grid = section("Removed from magpie", "still signed in");
+      // each one added back as it was, or signed out for good: added
+      // back, a removed account came with it every time (#694)
       for (const x of gone) {
         const b = pickRow(x.agentIcon, x.agentName);
-        b.append(el("span", "st", t("Add it back")));
-        b.onclick = () => providerAction("show", { id: x.provider }, t("{name} added back", { name: x.agentName }));
+        b.append(el("span", "st", t("Add back or sign out")));
+        b.dataset.pick = "removed:" + x.provider; // not the subscription's own row, named alike
+        b.setAttribute("aria-haspopup", "menu");
+        b.setAttribute("aria-expanded", "false");
+        b.onclick = (e) => { e.stopPropagation(); removedMenu(b, x); };
         grid.append(b);
       }
     }

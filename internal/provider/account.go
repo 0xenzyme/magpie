@@ -231,7 +231,10 @@ func (p Provider) Prepare(body []byte) []byte {
 type Exclusion struct {
 	Agent    string `json:"agent"`
 	Provider string `json:"provider,omitempty"` // set when the user removed it; saving it brings it back
-	Why      string `json:"why"`
+	// Name is the removed provider's, for a sign-in no agent names: a
+	// plugin's, whose Agent is "plugin" (#694)
+	Name string `json:"name,omitempty"`
+	Why  string `json:"why"`
 	// SignedOut: the agent has accounts saved in magpie but isn't signed
 	// in where magpie looks, and so none of them is offered.
 	SignedOut bool `json:"signedOut,omitempty"`
@@ -249,7 +252,11 @@ type Exclusion struct {
 func Excluded() []Exclusion {
 	var out []Exclusion
 	for _, a := range Hidden() {
-		out = append(out, Exclusion{Agent: a.Account.Agent, Provider: a.ID, Why: "You removed it from magpie.", Quiet: a.Quiet})
+		x := Exclusion{Agent: a.Account.Agent, Provider: a.ID, Why: "You removed it from magpie.", Quiet: a.Quiet}
+		if a.IsPlugin() {
+			x.Name = a.Name
+		}
+		out = append(out, x)
 	}
 	return append(out, savedButSignedOut()...)
 }

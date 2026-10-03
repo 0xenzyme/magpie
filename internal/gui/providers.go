@@ -163,6 +163,61 @@ type accountJSON struct {
 	Builtin string `json:"builtin,omitempty"`
 }
 
+// accountLabel is the name and logo an account is shown with: its agent's,
+// the subscription's for one no agent magpie configures, and a plugin's
+// provider's for a plugin's sign-in, whose agent is "plugin" (#694 listed a
+// removed Qoder as "plugin", with no logo).
+func accountLabel(p provider.Provider) (name, icon string) {
+	a := p.Account
+	if a == nil {
+		return p.Name, p.Icon
+	}
+	name, icon = a.Agent, "generic"
+	if a.Agent == "factory" {
+		// a Factory subscription is magpie's own sign-in, not Droid's
+		name, icon = "Factory", "factory"
+	} else if a.Agent == provider.MiMoID {
+		// a Xiaomi MiMo account, not MiMo Code (the agent "mimo" also names)
+		name, icon = "Xiaomi MiMo", "mimocode"
+	} else if ag, err := agent.Find(a.Agent); err == nil {
+		name, icon = ag.Name, ag.Icon
+	} else if a.Agent == "cursor" {
+		// a Cursor subscription is served by the gateway, not an agent magpie configures
+		name, icon = "Cursor CLI", "cursor"
+	} else if a.Agent == "kiro" {
+		// Kiro's sign-in is magpie's own, kiro-cli's or the Kiro IDE's
+		name, icon = "Kiro", "kiro-color"
+	} else if a.Agent == "antigravity" {
+		name, icon = "Antigravity", "antigravity-color"
+	} else if a.Agent == provider.WorkBuddyAIID {
+		// WorkBuddy AI, the international build, isn't an agent magpie configures
+		name, icon = "WorkBuddy AI", "workbuddy-color"
+	} else if a.Agent == provider.CommandCodePlanID {
+		// Command Code's CLI keeps the key its sign-in made
+		name, icon = "Command Code", "commandcode"
+	}
+	if !p.IsPlugin() {
+		return name, icon
+	}
+	if pp, ok := provider.PluginOf(p.ID); ok {
+		// a plugin's sign-in: named for the provider it signs in to
+		name, icon = pp.Name, pluginIcon(pp)
+		if name == "" {
+			name = p.Name
+		}
+		if provider.Moved(pp.ID) {
+			icon = p.Icon // the built-in's, as it was
+		}
+		return name, icon
+	}
+	// its plugin not listed now: the provider's own name and logo
+	name, icon = p.Name, p.Icon
+	if icon == "" {
+		icon = "generic"
+	}
+	return name, icon
+}
+
 type providerAgent struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
@@ -343,38 +398,12 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		}
 	}
 	if a := p.Account; a != nil {
-		out.Account = &accountJSON{Account: *a, Agent: a.Agent, Name: a.Agent, Icon: "generic"}
-		if a.Agent == "factory" {
-			// a Factory subscription is magpie's own sign-in, not Droid's
-			out.Account.Name, out.Account.Icon = "Factory", "factory"
-		} else if a.Agent == provider.MiMoID {
-			// a Xiaomi MiMo account, not MiMo Code (the agent "mimo" also names)
-			out.Account.Name, out.Account.Icon = "Xiaomi MiMo", "mimocode"
-		} else if ag, err := agent.Find(a.Agent); err == nil {
-			out.Account.Name, out.Account.Icon = ag.Name, ag.Icon
-		} else if a.Agent == "cursor" {
-			// a Cursor subscription is served by the gateway, not an agent magpie configures
-			out.Account.Name, out.Account.Icon = "Cursor CLI", "cursor"
-		} else if a.Agent == "kiro" {
-			// Kiro's sign-in is magpie's own, kiro-cli's or the Kiro IDE's
-			out.Account.Name, out.Account.Icon = "Kiro", "kiro-color"
-		} else if a.Agent == "antigravity" {
-			out.Account.Name, out.Account.Icon = "Antigravity", "antigravity-color"
-		} else if a.Agent == provider.WorkBuddyAIID {
-			// WorkBuddy AI, the international build, isn't an agent magpie configures
-			out.Account.Name, out.Account.Icon = "WorkBuddy AI", "workbuddy-color"
-		} else if a.Agent == provider.CommandCodePlanID {
-			// Command Code's CLI keeps the key its sign-in made
-			out.Account.Name, out.Account.Icon = "Command Code", "commandcode"
-		}
+		out.Account = &accountJSON{Account: *a, Agent: a.Agent}
+		out.Account.Name, out.Account.Icon = accountLabel(p)
 		out.Account.Logins = provider.Logins(a.Agent)
 		if pp, ok := provider.PluginOf(p.ID); ok && p.IsPlugin() {
-			// a plugin's sign-in: named for the provider it signs in to,
-			// the page following it by the provider's id
-			out.Account.Agent, out.Account.Name, out.Account.Icon, out.Account.Builtin = p.ID, pp.Name, pluginIcon(pp), pp.ID
-			if provider.Moved(pp.ID) {
-				out.Account.Icon = p.Icon // the built-in's, as it was
-			}
+			// a plugin's sign-in: the page follows it by the provider's id
+			out.Account.Agent, out.Account.Builtin = p.ID, pp.ID
 			out.Account.Logins = provider.Logins(p.ID)
 			if out.Icon == "" || out.Icon == "generic" {
 				out.Icon = out.Account.Icon
@@ -481,9 +510,17 @@ func providersState() providersJSON {
 	if err := provider.FileError(); err != nil {
 		s.FileError = err.Error()
 	}
+	hidden := map[string]provider.Provider{}
+	for _, p := range provider.Hidden() {
+		hidden[p.ID] = p
+	}
 	for _, x := range provider.Excluded() {
 		e := excludedJSON{Exclusion: x, Name: x.Agent, Icon: "generic"}
-		if a, err := agent.Find(x.Agent); err == nil {
+		if p, ok := hidden[x.Provider]; ok && x.Provider != "" {
+			// a removed account as its row was named: a plugin's by the
+			// provider it signs in to, not its agent "plugin" (#694)
+			e.Name, e.Icon = accountLabel(p)
+		} else if a, err := agent.Find(x.Agent); err == nil {
 			e.Name, e.Icon = a.Name, a.Icon
 		}
 		s.Excluded = append(s.Excluded, e)
@@ -752,6 +789,13 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		case "quiet":
 			// a removed account's "Add it back" line, dismissed (#116)
 			if err := provider.QuietAccount(in.ID); err != nil {
+				fail(rw, err)
+				return
+			}
+		case "forget":
+			// a removed account signed out for good: adding it back
+			// later signs in afresh rather than bringing it back (#694)
+			if err := provider.ForgetAccount(in.ID); err != nil {
 				fail(rw, err)
 				return
 			}

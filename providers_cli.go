@@ -125,7 +125,9 @@ func providers() error {
 	}
 	for _, x := range provider.Excluded() {
 		name := x.Agent
-		if a, err := agent.Find(x.Agent); err == nil {
+		if x.Name != "" {
+			name = x.Name
+		} else if a, err := agent.Find(x.Agent); err == nil {
 			name = a.Name
 		}
 		fmt.Println()
