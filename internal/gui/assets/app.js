@@ -12704,6 +12704,10 @@ function renderTrayUsage(s, keep) {
   const suffix = s.plainNames ? "off" : s.plainOwnNames ? "own" : "on";
   $("#plainNamesSegs").replaceChildren(segs([["off", t("Off")], ["own", t("Not on names I set")], ["on", t("On")]], suffix, (v) =>
     writingPrefs(api("settings/plain-names", { mode: v })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
+  // Codex's OpenAI models in multi-agent V1, so their subagents can run on
+  // magpie's other models (#141)
+  $("#codexAgentsV1Segs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.codexAgentsV1 ? "on" : "off", (v) =>
+    writingPrefs(api("settings/codex-agents-v1", { on: v === "on" })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
   const rate = s.fx?.rate;
   const currencySub = $("#currencySub");
   currencySub.textContent = t("What a cost — the Usage page's, the tray panel's, the TUI's and the CLI's — is shown as; a vendor's own balance, already in its own currency, is never converted");

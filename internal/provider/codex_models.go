@@ -371,15 +371,16 @@ func CodexNativeHidden() map[string]bool {
 }
 
 // CodexListTag names the list Codex is handed, for its ETag: magpie's models
-// and the account's own taken out of it, so either changing has Codex ask
-// for the list again.
+// and the account's own taken out of it, and whether its OpenAI models say
+// multi-agent V1 (settings.CodexAgentsV1), so any of them changing has
+// Codex ask for the list again.
 func CodexListTag() string {
 	ms := CodexListed()
 	off := slices.Sorted(maps.Keys(CodexNativeHidden()))
 	for _, slug := range off {
 		ms = append(ms, catalog.Model{ID: "-" + slug})
 	}
-	return codexcat.Tag(ms)
+	return codexcat.PolicyTag(codexcat.Tag(ms))
 }
 
 // CodexNativePicked is the set of the ChatGPT account's own model slugs the

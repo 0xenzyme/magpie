@@ -678,6 +678,21 @@ func SetSuffixMode(mode string) error {
 	return nil
 }
 
+// SetCodexAgentsV1 turns settings.CodexAgentsV1 on or off, and has Codex's
+// lists written and asked for again.
+func SetCodexAgentsV1(on bool) error {
+	s := settings.Load()
+	if s.CodexAgentsV1 == on {
+		return nil
+	}
+	s.CodexAgentsV1 = on
+	if err := settings.Save(s); err != nil {
+		return err
+	}
+	catalog.Touched()
+	return nil
+}
+
 // SetPlainNames has the agents' model lists name models by their names
 // alone (see Labels), or with their providers' again, and the agents told.
 func SetPlainNames(on bool) error {

@@ -286,6 +286,8 @@ const I18N = {
     "Provider in model names": "模型名带供应商",
     "Agents’ lists put each model’s provider after its name, or not after names you set": "写给 agent 的模型列表在模型名后带上供应商，或自定义的名称不带",
     "Not on names I set": "自定义名称不带供应商",
+    "Codex subagents on any model": "Codex 子代理可用任意模型",
+    "Codex’s OpenAI models hand subagents their tasks as text (multi-agent V1), so a GPT lead can spawn them on magpie’s other models. New threads only; Codex’s own multi_agent_v2 setting still wins": "Codex 的 OpenAI 模型以文本把任务交给子代理（multi-agent V1），GPT 主代理就能在 magpie 的其他模型上开子代理。只对新会话生效；Codex 自己的 multi_agent_v2 设置仍然优先",
     "$ USD": "$ 美元",
     "¥ CNY": "¥ 人民币",
     "What a cost — the Usage page's, the tray panel's, the TUI's and the CLI's — is shown as; a vendor's own balance, already in its own currency, is never converted": "费用——用量页、托盘面板、TUI 和命令行里的——按此显示；厂商自己给出的余额本就是它自己的货币，不会被换算",

@@ -680,6 +680,9 @@ func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 			res.Body.Close()
 			if res.StatusCode < 300 && json.Unmarshal(b, &list) == nil {
 				own, etag = list.Models, res.Header.Get("ETag")
+				// the versions as the backend says them, before any is
+				// stamped below (see codexcat.V1)
+				codexcat.Remember(own)
 			} else if res.StatusCode == 401 || res.StatusCode == 403 {
 				// a sign-in to renew is Codex's to see
 				w.Header().Set("Content-Type", res.Header.Get("Content-Type"))
@@ -719,6 +722,15 @@ func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 			kept = append(kept, m)
 		}
 		own = kept
+	}
+	// multi-agent V1 when the user asked for it (#141): the version is all
+	// that changes
+	if codexcat.V1() {
+		for _, m := range own {
+			if o, ok := m.(map[string]any); ok {
+				codexcat.Stamp(o)
+			}
+		}
 	}
 	ms := provider.CodexListed()
 	// the list is the backend's and magpie's, and so is its ETag

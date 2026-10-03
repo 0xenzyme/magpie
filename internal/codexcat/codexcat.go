@@ -13,7 +13,10 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/edit"
+	"github.com/yetone/magpie/internal/settings"
 )
 
 // Prompt is Codex's generic system prompt (Apache-2.0, openai/codex,
@@ -96,12 +99,20 @@ func Entries(ms []catalog.Model, after int) []any {
 		// fails to load); later Codex ask for parallel calls whatever it
 		// says, so it says what they do.
 		Parallel bool `json:"supports_parallel_tool_calls"`
+		// Set only with settings.CodexAgentsV1, on an OpenAI model's
+		// entry (see V1).
+		MultiAgent string `json:"multi_agent_version,omitempty"`
 	}
 	own := CacheEntries()
+	v1 := V1()
 	var entries []any
 	for i, m := range ms {
 		if raw, ok := own[strings.TrimPrefix(m.ID, "codex/")]; ok && strings.HasPrefix(m.ID, "codex/") {
-			entries = append(entries, ownEntry(raw, m.ID, m.Name, after+i+1))
+			e := ownEntry(raw, m.ID, m.Name, after+i+1)
+			if v1 {
+				Stamp(e)
+			}
+			entries = append(entries, e)
 			continue
 		}
 		e := model{
@@ -116,6 +127,11 @@ func Entries(ms []catalog.Model, after int) []any {
 		// GPT models
 		if slug, ok := strings.CutPrefix(m.ID, "codex/"); m.Fast || ok && strings.HasPrefix(slug, "gpt-") {
 			e.Tiers = append(e.Tiers, tier{ID: "priority", Name: "Fast", Description: "1.5x speed, increased usage"})
+		}
+		// an OpenAI model: a ChatGPT account's (codex/), or a group one is
+		// in (Fast, see provider.codexListed)
+		if v1 && (strings.HasPrefix(m.ID, "codex/") || m.Fast) {
+			e.MultiAgent = "v1"
 		}
 		if m.Images {
 			e.Modalities = append(e.Modalities, "image")
@@ -158,7 +174,103 @@ func CacheEntries() map[string]map[string]any {
 			out[slug] = m
 		}
 	}
+	if MarkedV1(cache.ETag) {
+		// the versions in it are magpie's, written over the backend's: the
+		// backend's go back, so a list made from this cache after the
+		// setting is turned off says what the backend did
+		was := originals()
+		for slug, m := range out {
+			if v, ok := was[slug]; ok {
+				unstamp(m, v)
+			}
+		}
+	} else {
+		// as the backend gave them
+		Remember(slices.Collect(func(yield func(any) bool) {
+			for _, m := range out {
+				if !yield(m) {
+					return
+				}
+			}
+		}))
+	}
 	return out
+}
+
+// Codex picks a thread's multi-agent tools by its model's entry: its
+// multi_agent_version ("v1", "v2") unless features.multi_agent_v2 is on,
+// which makes it V2 whatever the entry says. In V2 OpenAI's server seals a
+// subagent's task, so a GPT lead can't hand one to a magpie-served
+// subagent; in V1 the task goes as text (#141). With settings.CodexAgentsV1
+// the OpenAI entries magpie hands Codex say "v1"; nothing else in them
+// changes. Codex keeps what it was handed in models_cache.json, versions
+// and all, so what the backend itself said is kept aside (originals) and
+// put back when the cache is read again (CacheEntries).
+
+// V1 reports whether the OpenAI models magpie hands Codex say "v1".
+func V1() bool { return settings.Load().CodexAgentsV1 }
+
+// Stamp has an entry say multi-agent V1.
+func Stamp(e map[string]any) { e["multi_agent_version"] = "v1" }
+
+// unstamp puts back the version an entry had: was, or none when "".
+func unstamp(e map[string]any, was string) {
+	if was == "" {
+		delete(e, "multi_agent_version")
+	} else {
+		e["multi_agent_version"] = was
+	}
+}
+
+// v1Mark starts the tag of a list whose OpenAI models say V1. It goes before
+// the tag's hash, so neither tag is found inside the other (Tagged).
+const v1Mark = "v1."
+
+// PolicyTag is a list's tag with the V1 setting in it.
+func PolicyTag(tag string) string {
+	if V1() {
+		return v1Mark + tag
+	}
+	return tag
+}
+
+// MarkedV1 reports whether an ETag is of a list magpie stamped V1.
+func MarkedV1(etag string) bool { return strings.Contains(etag, tagMark+v1Mark) }
+
+// versionsPath keeps the multi_agent_version the backend gave each of the
+// account's models, "" for none, by slug.
+func versionsPath() string { return filepath.Join(appdir.Config(), "codex-agent-versions.json") }
+
+func originals() map[string]string {
+	out := map[string]string{}
+	if b, err := os.ReadFile(versionsPath()); err == nil {
+		json.Unmarshal(b, &out)
+	}
+	return out
+}
+
+// Remember keeps the versions of entries as the backend gave them, before
+// any is stamped: those of slugs it names are replaced, the rest kept.
+func Remember(entries []any) {
+	was := originals()
+	changed := false
+	for _, e := range entries {
+		m, _ := e.(map[string]any)
+		slug, _ := m["slug"].(string)
+		if slug == "" {
+			continue
+		}
+		v, _ := m["multi_agent_version"].(string)
+		if cur, ok := was[slug]; !ok || cur != v {
+			was[slug], changed = v, true
+		}
+	}
+	if !changed {
+		return
+	}
+	if b, err := json.MarshalIndent(was, "", "  "); err == nil {
+		edit.WriteAtomic(versionsPath(), b)
+	}
 }
 
 // ownEntry is one of Codex's own models, reached through magpie with the

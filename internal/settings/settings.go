@@ -187,6 +187,13 @@ type Settings struct {
 	// it (#92: "Opus 5.5", not "Opus 5.5 · Claude Code"), the vendor's names
 	// keeping their provider's after them (see provider.Labels).
 	PlainOwnNames bool `json:"plainOwnNames,omitempty"`
+	// CodexAgentsV1 has the OpenAI models magpie hands Codex — the ChatGPT
+	// account's own, their codex/ ids and the groups one is in — say
+	// multi_agent_version "v1" (#141): their subagents are then handed
+	// their tasks as text, which a magpie-served subagent can read, where
+	// V2's are sealed by OpenAI's server. Codex's features.multi_agent_v2
+	// still wins, and a thread keeps the version it started with.
+	CodexAgentsV1 bool `json:"codexAgentsV1,omitempty"`
 	// TextSize is how large the window's and the tray panel's pages are
 	// drawn, in percent (one of TextSizes): the webviews' own zoom, as a
 	// browser's, so the text and everything around it grow together.
