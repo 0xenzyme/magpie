@@ -63,12 +63,12 @@ func (e *expiringResets) check(user string, now time.Time, look func() ([]QuotaW
 		e.next[key] = now.Add(resetExpiryFar)
 		return ResetOutcome{}, nil
 	}
-	left := resets.Until.Sub(now)
-	if left > resetExpiryLead {
-		e.next[key] = minTime(resets.Until.Add(-resetExpiryLead), now.Add(resetExpiryFar))
+	at := expiringResetSpent(*resets.Until, now)
+	if at.After(now) {
+		e.next[key] = minTime(at, now.Add(resetExpiryFar))
 		return ResetOutcome{}, nil
 	}
-	if left <= 0 || !windowsUsed(windows) {
+	if at.IsZero() || !windowsUsed(windows) {
 		// gone already, or nothing to start again yet: look again soon,
 		// the account may be used before it runs out
 		e.next[key] = now.Add(resetExpiryEvery)
@@ -82,6 +82,35 @@ func (e *expiringResets) check(user string, now time.Time, look func() ([]QuotaW
 	// another may run out soon after it
 	e.next[key] = now.Add(resetExpiryEvery)
 	return out, nil
+}
+
+// expiringResetSpent is when a reset that runs out at until is spent by
+// itself (check, when the account's windows have been used by then):
+// resetExpiryLead before it runs out, or now once that has passed; zero
+// when it has run out already. Routing goes by the same time (#717,
+// #718), so the two can't drift apart.
+func expiringResetSpent(until, now time.Time) time.Time {
+	if !until.After(now) {
+		return time.Time{}
+	}
+	if at := until.Add(-resetExpiryLead); at.After(now) {
+		return at
+	}
+	return now
+}
+
+// resetRunsOut is when the reset an account will spend by itself before
+// it runs out does (check), for routing: what its windows have left is
+// lost then, as at their own reset (#717, #718). Zero unless agent's
+// account user is let spend its resets (AutoResets), holds one that runs
+// out, and has used its windows — as check, which spends none on windows
+// with nothing to start again. Only holding a reset, auto-use off, is
+// nothing: nobody spends it.
+func resetRunsOut(agent, user string, windows []QuotaWindow, resets *ResetCredits) time.Time {
+	if resets == nil || resets.Count <= 0 || resets.Until == nil || !windowsUsed(windows) || !AutoResets(agent, user) {
+		return time.Time{}
+	}
+	return *resets.Until
 }
 
 // windowsUsed says whether any of windows, the on-demand ones aside, has

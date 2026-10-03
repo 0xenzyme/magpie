@@ -569,6 +569,11 @@ type left struct {
 	soon   []time.Time // renews as Smart ranks them (Allowance.Renewal)
 	pace   float64     // weekly pace: share of its week left per hour until it renews
 	due    time.Time   // when the window that pace went by renews; zero when not known
+	// restarts: when an auto-used reset starts its windows again
+	// (Allowance.Restarts), zero when none will; dueRestart: due is that,
+	// sooner than the window renews by itself
+	restarts   time.Time
+	dueRestart bool
 	// the count used is the share of, when the vendor counts it so
 	// (Allowance.Count): amount of of, in unit
 	amount, of float64
@@ -615,7 +620,9 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 			u, r := a.For(c.model, now)
 			pc, due := a.Pace(c.model, now)
 			amt, of, unit := a.Count(c.model, now)
-			wg.lefts[c.allowanceKey()] = left{u, r, a.Renewal(c.model, now), pc, due, amt, of, unit} // one not known counts as unused
+			rs := a.Restarts(now)
+			wg.lefts[c.allowanceKey()] = left{used: u, renews: r, soon: a.Renewal(c.model, now), pace: pc, due: due, amount: amt, of: of, unit: unit,
+				restarts: rs, dueRestart: !rs.IsZero() && due.Equal(rs)} // one not known counts as unused
 		}
 	}
 	lefts := wg.lefts
@@ -629,7 +636,11 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 		// same hour. An account with no week (Claude Enterprise's five
 		// hours alone) goes by its five hours, so ahead of every week
 		// but one renewing sooner; a window not started renews its whole
-		// span from now (#576). Those alike stay in their order, keeping the vendor's
+		// span from now (#576). A Codex account that spends a reset about
+		// to run out by itself (auto-use on, its windows used) renews when
+		// that is spent, if sooner: what it has left is lost there just the
+		// same (#718). Only holding one, or one that runs out after the
+		// week renews, changes nothing. Those alike stay in their order, keeping the vendor's
 		// prompt cache warm. Past that, whichever has the most left, and
 		// one all but used up only when nothing else can take it. Only the
 		// windows that count the model do: Opus's own weekly allowance
@@ -729,7 +740,9 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 		// else it would never be known; then the pace, those alike within
 		// a tenth by what magpie sent them lately, then in their order,
 		// keeping the vendor's prompt cache warm. An account not known
-		// counts as a whole week ahead of it; a key has no week.
+		// counts as a whole week ahead of it; a key has no week. A Codex
+		// account that spends a reset about to run out by itself goes by
+		// the hours until then when that is sooner (Allowance.Pace, #717).
 		paceOf := func(c candidate) float64 {
 			if l, ok := lefts[c.allowanceKey()]; ok {
 				return l.pace

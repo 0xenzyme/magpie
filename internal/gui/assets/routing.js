@@ -195,12 +195,18 @@
   const unlistedWord = (w) => w.barred ? t("set to serve other models, not {model}", { model: w.model }) : w.kind === "key" ? t("{name}'s list for this key has no {model}", { name: w.name, model: w.model }) : t("its plan doesn't list {model}", { model: w.model });
   const group = (w) => w.used >= 98 ? "spent" : w.used >= 90 ? "low" : "fine";
   const renews = (w) => (w.renews || []).map((s) => known0(s) ? at(s) : 0);
+  // renewsBy is renews as Smart ranks them: an auto-used Codex reset that
+  // starts the windows again sooner (restarts) is when they renew (#718)
+  const renewsBy = (w) => {
+    const rs = known0(w.restarts) ? at(w.restarts) : 0;
+    return renews(w).map((x) => rs && (!x || rs < x) ? rs : x);
+  };
 
   // cmpRenews orders two accounts' windows as the gateway does: the
   // biggest first, to the hour, one not known after those known. It says
   // which window decided, too.
   function cmpRenews(a, b) {
-    const ra = renews(a), rb = renews(b), H = 3600e3;
+    const ra = renewsBy(a), rb = renewsBy(b), H = 3600e3;
     for (let k = 0; k < ra.length || k < rb.length; k++) {
       const x = ra[k] ? Math.floor(ra[k] / H) : 0, y = rb[k] ? Math.floor(rb[k] / H) : 0;
       if (x === y) continue;
@@ -270,6 +276,7 @@
         if (f.kind === "account" && f.known) {
           // The allowance window used for pace, which may be shorter than a week.
           const left = known0(f.due) ? Math.min(100, Math.round((f.pace || 0) * Math.max(1, (at(f.due) - at(r.time)) / 36e5))) : null;
+          if (left !== null && f.dueBy === "reset") return t("Weekly pace: {who} has the most remaining allowance per hour until one of its Codex resets about to run out is used by itself — {n} left, used in {d}.", { who: w, n: pct(left), d: dur(at(f.due) - at(r.time)) });
           return left !== null
             ? t("Weekly pace: {who} has the most remaining allowance per hour until reset — {n} left, resets in {d}.", { who: w, n: pct(left), d: dur(at(f.due) - at(r.time)) })
             : t("Weekly pace: {who} has the most remaining allowance per hour until reset — {n} used.", { who: w, n: pct(f.used) });
@@ -286,11 +293,12 @@
     if (!f.known && !peers.some((p) => p.known)) return t("The vendor hasn't said yet what these accounts have left, so they go in their order: {who} first.", { who: w });
     if (group(f) !== "fine") return t("Every account is at 90% or more of its allowance, so the one with the most left goes first: {who}, at {n}.", { who: w, n: pct(f.used) });
     const next = peers.find((p) => p.known && group(p) === "fine");
-    const soon = renews(f).find(Boolean);
+    const soon = renewsBy(f).find(Boolean);
     if (!next) return t("{who} goes first: it has quota to spare, and the others are kept for last.", { who: w });
     const { c, k } = cmpRenews(f, next);
+    if (c < 0 && k === 0 && known0(f.restarts)) return t("{who} goes first: of those with quota to spare, its allowance starts again soonest — one of its Codex resets about to run out is used by itself in {d}, and what it has left then is lost. {other} renews later and keeps its own.", { who: w, d: dur(at(f.restarts) - at(r.time)), other: who(next) });
     if (c < 0 && k === 0) return t("{who} goes first: of those with quota to spare, its allowance renews soonest — in {d} — and what it has left then is lost. {other} renews later and keeps its own.", { who: w, d: dur(renews(f)[0] - at(r.time)), other: who(next) });
-    if (c < 0) return t("{who} goes first: its allowance renews in the same hour as {other}'s, and its shorter one sooner — in {d}.", { who: w, other: who(next), d: dur(renews(f)[k] - at(r.time)) });
+    if (c < 0) return t("{who} goes first: its allowance renews in the same hour as {other}'s, and its shorter one sooner — in {d}.", { who: w, other: who(next), d: dur(renewsBy(f)[k] - at(r.time)) });
     if (soon) return t("{who} and {other} renew within the same hour, so the order given stays — and the vendor's prompt cache stays warm.", { who: w, other: who(next) });
     return t("{who} goes first, in the order given: when its allowance renews isn't known.", { who: w });
   }

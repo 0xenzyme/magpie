@@ -110,6 +110,34 @@ type Limit struct {
 	Unit       string
 	matches    func(string) bool
 	partial    bool // of a reading that may leave windows out (QuotaWindow.partial)
+	// ResetRunsOut is when the reset the account spends by itself before
+	// it runs out does (resetRunsOut): spent then, it starts this window
+	// again — at Restarts, which routing takes for the window's renewal
+	// when it is the sooner. Zero when none will be spent so.
+	ResetRunsOut time.Time
+}
+
+// Restarts is when an auto-used reset starts the account's windows again,
+// as the Codex reset about to run out is spent (expiringResetSpent): what
+// they have left then is lost, as at their own reset, so Weekly pace and
+// Smart take it for their renewal when it comes sooner (#717, #718). Zero
+// when none will be.
+func (a Allowance) Restarts(now time.Time) time.Time {
+	for _, l := range a {
+		if !l.ResetRunsOut.IsZero() {
+			return expiringResetSpent(l.ResetRunsOut, now)
+		}
+	}
+	return time.Time{}
+}
+
+// restarted is when a window that renews at renews (zero: not known) is
+// started again: at restart (Restarts) when that is the sooner.
+func restarted(renews, restart time.Time) time.Time {
+	if !restart.IsZero() && (renews.IsZero() || restart.Before(renews)) {
+		return restart
+	}
+	return renews
 }
 
 func (l Limit) applies(model string) bool {
@@ -172,6 +200,7 @@ func (a Allowance) Count(model string, now time.Time) (amount, of float64, unit 
 // hours, the soonest of an account that has nothing longer (#576).
 func (a Allowance) Renewal(model string, now time.Time) []time.Time {
 	model = strings.ToLower(model)
+	restart := a.Restarts(now)
 	var ls []Limit
 	for _, l := range a {
 		if !l.applies(model) {
@@ -183,6 +212,7 @@ func (a Allowance) Renewal(model string, now time.Time) []time.Time {
 				l.Resets = now.Add(l.Span)
 			}
 		}
+		l.Resets = restarted(l.Resets, restart)
 		ls = append(ls, l)
 	}
 	sort.SliceStable(ls, func(i, j int) bool {
@@ -243,9 +273,21 @@ const FreshPace = 100 / (7 * 24.0)
 // sooner. Where the reading may leave a week out (a Claude account only
 // heard of as Claude Code answered, partial) it is instead taken to have
 // a week not started with the share its fullest window has used: those
-// go by what they have used, among the rest as the fresh are.
+// go by what they have used, among the rest as the fresh are. An
+// account whose windows an auto-used reset starts again sooner than they
+// renew (Restarts) goes by that instead, and due is then that time: what
+// it has left is lost there.
 func (a Allowance) Pace(model string, now time.Time) (pace float64, due time.Time) {
 	model = strings.ToLower(model)
+	restart := a.Restarts(now)
+	// until is how long a window runs from now and renews when; a restart
+	// sooner cuts it short
+	cut := func(until time.Duration, renews time.Time) (time.Duration, time.Time) {
+		if !restart.IsZero() && restart.Before(now.Add(until)) {
+			return restart.Sub(now), restart
+		}
+		return until, renews
+	}
 	any, used := false, 0.0
 	short, partial, shortPace, shortDue := false, false, 0.0, time.Time{}
 	for _, l := range a {
@@ -263,6 +305,7 @@ func (a Allowance) Pace(model string, now time.Time) (pace float64, due time.Tim
 			if l.Resets.After(now) {
 				until, renews = l.Resets.Sub(now), l.Resets
 			}
+			until, renews = cut(until, renews)
 			if p := (100 - u) / max(until, time.Hour).Hours(); !short || p < shortPace {
 				shortPace, shortDue, short = p, renews, true
 			}
@@ -275,6 +318,7 @@ func (a Allowance) Pace(model string, now time.Time) (pace float64, due time.Tim
 		if l.Resets.After(now) {
 			until, renews = l.Resets.Sub(now), l.Resets
 		}
+		until, renews = cut(until, renews)
 		if p := (100 - u) / max(until, time.Hour).Hours(); !any || p < pace {
 			pace, due, any = p, renews, true
 		}
@@ -310,7 +354,7 @@ func Allowances(agent string) map[string]Allowance {
 				if q.Error != "" || len(q.Windows) == 0 {
 					continue
 				}
-				all[user] = allowanceOf(q.Windows, time.Now())
+				all[user] = allowanceOf(q.Windows, time.Now()).restartedBy(resetRunsOut(agent, user, q.Windows, q.Resets))
 			}
 			c.Lock()
 			c.m[agent], c.at[agent] = all, time.Now()
@@ -384,6 +428,16 @@ func StaleAllowance(agent, user string) {
 		usedCache.at[agent] = time.Time{}
 	}
 	usedCache.Unlock()
+}
+
+// restartedBy marks every window as started again by a reset spent
+// before it runs out at runsOut (Limit.ResetRunsOut); zero leaves a as it
+// is.
+func (a Allowance) restartedBy(runsOut time.Time) Allowance {
+	for i := range a {
+		a[i].ResetRunsOut = runsOut
+	}
+	return a
 }
 
 // allowanceOf keeps the windows that can stop an account.
