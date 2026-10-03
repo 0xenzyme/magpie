@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -94,6 +95,8 @@ const usage = `magpie — one place to pick every agent's model
   magpie sessions --days N|today|all [--model <m>] [--folder <f>] [--json]
                                   what every session spent, day by day, with the top models and folders (7 days)
   magpie quota [<provider>] [--json]  what is left of every subscription, plan and key balance
+  magpie quota wait <provider|account> [--timeout <d>] [--quiet]
+                                  block until that subscription (any of its accounts) or account has allowance again
   magpie sync                     refresh the model catalog and vendor model lists
   magpie agents                   list every supported agent
   magpie update [check] [--proxy <url>] [--mirror <prefix>]
@@ -126,8 +129,16 @@ func main() {
 	proc.EndProbes() // a CLI still being asked something isn't left to init
 	sessions.Saved() // the session index kept, for the next run
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "magpie:", err)
-		os.Exit(1)
+		// a command with exit codes of its own (quota wait) says which
+		code := 1
+		var e exitError
+		if errors.As(err, &e) {
+			code = e.code
+		}
+		if msg := err.Error(); msg != "" {
+			fmt.Fprintln(os.Stderr, "magpie:", msg)
+		}
+		os.Exit(code)
 	}
 }
 

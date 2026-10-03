@@ -16,6 +16,14 @@ func Quotas(ctx context.Context) []SubscriptionQuota {
 	return append(append(subs, plans...), balances...)
 }
 
+// Allotted is Quotas without the keys' balances: the accounts and plans
+// whose allowance runs out and starts again, which is what magpie quota
+// wait waits on; no key's balance is asked for.
+func Allotted(ctx context.Context) []SubscriptionQuota {
+	subs := SubscriptionUsage(ctx)
+	return append(subs, notShown(PlanQuotas(ctx), subs)...)
+}
+
 func quotas(ctx context.Context) (subs, plans, balances []SubscriptionQuota) {
 	b := make(chan []SubscriptionQuota, 1)
 	p := make(chan []SubscriptionQuota, 1)

@@ -522,10 +522,7 @@ var claudeAsked atomic.Int64
 // (claudeUsageWait); the next SubscriptionUsage waits for it.
 func AskClaudeUsage() {
 	claudeAsked.Store(time.Now().UnixNano())
-	c := &subscriptionUsageCache
-	c.Lock()
-	c.at, c.asked = time.Time{}, true
-	c.Unlock()
+	AskUsage()
 	l := &loginUsageCache
 	l.Lock()
 	for k := range l.m {
@@ -534,6 +531,17 @@ func AskClaudeUsage() {
 		}
 	}
 	l.Unlock()
+}
+
+// AskUsage has the next SubscriptionUsage wait for a new reading rather
+// than hand back the last one, as AskClaudeUsage does, without having
+// Claude Code's /usage run: magpie quota wait reads again each time it
+// wakes, and only a wait for Claude needs Claude read.
+func AskUsage() {
+	c := &subscriptionUsageCache
+	c.Lock()
+	c.at, c.asked = time.Time{}, true
+	c.Unlock()
 }
 
 // claudeWindows is the allowance of the Claude account user. Only the

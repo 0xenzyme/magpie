@@ -645,6 +645,23 @@ subscription account, plan and key that answered a request through the
 gateway in the last 30 days, and `last: true` on the latest. It is kept
 in `served.json` beside `providers.json`, so a restart keeps it.
 
+`magpie quota wait <provider|account>` blocks until that subscription (any
+of its accounts magpie has on) or that one account has allowance again — no
+window that stops it used up — then exits 0, so a long task stopped by its
+limit can go on unattended:
+
+```sh
+until codex exec "…"; do magpie quota wait codex || break; done
+```
+
+It reads the vendors itself, whether or not the gateway runs, and again
+shortly after the soonest reset it knows (every 1 to 10 minutes; an
+allowance it can't read is asked again less often each time), saying on
+stderr what it waits for and until when. Name an account by its email or
+login, or as `<provider>/<account>` when two subscriptions share it.
+`--timeout 6h` exits 1 if it passes first, `--quiet` says nothing; an
+unknown name exits 2 and Ctrl+C 130.
+
 The *Gateway* tab in the app has this as copy buttons and ready-made
 snippets (shell, curl, Python, Node) for each API, the list of model ids,
 and the recent calls; `MAGPIE_DEBUG=1` logs every call to the terminal.
@@ -910,6 +927,9 @@ magpie profiles
 magpie rm work
 
 magpie sync                     # refresh the models.dev catalog and every live model list
+
+magpie quota                    # what is left of every subscription, plan and key balance
+magpie quota wait codex         # block until a Codex account has allowance again
 ```
 
 In the app, click any value to open a filtered list; type to search or to
