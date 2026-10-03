@@ -262,14 +262,17 @@ at `/v2/models`.
 ### Plugins
 
 A subscription magpie doesn't sign in to itself can come from an
-[OpenCode](https://opencode.ai) provider plugin: the npm packages OpenCode
-users install to sign in to a plan (their `auth` hook) work in magpie as they
-do there. magpie runs them on [Bun](https://bun.sh), downloaded the first
+[OpenCode](https://opencode.ai) provider plugin or a
+[pi](https://github.com/earendil-works/pi) package: the npm packages OpenCode
+users install to sign in to a plan (their `auth` hook), and the pi packages
+that register a provider (`pi.registerProvider`), work in magpie as they do
+there. magpie runs them on [Bun](https://bun.sh), downloaded the first
 time a plugin needs it, and the plugin signs in, lists the models and makes
 each request; magpie serves them to agents like any provider's.
 
 ```sh
 magpie plugin add opencode-gemini-auth   # an npm package, or a path to a plugin of your own
+magpie plugin add pi-antigravity         # a pi package, the same way
 magpie plugin                           # the plugins, what each signs in to, and whether you are
 magpie plugin login google-plugin       # its sign-in: the method, its questions, the browser or a key
 magpie plugin logout google-plugin
@@ -280,9 +283,22 @@ A provider id magpie already has (google, openai, anthropic) is
 `<id>-plugin`. In the app, Settings → Plugins adds and removes them, and
 the providers they sign in to are in Add provider → From plugins.
 
+A package is pi's when its `package.json` has a `pi` manifest, the
+`pi-package` keyword, or depends on `@earendil-works/pi-coding-agent`.
+magpie installs pi beside it and loads it with pi's own loader; the
+providers it registers are what magpie uses, and its commands, tools and
+renderers are left alone. Its sign-in runs as in pi: an OAuth login's
+questions and pages, and the dialogs and pickers it shows (`ctx.ui`, its
+terminal components too), are asked in magpie's sign-in; an API key works
+as well. pi's own files (its `auth.json` and what a package keeps) are in
+`pi/` under magpie's config directory, not your `~/.pi`, unless
+`PI_CODING_AGENT_DIR` says otherwise. Requests reach the package as pi
+sends them, and its replies keep their thinking and tool calls.
+
 #### For plugin authors
 
-A plugin is an OpenCode plugin; magpie reads a few more fields, which
+A plugin is an OpenCode plugin or a pi package; nothing magpie-specific is
+needed. For an OpenCode plugin magpie reads a few more fields, which
 OpenCode ignores:
 
 - **The provider's icon**: `icon` on the `auth` hook, or `"magpie": {

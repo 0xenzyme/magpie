@@ -79,7 +79,7 @@ const usage = `magpie — one place to pick every agent's model
   magpie accounts checkin         WorkBuddy's daily check-in (签到) for each WorkBuddy account, now (Settings can do it daily)
   magpie accounts project <gemini|antigravity> <email> <project>   the Google Cloud project a Google account's requests go to
   magpie plugin [add <package>|rm|update|on|off|login <provider>|logout <provider>]
-                                  OpenCode provider plugins: subscriptions signed in to, and served, through a plugin
+                                  OpenCode provider plugins and pi packages: subscriptions signed in to, and served, through a plugin
   magpie plugin move|migrate <subscription>   run a built-in subscription's accounts on its community plugin
   magpie plugin move-back|unmigrate <subscription>   go back to the built-in, with its accounts
 

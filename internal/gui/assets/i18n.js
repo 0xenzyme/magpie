@@ -2710,7 +2710,7 @@ const I18N = {
     "Nothing else on npm": "npm 上没有更多了",
     "No plugin called “{q}”": "没有叫「{q}」的插件",
     "Subscriptions, as plugins": "以插件接入的订阅",
-    "Plugins sign in to coding plans and make their requests; the models then work in every agent, like any provider's. They're OpenCode's provider plugins, run on Bun.": "插件负责登录编程套餐并发出请求，模型随后就能像其他供应商的一样用在每个 agent 里。它们是 OpenCode 的供应商插件，运行在 Bun 上。",
+    "Plugins sign in to coding plans and make their requests; the models then work in every agent, like any provider's. They're OpenCode's provider plugins or pi's packages, run on Bun.": "插件负责登录编程套餐并发出请求，模型随后就能像其他供应商的一样用在每个 agent 里。它们是 OpenCode 的供应商插件或 pi 的扩展包，运行在 Bun 上。",
     "A plugin is someone else's code with your sign-in: install the ones you trust.": "插件是他人的代码，会拿到你的登录：只安装你信任的。",
     "Have one in mind?": "已有想装的？",
     "npm package or a folder on this computer": "npm 包名，或本机上的文件夹",
