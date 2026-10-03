@@ -311,7 +311,7 @@ func piModelJSON(m catalog.Model, gw string, native bool) map[string]any {
 	if m.Images {
 		e["input"] = []string{"text", "image"}
 	}
-	if levels := piThinkingLevels(m.Efforts, e["api"] == "anthropic-messages"); levels != nil {
+	if levels := piThinkingLevels(m.Efforts, e["api"] == "anthropic-messages" && gateway.ThinksOnlyWhenAsked(m.ID)); levels != nil {
 		e["thinkingLevelMap"] = levels
 	}
 	// without it Pi takes every model for a 128K one, and compacts
@@ -354,11 +354,14 @@ func openCodeVariants(efforts []string) map[string]any {
 // turned away (#243). Pi's off is the model's none when it takes one. A
 // model without none has off hidden — Pi's off asks a Responses model for
 // effort none and leaves a Chat model on the vendor's default thinking —
-// except on Anthropic's Messages API, where Pi's off sends thinking
-// disabled, which Claude takes whatever its levels; there off is left out,
-// for Pi to offer as before. A model whose levels magpie doesn't know gets
-// no map: Pi's own defaults, as before.
-func piThinkingLevels(efforts []string, anthropic bool) map[string]any {
+// except a Claude on Anthropic's Messages API (claudeOff), where Pi's off
+// sends thinking disabled, which Claude takes whatever its levels; there
+// off is left out, for Pi to offer as before. Another vendor's model there
+// keeps off hidden: without none it always thinks, and ZCode's
+// GLM-5.3-Flash turned Pi's off away ("该模型始终支持思考，不可关闭", #699),
+// as a level left out is one Pi offers. A model whose levels magpie doesn't
+// know gets no map: Pi's own defaults, as before.
+func piThinkingLevels(efforts []string, claudeOff bool) map[string]any {
 	if len(efforts) == 0 {
 		return nil
 	}
@@ -374,7 +377,7 @@ func piThinkingLevels(efforts []string, anthropic bool) map[string]any {
 			levels[l] = nil
 		}
 	}
-	if levels["off"] == nil && anthropic {
+	if levels["off"] == nil && claudeOff {
 		delete(levels, "off")
 	}
 	return levels

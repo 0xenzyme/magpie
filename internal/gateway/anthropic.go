@@ -202,10 +202,20 @@ func thinkingOffUnlessAsked(body []byte) []byte {
 var anthropicModel = regexp.MustCompile(`(?i)(?:^|[/.:-])claude-`)
 
 // alwaysThinks is a vendor refusing to turn a model's thinking off: Z.ai's
-// GLM-5.3 answers 1210, "…always engages in thinking…", and DashScope's own
-// glm-5.3 answers "The value of the enable_thinking parameter is restricted
-// to True."
-var alwaysThinks = regexp.MustCompile(`(?i)always engages in thinking|thinking (?:can ?not|can't) be (?:disabled|turned off)|enable_thinking[^"]{0,60}restricted to true`)
+// GLM-5.3 answers 1210, "…always engages in thinking…", or, in Chinese
+// (ZCode's GLM-5.3-Flash), "该模型始终支持思考，不可关闭" (#699); DashScope's
+// own glm-5.3 answers "The value of the enable_thinking parameter is
+// restricted to True."
+var alwaysThinks = regexp.MustCompile(`(?i)always engages in thinking|thinking (?:can ?not|can't) be (?:disabled|turned off)|enable_thinking[^"]{0,60}restricted to true|始终(?:支持|开启|启用)?思考|思考[^"]{0,20}(?:不可|无法|不能)关闭`)
+
+// ThinksOnlyWhenAsked is a model that takes thinking turned off on the
+// Messages API whatever its levels: one of Anthropic's own (anthropicModel,
+// or a relay's opus-5.5). Another vendor's model there takes it off only
+// when none is among its levels; without it, it always thinks, and GLM-5.3
+// turns thinking disabled away (#699).
+func ThinksOnlyWhenAsked(model string) bool {
+	return anthropicModel.MatchString(model) || claudeVersion.MatchString(strings.ToLower(model))
+}
 
 // withoutThinkingOff is body with its thinking left to the model, when it
 // says thinking is off; false when it doesn't.
