@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
 )
 
@@ -190,7 +191,7 @@ func TestDshModelLimits(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	b, _ := yaml.Marshal(dshRouteConfig(magpieModels("dsh"), ""))
+	b, _ := yaml.Marshal(dshRouteConfig(magpieModels("dsh"), "", gateway.URL()))
 	s := string(b)
 	want := `    - id: v/see
       name: see · V
@@ -282,7 +283,7 @@ func TestDshSetEffortLeavesALegacyEntryWithNoCatalogAlone(t *testing.T) {
 	if err := os.WriteFile(path, []byte(own), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := dshSetEffort(dir, "high"); err == nil {
+	if err := dshSetEffort(dir, "high", gateway.URL()); err == nil {
 		t.Fatal("an empty catalog should refuse the write")
 	}
 	if b, _ := os.ReadFile(path); string(b) != own {
@@ -309,7 +310,7 @@ func TestDshSetEffortWritesALegacyEntryWithTheCatalog(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# mine\n- id: llm-deepseek # magpie\n  config:\n    models:\n      - id: \"deepseek/pro\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := dshSetEffort(dir, "high"); err != nil {
+	if err := dshSetEffort(dir, "high", gateway.URL()); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(path)

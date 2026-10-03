@@ -318,6 +318,21 @@ var wslKinds = []wslKind{
 				return append(miniMaxOwnOptions("", cur["model"]), viaMagpie("minimax-code", magpieID+"/")...)
 			}
 		}},
+	{id: "dsh", name: "DeepSeek Harness", dir: ".dsh", bin: "dsh", in: dshIn,
+		restart: "reads its config at start-up — restart open dsh sessions to use this.",
+		asleep: func(key string) func(map[string]string) []Option {
+			// the thinking levels hang on which patch lists there are, the
+			// distro's files: a dsh of today's (0.1.5 on) is taken
+			if key != "effort" {
+				return nil
+			}
+			return func(cur map[string]string) []Option {
+				if ref, ok := strings.CutPrefix(cur["model"], magpieID+"/"); ok {
+					return static(dshLevels(ref)...)
+				}
+				return static(dshEfforts...)
+			}
+		}},
 	{id: "empryo", name: "Empryo", dir: ".empryo", bin: "empryo", in: empryoIn,
 		restart: "reads its config at start-up — restart open empryo sessions to use this."},
 	{id: "muse", name: "Muse Code", dir: ".config/muse", bin: "muse", in: museIn,
