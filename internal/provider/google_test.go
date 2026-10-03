@@ -532,3 +532,56 @@ func TestAntigravityQuotaPools(t *testing.T) {
 		t.Errorf("without a summary: %+v", q.Windows)
 	}
 }
+
+// Antigravity's list is taken as Antigravity gives it (0000FF on Discord:
+// Claude Opus 5.5 and Sonnet 5.5 in Antigravity, not in magpie): in its
+// picker's order, so a model it adds comes where it puts it, not after
+// older ones by id; with the context, output and images it says, so a
+// model it adds isn't given those of a model of that name elsewhere
+// (Anthropic's 1M for Claude), nor said to see when it doesn't.
+func TestAntigravityModelsAsItListsThem(t *testing.T) {
+	f := &fakeGoogle{
+		load:    `{"allowedTiers":[{"id":"free-tier","name":"Antigravity","isDefault":true}]}`,
+		onboard: `{"done":true,"response":{"cloudaicompanionProject":"ag-proj"}}`,
+		models: `{"models":{
+			"claude-opus-4-6-thinking":{"displayName":"Claude Opus 4.6 (Thinking)","maxTokens":250000,"maxOutputTokens":64000,"supportsImages":true,"quotaInfo":{"remainingFraction":1}},
+			"claude-opus-5-5":{"displayName":"Claude Opus 5.5","maxTokens":250000,"maxOutputTokens":64000,"supportsImages":true,"quotaInfo":{"remainingFraction":1}},
+			"gemini-3.8-flash-high":{"displayName":"Gemini 3.8 Flash (High)","maxTokens":1048576,"maxOutputTokens":65536,"supportsImages":true,"quotaInfo":{"remainingFraction":1}},
+			"gemini-3.8-flash-low":{"displayName":"Gemini 3.8 Flash (Low)","maxTokens":1048576,"maxOutputTokens":65536,"supportsImages":true,"quotaInfo":{"remainingFraction":1}},
+			"gemini-3.1-flash-lite":{"displayName":"Gemini 3.1 Flash Lite","maxTokens":1048576,"maxOutputTokens":65535,"quotaInfo":{"remainingFraction":1}},
+			"text-only-x":{"displayName":"Text Only","maxTokens":131072,"supportsImages":false,"quotaInfo":{"remainingFraction":1}}},
+			"agentModelSorts":[{"displayName":"Recommended","groups":[{"modelIds":["gemini-3.8-flash-high","gemini-3.8-flash-low","claude-opus-5-5","claude-opus-4-6-thinking","text-only-x"]}]}]}`,
+	}
+	googleSandbox(t, f)
+	auth := googleAuth{AccessToken: "tok", RefreshToken: "rt-ag", Expiry: time.Now().Add(time.Hour).UnixMilli()}
+	if err := addGoogleLogin("antigravity", "ag@example.com", "", auth); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := googleLogins("antigravity")[0].acct.models(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, m := range ms {
+		got = append(got, fmt.Sprintf("%s|%d|%d|%v", m.ID, m.Context, m.Output, m.Images))
+	}
+	want := []string{
+		"gemini-3.8-flash-high|1048576|65536|true",
+		"gemini-3.8-flash-low|1048576|65536|true",
+		"claude-opus-5-5|250000|64000|true",
+		"claude-opus-4-6-thinking|250000|64000|true",
+		"text-only-x|131072|0|false",
+		"gemini-3.1-flash-lite|1048576|65535|true", // not in the picker: after, and it says nothing of images
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("models\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	// what magpie offers: the family first, Claude 5.5 before 4.6, Antigravity's 250k kept
+	var offered []string
+	for _, m := range collapseAntigravityModels(catalog.Decorate(ms, []catalog.Model{{ID: "claude-opus-5-5", Context: 1000000, Output: 128000}})) {
+		offered = append(offered, fmt.Sprintf("%s|%d", m.ID, m.Context))
+	}
+	if w := "gemini-3.8-flash|1048576 claude-opus-5-5|250000 claude-opus-4-6-thinking|250000 text-only-x|131072 gemini-3.1-flash-lite|1048576"; strings.Join(offered, " ") != w {
+		t.Errorf("offered %v\nwant %s", offered, w)
+	}
+}

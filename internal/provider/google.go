@@ -840,6 +840,7 @@ type googleModelInfo struct {
 	catalog.Model
 	remaining float64 // 0..1, -1 not known
 	resets    time.Time
+	picker    int // its place in Antigravity's model picker, from 1; 0 not there
 }
 
 // modelInfo asks Code Assist which models the account has.
@@ -852,12 +853,21 @@ func (g googleAccount) modelInfo(ctx context.Context) ([]googleModelInfo, error)
 	if g.app.agent == "antigravity" {
 		var res struct {
 			Models map[string]struct {
-				DisplayName string `json:"displayName"`
-				QuotaInfo   *struct {
+				DisplayName     string `json:"displayName"`
+				MaxTokens       int    `json:"maxTokens"`
+				MaxOutputTokens int    `json:"maxOutputTokens"`
+				SupportsImages  *bool  `json:"supportsImages"`
+				QuotaInfo       *struct {
 					RemainingFraction *float64 `json:"remainingFraction"`
 					ResetTime         string   `json:"resetTime"`
 				} `json:"quotaInfo"`
 			} `json:"models"`
+			// the order Antigravity's model picker shows them in
+			AgentModelSorts []struct {
+				Groups []struct {
+					ModelIDs []string `json:"modelIds"`
+				} `json:"groups"`
+			} `json:"agentModelSorts"`
 		}
 		if err := g.call(ctx, g.app.base, "fetchAvailableModels", map[string]any{"project": p.id}, &res, nil); err != nil {
 			return nil, err
@@ -866,7 +876,8 @@ func (g googleAccount) modelInfo(ctx context.Context) ([]googleModelInfo, error)
 			if antigravityHidden[id] || strings.HasPrefix(id, "chat_") || strings.HasPrefix(id, "tab_") {
 				continue
 			}
-			mi := googleModelInfo{Model: catalog.Model{ID: id, Name: m.DisplayName}, remaining: -1}
+			mi := googleModelInfo{Model: catalog.Model{ID: id, Name: m.DisplayName,
+				Context: m.MaxTokens, Output: m.MaxOutputTokens, ImageInput: m.SupportsImages}, remaining: -1}
 			if q := m.QuotaInfo; q != nil {
 				if q.RemainingFraction != nil {
 					mi.remaining = *q.RemainingFraction
@@ -876,6 +887,19 @@ func (g googleAccount) modelInfo(ctx context.Context) ([]googleModelInfo, error)
 				mi.resets, _ = time.Parse(time.RFC3339, q.ResetTime)
 			}
 			out = append(out, mi)
+		}
+		rank := map[string]int{}
+		for _, s := range res.AgentModelSorts {
+			for _, g := range s.Groups {
+				for _, id := range g.ModelIDs {
+					if _, ok := rank[id]; !ok {
+						rank[id] = len(rank) + 1
+					}
+				}
+			}
+		}
+		for i := range out {
+			out[i].picker = rank[out[i].ID]
 		}
 	} else {
 		var res struct {
@@ -913,7 +937,11 @@ func (g googleAccount) modelInfo(ctx context.Context) ([]googleModelInfo, error)
 // them where Code Assist doesn't name them. Gemini CLI's are the ones the
 // CLI offers the account, not its quota's buckets: those name the models
 // it has an allowance of, by Code Assist's ids (gemini-3-flash is the
-// CLI's 3.5 Flash), and the CLI doesn't list by them.
+// CLI's 3.5 Flash), and the CLI doesn't list by them. Antigravity's are
+// the ones it lists, in its picker's order, with the context, output and
+// images it gives each: a model it adds (Claude 5.5, once Google offers it
+// the account) comes with its own, not those of a model of that name
+// elsewhere — Antigravity gives Claude 250k, not Anthropic's 1M.
 func (g googleAccount) models(ctx context.Context) ([]catalog.Model, error) {
 	infos, err := g.modelInfo(ctx)
 	if err != nil {
@@ -936,13 +964,29 @@ func (g googleAccount) models(ctx context.Context) ([]catalog.Model, error) {
 	for _, m := range fallback {
 		names[m.ID] = m.Name
 	}
+	// as Antigravity's picker has them, newest first, then the rest
+	slices.SortStableFunc(infos, func(a, b googleModelInfo) int {
+		switch {
+		case a.picker == b.picker:
+			return 0
+		case a.picker == 0:
+			return 1
+		case b.picker == 0:
+			return -1
+		}
+		return a.picker - b.picker
+	})
 	var out []catalog.Model
 	for _, mi := range infos {
 		m := mi.Model
 		if m.Name == "" {
 			m.Name = names[m.ID]
 		}
-		m.Images = !strings.HasPrefix(m.ID, "gpt-oss")
+		if m.ImageInput != nil {
+			m.Images = *m.ImageInput
+		} else {
+			m.Images = !strings.HasPrefix(m.ID, "gpt-oss")
+		}
 		out = append(out, m)
 	}
 	if len(out) == 0 {
