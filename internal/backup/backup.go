@@ -80,6 +80,9 @@ type Bundle struct {
 	// Order is the order the user put the providers in (#499), by id;
 	// none from a magpie before it went, or when they were never arranged.
 	Order []string `json:"order,omitempty"`
+	// SettingsKeys lets sync carry settings credentials without changing the
+	// other parts' Keys policy; absent from older backups and whole collects.
+	SettingsKeys bool `json:"settingsKeys,omitempty"`
 }
 
 type envelope struct {
@@ -355,6 +358,7 @@ func Restore(b Bundle, parts Parts) (Result, error) {
 		}
 	}
 	if parts.Settings && (b.Settings != nil || b.GatewayKeys != nil) {
+		keys := b.Keys || b.SettingsKeys
 		// the window's size, the proxy, the menu bar's usage are this machine's own
 		cur := settings.Load()
 		s := cur
@@ -362,7 +366,7 @@ func Restore(b Bundle, parts Parts) (Result, error) {
 			s = *b.Settings
 		}
 		s.KeepOwn(cur)
-		if !b.Keys {
+		if !keys {
 			s.LANKey, s.LANKeyID = cur.LANKey, cur.LANKeyID
 			s.GitHubToken = cur.GitHubToken
 			s.OTel.Headers = nil
@@ -384,7 +388,7 @@ func Restore(b Bundle, parts Parts) (Result, error) {
 		if err := settings.Save(s); err != nil {
 			return r, err
 		}
-		if b.Keys && b.GatewayKeys != nil {
+		if keys && b.GatewayKeys != nil {
 			if err := access.Restore(*b.GatewayKeys); err != nil {
 				// Settings must be writable before replacing credentials. If the
 				// store refuses the write, restore their original association.
@@ -394,7 +398,7 @@ func Restore(b Bundle, parts Parts) (Result, error) {
 				return r, err
 			}
 		}
-		if b.Keys && b.GatewayKeys == nil {
+		if keys && b.GatewayKeys == nil {
 			access.MigrateLegacyLANKeyBestEffort()
 		}
 		r.Settings = true

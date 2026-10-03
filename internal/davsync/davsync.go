@@ -648,8 +648,9 @@ func take(to *backup.Bundle, from backup.Bundle, part string) {
 		to.Providers, to.Icons, to.Groups, to.Searches, to.Order = ps, from.Icons, from.Groups, searches, from.Order
 		to.Keys = to.Keys || from.Keys
 	case "settings":
+		keys := from.Keys || from.SettingsKeys
 		s := from.Settings
-		if s != nil && !from.Keys && to.Keys && to.Settings != nil {
+		if s != nil && !keys && (to.Keys || to.SettingsKeys) && to.Settings != nil {
 			// Sent without keys: keep the ones the server has, as for providers.
 			copy := *s
 			copy.LANKey, copy.LANKeyID = to.Settings.LANKey, to.Settings.LANKeyID
@@ -663,10 +664,10 @@ func take(to *backup.Bundle, from backup.Bundle, part string) {
 		if s != nil {
 			to.Settings = s
 		}
-		if from.Keys && from.GatewayKeys != nil {
+		if keys && from.GatewayKeys != nil {
 			to.GatewayKeys = from.GatewayKeys // an explicit empty store clears it
 		}
-		to.Keys = to.Keys || from.Keys
+		to.SettingsKeys = to.SettingsKeys || keys
 	case "profiles":
 		to.Profiles = from.Profiles
 	case "agents":
