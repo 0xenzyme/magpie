@@ -234,3 +234,10 @@ test("cache: what an older worker kept, in its own shape, is never read as this 
   assert.equal(lat.status, 200);
   assert.equal((await lat.json()).version, "0.1.3");
 });
+
+test("download: a platform's link goes to that asset of the latest release", async () => {
+  const res = await ask("/download/linux");
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get("Location"), "https://dl/x");
+  assert.equal((await ask("/download/nothing-like-it")).status, 404);
+});

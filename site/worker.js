@@ -65,8 +65,8 @@ export default {
     }
     if (url.pathname === "/download" || url.pathname.startsWith("/download/")) {
       const want = url.pathname.split("/")[2] || "mac-arm64";
-      const rel = await latest(ctx);
-      const asset = rel && rel.assets[SHORT[want] || want];
+      const got = await latest(ctx, env);
+      const asset = got && got.rel.assets && got.rel.assets[SHORT[want] || want];
       if (!asset) return new Response("not found\n", { status: 404 });
       return Response.redirect(asset.url, 302);
     }
