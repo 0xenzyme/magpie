@@ -2894,10 +2894,15 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 		msg := p.Name + " did not stream: " + provider.APIError(b, "unexpected reply")
 		return writeError(w, from, 502, msg), msg
 	}
+	// a Gemini reply that says nothing is a failure, not a turn's end
+	// (#667)
+	empty := emptyFails(actual)
 	if stream {
 		sw := newSSEWriter(w)
 		enc := encoder(from, sw, request)
 		var failed string
+		said, stop := false, ""
+		var kept []Event // the reply's end, while nothing is said in it
 		see := zenSee(zen, func(ev Event) {
 			switch ev.Kind {
 			case KError:
@@ -2905,6 +2910,17 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 			case KStart, KUsage:
 				u.add(ev.Usage)
 				u.add(Usage{Served: ev.Model}) // the model the vendor says answered
+			case KStop:
+				stop = ev.Stop
+			}
+			if empty && !said {
+				switch {
+				case saysSomething(ev):
+					said = true
+				case ev.Kind == KStop, ev.Kind == KUsage:
+					kept = append(kept, ev)
+					return
+				}
 			}
 			enc.event(ev)
 		})
@@ -2923,7 +2939,16 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 			failed = cutMidReply(p.Name, serr)
 			enc.event(Event{Kind: KError, Text: failed})
 		}
+		if failed == "" && empty && !said && answersNothing(stop) {
+			// as an error it is asked again, or of another account, and
+			// an agent told it tries again rather than end its turn
+			failed = p.Name + ": " + emptyReply
+			enc.event(Event{Kind: KError, Text: failed})
+		}
 		if failed == "" {
+			for _, ev := range kept {
+				enc.event(ev)
+			}
 			if zen != nil {
 				zen.end(enc.event)
 			}
@@ -2943,6 +2968,10 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 	if col.err != "" && !saidAnything(col.res.Parts) {
 		return writeError(w, from, 502, p.Name+": "+col.err), col.err
 	}
+	if empty && !saidAnything(col.res.Parts) && answersNothing(col.res.Stop) {
+		msg := p.Name + ": " + emptyReply
+		return writeError(w, from, 502, msg), msg
+	}
 	if zen != nil {
 		zen.end(col.add)
 	}
@@ -2954,6 +2983,40 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 	w.WriteHeader(200)
 	w.Write(out)
 	return 200, col.err
+}
+
+// emptyReply is what a reply that says nothing fails with.
+const emptyReply = "an empty reply (the model answered nothing; try again)"
+
+// emptyFails tells whether a reply in proto that says nothing is a
+// failure. Gemini's, Antigravity's among them, now and then ends with
+// nothing, or only reasoning, and a STOP — or with no finishReason at all
+// — which went to the agent as a turn ended as it should, content [] and
+// no usage, and the agent's run stopped mid-task (#667). Gemini CLI takes
+// such a stream for an invalid one and asks again. Claude ending a turn
+// with nothing after a tool's result is its answer, so no other
+// protocol's is.
+func emptyFails(proto provider.Protocol) bool {
+	return proto == provider.CodeAssist || proto == provider.Gemini
+}
+
+// answersNothing tells whether a reply with nothing said ended for no
+// reason of its own: not cut at its length (all reasoning), nor by a
+// safety filter (told as a refusal, #248).
+func answersNothing(stop string) bool {
+	return stop != "length" && stop != "filter"
+}
+
+// saysSomething tells whether an event is any of a reply an agent shows or
+// acts on: text, a call, a search, an image.
+func saysSomething(ev Event) bool {
+	switch ev.Kind {
+	case KText:
+		return ev.Text != ""
+	case KToolStart, KSearch, KImage:
+		return true
+	}
+	return false
 }
 
 // ---- protocol tables --------------------------------------------------------
