@@ -8,6 +8,7 @@
 package settings
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -18,11 +19,14 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/redact"
+	"github.com/yetone/magpie/internal/steady"
 )
 
 // Settings is what the user chose. "" and "system" both mean "follow the OS".
@@ -514,11 +518,17 @@ func Dir() string { return appdir.Config() }
 // Portable is the data folder of a portable magpie, or "" when installed.
 func Portable() string { return appdir.Portable() }
 
+// Serialize reads with saves too: the editor preserves hard links by
+// writing them in place rather than replacing their inode.
+var fileMu sync.RWMutex
+
 // Load reads the settings; anything missing or unreadable is the default.
 func Load() Settings {
+	fileMu.RLock()
+	defer fileMu.RUnlock()
 	var s Settings
-	if b, err := os.ReadFile(Path()); err == nil {
-		_ = json.Unmarshal(b, &s)
+	if b, err := steady.ReadFile(Path()); err == nil {
+		_ = json.Unmarshal(bytes.TrimPrefix(b, []byte("\xef\xbb\xbf")), &s)
 	}
 	return s.normal()
 }
@@ -545,6 +555,8 @@ func CheckProxy(p string) error {
 
 // Save validates and writes the settings.
 func Save(s Settings) error {
+	fileMu.Lock()
+	defer fileMu.Unlock()
 	s = s.normal()
 	if !slices.Contains(Themes, s.Theme) {
 		return fmt.Errorf("theme must be one of %v, not %q", Themes, s.Theme)
@@ -619,6 +631,19 @@ func Save(s Settings) error {
 	if len(s.TrayUsages) > 0 {
 		s.TrayUsage = s.TrayUsages[0]
 	}
+	// Load may have returned defaults or only part of an unreadable file.
+	// Do not replace it, including its permissions, with those values.
+	if b, err := steady.ReadFile(Path()); err == nil {
+		b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
+		if len(bytes.TrimSpace(b)) != 0 {
+			var stored Settings
+			if err := json.Unmarshal(b, &stored); err != nil {
+				return fmt.Errorf("could not read settings at %s; repair or move that file aside before saving: %w", Path(), err)
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("could not read settings at %s: %w", Path(), err)
+	}
 	if err := os.MkdirAll(Dir(), 0o755); err != nil {
 		return err
 	}
@@ -632,7 +657,16 @@ func Save(s Settings) error {
 			return err
 		}
 	}
-	return os.WriteFile(Path(), append(b, '\n'), 0o600)
+	// Open without truncating: read-only settings must still reject saves,
+	// and a new file must have the private mode WriteAtomic will preserve.
+	f, err := os.OpenFile(Path(), os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return edit.WriteAtomic(Path(), append(b, '\n'))
 }
 
 func (s Settings) normal() Settings {
