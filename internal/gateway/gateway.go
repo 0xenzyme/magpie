@@ -1366,7 +1366,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		picked := false // the effort asked for in place of the agent's
 		// a member fixed at an effort (#189), else the model asked for at
 		// one (#536)
-		fixed := cmp.Or(c.effort, askedEffort)
+		// the levels the group offers (Group.Levels) bound what the agent,
+		// a model's suffix or the turn's pick asks for (#671); a member the
+		// user fixed at an effort is asked for it
+		var levels []string
+		if isGroup {
+			levels = groupLevels(g, ms, c)
+		}
+		fixed := cmp.Or(c.effort, withinLevels(askedEffort, levels))
 		if fixed != "" {
 			// a member fixed at an effort is asked for it, at the level its
 			// model has nearest, whatever the agent asked or the turn's
@@ -1376,8 +1383,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// the level this model has nearest to the one picked; one whose
 			// levels aren't known isn't asked for more than high, which
 			// every vendor with levels takes
-			if b := withEffort(from, attemptBody, fitLevel(effort, c.p.Efforts(c.model))); !bytes.Equal(b, attemptBody) {
+			if b := withEffort(from, attemptBody, fitLevel(withinLevels(effort, levels), c.p.Efforts(c.model))); !bytes.Equal(b, attemptBody) {
 				attemptBody, picked = b, true
+			}
+		} else if e := agentEffort(from, attemptBody); e != "" && e != "none" {
+			// the agent's own level, where the group doesn't offer it
+			if want := withinLevels(e, levels); want != e {
+				attemptBody = withEffort(from, attemptBody, want)
 			}
 		}
 		// a member sent fast is, in its vendor's words, where its model

@@ -751,3 +751,44 @@ func withFixedEffort(proto provider.Protocol, body []byte, effort string) []byte
 	}
 	return body
 }
+
+// groupLevels are the reasoning levels the group offers for the member a
+// candidate is of, where the user named them (Group.Levels, #295): the
+// group's own, else those of the outermost group in it that names some.
+// nil when none is named. They bound what the candidate is asked for
+// (withinLevels): the agent, a model's suffix or the turn's pick asking
+// for a level the group doesn't offer is sent the nearest it does (#671).
+func groupLevels(g provider.Group, ms []provider.Member, c candidate) []string {
+	if len(g.Levels) > 0 {
+		return g.Levels
+	}
+	for _, m := range ms {
+		if m.Provider.ID != c.p.ID || m.Model != c.model || m.Effort != c.effort {
+			continue
+		}
+		if i := slices.IndexFunc(m.Via, func(v provider.Group) bool { return len(v.Levels) > 0 }); i >= 0 {
+			return m.Via[i].Levels
+		}
+	}
+	return nil
+}
+
+// withinLevels is want, when levels offer it, else the level of levels
+// nearest it (fitEffort). Codex's ultra is max with agents of its own, so
+// a group that offers max offers it too.
+func withinLevels(want string, levels []string) string {
+	if want == "" || len(levels) == 0 || slices.Contains(levels, want) || want == "ultra" && slices.Contains(levels, "max") {
+		return want
+	}
+	return fitEffort(want, levels)
+}
+
+// agentEffort is the reasoning level a request asks for in its own API's
+// words: Chat's and Responses' as the agent named it (minimal and none
+// kept), Anthropic's as requestEffort reads it. "" when it names none.
+func agentEffort(proto provider.Protocol, body []byte) string {
+	if proto == provider.Anthropic {
+		return requestEffort(proto, body)
+	}
+	return strings.ToLower(strings.TrimSpace(bodyEffort(proto, body)))
+}
