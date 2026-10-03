@@ -769,6 +769,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		in.TextSize = cur.TextSize
 		// the version the Update pill was hidden for, set from the pill
 		in.UpdateSkip = cur.UpdateSkip
+		// the GitHub mirror updates come through, set by magpie update mirror
+		in.UpdateMirror = cur.UpdateMirror
 		if v := strings.TrimSpace(in.Vision); v != "" && v != "off" && v != cur.Vision {
 			if _, _, ok := provider.Resolve(v); !ok {
 				fail(rw, fmt.Errorf("no model %s to describe images", v))

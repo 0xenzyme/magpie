@@ -129,6 +129,13 @@ type Settings struct {
 	// one of UpdateEveries, 0 for every six hours.
 	NoAutoUpdate bool `json:"noAutoUpdate,omitempty"`
 	UpdateEvery  int  `json:"updateEvery,omitempty"`
+	// UpdateMirror is a GitHub download mirror an update's file is fetched
+	// through, its prefix put before the release's github.com URL
+	// (https://mirror.example/https://github.com/…): "" for none, which is
+	// the default — magpie names no mirror of its own. The file is still
+	// checked against the SHA-256 the update feed at usemagpie.ai gives,
+	// never one from the mirror. magpie update mirror sets it.
+	UpdateMirror string `json:"updateMirror,omitempty"`
 	// Vision is the model that describes an image to a model that can't see
 	// it: a model's id (provider/model, group/<id>), "off" to turn such an
 	// image away, or empty for one magpie picks (see gateway.seer).
@@ -606,6 +613,11 @@ func Save(s Settings) error {
 	}
 	if !slices.Contains(UpdateEveries, s.UpdateEvery) {
 		return fmt.Errorf("magpie checks for updates every %v minutes, not %d", UpdateEveries, s.UpdateEvery)
+	}
+	if m := s.UpdateMirror; m != "" {
+		if u, err := url.Parse(m); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			return fmt.Errorf("an update mirror is an http(s) address put before the github.com URL, like https://mirror.example/, not %q", m)
+		}
 	}
 	if s.UsageAlert < 0 || s.UsageAlert > 100 {
 		return fmt.Errorf("a usage alert is at a percentage from 1 to 100, or 0 for off, not %d", s.UsageAlert)

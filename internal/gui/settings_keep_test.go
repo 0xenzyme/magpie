@@ -136,6 +136,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		CodexAutoReset:      []string{"me@example.com"},
 		TextSize:            125,
 		UpdateSkip:          "0.1.500",
+		UpdateMirror:        "https://mirror.example/",
 		Window:              []int{900, 700},
 	}
 	if err := settings.Save(was); err != nil {

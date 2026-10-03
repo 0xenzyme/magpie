@@ -688,6 +688,21 @@ otherwise):
 curl -fsSL https://usemagpie.ai/install.sh | sh
 ```
 
+Behind a firewall, or without access to GitHub, both the installer and
+`magpie update` take `--proxy <url>` (http, https, socks5, socks5h; or
+`MAGPIE_PROXY`, and `HTTPS_PROXY` / `ALL_PROXY` as usual) and
+`--mirror <prefix>`, a GitHub download mirror of your choosing put before
+the release's github.com URL (or `MAGPIE_MIRROR`; `magpie update mirror
+<prefix>|off` keeps one for every update, the app's too):
+
+```sh
+curl -fsSL https://usemagpie.ai/install.sh | sh -s -- --proxy http://127.0.0.1:7890
+magpie update --mirror https://mirror.example/
+```
+
+No mirror is used unless you give one, and the SHA-256 every download is
+checked against still comes from usemagpie.ai, never from the mirror.
+
 Mac releases are signed and notarised; the Windows and Linux builds are not
 signed yet (Windows SmartScreen may ask before the first run). Every build
 keeps itself current: the app
