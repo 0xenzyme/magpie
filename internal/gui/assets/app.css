@@ -518,7 +518,8 @@ body.window .field.solo { grid-column: auto; }
 .subscription-card.several .subscription-error:not([hidden]) + .subscription-account,
 .subscription-card.several .quota-balance:not([hidden]) + .subscription-account,
 .subscription-card.several .quota-read:not([hidden]) + .subscription-account,
-.subscription-card.several .credit-days:not([hidden]) + .subscription-account { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
+.subscription-card.several .credit-days:not([hidden]) + .subscription-account,
+.subscription-card.several .quota-curve:not([hidden]) + .subscription-account { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
 .subscription-account .user { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .subscription-account .plan { margin-left: auto; flex: none; font-size: 10.5px; color: var(--muted); text-transform: capitalize; }
 .subscription-head .plan { margin-left: auto; font-size: 10.5px; color: var(--muted); text-transform: capitalize; }
@@ -555,19 +556,26 @@ body.window .field.solo { grid-column: auto; }
 .credit-days .cd-day.unknown { background: none; outline: 1px dashed var(--line); outline-offset: -1px; }
 .credit-days .cd-day i { display: block; width: 100%; border-radius: 2px; background: var(--accent); }
 .credit-days .cd-note { margin-top: 4px; font-size: 10px; color: var(--faint); }
-/* what was left over time (#651): a line a window, an even burn dashed, now upright */
+/* what was left over time (#651): a line a window, an even burn dashed, now
+   upright; the range (or Off) is picked once, in the allowances' head */
+.quota-head .quota-trend { margin-right: 8px; }
 .quota-curve { margin-top: 10px; }
-.quota-curve .qc-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); }
-.quota-curve .qc-range .opt { height: 20px; padding: 0 9px; font-size: 11px; }
-.quota-curve .qc-plot { display: block; width: 100%; height: 64px; margin-top: 6px; overflow: hidden; }
+.quota-curve .qc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 10.5px; color: var(--muted); }
+.quota-curve .qc-range { font-size: 10px; color: var(--faint); }
+.quota-curve .qc-plot { display: block; width: 100%; height: 52px; margin-top: 5px; overflow: hidden; }
 .qc-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.qc-line { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.qc-even { stroke-width: 1; stroke-dasharray: 3 3; opacity: .55; vector-effect: non-scaling-stroke; }
+.qc-line { fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+/* a window far shorter than the span drawn (a 5-hour one over a week) is a
+   comb of drops: faint, and without its upright even burn */
+.qc-line.qc-short { stroke-width: 1; opacity: .45; }
+.qc-even { stroke-width: 1; stroke-dasharray: 3 3; opacity: .45; vector-effect: non-scaling-stroke; }
 .qc-now { stroke: var(--faint); stroke-width: 1; stroke-dasharray: 1 2; vector-effect: non-scaling-stroke; }
-.quota-curve .qc-axis { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; }
-.quota-curve .qc-legend { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 4px; font-size: 10.5px; color: var(--muted); }
-.qc-key { display: inline-flex; align-items: center; gap: 5px; }
-.qc-key i { width: 7px; height: 7px; border-radius: 50%; }
+.quota-curve .qc-axis { display: flex; justify-content: space-between; gap: 8px; margin-top: 3px; font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.quota-curve .qc-legend { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 5px; font-size: 10.5px; color: var(--muted); }
+/* a key never breaks inside: a long name ends in … rather than its % on a line of its own */
+.qc-key { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; white-space: nowrap; }
+.qc-key > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.qc-key i { flex: none; width: 7px; height: 7px; border-radius: 50%; }
 .qc-key b { color: var(--fg-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .quota-resets { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 10.5px; font-variant-numeric: tabular-nums; }
 .quota-resets .text { margin-left: auto; flex: none; font-size: 11px; padding: 2px 7px; }

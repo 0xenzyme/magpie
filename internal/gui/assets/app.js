@@ -9053,6 +9053,7 @@ function renderQuotas() {
     }
     slide(mode, "quotaMode");
   }
+  renderQuotaTrend();
   if (!quotas) {
     subscriptions.hidden = false;
     for (let i = 0; i < 2; i++) {
@@ -9280,10 +9281,35 @@ function creditDays(sub) {
 // line a window, the percent left, broken where the window started again;
 // a dashed line from the window's start to its reset is an even burn, and
 // a thin upright one is now. "2 days" is the last two days; "Cycle" the
-// current cycle of the account's longest window, its start to its reset.
+// current cycle of the account's longest window, its start to its reset;
+// "Off" draws none, on the Usage page or on the tray's cards (ARNO on
+// Discord: 额度面板变得非常混乱和难以观看了). One pick in the allowances'
+// head turns every card, remembered, and the tray panel follows it.
 let quotaRange = "cycle";
-try { if (localStorage.getItem("magpie.quotaRange") === "2d") quotaRange = "2d"; } catch {}
-const QUOTA_RANGES = [["2d", "2 days"], ["cycle", "Cycle"]];
+try { const v = localStorage.getItem("magpie.quotaRange"); if (v === "2d" || v === "off") quotaRange = v; } catch {}
+const QUOTA_RANGES = [["off", "Off", "No curves on the cards"], ["2d", "2 days", "The last two days"], ["cycle", "Cycle", "The current cycle, from the window's start to its reset"]];
+addEventListener("storage", (e) => {
+  if (e.key !== "magpie.quotaRange") return;
+  const v = QUOTA_RANGES.some(([id]) => id === e.newValue) ? e.newValue : "cycle";
+  if (v !== quotaRange) { quotaRange = v; renderQuotas(); }
+});
+// renderQuotaTrend: the allowances' head's pick of the curves' range, there
+// once some account has readings to draw
+function renderQuotaTrend() {
+  const b = $("#quotaTrend");
+  if (!b) return;
+  b.hidden = !quotas?.some((q) => !q.error && quotaLines(q).length);
+  if (b.hidden) return;
+  const cur = QUOTA_RANGES.find(([id]) => id === quotaRange);
+  b.classList.toggle("set", quotaRange !== "off");
+  b.replaceChildren(el("span", "", t("Trends: {range}", { range: t(cur[1]) })), svg(CHEV, 11, 1.6));
+  b.title = t("What was left over time, under each account's meters");
+  b.onclick = (e) => {
+    e.stopPropagation();
+    if (b.classList.contains("open")) return closeProtoMenu();
+    openProtoMenu(b, QUOTA_RANGES.map(([v, name, note]) => ({ v, name, note })), quotaRange, setQuotaRange, "Left over time", "sess-menu");
+  };
+}
 
 function quotaHistOf(sub) {
   const user = (sub.user || "").toLowerCase();
@@ -9375,32 +9401,28 @@ function drawQuotaPlot(g, lines, x0, x1, w, h, now, thin) {
   lines.forEach((l, i) => {
     const color = `var(--c${(i % 7) + 1})`;
     const c = quotaCycle(l, now);
-    if (c.reset && c.start < c.reset) {
+    // a window far shorter than the span (a 5-hour one over a week) is
+    // drawn faint, without its even burn, an all but upright dash
+    const short = !thin && c.reset && c.reset - c.start < (x1 - x0) / 12;
+    if (c.reset && c.start < c.reset && !short) {
       const e = sv("line", { x1: X(c.start), y1: 0, x2: X(c.reset), y2: h, class: "qc-even" }, { stroke: color });
       g.append(e);
     }
     const d = quotaPaths(l.points, x0, x1, w, h);
-    if (d) g.append(sv("path", { d, class: "qc-line", "data-name": l.name }, { stroke: color }));
+    if (d) g.append(sv("path", { d, class: "qc-line" + (short ? " qc-short" : ""), "data-name": l.name }, { stroke: color }));
   });
   if (now >= x0 && now <= x1) g.append(sv("line", { x1: X(now), x2: X(now), y1: 0, y2: h, class: "qc-now" }));
 }
 // quotaCurve: an account's windows over time, under its meters, with the
 // range turned for every card at once
 function quotaCurve(sub) {
+  if (quotaRange === "off") return null;
   const lines = quotaLines(sub);
   if (!lines.length) return null;
   const box = el("div", "quota-curve");
   const head = el("div", "qc-head");
-  head.append(el("span", "", t("Left over time")));
-  const seg = el("div", "segs qc-range");
-  for (const [id, name] of QUOTA_RANGES) {
-    const b = el("button", "opt" + (id === quotaRange ? " on" : ""), t(name));
-    b.dataset.range = id;
-    b.title = t(id === "2d" ? "The last two days" : "The current cycle, from the window's start to its reset");
-    b.onclick = () => setQuotaRange(id);
-    seg.append(b);
-  }
-  head.append(seg);
+  const range = el("span", "qc-range");
+  head.append(el("span", "", t("Left over time")), range);
   const W = 300, H = 60;
   const g = sv("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", class: "qc-plot", role: "img" });
   const axis = el("div", "qc-axis");
@@ -9418,11 +9440,10 @@ function quotaCurve(sub) {
     const now = Date.now();
     const [x0, x1] = quotaSpan(lines, quotaRange, now);
     drawQuotaPlot(g, lines, x0, x1, W, H, now);
-    g.setAttribute("aria-label", t("Left over time") + " · " + t(quotaRange === "2d" ? "2 days" : "Cycle"));
+    const r = t(quotaRange === "2d" ? "2 days" : "Cycle");
+    range.textContent = r;
+    g.setAttribute("aria-label", t("Left over time") + " · " + r);
     axis.replaceChildren(el("span", "", quotaTimeText(x0, now)), el("span", "", quotaTimeText(x1, now)));
-    for (const b of seg.querySelectorAll(".opt")) b.classList.toggle("on", b.dataset.range === quotaRange);
-    // its thumb is put once the card is on the page
-    if (seg.isConnected) slide(seg, "quotaRange"); else queueMicrotask(() => slide(seg, "quotaRange"));
   };
   box.append(head, g, axis, legend);
   box.draw();
@@ -9430,13 +9451,18 @@ function quotaCurve(sub) {
 }
 function setQuotaRange(id) {
   if (id === quotaRange) return;
+  const was = quotaRange;
   quotaRange = id;
   try { localStorage.setItem("magpie.quotaRange", id); } catch {}
+  // turned on or off, the cards are made again; a range redraws them
+  if (was === "off" || id === "off") return renderQuotas();
+  renderQuotaTrend();
   for (const b of document.querySelectorAll(".quota-curve")) b.draw?.();
 }
 // quotaSpark: the tray card's thin line of a window's current cycle, the
-// even burn faint under it
+// even burn faint under it; none while the curves are off
 function quotaSpark(q, w) {
+  if (quotaRange === "off") return null;
   const lines = quotaLines({ ...q, windows: [w.window ? { ...w, name: w.window } : w] });
   if (!lines.length) return null;
   const now = Date.now(), c = quotaCycle(lines[0], now);

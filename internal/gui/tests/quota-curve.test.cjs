@@ -2,10 +2,14 @@
 // What was left over time (#651): under an account's meters on the Usage
 // page, a line a window from magpie's readings — broken where the 5-hour
 // window started again — a dashed even burn from each window's start to its
-// reset, and an upright line at now; "2 days" / "Cycle" turns every card's
-// range at once, in the app's own segmented control, the pick remembered,
-// and the click doesn't move the page. An account with no readings has no
-// curve. The tray's card has a thin line of its first window's cycle.
+// reset, and an upright line at now. One pick in the allowances' head, the
+// app's own menu, turns every card at once: "2 days" / "Cycle", or "Off"
+// (ARNO on Discord: the curves made the cards cluttered), which draws no
+// curve on any card, the tray's thin line included; the pick is remembered
+// across a reload, and no click moves the page. Several accounts on a card
+// are set apart by a rule, a curve's legend before the next one too. An
+// account with no readings has no curve. The tray's card has a thin line of
+// its first window's cycle.
 // English and Chinese, light and dark; no backend, the API is faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -24,6 +28,9 @@ function fixtures(now) {
       { name: "5 hours", used: 40, resetsAt: iso(r5) },
       { name: "Weekly", used: 30, resetsAt: iso(rw) },
     ] },
+    { provider: "codex", name: "Codex", icon: "openai", plan: "Pro", user: "b@x.com", windows: [
+      { name: "5 hours", used: 10, resetsAt: iso(r5) },
+    ] },
     { provider: "kimi", name: "Kimi", icon: "kimi-color", windows: [{ name: "Weekly", used: 10, resetsAt: iso(rw) }] },
   ];
   const five = [], week = [];
@@ -31,7 +38,10 @@ function fixtures(now) {
   for (let m = 0; m <= 180; m += 30) five.push({ at: iso(r5 - 10 * H + m * 60e3), left: 100 - m / 3, start: iso(r5 - 10 * H), resetsAt: iso(r5 - 5 * H) });
   for (let m = 0; m <= 180; m += 30) five.push({ at: iso(r5 - 5 * H + m * 60e3), left: 100 - m / 3, start: iso(r5 - 5 * H), resetsAt: iso(r5) });
   for (let h = 90; h >= 0; h -= 6) week.push({ at: iso(now - h * H), left: 70 + h / 9, start: iso(rw - 168 * H), resetsAt: iso(rw) });
-  const history = [{ provider: "codex", user: "a@x.com", lines: [{ name: "5 hours", points: five }, { name: "Weekly", points: week }] }];
+  const history = [
+    { provider: "codex", user: "a@x.com", lines: [{ name: "5 hours", points: five }, { name: "Weekly", points: week }] },
+    { provider: "codex", user: "b@x.com", lines: [{ name: "5 hours", points: five.slice(-4) }] },
+  ];
   return { quotas, history };
 }
 
@@ -57,8 +67,8 @@ function serve(lang, theme, panel, data) {
 }
 
 const words = {
-  en: { head: "Left over time", two: "2 days", cycle: "Cycle", five: "5 hours", week: "Weekly" },
-  zh: { head: "剩余额度走势", two: "2 天", cycle: "本周期", five: "5 小时", week: "每周" },
+  en: { head: "Left over time", two: "2 days", cycle: "Cycle", off: "Off", trend: (r) => "Trends: " + r, five: "5 hours", week: "Weekly" },
+  zh: { head: "剩余额度走势", two: "2 天", cycle: "本周期", off: "关闭", trend: (r) => "走势：" + r, five: "5 小时", week: "每周" },
 };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -90,15 +100,19 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       for (const theme of ["light", "dark"]) {
         const page = await open(theme, "http://magpie.test/?view=usage", theme, { width: 900, height: 620 });
         const card = page.locator(".subscription-card", { hasText: "Codex" });
-        const curve = card.locator(".quota-curve");
+        const curve = card.locator(".quota-curve").first();
         await curve.waitFor();
-        assert.equal(await curve.locator(".qc-head > span").textContent(), w.head);
-        assert.deepEqual(await curve.locator(".qc-range .opt").allTextContents(), [w.two, w.cycle]);
-        assert.equal(await curve.locator(".qc-range select").count(), 0);
-        assert.equal(await curve.locator(".qc-range .opt.on").textContent(), w.cycle, "Cycle first");
-        // a line a window, an even burn each, now
+        assert.equal(await curve.locator(".qc-head > span").first().textContent(), w.head);
+        // the range is picked once, in the allowances' head, not on every card
+        const pick = page.locator("#quotaHead #quotaTrend");
+        assert.equal(await pick.textContent(), w.trend(w.cycle), "Cycle first");
+        assert.equal(await page.locator(".quota-curve .segs, .quota-curve button, .quota-curve select").count(), 0, "no control on a card");
+        assert.equal(await curve.locator(".qc-range").textContent(), w.cycle);
+        // a line a window, now; the 5-hour window, a comb over the week's
+        // cycle, faint and without its upright even burn
         assert.equal(await curve.locator("path.qc-line").count(), 2);
-        assert.equal(await curve.locator("line.qc-even").count(), 2);
+        assert.equal(await curve.locator("line.qc-even").count(), 1);
+        assert.equal(await curve.locator("path.qc-line.qc-short").getAttribute("data-name"), "5 hours");
         assert.equal(await curve.locator("line.qc-now").count(), 1);
         const five = await curve.locator('path.qc-line[data-name="5 hours"]').getAttribute("d");
         assert.equal((five.match(/M/g) || []).length, 2, "the 5-hour line breaks where its window started again: " + five);
@@ -115,15 +129,44 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(left, 0, "no left borders");
 
         if (theme === "light") {
+          // several accounts: the next one is set apart from a curve's legend
+          await card.locator(".quota-more").click();
+          const second = card.locator(".subscription-account", { hasText: "b@x.com" });
+          assert.equal(await second.evaluate((e) => e.previousElementSibling.className), "quota-curve");
+          assert.notEqual(await second.evaluate((e) => getComputedStyle(e).borderTopStyle), "none", "a rule between the accounts");
+          const choose = async (name) => {
+            await pick.click();
+            const items = page.locator(".sess-menu .pm-item");
+            assert.deepEqual(await items.locator(".pm-name").allTextContents(), [w.off, w.two, w.cycle]);
+            await items.filter({ hasText: name }).click();
+          };
           // 2 days: the range turns, the page doesn't move, the pick is kept
           const scroller = await page.evaluate(() => { const s = document.scrollingElement; s.scrollTop = 40; return s.scrollTop; });
           const before = await curve.locator(".qc-axis").textContent();
-          await curve.locator(".qc-range .opt", { hasText: w.two }).click();
-          assert.equal(await curve.locator(".qc-range .opt.on").textContent(), w.two);
+          await choose(w.two);
+          assert.equal(await pick.textContent(), w.trend(w.two));
+          assert.equal(await curve.locator(".qc-range").textContent(), w.two);
           assert.notEqual(await curve.locator(".qc-axis").textContent(), before);
           assert.notEqual(await curve.locator('path.qc-line[data-name="5 hours"]').getAttribute("d"), five);
+          assert.equal(await curve.locator("line.qc-even").count(), 2, "over two days the 5-hour window has its even burn");
           assert.equal(await page.evaluate(() => document.scrollingElement.scrollTop), scroller, "the click moved the page");
           assert.equal(await page.evaluate(() => localStorage.getItem("magpie.quotaRange")), "2d");
+          // Off: no card draws a curve, the pick stays where it was, kept
+          // across a reload; back on, the curves come back
+          const at = (await pick.boundingBox()).y;
+          await choose(w.off);
+          assert.equal(await page.locator(".quota-curve").count(), 0);
+          assert.equal(await pick.textContent(), w.trend(w.off));
+          assert.equal((await pick.boundingBox()).y, at, "the pick moved");
+          assert.equal(await page.evaluate(() => document.scrollingElement.scrollTop), scroller, "the click moved the page");
+          assert.equal(await page.evaluate(() => localStorage.getItem("magpie.quotaRange")), "off");
+          await page.reload();
+          await page.locator(".subscription-card", { hasText: "Codex" }).locator(".quota-windows").first().waitFor();
+          assert.equal(await page.locator(".quota-curve").count(), 0, "Off is kept across a restart");
+          assert.equal(await pick.textContent(), w.trend(w.off));
+          await choose(w.cycle);
+          await curve.waitFor();
+          assert.equal(await page.evaluate(() => localStorage.getItem("magpie.quotaRange")), "cycle");
         }
       }
       assert.notEqual(strokes.light, strokes.dark, "dark has its own line colour");
@@ -140,6 +183,17 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const sb = await spark.boundingBox(), cb = await pcard.boundingBox();
       assert.ok(sb.height <= 17 && sb.width > cb.width * 0.7, `thin and across the card: ${JSON.stringify(sb)}`);
       assert.equal(await panel.locator(".pq-card", { hasText: "Kimi" }).locator(".pq-spark").count(), 0);
+      // turned off in the window, the tray's line goes too, and stays gone
+      const win = await panel.context().newPage();
+      await win.route("**/*", serve(lang, "dark", false, data));
+      await win.goto("http://magpie.test/blank");
+      await win.evaluate(() => localStorage.setItem("magpie.quotaRange", "off"));
+      await panel.waitForFunction(() => !document.querySelector(".pq-spark"));
+      assert.ok(await pcard.locator(".pq-dial").count() > 0, "the card is still there");
+      await panel.reload();
+      await panel.locator('#ptabs [data-ptab="usage"]').click();
+      await pcard.locator(".pq-dial").first().waitFor();
+      assert.equal(await panel.locator(".pq-spark").count(), 0, "Off is kept in the tray");
       assert.deepEqual(errors, []);
     });
   }
