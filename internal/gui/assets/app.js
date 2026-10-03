@@ -891,7 +891,7 @@ function connectLine(a, kind) {
   }
   const fresh = newModels(a);
   if (fresh) {
-    const [pre, post] = t("{n} models · {new} show in new {agent} sessions", { n: a.models.shown, agent: a.name }).split("{new}");
+    const [pre, post] = t("Connected · {n} models · {new} show in new {agent} sessions", { n: a.models.shown, agent: a.name }).split("{new}");
     words.append(pre, el("b", "", t("{n} new", { n: fresh })), post || "");
     return line;
   }
@@ -900,7 +900,7 @@ function connectLine(a, kind) {
   else if (NO_PICKER.has(a.id)) {
     const f = connectField(a), o = f && optionFor(f, f.value);
     say(o ? t("Connected · starts on {model}", { model: o.label || f.value }) : t("Connected · pick the model it starts on"));
-  } else if (at && a.models) say(t("{n} models in {agent}'s {cmd}", { n: a.models.shown, agent: a.name, cmd: at }));
+  } else if (at && a.models) say(t("Connected · {n} models in {agent}'s {cmd}", { n: a.models.shown, agent: a.name, cmd: at }));
   else say(connectSaid(a));
   return line;
 }

@@ -90,7 +90,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const shown = () => row.locator(".ag-st-t").innerText();
       await entry.waitFor();
       assert.equal(await hint.count(), 0, "none hidden");
-      assert.match(await shown(), /^3 /);
+      assert.match(await shown(), /^(Connected|已接入) · (3 models|.* 里有 3 个模型)/);
       const scroll = () => page.evaluate(() => [scrollY, document.scrollingElement.scrollTop, $("#view-agents").scrollTop]);
       const was = await scroll();
 
@@ -101,7 +101,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.waitForTimeout(150);
       assert.equal(fx.posts.at(-1).length, 3);
       assert.equal((await hint.innerText()).trim(), w.none);
-      assert.match(await shown(), /^0 /);
+      assert.match(await shown(), /^(Connected|已接入) · (0 models|.* 里有 0 个模型)/);
       assert.equal(await row.locator(".ag-chip").count(), 0, "no provider gives one");
       assert.equal(await pop.count(), 1, "the list stays open as the row is drawn again");
 

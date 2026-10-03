@@ -275,6 +275,9 @@ func (a *Agent) Keep() {
 // magpie's models, or on magpie itself (an app whose one setting is magpie
 // as its provider).
 func (a *Agent) Wired() bool {
+	if a.Joined != nil && a.Joined() {
+		return true
+	}
 	vals := a.Values()
 	for _, f := range a.Fields {
 		if v := vals[f.Key]; v == magpieID || magpieValue(a, f, v, vals) {
@@ -290,10 +293,18 @@ func (a *Agent) Wired() bool {
 // one serving the model it is on now, else the first — or to magpie itself
 // for an app whose one setting is magpie as its provider. Setting it writes
 // the provider and the whole catalog in, so the agent's own model list has
-// every one of magpie's models. An agent already connected is left as it is.
+// every one of magpie's models. An agent that can keep the model it is on
+// (Join) keeps it. An agent already connected is left as it is.
 func (a *Agent) Connect() error {
 	if len(a.Fields) == 0 || a.Wired() {
 		return nil
+	}
+	// the model it is on stays, where the agent can have magpie's models
+	// beside it (the owner: Codex keeps its own last pick)
+	if a.Join != nil {
+		if ok, err := a.Join(); ok || err != nil {
+			return err
+		}
 	}
 	// the field magpie is picked in: the one listing magpie's models (for
 	// Gemini CLI its model, its first field being how it signs in), else one

@@ -96,7 +96,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await hidden(), w.entry);
       assert.deepEqual(await chips(), ["Routing groups 1", "OpenAI 6", "OpenRouter 1"].map((c) => lang === "zh" ? c.replace("Routing groups", "路由组") : c));
       // the line under the name counts them too
-      assert.match(await row.locator(".who .ag-st-t").innerText(), /^8\b/);
+      assert.match(await row.locator(".who .ag-st-t").innerText(), /^(Connected|已接入) · (8 models|.* 里有 8 个模型)/);
 
       const scroll = () => page.evaluate(() => [scrollY, document.scrollingElement.scrollTop, $("#view-agents").scrollTop]);
       const was = await scroll();
