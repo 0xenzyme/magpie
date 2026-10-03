@@ -131,6 +131,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		PlainNames:          true,
 		PlainOwnNames:       true,
 		CodexAgentsV1:       true,
+		ChinaMirror:         true,
 		CodexAutoReset:      []string{"me@example.com"},
 		TextSize:            125,
 		UpdateSkip:          "0.1.500",

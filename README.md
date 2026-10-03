@@ -1084,6 +1084,19 @@ headers only when the collector endpoint is unchanged.
 
 ## Mirrors
 
+The Plugins page's **Mirrors in China** (国内镜像) switch has what that page
+downloads asked of a mirror in China first and of its official address
+after: npm's registry (plugin packages, their versions and search) at
+`registry.npmmirror.com`, Bun's releases at npmmirror's binary mirror, and
+the plugin list at jsDelivr (`cdn.jsdelivr.net/gh/magpie-community/plugins`).
+Each is a copy of the very file — Bun's zip is still checked against Bun's
+SHA-256s, and a package against the integrity npm gave — and what the
+mirror hasn't copied yet is asked of the official address. npm's weekly
+download counts stay npmjs's own. `bun add` is pointed at npmmirror too,
+unless `BUN_CONFIG_REGISTRY` or `NPM_CONFIG_REGISTRY` names a registry
+already. The switch never sends anything through a proxy such as
+gh-proxy.
+
 Mirror fallback is off by default. Set `MAGPIE_MIRRORS=on` to use it. When
 it is on, the official source is tried first; a mirror is only tried after
 a network error, HTTP 429, HTTP 5xx, or GitHub's rate-limit 403. The
@@ -1095,8 +1108,8 @@ the mirror: Magpie's own update assets (their SHA-256 comes from the
 unmirrored update feed) and Bun's zip. Bun's default version carries its
 SHA-256s in the code, so it can be downloaded through a mirror even when
 Bun's official `SHASUMS256.txt` is unreachable; a newer Bun still needs
-that official file. Skill tarballs and the plugin-market registry always
-use the official source. npm metadata, plugin README/search results and
+that official file. Skill tarballs always use the official source, and the plugin-market
+registry does unless the Mirrors in China switch is on (jsDelivr, above). npm metadata, plugin README/search results and
 version checks are not checksummed; a mirror can report a different
 version.
 

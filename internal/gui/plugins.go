@@ -10,6 +10,7 @@ import (
 
 	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/settings"
 )
 
 // OpenCode's provider plugins (internal/plugin): the providers they sign
@@ -94,10 +95,13 @@ type pluginsJSON struct {
 	// Movable are the built-ins with accounts a plugin could run, which
 	// its card and its row offer to move
 	Movable []provider.MoveCandidate `json:"movable"`
+	// Mirror is the 「国内镜像」 switch: the list, npm and Bun asked of
+	// mirrors in China first (settings.ChinaMirror)
+	Mirror bool `json:"mirror"`
 }
 
 func pluginsState(ctx context.Context, w Windows) pluginsJSON {
-	s := pluginsJSON{Plugins: []pluginEntryJSON{}, Bun: plugin.HasBun(), BunVer: plugin.BunInUse(), Movable: provider.MoveCandidates(), Picker: w != nil && !isWeb(w)}
+	s := pluginsJSON{Plugins: []pluginEntryJSON{}, Bun: plugin.HasBun(), BunVer: plugin.BunInUse(), Movable: provider.MoveCandidates(), Picker: w != nil && !isWeb(w), Mirror: settings.Load().ChinaMirror}
 	l := plugin.Load()
 	errs := map[string]string{}
 	names := map[string][]string{}
@@ -282,6 +286,20 @@ func pluginRoutes(mux *http.ServeMux, w Windows) {
 		c := plugin.CheckNow(ctx)
 		writeJSON(rw, map[string]any{"at": c.At, "plugins": c.Plugins, "state": pluginsState(ctx, w)})
 	})
+	// the 「国内镜像」 switch: what the page downloads (the list, npm's
+	// packages and answers, Bun) is asked of mirrors in China first
+	mux.HandleFunc("POST /api/plugins/mirror", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ On bool }
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		if err := setChinaMirror(in.On); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, map[string]bool{"mirror": in.On})
+	})
 	// add, remove, update, turn on or off: each answers with the list
 	mux.HandleFunc("POST /api/plugins/{op}", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct {
@@ -413,4 +431,21 @@ func pluginProviderByID(id string) (plugin.Provider, bool) {
 		}
 	}
 	return plugin.Provider{}, false
+}
+
+// setChinaMirror turns the 「国内镜像」 switch on or off; a plugin list
+// fetched from GitHub's slow address, or not at all, is asked again.
+func setChinaMirror(on bool) error {
+	s := settings.Load()
+	if s.ChinaMirror == on {
+		return nil
+	}
+	s.ChinaMirror = on
+	if err := settings.Save(s); err != nil {
+		return err
+	}
+	if on {
+		plugin.RefreshMarket()
+	}
+	return nil
 }

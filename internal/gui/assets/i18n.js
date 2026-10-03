@@ -2517,6 +2517,8 @@ const I18N = {
     "magpie also signs in to this itself, for now; the plugin keeps it working if the built-in one is retired": "magpie 目前也内置了这个订阅；如果内置的下线，插件能让它继续可用",
     "magpie also signs in to this itself, for now; the plugin keeps it working if the built-in one is retired.": "magpie 目前也内置了这个订阅；如果内置的下线，插件能让它继续可用。",
     "Search plugins and npm…": "搜索插件和 npm…",
+    "Mirrors in China": "国内镜像",
+    "Download the plugin list, plugins and Bun from mirrors in China first (npmmirror, jsDelivr), their official addresses after. Each is a copy of the very file, checked as the original is": "插件列表、插件和 Bun 先从国内镜像（npmmirror、jsDelivr）下载，不行再走官方地址。镜像上的是同一份文件，和官方的一样校验",
     "Search plugins": "搜索插件",
     "Couldn't load the plugins: {error}": "无法加载插件：{error}",
     "written for magpie, checked against its own sign-ins": "为 magpie 编写，与内置登录对照验证过",

@@ -435,9 +435,45 @@
     };
     q.onkeydown = (ev) => { ev.stopPropagation(); if (ev.key === "Escape" && q.value) { q.value = ""; q.oninput(); } };
     find.append(q);
-    h.append(tabs, el("span", "grow"), find);
+    h.append(tabs, el("span", "grow"), mirrorSwitch(), find);
     h.classList.toggle("stuck", page.scrollTop > 0);
     return h;
+  }
+
+  // 「国内镜像」: the list, npm's packages and answers, and Bun asked of
+  // mirrors in China first (npmmirror, jsDelivr); none before what's
+  // installed has come, which says how it is set
+  let mirrorSaving = false;
+  function mirrorSwitch() {
+    const on = !!mine?.mirror;
+    const b = el("button", "pm-mirror" + (on ? " on" : ""));
+    b.type = "button";
+    b.hidden = !mine;
+    b.disabled = mirrorSaving;
+    b.setAttribute("role", "switch");
+    b.setAttribute("aria-checked", on ? "true" : "false");
+    b.title = t("Download the plugin list, plugins and Bun from mirrors in China first (npmmirror, jsDelivr), their official addresses after. Each is a copy of the very file, checked as the original is");
+    const sw = el("span", "lib-switch" + (on ? " on" : ""));
+    sw.append(el("i"));
+    b.append(el("span", "", t("Mirrors in China")), sw);
+    b.onclick = async () => {
+      if (mirrorSaving || !mine) return;
+      mirrorSaving = true;
+      mine.mirror = !on;
+      draw();
+      try {
+        const r = await api("plugins/mirror", { on: !on });
+        mine.mirror = r.mirror;
+        // the list again, now from the mirror, and npm's answers with it
+        if (r.mirror) loadListings().then(() => { redraw(); askNPM(); });
+      } catch (e) {
+        mine.mirror = on;
+        status(t(e.message), "err");
+      }
+      mirrorSaving = false;
+      redraw();
+    };
+    return b;
   }
 
   async function searchNPM(s) {

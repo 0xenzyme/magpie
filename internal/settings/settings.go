@@ -194,6 +194,11 @@ type Settings struct {
 	// V2's are sealed by OpenAI's server. Codex's features.multi_agent_v2
 	// still wins, and a thread keeps the version it started with.
 	CodexAgentsV1 bool `json:"codexAgentsV1,omitempty"`
+	// ChinaMirror is the Plugins page's 「国内镜像」 switch: the plugin list,
+	// npm (the plugins' packages and what npm says of them) and Bun's
+	// downloads are asked of mirrors in China first, and of their official
+	// addresses after (see source.China).
+	ChinaMirror bool `json:"chinaMirror,omitempty"`
 	// TextSize is how large the window's and the tray panel's pages are
 	// drawn, in percent (one of TextSizes): the webviews' own zoom, as a
 	// browser's, so the text and everything around it grow together.

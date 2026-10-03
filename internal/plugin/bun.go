@@ -221,10 +221,27 @@ func getURLFrom(ctx context.Context, url string, limit int64, mirror bool) ([]by
 }
 
 // bunCommand runs bun with args in dir, the environment's proxy settings
-// passed on.
+// passed on, and npm's registry in China with the 「国内镜像」 switch on
+// (its packages are npm's own, checked against the integrity npm gave).
 var bunCommand = func(ctx context.Context, bun, dir string, args ...string) *exec.Cmd {
 	cmd := command(ctx, bun, args...)
 	cmd.Dir = dir
 	cmd.Env = append(env(), "BUN_INSTALL_CACHE_DIR="+filepath.Join(filepath.Dir(catalog.CachePath()), "bun", "install-cache"))
+	cmd.Env = append(cmd.Env, registryEnv(cmd.Env)...)
 	return cmd
+}
+
+// registryEnv is what has bun install from npm's registry in China, with
+// the switch on, unless the environment names a registry already.
+func registryEnv(env []string) []string {
+	if !source.China() {
+		return nil
+	}
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		if k = strings.ToUpper(k); (k == "BUN_CONFIG_REGISTRY" || k == "NPM_CONFIG_REGISTRY") && strings.TrimSpace(v) != "" {
+			return nil
+		}
+	}
+	return []string{"BUN_CONFIG_REGISTRY=" + source.NPMMirror + "/"}
 }
