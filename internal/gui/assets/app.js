@@ -6201,6 +6201,16 @@ function renderEndpoints(p, src) {
   return eps;
 }
 
+// showRest: the button at the foot of a long model list that draws the
+// models left out of it (#685: "… 4 more, filter to find them" named none of
+// them, so there was nothing to filter by). It goes down with what it opens.
+function showRest(n, open) {
+  const b = el("button", "text action mchips-rest", t("Show the other {n}", { n }));
+  b.dataset.unrolls = "";
+  b.onclick = (e) => { e.preventDefault(); open(); };
+  return b;
+}
+
 // detectAPIs: which of the APIs magpie speaks to a vendor answer at the base
 // URL typed (01huadalang on Discord: 一键检测支持什么协议) — Detect sends
 // each the smallest request there, with the key typed (or the saved one)
@@ -6227,7 +6237,7 @@ function addFormModels(ex) {
   const out = el("div", "models add-models-list");
   out.hidden = true;
   box.append(row, out);
-  let listed = [];
+  let listed = [], showAll = false;
   const q = input("", "");
   q.classList.add("add-models-filter");
   q.oninput = () => draw();
@@ -6239,18 +6249,21 @@ function addFormModels(ex) {
     if (!listed.length) return;
     chips.replaceChildren();
     const f = q.value.trim().toLowerCase();
-    let shown = 0;
+    let shown = 0, hidden = 0;
     const match = listed.filter((m) => !f || m.id.toLowerCase().includes(f) || (m.name || "").toLowerCase().includes(f));
     for (const m of match) {
       const on = draft.extra.includes(m.id);
+      // past the first 120 only the picked are drawn, till the rest are asked for
+      if (shown >= 120 && !f && !showAll && !on) { hidden++; continue; }
       const c = el("button", "mchip" + (on ? " on" : ""));
       c.append(el("span", "", m.name || m.id));
       if (m.name) c.title = m.id;
       c.dataset.model = m.id;
       c.onclick = (e) => { e.preventDefault(); draft.extra = on ? draft.extra.filter((x) => x !== m.id) : [...draft.extra, m.id]; sync(); draw(); };
       chips.append(c);
-      if (++shown >= 120 && !f) { chips.append(el("span", "hint", t("… {n} more, filter to find them", { n: match.length - shown }))); break; }
+      shown++;
     }
+    if (hidden) chips.append(showRest(hidden, () => { showAll = true; draw(); }));
     if (f && !match.length) chips.append(el("span", "hint", t("No model here matches “{q}”.", { q: q.value.trim() })));
     acts.replaceChildren();
     const picked = draft.extra.filter((id) => listed.some((m) => m.id === id)).length;
@@ -6524,11 +6537,12 @@ function renderModels(p) {
   const names = el("div", "mnames");
   names.dataset.provider = p.id;
   const q = p.models.length > 24 ? input("", t("filter {n} models…", { n: p.models.length })) : null;
+  let showAll = false;
   const draw = () => {
     if (agentMenu && chips.contains(agentMenu.anchor)) closeAgentMenu();
     chips.replaceChildren();
     const f = (q?.value || "").trim().toLowerCase();
-    let shown = 0;
+    let shown = 0, hidden = 0;
     // with none picked agents are served the vendor's list, up to 24 of
     // it: those are drawn as served, not as left out (#614: the one model
     // unticked and saved was still "1 model" on the card)
@@ -6537,6 +6551,10 @@ function renderModels(p) {
     for (const m of p.models) {
       const on = draft.chosen.includes(m.id);
       if (f && !m.id.toLowerCase().includes(f) && !(m.name || "").toLowerCase().includes(f) && !(m.default || "").toLowerCase().includes(f)) continue;
+      // past the first 80 only the picked are drawn, till the rest are
+      // asked for: a picked model is never out of sight (#685: 10 picked,
+      // 7 shown, and "4 more, filter to find them" with no names to filter by)
+      if (shown >= 80 && !f && !showAll && !on) { hidden++; continue; }
       const c = el("button", "mchip" + (on ? " on" : served.has(m.id) ? " auto" : ""));
       c.append(el("span", "", m.name && m.name !== m.id ? m.name : m.id));
       // one the plan serves at no cost to it (WorkBuddy's x0.00 credits)
@@ -6560,8 +6578,9 @@ function renderModels(p) {
         draw();
       };
       chips.append(c);
-      if (++shown >= 80 && !f) { chips.append(el("span", "hint", t("… {n} more, filter to find them", { n: p.models.length - shown }))); break; }
+      shown++;
     }
+    if (hidden) chips.append(showRest(hidden, () => { showAll = true; draw(); }));
     for (const id of draft.chosen) {
       if (p.models.some((m) => m.id === id) || (f && !id.toLowerCase().includes(f))) continue;
       const c = el("button", "mchip on own");
