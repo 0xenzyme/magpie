@@ -3535,8 +3535,26 @@ func writeError(w http.ResponseWriter, proto provider.Protocol, status int, msg 
 // tooLongRe matches how vendors say a request is more than the model's
 // context holds: OpenAI's context_length_exceeded, Anthropic's "prompt is
 // too long", Volcengine's "Input exceeds the context limit", "maximum
-// context length", "context window"…
-var tooLongRe = regexp.MustCompile(`(?i)context_length_exceeded|prompt is too long|input is too long|(exceeds?|exceeded|over|beyond)( the)?( model'?s?)?( maximum)? context|context (length|limit|window) (exceeded|is exceeded)|maximum context length|too many (input |prompt )?tokens|上下文(长度)?(超|过长)|超(过|出)(了)?(模型)?(的)?(最大)?上下文`)
+// context length", "context window"… and the second line, as pi
+// (packages/ai/src/utils/overflow.ts) collected them: Anthropic's 413
+// request_too_large, Gemini's "input token count … exceeds the maximum",
+// xAI's "maximum prompt length is", Groq's "reduce the length of the
+// messages", OpenRouter's "maximum allowed input length", Together's
+// "longer than the model's context length", llama.cpp's "available
+// context size", LM Studio's "greater than the context length", Copilot's
+// "prompt token count of", MiniMax's "context window exceeds limit",
+// Kimi's "exceeded model token limit", DS4's "configured context size",
+// z.ai's "Prompt too long" / "Prompt exceeds max length" and
+// model_context_window_exceeded, Ollama's "exceeded max context length",
+// DashScope's "Range of input length should be", "token limit exceeded".
+var tooLongRe = regexp.MustCompile(`(?i)context_length_exceeded|prompt is too long|input is too long|(exceeds?|exceeded|over|beyond)( the)?( model'?s?)?( maximum)? context|context (length|limit|window) (exceeded|is exceeded)|maximum context length|too many (input |prompt )?tokens|上下文(长度)?(超|过长)|超(过|出)(了)?(模型)?(的)?(最大)?上下文` +
+	`|request_too_large|input token count.*exceeds the maximum|maximum prompt length is \d|reduce the length of the messages|maximum allowed input length|longer than the model'?s context length|available context size|greater than the context length|prompt token count of [\d,]+ exceeds the limit|context window exceeds limit|exceeded model token limit|configured context size|prompt too long|prompt exceeds max length|context_window_exceeded|exceeded (max |maximum )?context length|range of input length should be|token limit exceeded`)
+
+// overflowed says a refused request was too long for the model — a
+// request error (400, 413, 422) whose words say so.
+func overflowed(status int, body []byte) bool {
+	return (status == 400 || status == 413 || status == 422) && tooLong(status, string(body))
+}
 
 // tooLong is whether a vendor's error says the conversation no longer
 // fits. One about max_tokens is left alone: the reply's allowance, not
