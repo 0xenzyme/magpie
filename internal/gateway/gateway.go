@@ -387,6 +387,9 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	// and, when settings say to, starts its accounts' next windows as the last reset
 	go provider.KeepCodexWindowsWarm(ctx)
 	go provider.KeepClaudeWindowsWarm(ctx, warmClaude)
+	// and spends a Codex reset about to run out unused, for the accounts
+	// that let it
+	go provider.KeepResetsFromRunningOut(ctx)
 	// and checks the WorkBuddy accounts in for the day's credits
 	go provider.KeepWorkBuddyCheckedIn(ctx)
 	// and moves the built-in subscriptions being retired onto their plugins

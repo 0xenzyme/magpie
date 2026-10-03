@@ -9417,7 +9417,8 @@ function resetUseTitle(q) {
 
 // autoResetButton turns on or off a Codex account spending a
 // reset by itself: once its week is used up and no other account can
-// answer, one a week at most. Off unless the user turns it on; nothing for
+// answer, one a week at most, and one about to run out unused shortly
+// before it does. Off unless the user turns it on; nothing for
 // an account with no name to keep it by.
 function autoResetButton(q, cls) {
   const kept = { codex: "codexAutoReset" }[q.provider];
@@ -9426,8 +9427,8 @@ function autoResetButton(q, cls) {
   const on = !!(state.settings?.[kept] || []).includes(who);
   const b = el("button", cls + (on ? " on" : ""), t("Auto-use"));
   b.setAttribute("aria-pressed", String(on));
-  b.title = t(on ? "On: a reset is used by itself when this account's week is used up and no other account can answer, one a week at most. Click to turn it off."
-    : "Use a reset by itself when this account's week is used up and no other account can answer, one a week at most. The five hours running out never uses one.");
+  b.title = t(on ? "On: a reset is used by itself when this account's week is used up and no other account can answer, one a week at most, and one about to run out unused is used shortly before it does. Click to turn it off."
+    : "Use a reset by itself when this account's week is used up and no other account can answer, one a week at most. A reset about to run out is used shortly before it does, if the account has been used. The five hours running out never uses one.");
   b.onclick = async (e) => {
     e.stopPropagation();
     b.disabled = true;
