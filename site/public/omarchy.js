@@ -133,15 +133,17 @@
   const SHOTS = {
     "add": [2016, 1600], "agents": [2080, 1078], "import": [1280, 1120], "panel": [880, 1000], "picker": [880, 1110],
     "providers": [2080, 1004], "routing": [2080, 1666], "routing-zh": [2080, 1592], "usage": [2080, 1004],
+    "nested-routing": [2080, 1434], "nested-routing-zh": [2080, 1362], "intent-rules": [2012, 2150], "intent-rules-zh": [2012, 2088],
+    "intent-routing-hit": [2080, 1184], "intent-routing-hit-zh": [2080, 1112], "intent-trace": [2016, 964], "intent-trace-zh": [2016, 892],
   };
-  const ZH = new Set(["add", "agents", "import", "routing", "usage"]);
+  const ZH = new Set(["add", "agents", "import", "routing", "usage", "nested-routing", "intent-rules", "intent-routing-hit", "intent-trace"]);
   let shot = false;
   function shots() {
     if (shot) return;
     if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", shots, { once: true }); return; }
     shot = true;
     for (const img of document.querySelectorAll('img[src^="/img/"]')) {
-      const m = img.getAttribute("src").match(/^\/img\/([a-z]+)(-zh)?-(dark|light)\.png$/);
+      const m = img.getAttribute("src").match(/^\/img\/([a-z]+(?:-[a-z]+)*?)(-zh)?-(dark|light)\.png$/);
       if (!m || !SHOTS[m[1]] || (m[2] && !ZH.has(m[1]))) continue;
       const [w, h] = SHOTS[m[1] + (m[2] || "")] || SHOTS[m[1]];
       const width = +img.getAttribute("width");
