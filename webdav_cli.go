@@ -321,9 +321,8 @@ func syncNow(k syncKind) error {
 	if _, ok := davsync.Load(); !ok {
 		return fmt.Errorf("%s sync is off: %s", k.name, k.turnOn())
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	if err := davsync.SyncNow(ctx); err != nil {
+	// no time limit: davsync ends a request that stops moving (#657)
+	if err := davsync.SyncNow(context.Background()); err != nil {
 		return fmt.Errorf("couldn't sync: %w", err)
 	}
 	return syncShow(k)

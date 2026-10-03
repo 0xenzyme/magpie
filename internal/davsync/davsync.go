@@ -469,7 +469,11 @@ func syncNow(ctx context.Context, force bool) error {
 	if _, ok := Load(); !ok { // off: no lock taken, so none made
 		return nil
 	}
-	unlock, err := lock(ctx)
+	// a sync has no time to end in (see stallAfter), a wait for another's
+	// does
+	lctx, lcancel := context.WithTimeout(ctx, wait)
+	unlock, err := lock(lctx)
+	lcancel()
 	if err != nil {
 		return err
 	}
@@ -537,7 +541,9 @@ func Run(ctx context.Context) {
 			return
 		case <-t.C:
 		}
-		c, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		// no request is let stand still for long (stallAfter), but a large
+		// backup on a slow line takes what it takes: only an hour ends it
+		c, cancel := context.WithTimeout(ctx, time.Hour)
 		err := Now(c)
 		cancel()
 		if msg := fmt.Sprint(err); err != nil && msg != last {
