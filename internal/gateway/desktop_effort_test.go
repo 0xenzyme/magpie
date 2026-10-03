@@ -96,8 +96,7 @@ func TestClaudeDesktopEffortIDs(t *testing.T) {
 	New().Handler().ServeHTTP(rec, req)
 	var list struct {
 		Data []struct {
-			ID          string `json:"id"`
-			Description string `json:"description"`
+			ID string `json:"id"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
@@ -105,7 +104,7 @@ func TestClaudeDesktopEffortIDs(t *testing.T) {
 	}
 	got := map[string]string{}
 	for _, m := range list.Data {
-		got[strings.TrimSuffix(m.Description, " in magpie")] = m.ID
+		got[DesktopCatalogID(m.ID)] = m.ID
 	}
 	for id, want := range map[string]string{
 		"fake/m1":              desktopEffortAlias + aliasNumber("fake/m1"),

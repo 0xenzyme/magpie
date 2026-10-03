@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"cmp"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -21,7 +22,13 @@ type modelCountJSON struct {
 	// By is the models shown by whose they are, a connected agent's
 	// expanded row's chips (OpenAI 6 · OpenRouter 24)
 	By []modelGroupJSON `json:"by,omitempty"`
+	// Names are the first few models shown by name, for a row that says
+	// which it lists rather than how many (Claude Desktop's)
+	Names []string `json:"names,omitempty"`
 }
+
+// countNames is how many models' names modelCount gives.
+const countNames = 3
 
 // modelGroupJSON is how many of the models shown one provider (or the
 // routing groups) gives.
@@ -102,6 +109,9 @@ func modelCount(id string) *modelCountJSON {
 			continue
 		}
 		c.Shown++
+		if len(c.Names) < countNames {
+			c.Names = append(c.Names, cmp.Or(e.Name, e.Model, e.ID))
+		}
 		g := modelGroupJSON{Name: e.Provider.Name, Icon: e.Provider.Icon}
 		if e.Group != "" {
 			g = modelGroupJSON{Name: agent.RoutingGroups, Icons: e.Icons}

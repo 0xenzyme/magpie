@@ -337,7 +337,7 @@ function renderAgents() {
         });
         v.append(mi);
       }
-      v.append(el("span", "vt", main ? (opt?.label || main.value || t("default")) : ""));
+      v.append(el("span", "vt", menuFromList(a) ? menuSaid(a.models) : main ? (opt?.label || main.value || t("default")) : ""));
       sum.append(v);
       // how much effort as three bars, in a column of its own down the list:
       // none lit for the default, off, none or auto, or for an agent that has
@@ -359,6 +359,13 @@ function renderAgents() {
         if (f && effortOf(f)) { body.append(effortSeg(a, f)); continue; }
         if (f && !b.querySelector(":scope > .k")) b.prepend(el("span", "k", t(f.label)));
         body.append(b);
+      }
+      // Claude Desktop's: which models its own menu lists, under its
+      // provider
+      if (menuFromList(a)) {
+        const m = menuButton(a, "main");
+        m.prepend(el("span", "k", t("Models")));
+        body.append(m);
       }
       if (extras.childNodes.length) body.append(extras);
       row.classList.toggle("open", panelOpenAgent === a.id);
@@ -765,6 +772,7 @@ const PICKS_IN = { codex: "/model", claude: "/model", opencode: "/models", pi: "
 
 function connectSaid(a) {
   if (!a.wired) return t("Not connected · {agent} uses its own settings", { agent: a.name });
+  if (menuFromList(a)) return t("Connected · {n} models in {agent}'s model menu", { n: a.models.shown, agent: a.name });
   const at = PICKS_IN[a.id];
   return at ? t("Connected · pick magpie's models with {cmd} in {agent}", { cmd: at, agent: a.name }) : t("Connected · magpie's models are in {agent}'s model list", { agent: a.name });
 }
@@ -816,6 +824,49 @@ const NATIVE_ONLY = {
 // agents that pick no model once started: the one they start on stays in
 // the row
 const NO_PICKER = new Set(["gemini", "hermes", "agy", "muse"]);
+// agents whose own model menu is the list picked here: no one model to
+// start on, but which of magpie's it offers (Claude Desktop reads
+// /v1/models as it starts, and the user switches among them in it)
+const MENU_FROM_LIST = new Set(["claude-desktop"]);
+const menuFromList = (a) => MENU_FROM_LIST.has(a.id) && a.wired && !!a.models;
+
+// menuSaid: the models such an agent lists, by name while they are few
+function menuSaid(c) {
+  if (!c.shown) return t("No models");
+  const names = c.names || [];
+  if (!names.length) return t("{n} models", { n: c.shown });
+  return names.slice(0, 2).join(", ") + (c.shown > 2 ? " +" + (c.shown - 2) : "");
+}
+
+// menuButton: where the model picker stands in another agent's row, the
+// models its own menu lists, several picked at once (openAgentModels)
+function menuButton(a, cls = "ag-start") {
+  const b = el("button", "field ag-menu " + cls);
+  b.type = "button";
+  b.dataset.key = "models";
+  fillMenuButton(b, a);
+  b.onclick = (ev) => openAgentModels(a, b, ev);
+  // drawn again while its list is open: the list stays, held to it
+  if (agentModels?.a.id === a.id) {
+    b.classList.add("open");
+    agentModels.anchor = b;
+  }
+  return b;
+}
+function fillMenuButton(b, a) {
+  const c = a.models;
+  const k = b.querySelector(":scope > .k");
+  b.replaceChildren(...(k ? [k] : []));
+  b.append(icon("magpie"));
+  b.append(el("span", "v" + (c.shown ? "" : " empty"), menuSaid(c)));
+  const ch = el("span", "chev");
+  ch.append(svg(CHEV, 11, 1.7));
+  b.append(ch);
+  const pick = t("Pick which models {agent} lists", { agent: a.name });
+  b.title = pick + "\n" + t("{agent} reads its model list as it starts: quit and reopen it after a change", { agent: a.name });
+  b.setAttribute("aria-label", pick + ": " + menuSaid(c));
+}
+
 // what turning one on costs, said in its opened row
 const CONNECT_COST = {
   gemini: "Gemini CLI's requests all go through magpie; its Google sign-in is turned off first and comes back when you disconnect",
@@ -896,7 +947,8 @@ function connectLine(a, kind) {
     return line;
   }
   const at = PICKS_IN[a.id];
-  if (a.id === "claude") say(t("Connected · switch the opus · sonnet · haiku tiers in /model"));
+  if (menuFromList(a)) say(connectSaid(a));
+  else if (a.id === "claude") say(t("Connected · switch the opus · sonnet · haiku tiers in /model"));
   else if (NO_PICKER.has(a.id)) say(t("Connected · starts on the model picked here")); else if (at && a.models) say(t("Connected · {n} models in {agent}'s {cmd}", { n: a.models.shown, agent: a.name, cmd: at }));
   else say(connectSaid(a));
   return line;
@@ -908,7 +960,7 @@ function expandLink(a) {
   const b = el("button", "ag-link" + (open ? " open" : ""));
   b.type = "button";
   b.setAttribute("aria-expanded", String(open));
-  b.append(el("span", "", open ? t("Collapse") : a.id === "claude" ? t("Tiers") : a.models ? t("Models {n}", { n: a.models.shown }) : t("Details")));
+  b.append(el("span", "", open ? t("Collapse") : a.id === "claude" ? t("Tiers") : a.models && !MENU_FROM_LIST.has(a.id) ? t("Models {n}", { n: a.models.shown }) : t("Details")));
   if (!open) {
     const c = el("span", "chev");
     c.append(svg(CHEV_R, 10, 1.6));
@@ -981,7 +1033,7 @@ function connectRow(a, row, who, { fields, extras, fieldBtn, sw, kind }) {
   who.append(connectLine(a, kind));
   // the model it starts on, one click away beside the switch (the owner:
   // both ways at once): picked here, it is connected first if it wasn't
-  const start = kind === "ok" ? startField(a) : null;
+  const start = kind === "ok" && !MENU_FROM_LIST.has(a.id) ? startField(a) : null;
   if (start) fields.querySelector(`:scope > [data-key="${CSS.escape(start.key)}"]`)?.remove();
   if (kind === "ok") {
     if (a.wired) row.append(expandLink(a));
@@ -990,6 +1042,8 @@ function connectRow(a, row, who, { fields, extras, fieldBtn, sw, kind }) {
     const launch = a.wired && fields.querySelector(".field.launch");
     if (launch) row.append(launch);
     if (start) row.append(startButton(a, start, fieldBtn));
+    // Claude Desktop's: which models its own menu lists
+    else if (menuFromList(a)) row.append(menuButton(a));
     row.append(sw);
   } else if (kind === "empty") {
     const add = el("button", "ag-add", t("Add a provider"));
@@ -1087,6 +1141,8 @@ function connectPanel(a, { fields, fieldBtn }) {
       parts.push(w);
     }
     kv(t("In {agent}", { agent: a.name }), ...parts);
+  } else if (menuFromList(a)) {
+    kv(t("In {agent}", { agent: a.name }), line(t("{agent}'s model menu lists the models picked here; switch among them there. It reads the list as it starts: quit and reopen it after a change.", { agent: a.name })));
   }
   // Claude Code's tiers, each with the /model that picks it
   if (a.id === "claude") {
@@ -1865,11 +1921,18 @@ async function openAgentModels(a, anchor, ev) {
       if (!g) by.push(g = m.group === ROUTING_GROUPS ? { name: m.group, icons: m.icons, n: 0 } : { name: m.group, icon: m.icon, n: 0 });
       g.n++;
     }
-    const count = { shown: models.length - hidden.length, listed: models.length, by };
+    const names = models.filter((m) => !m.hidden).slice(0, 3).map((m) => m.name);
+    const count = { shown: models.length - hidden.length, listed: models.length, by, names };
     me.count = a.models = count;
-    // the line under the name counts them; an opened row is drawn again
+    // the line under the name counts them, a menu's button names them; an
+    // opened row is drawn again
     if (me.anchor.classList.contains("ag-models")) fillModelsEntry(me.anchor, a);
-    else renderAgents();
+    else if (me.anchor.classList.contains("ag-menu")) {
+      fillMenuButton(me.anchor, a);
+      const row = me.anchor.closest(".row.agent");
+      for (const said of row?.querySelectorAll(".ag-st.on .ag-st-t, .ag-conn-said") || []) said.textContent = connectSaid(a);
+      row?.querySelector(".ag-sum .vt")?.replaceChildren(menuSaid(count));
+    } else renderAgents();
     me.saving = me.saving.then(() => api("agent-models/" + encodeURIComponent(a.id), { hidden }))
       .catch((e) => status(e.message, "err"));
   };
