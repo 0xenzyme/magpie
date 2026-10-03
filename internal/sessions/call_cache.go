@@ -21,7 +21,8 @@ import (
 // v3 persists Codex cumulative counters explicitly; v2 shards can contain
 // inflated deltas after a reload, so rebuild their derived rows from source.
 // v4: a Codex call's input no longer holds what it wrote to the cache (#589).
-const callCacheVersion = "calls-v4"
+// v5: an OpenCode call keeps the effort its prompt asked for (#680).
+const callCacheVersion = "calls-v5"
 const maxKeptCalls = 131072
 const maxKeptFiles = 64
 
