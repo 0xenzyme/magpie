@@ -68,6 +68,10 @@ var codexDrawers = []catalog.Model{
 	{ID: "gpt-image-2.5", Name: "GPT Image 2.5", Released: "2026-06-01"},
 }
 
+// codexDrawer is the image model Codex CLI asks a ChatGPT account for, the
+// one Automatic picks there.
+const codexDrawer = "gpt-image-2"
+
 // grokDrawers are the image models a Grok subscription (SuperGrok, X Premium+)
 // draws with, at the Imagine API of the backend Grok Build's image_gen tool
 // calls: cli-chat-proxy.grok.com/v1/images/generations.
@@ -146,6 +150,11 @@ func AutoDrawer() string {
 			continue
 		}
 		for _, m := range Drawers(p) {
+			if drawsCodex(p) && m.ID != codexDrawer {
+				// Codex CLI draws with gpt-image-2 only; a plan may be
+				// refused the others (chatgpt.com: 403, #545)
+				continue
+			}
 			cost := 1e9
 			switch {
 			case drawsCodex(p), drawsGrok(p):
@@ -553,6 +562,7 @@ func (s *Server) sendWith(ctx context.Context, p provider.Provider, method, url,
 			// signing asks of its Responses; the id is Codex CLI's own
 			req.Header.Set("Accept", "application/json")
 			req.Header.Set("x-codex-imagegen-request-id", newUUID())
+			req.Header.Set("x-codex-image-turn-id", newUUID())
 		}
 	} else {
 		// Google's API keys go in their own header
@@ -577,7 +587,11 @@ func (s *Server) sendWith(ctx context.Context, p provider.Provider, method, url,
 		return nil, 502, err
 	}
 	if res.StatusCode >= 300 {
-		return b, res.StatusCode, fmt.Errorf("%s: %d %s%s", provider.HostOf(url), res.StatusCode, http.StatusText(res.StatusCode), vendorSaid(vendorMessage(b)))
+		hint := ""
+		if drawsCodex(p) && res.StatusCode == http.StatusForbidden {
+			hint = fmt.Sprintf(" — ChatGPT turned %s's images away: its plan or workspace may not draw, or not with this model (Codex CLI draws with %s)", p.Name, codexDrawer)
+		}
+		return b, res.StatusCode, fmt.Errorf("%s: %d %s%s%s", provider.HostOf(url), res.StatusCode, http.StatusText(res.StatusCode), vendorSaid(vendorMessage(b)), hint)
 	}
 	return b, res.StatusCode, nil
 }

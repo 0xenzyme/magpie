@@ -298,7 +298,8 @@ func TestCodexAccountDraws(t *testing.T) {
 	if ds := Drawers(*p); len(ds) != 2 || ds[0].ID != "gpt-image-2" || ds[1].ID != "gpt-image-2.5" {
 		t.Fatalf("drawers %v", ds)
 	}
-	if m, ok := drawer(); !ok || m != "codex/gpt-image-2.5" {
+	// Automatic asks for what Codex CLI asks for: a plan may be refused 2.5
+	if m, ok := drawer(); !ok || m != "codex/gpt-image-2" {
 		t.Fatalf("drawer = %q %v", m, ok)
 	}
 	s := New()
@@ -311,7 +312,7 @@ func TestCodexAccountDraws(t *testing.T) {
 	if paths[0] != "/backend-api/codex/images/generations" || !strings.Contains(bodies[0], `"model":"gpt-image-2"`) {
 		t.Fatalf("asked %v %v", paths, bodies)
 	}
-	if head.Get("chatgpt-account-id") != "acct-1" || head.Get("Accept") != "application/json" || head.Get("originator") != "codex_cli_rs" || head.Get("x-codex-imagegen-request-id") == "" {
+	if head.Get("chatgpt-account-id") != "acct-1" || head.Get("Accept") != "application/json" || head.Get("originator") != "codex_cli_rs" || head.Get("x-codex-imagegen-request-id") == "" || head.Get("x-codex-image-turn-id") == "" {
 		t.Fatalf("headers %v", head)
 	}
 	// an edit goes as JSON, the image a data URL: the backend turns multipart away
@@ -321,6 +322,32 @@ func TestCodexAccountDraws(t *testing.T) {
 	mu.Lock()
 	if code != 200 || paths[1] != "/backend-api/codex/images/edits" || head.Get("Content-Type") != "application/json" || !strings.Contains(bodies[1], `"images":[{"image_url":"data:image/png;base64,`) {
 		t.Fatalf("%d %s; asked %v %s", code, raw, paths, head.Get("Content-Type"))
+	}
+}
+
+// chatgpt.com's 403 for a ChatGPT account's images says what it likely
+// means, and Automatic asks for the model Codex CLI does (#545).
+func TestCodexDrawRefused(t *testing.T) {
+	codexSignedIn(t)
+	var models []string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Model string }
+		json.NewDecoder(r.Body).Decode(&req)
+		models = append(models, req.Model)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, `{"detail":"Forbidden"}`)
+	}))
+	defer up.Close()
+	was := provider.CodexBase
+	provider.CodexBase = up.URL + "/backend-api/codex"
+	defer func() { provider.CodexBase = was }()
+	code, _, raw := postImages(t, New(), "/v1/images/generations", "application/json", `{"prompt":"a magpie"}`)
+	if code != 403 || !strings.Contains(raw, "Forbidden") || !strings.Contains(raw, "plan or workspace may not draw") {
+		t.Fatalf("%d %s", code, raw)
+	}
+	if len(models) != 1 || models[0] != "gpt-image-2" {
+		t.Fatalf("asked for %v", models)
 	}
 }
 
