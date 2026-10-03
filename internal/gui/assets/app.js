@@ -9073,9 +9073,9 @@ function renderQuotas() {
   }
   for (const subs of groups) {
     const first = subs[0];
-    // several accounts: one in sight, the others behind a button (whqtian)
-    const folded = subs.length > 1 && !usageOpen.has(first.provider);
-    const pick = folded ? usageShown(subs) : null;
+    // several accounts: each in full or in brief, its bars without the
+    // rest (whqtian, ARNO)
+    const several = subs.length > 1;
     const card = el("div", "subscription-card" + (first.user ? " several" : ""));
     card.dataset.key = first.provider;
     card.dataset.provider = first.provider;
@@ -9085,33 +9085,37 @@ function renderQuotas() {
     if (!first.user && (first.plan || first.until)) head.append(planSpan(first));
     card.append(head);
     for (const sub of subs) {
-      const from = card.childElementCount;
       // "Every model" by the account, or the card's name: where the click
       // was, whichever way the meters under it grow or shrink
       const [meters, every] = familyQuota(sub);
+      const brief = several && !usageAcctOpen(sub, subs);
       if (sub.user) {
-        const who = el("div", "subscription-account");
+        const who = el("div", "subscription-account" + (brief ? " brief" : ""));
         who.dataset.card = trayCardID(sub);
         const u = el("span", "user", sub.user);
         u.title = sub.user;
         who.append(u);
         if (sub.plan || sub.until) who.append(planSpan(sub));
         if (every) who.append(every);
+        if (several) who.append(usageAcctFold(sub, !brief));
         card.append(who);
       } else if (every) head.append(every);
+      // in brief: each window's name, figure and bar, when it resets in
+      // its tooltip; the curve and the rest only in full
+      if (brief) meters.classList.add("brief");
       card.append(meters);
       // what was left over time, against an even burn (#651)
-      const curve = !sub.error && quotaCurve(sub);
+      const curve = !brief && !sub.error && quotaCurve(sub);
       if (curve) card.append(curve);
       // WorkBuddy's credits, day by day, as magpie counted them (#568)
-      if (sub.daily && !sub.error) card.append(creditDays(sub));
+      if (!brief && sub.daily && !sub.error) card.append(creditDays(sub));
       // what is left besides the windows, under them
       if (sub.balance && sub.windows?.length && !sub.error) card.append(balanceRow(sub, "What is left on the account besides its windows", false));
       // windows standing in for ones that couldn't be read just now say
       // when they were read (a balance alone says it in its row)
-      const read = sub.windows?.length && !sub.error && readWhen(sub);
+      const read = !brief && sub.windows?.length && !sub.error && readWhen(sub);
       if (read) card.append(read);
-      if (sub.resets?.count) {
+      if (!brief && sub.resets?.count) {
         const r = el("div", "quota-resets");
         r.append(resetsWords(sub.resets));
         const use = el("button", "text", t("Use a reset"));
@@ -9126,24 +9130,31 @@ function renderQuotas() {
         }
         card.append(r);
       }
-      if (folded && sub !== pick) for (const n of [...card.children].slice(from)) n.hidden = true;
     }
-    if (subs.length > 1) card.append(usageMore(first.provider, subs.length - 1, folded, "text quota-more"));
+    // in the card's head, beside its name: no line of its own
+    if (several) head.append(usageMore(subs, "text quota-more"));
     subscriptions.append(card);
   }
   restoreFlash();
   requestAnimationFrame(focusQuotaCard);
 }
 
-// A subscription with several accounts shows one of them, the others behind
-// a button (whqtian on Discord: 只显示一个账号即可，其他的可以点击展开): the
-// one that answered last, else the first. Opened is remembered by provider,
-// for the window and the tray panel alike.
-let usageOpen = new Set();
+// A subscription with several accounts shows each of them, one in full —
+// the one that answered last, else the first — and the others in brief,
+// their bars alone, a click opening one (whqtian on Discord: 只显示一个账号
+// 即可，其他的可以点击展开; ARNO, 17 subscriptions and 29 accounts: 以前每个
+// 账号所占的空间很小，基本能一页看到所有账号… 关了magpie后又得一个个展开).
+// The tray panel, with less room, leaves the ones in brief out. Each
+// account's full or brief is remembered by provider and account
+// (magpie.usageAccounts), for the window and the panel alike; a provider
+// opened before that (magpie.usageOpen) starts with every account in full.
+let usageOpen = new Set(), usageAccts = {};
 try { usageOpen = new Set(JSON.parse(localStorage.getItem("magpie.usageOpen") || "[]")); } catch {}
+try { usageAccts = JSON.parse(localStorage.getItem("magpie.usageAccounts") || "{}") || {}; } catch {}
 addEventListener("storage", (e) => {
-  if (e.key !== "magpie.usageOpen") return;
-  try { usageOpen = new Set(JSON.parse(e.newValue || "[]")); } catch {}
+  if (e.key !== "magpie.usageOpen" && e.key !== "magpie.usageAccounts") return;
+  try { usageOpen = new Set(JSON.parse(localStorage.getItem("magpie.usageOpen") || "[]")); } catch {}
+  try { usageAccts = JSON.parse(localStorage.getItem("magpie.usageAccounts") || "{}") || {}; } catch {}
   renderQuotas();
 });
 function usageShown(subs) {
@@ -9151,20 +9162,49 @@ function usageShown(subs) {
   for (const q of subs) if (q.lastServedAt && (!pick.lastServedAt || q.lastServedAt > pick.lastServedAt)) pick = q;
   return pick;
 }
-function usageMore(provider, more, folded, cls) {
-  const b = el("button", cls, folded ? t(more === 1 ? "Show 1 more account" : "Show {n} more accounts", { n: more }) : t("Show fewer accounts"));
+const usageAcctKey = (q) => q.provider + "\n" + (q.user || "").toLowerCase();
+// usageAcctOpen: whether an account of a card with several is in full
+function usageAcctOpen(q, subs) {
+  const v = usageAccts[usageAcctKey(q)];
+  if (typeof v === "boolean") return v;
+  return usageOpen.has(q.provider) || q === usageShown(subs);
+}
+function setUsageAccts(list, open) {
+  for (const q of list) usageAccts[usageAcctKey(q)] = typeof open === "function" ? open(q) : open;
+  try { localStorage.setItem("magpie.usageAccounts", JSON.stringify(usageAccts)); } catch {}
+  renderQuotas();
+}
+// the card's button: the accounts in brief (or, in the panel, left out) in
+// full, or every one but the one in sight back in brief
+function usageMore(subs, cls) {
+  const closed = subs.filter((q) => !usageAcctOpen(q, subs));
+  const panel = mode === "panel";
+  // the panel draws the one in sight when none is in full
+  const n = closed.length - (panel && closed.length === subs.length ? 1 : 0);
+  const b = el("button", cls, n
+    ? t(panel ? (n === 1 ? "Show 1 more account" : "Show {n} more accounts") : (n === 1 ? "Show 1 more account in full" : "Show {n} more accounts in full"), { n })
+    : t(panel ? "Show fewer accounts" : "Show the other accounts in brief"));
   b.type = "button";
-  b.setAttribute("aria-expanded", String(!folded));
+  b.setAttribute("aria-expanded", String(!n));
   b.onclick = () => {
-    setUsageOpen(provider, folded);
-    if (mode !== "panel") backToReader($("#view-usage"));
+    const pick = usageShown(subs);
+    if (n) setUsageAccts(closed, true); else setUsageAccts(subs, (q) => q === pick);
+    if (!panel) backToReader($("#view-usage"));
   };
   return b;
 }
-function setUsageOpen(provider, open) {
-  if (open) usageOpen.add(provider); else usageOpen.delete(provider);
-  try { localStorage.setItem("magpie.usageOpen", JSON.stringify([...usageOpen])); } catch {}
-  renderQuotas();
+// an account's own fold, at its row's end: in full or in brief
+function usageAcctFold(q, open) {
+  const b = el("button", "quota-acct-fold");
+  b.type = "button";
+  b.append(svg(CHEV, 11, 1.6));
+  b.setAttribute("aria-expanded", String(open));
+  b.title = t(open ? "Show this account in brief" : "Show this account in full");
+  b.onclick = () => {
+    setUsageAccts([q], !open);
+    backToReader($("#view-usage"));
+  };
+  return b;
 }
 
 // The Usage page's cards in the order they were dragged to (settings
@@ -9603,10 +9643,11 @@ function focusQuotaCard() {
   else if (view !== "usage" || usageTab !== "usage") return;
   const id = CSS.escape(quotaFocus);
   const target = box.querySelector(`[data-card="${id}"]`) || box.querySelector(`[data-provider="${id}"]`);
-  // The panel omits folded accounts; the main window renders them hidden.
+  // The panel omits accounts in brief; the main window draws them short.
+  // The one asked for is opened in full.
   const quota = quotas?.find((q) => trayCardID(q) === quotaFocus);
-  if (quota?.user && !usageOpen.has(quota.provider) && (!target || target.hidden)) {
-    setUsageOpen(quota.provider, true);
+  if (quota?.user && !usageAcctOpen(quota, quotas.filter((q) => q.user && q.provider === quota.provider))) {
+    setUsageAccts([quota], true);
     return; // the redraw queues focus once the account is visible
   }
   if (!target) {
@@ -9894,10 +9935,10 @@ function renderPanelQuota() {
       head.append(m);
     }
     g.append(head);
-    const folded = qs.length > 1 && !usageOpen.has(qs[0].provider);
-    const pick = folded ? usageShown(qs) : null;
-    for (const q of qs) if (!folded || q === pick) g.append(panelQuotaCard(q));
-    if (qs.length > 1) g.append(usageMore(qs[0].provider, qs.length - 1, folded, "pq-more"));
+    // the accounts in full; none of them, the one in sight
+    const full = qs.length > 1 ? qs.filter((q) => usageAcctOpen(q, qs)) : qs;
+    for (const q of full.length ? full : [usageShown(qs)]) g.append(panelQuotaCard(q));
+    if (qs.length > 1) g.append(usageMore(qs, "pq-more"));
     box.append(g);
   }
   if (bals.length) {
@@ -10270,6 +10311,7 @@ function familyQuota(sub) {
   b.onclick = () => {
     if (everyModel.has(key)) everyModel.delete(key); else everyModel.add(key);
     const next = shown();
+    if (box.classList.contains("brief")) next.classList.add("brief");
     box.replaceWith(next);
     box = next;
     label();

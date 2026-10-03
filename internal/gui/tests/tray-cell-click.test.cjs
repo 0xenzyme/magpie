@@ -141,7 +141,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await panel.evaluate(() => panelQuotaFocus("codex|other-5@例子.test"));
       await panel.waitForFunction(() => window.__scrolled.at(-1) === "codex|other-5@例子.test");
       await visible(panel, '#panelQuota [data-card="codex|other-5@例子.test"]');
-      assert.deepEqual(await panel.evaluate(() => JSON.parse(localStorage.getItem("magpie.usageOpen"))), ["codex"], "navigation remembers the expanded provider");
+      assert.deepEqual(await panel.evaluate(() => JSON.parse(localStorage.getItem("magpie.usageAccounts"))), { "codex\nother-5@例子.test": true }, "navigation remembers the account opened");
       await panel.waitForFunction(() => !document.querySelector('#panelQuota [data-card="codex|other-5@例子.test"]').classList.contains("flash"));
 
       // no allowances to show: no tab to pick, the panel keeps its agents
@@ -174,7 +174,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await account.waitForFunction(() => document.querySelector('.subscription-card[data-provider="codex"]')?.classList.contains("flash"));
       assert.deepEqual(await account.evaluate(() => window.__scrolled.slice(-1)), [id]);
       await visible(account, '.subscription-account[data-card="codex|other-5@例子.test"]');
-      assert.deepEqual(await account.evaluate(() => JSON.parse(localStorage.getItem("magpie.usageOpen"))), ["codex"]);
+      assert.deepEqual(await account.evaluate(() => JSON.parse(localStorage.getItem("magpie.usageAccounts"))), { "codex\nother-5@例子.test": true });
       assert.equal(await account.evaluate(() => location.search.includes("card=")), false);
       await account.waitForFunction(() => !document.querySelector('.subscription-card[data-provider="codex"]').classList.contains("flash"));
       await visible(account, '.subscription-account[data-card="codex|other-5@例子.test"]');
