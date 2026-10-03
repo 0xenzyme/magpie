@@ -25,6 +25,15 @@ import (
 // alike. With Vision off, or no model that sees, such an image is turned
 // away as before (textOnlyBody).
 
+// Agents are told a model that can't see takes images while one that can
+// describes them to it.
+func init() {
+	provider.Described = func() bool {
+		_, ok := seer()
+		return ok
+	}
+}
+
 // VisionAgent is the User-Agent of the descriptions magpie asks for.
 const VisionAgent = "magpie-vision/1"
 

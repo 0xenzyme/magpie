@@ -182,6 +182,7 @@ func TestDshModelLimits(t *testing.T) {
 	t.Setenv("DSH_HOME", "")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	visionOff(t) // else v/see describes images to v/plain, which takes them then
 	if err := provider.Save(provider.Provider{ID: "v", Name: "V", Chat: "https://example.test/v1", Key: "k", Models: []string{"see", "plain"}}); err != nil {
 		t.Fatal(err)
 	}

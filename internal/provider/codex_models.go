@@ -412,11 +412,12 @@ func codexListed(shown []Entry, members func(id string) []Member) []catalog.Mode
 	// named among all shown: the account's own, which the backend lists,
 	// are in Codex's picker beside these
 	labels := Labels(shown)
+	seen := described()
 	for i, e := range shown {
 		if e.Group == "" && e.Provider.Account != nil && e.Provider.Account.Agent == "codex" {
 			continue
 		}
-		m := catalog.Model{ID: e.ID, Name: labels[i], Efforts: e.Efforts, Images: e.Images, Context: e.Context}
+		m := catalog.Model{ID: e.ID, Name: labels[i], Efforts: e.Efforts, Images: e.Images || seen, Context: e.Context}
 		if e.Group != "" {
 			for _, mb := range members(e.ID) {
 				if a := mb.Provider.Account; a != nil && a.Agent == "codex" && strings.HasPrefix(mb.Model, "gpt-") {

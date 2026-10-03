@@ -791,6 +791,11 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			fail(rw, err)
 			return
 		}
+		// whether agents are told every model takes images follows Vision
+		// (provider.Described)
+		if strings.TrimSpace(in.Vision) != strings.TrimSpace(cur.Vision) {
+			catalog.Touched()
+		}
 		if (in.Dock != cur.Dock || in.DockWindow != cur.DockWindow) && onDock != nil {
 			onDock(in)
 		}
