@@ -1279,6 +1279,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	again := 0       // times the last one left has been tried again
 	resealed := 0    // what of the conversation another account sealed was taken out: its reasoning, then its compaction
 	floored := false // the reply's length raised to what the provider takes
+	plainFor := ""   // the account and model asked again without effort updates (#617)
 	// the key or subscription account the last try went to (#557)
 	providerKeyID, providerKeyName, providerAccount := "", "", ""
 	var other *Try     // the first failure that wasn't an allowance run out
@@ -1364,6 +1365,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				cands = slices.Insert(slices.Delete(cs, i, i+1), j, c)
 				i--
 				continue
+			}
+		}
+		// an effort changed mid-thread goes as an update in the history,
+		// which keeps the prompt the upstream cached (#617)
+		updated := false
+		if from == provider.Responses && plainFor != c.who()+"|"+c.model && takesEffortUpdates(c.p, c.model) {
+			if b, ok := withEffortUpdates(stuck, c.who(), c.model, sent, attemptBody); ok {
+				attemptBody, updated = b, true
 			}
 		}
 		s.trace.update(tr, func(t *Route) {
@@ -1454,6 +1463,18 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				i--
 				continue
 			}
+		}
+		if updated && !hw.passing && hw.code() == 400 {
+			// the upstream turned the update items away: asked again as
+			// the agent sent it, and if that goes, never sent them again
+			plainFor = c.who() + "|" + c.model
+			try.Fail = failUpdate
+			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+			i--
+			continue
+		}
+		if plainFor == c.who()+"|"+c.model && call.Status > 0 && call.Status < 400 {
+			effortUpdatesRefused(c.who(), c.model)
 		}
 		if !floored && !hw.passing && hw.code() == 400 {
 			// asked for fewer tokens than this provider answers with (#64)
