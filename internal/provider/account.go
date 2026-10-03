@@ -244,6 +244,9 @@ type Exclusion struct {
 	// Quiet: the user asked not to be reminded of it; only the Add sheet
 	// offers it back.
 	Quiet bool `json:"quiet,omitempty"`
+	// Tucked: hidden from the Add sheet too, but for its "Show N hidden"
+	// and a search by name (#116).
+	Tucked bool `json:"tucked,omitempty"`
 }
 
 // Excluded lists sign-ins magpie detects but leaves out: the accounts the
@@ -252,7 +255,7 @@ type Exclusion struct {
 func Excluded() []Exclusion {
 	var out []Exclusion
 	for _, a := range Hidden() {
-		x := Exclusion{Agent: a.Account.Agent, Provider: a.ID, Why: "You removed it from magpie.", Quiet: a.Quiet}
+		x := Exclusion{Agent: a.Account.Agent, Provider: a.ID, Why: "You removed it from magpie.", Quiet: a.Quiet, Tucked: a.Tucked}
 		if a.IsPlugin() {
 			x.Name = a.Name
 		}

@@ -198,6 +198,10 @@ type Provider struct {
 	// Quiet is set on a removed account whose "Add it back" line the user
 	// dismissed: it is offered again only from the Add sheet (#116).
 	Quiet bool `json:"quiet,omitempty"`
+	// Tucked is set on a quiet one the user hid from the Add sheet too:
+	// it is listed there only behind "Show N hidden", or when searched
+	// for by name (#116).
+	Tucked bool `json:"tucked,omitempty"`
 
 	// Account is set when the provider is an agent the user signed in to
 	// (see account.go); it is derived, never stored.
@@ -332,7 +336,7 @@ func Hidden() []Provider {
 	for _, a := range Accounts() {
 		for _, p := range load().Providers {
 			if p.ID == a.ID && p.Hidden {
-				a.Quiet = p.Quiet
+				a.Quiet, a.Tucked = p.Quiet, p.Tucked
 				out = append(out, a)
 			}
 		}
@@ -416,7 +420,7 @@ func Save(p Provider) error {
 		if p.ID == "kiro" {
 			key = p.Key
 		}
-		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, Contexts: p.Contexts, Family: p.Family, Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, MaxConcurrency: p.MaxConcurrency, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID)}
+		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, Contexts: p.Contexts, Family: p.Family, Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, MaxConcurrency: p.MaxConcurrency, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID), Tucked: tuckedAccount(p.ID)}
 	} else {
 		p.AccountProxies = nil // a provider of a key has no accounts to proxy apart
 		if subscriptionID(p.ID) && !stored(p.ID) {
@@ -597,6 +601,35 @@ func quietAccount(id string) bool {
 	return false
 }
 
+func tuckedAccount(id string) bool {
+	for _, p := range load().Providers {
+		if p.ID == id {
+			return p.Tucked
+		}
+	}
+	return false
+}
+
+// TuckAccount hides a removed account from the Add sheet's "Removed from
+// magpie" too (on), or lists it there again (off). Tucked, it is quiet as
+// well: no reminder line either (#116).
+func TuckAccount(id string, on bool) error {
+	f, err := read()
+	if err != nil {
+		return err
+	}
+	for i := range f.Providers {
+		if f.Providers[i].ID == id && f.Providers[i].Hidden {
+			f.Providers[i].Tucked = on
+			if on {
+				f.Providers[i].Quiet = true
+			}
+			return store(f)
+		}
+	}
+	return nil
+}
+
 // QuietAccount stops reminding the user of an account they removed: its
 // "Add it back" line goes, and it is offered only from the Add sheet.
 func QuietAccount(id string) error {
@@ -622,7 +655,7 @@ func ShowAccount(id string) error {
 	}
 	for i := range f.Providers {
 		if f.Providers[i].ID == id && f.Providers[i].Hidden {
-			f.Providers[i].Hidden, f.Providers[i].Quiet = false, false
+			f.Providers[i].Hidden, f.Providers[i].Quiet, f.Providers[i].Tucked = false, false, false
 			return store(f)
 		}
 	}

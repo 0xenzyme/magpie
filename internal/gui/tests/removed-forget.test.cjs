@@ -44,8 +44,8 @@ function server(lang, asked, quiet) {
 }
 
 const L = {
-  en: { st: "Add back or sign out", back: "Add it back", out: "Sign out…", ask: "Sign Qoder out of magpie?", go: "Sign out", line: "Sign out" },
-  zh: { st: "加回来或退出登录", back: "加回来", out: "退出登录…", ask: "在 magpie 里退出 Qoder？", go: "退出登录", line: "退出登录" },
+  en: { st: "Add back or sign out", back: "Add it back", out: "Sign out…", hide: "Don't show here", ask: "Sign Qoder out of magpie?", go: "Sign out", line: "Sign out" },
+  zh: { st: "加回来或退出登录", back: "加回来", out: "退出登录…", hide: "不在这里显示", ask: "在 magpie 里退出 Qoder？", go: "退出登录", line: "退出登录" },
 };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -79,7 +79,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.deepEqual(asked, [], "opening the menu changes nothing");
         assert.equal(await page.evaluate(() => [scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop).map((e) => e.scrollTop)].join(",")), y, "the click moved the page");
         const items = await menu.locator(".pm-name").allInnerTexts();
-        assert.deepEqual(items.map((s) => s.trim()), [w.back, w.out]);
+        assert.deepEqual(items.map((s) => s.trim()), [w.back, w.out, w.hide]);
         if (process.env.ARTIFACT_DIR) await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `removed-forget-${engine}-${lang}.png`) });
 
         // Sign out asks first, then signs it out by its provider id

@@ -792,6 +792,13 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				fail(rw, err)
 				return
 			}
+		case "tuck", "untuck":
+			// a removed account hidden from the Add sheet's "Removed from
+			// magpie" too, or listed there again (#116)
+			if err := provider.TuckAccount(in.ID, r.PathValue("action") == "tuck"); err != nil {
+				fail(rw, err)
+				return
+			}
 		case "forget":
 			// a removed account signed out for good: adding it back
 			// later signs in afresh rather than bringing it back (#694)
