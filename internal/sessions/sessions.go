@@ -2,7 +2,7 @@
 // files — Claude Code's projects/*/<id>.jsonl (and Qoder's, the same kind),
 // Codex's rollout files, OpenCode's database (or its older JSON files) and
 // ZCode's, Pi's session files and omp's, DeepSeek Harness's, Cline's, Grok
-// Build's, WorkBuddy's and Cursor CLI's chat stores — with the tokens each spent, what that cost at the
+// Build's, WorkBuddy's, Droid's and Cursor CLI's chat stores — with the tokens each spent, what that cost at the
 // effective price, and the command that resumes it. It only ever reads the
 // agents' folders.
 //
@@ -70,7 +70,7 @@ type Model struct {
 // Session is one agent session.
 type Session struct {
 	ReadOnly bool      `json:"read_only,omitempty"`
-	Agent    string    `json:"agent"` // magpie agent id: claude, codex, opencode, pi, omp, zcode, dsh, cline, qoder, qoder-cn, grok, workbuddy, cursor, hermes
+	Agent    string    `json:"agent"` // magpie agent id: claude, codex, opencode, pi, omp, zcode, dsh, cline, qoder, qoder-cn, grok, workbuddy, droid, cursor, hermes
 	ID       string    `json:"id"`
 	Cwd      string    `json:"cwd"`
 	Title    string    `json:"title"` // the first prompt, else the agent's own title
@@ -291,7 +291,8 @@ type file struct {
 	sid string
 	oc  ocStore
 	// Cline: the session's manifest, beside its messages; Grok Build: its
-	// summary.json, beside its updates
+	// summary.json, beside its updates; Droid: its settings, beside its
+	// transcript
 	manifest string
 	hermes   *hermesDB
 	readOnly bool
@@ -365,7 +366,7 @@ func allFiles() []file {
 	var out []file
 	for _, fs := range [][]file{callFiles(), openCodeFiles(), piFiles(),
 		zcodeFiles(), dshFiles(), clineFiles(), ccFiles("qoder", QoderDir("qoder")), ccFiles("qoder-cn", QoderDir("qoder-cn")),
-		grokFiles(), workbuddyFiles(), ompFiles(), cursorFiles(), hermesFiles()} {
+		grokFiles(), workbuddyFiles(), droidFiles(), ompFiles(), cursorFiles(), hermesFiles()} {
 		out = append(out, fs...)
 	}
 	return out
@@ -386,6 +387,7 @@ func Dirs() []string {
 		{GrokDir(), filepath.Join(GrokDir(), "sessions")},
 		{WorkBuddyDir(), filepath.Join(WorkBuddyDir(), "projects")},
 		{OmpDir(), filepath.Join(OmpDir(), "sessions")},
+		{FactoryDir(), filepath.Join(FactoryDir(), "sessions")},
 		{CursorDir(), filepath.Join(CursorDir(), "chats")},
 	} {
 		if _, err := os.Stat(d.sessions); err == nil {
@@ -854,7 +856,7 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 			if first == "" {
 				first = st.First
 			}
-			if (s.Agent == "codex" || s.Agent == "pi" || s.Agent == "omp" || s.Agent == "dsh" || s.Agent == "grok") && st.ID != "" && f.path == fs[0].path {
+			if (s.Agent == "codex" || s.Agent == "pi" || s.Agent == "omp" || s.Agent == "dsh" || s.Agent == "grok" || s.Agent == "droid") && st.ID != "" && f.path == fs[0].path {
 				s.ID = st.ID
 			}
 		}
@@ -921,6 +923,8 @@ func parse(f file, old *state) *state {
 		return parseCline(f)
 	case "grok":
 		return parseGrok(f)
+	case "droid":
+		return parseDroid(f)
 	case "cursor":
 		return parseCursor(f)
 	}
@@ -1203,6 +1207,8 @@ func ResumeCommand(agent, id, cwd string) string {
 		run = "grok --resume " + id
 	case "omp":
 		run = "omp --resume " + id
+	case "droid":
+		run = "droid --resume " + id
 	case "cursor":
 		// its chats are looked up by the folder it runs in
 		if cwd == "" {
