@@ -523,6 +523,8 @@ function renderAgents() {
     list.append(more, fold);
   }
 
+  paintUpdateAll();
+  paintInstalls();
   renderProfiles();
   fit(0, agentsGlide);
   agentsGlide = null;
@@ -1428,28 +1430,178 @@ async function loadCLIs(again = 0) {
     for (const id of new Set([...Object.keys(was), ...Object.keys(next)])) {
       if (JSON.stringify(was[id]) !== JSON.stringify(next[id])) paintCLI(id);
     }
+    paintUpdateAll();
     // some were still being asked: they are ready in a moment
     if (r?.pending && again < 3) setTimeout(() => loadCLIs(again + 1), 4000);
   })();
   try { await cliLoading; } finally { cliLoading = null; }
 }
 
-async function updateCLI(a, btn) {
-  if (cliBusy.has(a.id)) return;
+// updateCLI updates one agent's CLI; "" when it went well, else why not.
+// Quiet (Update all) leaves the saying to the caller.
+async function updateCLI(a, btn, quiet = false) {
+  if (cliBusy.has(a.id)) return t("{agent} is already being updated", { agent: a.name });
   cliBusy.add(a.id);
-  paintCLIButton(btn, cliInfo[a.id] || {}, true); // in place: what was clicked stays
+  if (btn) paintCLIButton(btn, cliInfo[a.id] || {}, true); // in place: what was clicked stays
+  else paintCLI(a.id);
+  paintUpdateAll();
   try {
     const c = await api("agents/cli/" + encodeURIComponent(a.id), {});
     cliInfo[a.id] = c;
-    status(t("{agent} updated to {v}", { agent: a.name, v: c.version }), "ok");
+    if (!quiet) status(t("{agent} updated to {v}", { agent: a.name, v: c.version }), "ok");
+    return "";
   } catch (e) {
-    status(e.message, "err", 12000);
+    if (!quiet) status(e.message, "err", 12000);
     cliBusy.delete(a.id);
     await loadCLIs(); // what it is now
+    return e.message;
   } finally {
     cliBusy.delete(a.id);
     paintCLI(a.id);
+    paintUpdateAll();
   }
+}
+
+// ---------- Update all (#727) ----------
+// With two or more agents' CLIs behind, a line above the list updates them
+// all, one after another (two global npm installs at once can trip over
+// each other's folders), each row's pill turning busy in its turn. Once
+// shown, the line stays until the agents are read again (a reload, the
+// window coming back), saying how the run went or what is left, so the
+// list under it never jumps for a click — Update all's or a row's pill's.
+
+let cliAll = null; // { n, done, now, failed: [{ name, msg }] } once Update all is clicked
+
+const updatable = () => (state?.agents || []).filter((a) => cliInfo[a.id]?.update && !cliBusy.has(a.id));
+
+// fresh: the agents were read again, so a line with nothing to offer goes
+function paintUpdateAll(fresh = false) {
+  const list = $("#agents");
+  if (mode === "panel" || !list) return;
+  let bar = $("#agentsUpdates");
+  const ups = updatable();
+  const running = !!cliAll && cliAll.done < cliAll.n;
+  if (!running && ups.length < 2 && (fresh || !bar)) { bar?.remove(); return; }
+  if (!bar) {
+    bar = el("div", "ag-updates");
+    bar.id = "agentsUpdates";
+    bar.setAttribute("role", "status");
+    list.before(bar);
+  }
+  const say = el("span", "ag-updates-say");
+  const parts = [say];
+  bar.classList.toggle("failed", !running && !!cliAll?.failed.length);
+  if (running) {
+    say.textContent = t("Updating {agent}… ({i} of {n})", { agent: cliAll.now, i: cliAll.done + 1, n: cliAll.n });
+    const b = el("button", "ag-up ag-up-all busy");
+    b.type = "button";
+    b.setAttribute("aria-busy", "true");
+    b.append(svg(CLI_SPIN, 11, 1.8), el("span", "", t("Updating…")));
+    parts.push(b);
+  } else if (cliAll) {
+    const ok = cliAll.n - cliAll.failed.length;
+    say.textContent = !cliAll.failed.length ? t("{n} agents updated", { n: ok })
+      : t("{ok} of {n} agents updated · {failed} didn't: {names}", { ok, n: cliAll.n, failed: cliAll.failed.length, names: cliAll.failed.map((f) => f.name).join(", ") });
+    say.title = cliAll.failed.map((f) => f.msg).join("\n");
+  } else {
+    // what is behind now, the ones being updated by their own pill too
+    const behind = (state?.agents || []).filter((a) => cliInfo[a.id]?.update || cliBusy.has(a.id));
+    say.textContent = behind.length >= 2 ? t("{n} agents have updates: {names}", { n: behind.length, names: behind.map((a) => a.name).join(", ") })
+      : behind.length ? t("{agent} has an update", { agent: behind[0].name })
+      : t("Every agent is up to date");
+  }
+  if (!running && ups.length >= 2) {
+    const b = el("button", "ag-up ag-up-all");
+    b.type = "button";
+    b.title = ups.map((a) => `${a.name}: ${cliInfo[a.id].version} → ${cliInfo[a.id].latest}`).join("\n");
+    b.append(svg(CLI_UP, 11, 1.8), el("span", "", t("Update all")));
+    b.onclick = (e) => { e.stopPropagation(); updateAllCLIs(); };
+    parts.push(b);
+  }
+  bar.replaceChildren(...parts);
+}
+
+async function updateAllCLIs() {
+  if (cliAll && cliAll.done < cliAll.n) return;
+  const ups = updatable();
+  if (!ups.length) return;
+  cliAll = { n: ups.length, done: 0, now: ups[0].name, failed: [] };
+  for (const a of ups) {
+    cliAll.now = a.name;
+    paintUpdateAll();
+    const err = await updateCLI(a, null, true);
+    if (err) cliAll.failed.push({ name: a.name, msg: err });
+    cliAll.done++;
+  }
+  paintUpdateAll();
+  if (!cliAll.failed.length) status(t("{n} agents updated", { n: cliAll.n }), "ok");
+  else status(cliAll.failed.map((f) => f.msg).join(" · "), "err", 12000);
+}
+
+// ---------- installing the agents not here (#727) ----------
+// Under the list, the agents magpie knows that aren't on this machine, each
+// with its vendor's install commands to copy into a terminal: the vendor's
+// installer first, then Homebrew's or npm's. magpie doesn't run them — a
+// new computer may have no Node.js for npm yet, and an installer may ask
+// for things in the terminal. Folded unless no agent is here at all.
+
+let installInfo = []; // [{ id, name, icon, commands: [{ via, command }] }]
+let installsOpen = null; // null: as the list has it (open with no agents)
+const VIA = { script: "Installer", powershell: "PowerShell", brew: "Homebrew", npm: "npm" };
+
+async function loadInstalls() {
+  if (mode === "panel") return;
+  let r;
+  try { r = await api("agents/install"); } catch { return; } // it just isn't shown
+  installInfo = Array.isArray(r) ? r : [];
+  paintInstalls();
+}
+
+function paintInstalls() {
+  const list = $("#agents");
+  if (mode === "panel" || !list) return;
+  let box = $("#agentsInstall");
+  const here = new Set((state?.agents || []).map((a) => a.id));
+  const items = installInfo.filter((x) => !here.has(x.id));
+  if (!items.length) { box?.remove(); return; }
+  if (!box) {
+    box = el("section", "ag-install");
+    box.id = "agentsInstall";
+    list.after(box);
+  }
+  const open = installsOpen ?? !(state?.agents || []).length;
+  const head = el("button", "ag-install-head");
+  head.type = "button";
+  head.setAttribute("aria-expanded", String(open));
+  head.dataset.unrolls = ""; // it stays put, and its commands open beneath it
+  const chev = el("span", "chev");
+  chev.append(svg(CHEV, 10, 1.8));
+  head.append(el("span", "", t("Install another agent ({n})", { n: items.length })), chev);
+  head.onclick = (e) => {
+    e.stopPropagation();
+    installsOpen = !open;
+    paintInstalls();
+    $("#agentsInstall .ag-install-head")?.focus({ preventScroll: true });
+  };
+  const parts = [head];
+  if (open) {
+    parts.push(el("p", "ag-install-note", t("Run a command in a terminal, then come back: magpie lists the agent here once it is installed. The npm commands need Node.js (nodejs.org).")));
+    for (const x of items) {
+      const r = el("div", "ag-install-row");
+      r.dataset.id = x.id;
+      const who = el("div", "ag-install-who");
+      who.append(icon(x.icon || x.id), el("b", "", x.name));
+      const cmds = el("div", "ag-install-cmds");
+      for (const c of x.commands) {
+        const line = el("div", "ag-install-cmd");
+        line.append(el("span", "ag-install-via", t(VIA[c.via] || c.via)), el("code", "", c.command), copyBtn(c.command, t("{agent}'s install command", { agent: x.name })));
+        cmds.append(line);
+      }
+      r.append(who, cmds);
+      parts.push(r);
+    }
+  }
+  box.replaceChildren(...parts);
 }
 
 // ---------- the agents' order, and the ones put away ----------
@@ -2389,7 +2541,11 @@ async function load() {
     tintPanel();
     tintTitleBar();
     renderAgents();
+    // Update all's outcome stays until the agents are read again
+    if (cliAll && cliAll.done >= cliAll.n) cliAll = null;
+    paintUpdateAll(true);
     loadCLIs(); // after the rows, never holding them up
+    loadInstalls();
     if (mode === "panel") { renderPanelQuota(); loadQuotas(); }
     // an open provider editor is someone typing: coming back to the window
     // must not rebuild it under them

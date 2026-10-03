@@ -648,6 +648,11 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		clis, pending := agent.CLIs(3 * time.Second)
 		writeJSON(rw, map[string]any{"agents": clis, "pending": pending})
 	})
+	// the agents magpie knows that aren't here, with their vendors' install
+	// commands to copy (#727)
+	mux.HandleFunc("GET /api/agents/install", func(rw http.ResponseWriter, r *http.Request) {
+		writeJSON(rw, agent.Installs())
+	})
 	// updates one the way it was installed; what it is afterwards comes
 	// back with an error too
 	mux.HandleFunc("POST /api/agents/cli/{id}", func(rw http.ResponseWriter, r *http.Request) {
