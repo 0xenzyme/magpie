@@ -1190,6 +1190,10 @@
       const after = el("div", "after-list");
       after.append(button(t("＋ Add server"), "", () => editServer(null)));
       body.append(after);
+      // each server is checked once a session, and again only once it
+      // changed; once the rows are on the page, for them to show it
+      const unchecked = lib.servers.filter((s) => health.get(s.name)?.key !== healthKey(s));
+      queueMicrotask(() => checkHealth(unchecked));
     }
     // an agent's own servers (Codex's node_repl, added each time it starts)
     // aren't listed: magpie leaves them as they are
@@ -1214,7 +1218,9 @@
     const nm = el("div", "name mono", s.name);
     if (s.signIn?.dead) nm.append(tag(t("Sign-in ran out"), "warn", t("Open it to sign in again")));
     else if (s.signIn?.signedIn) nm.append(tag(t("Signed in"), "lib-signed", t("The agents given it use magpie's sign-in")));
-    who.append(nm);
+    // its status beside the name, not in it: the name is still the name
+    who.classList.add("lib-srvwho");
+    who.append(nm, healthEl(s.name));
     const sub = el("div", "sub mono", serverLine(s));
     sub.title = serverLine(s);
     who.append(sub);
@@ -1223,6 +1229,79 @@
     row.onclick = () => editServer(s);
     row.title = t("Edit {name}", { name: s.name });
     return row;
+  }
+
+  // Whether a server works, as magpie found by connecting to it: started
+  // (or reached) and asked for its tools. Its row shows it as a dot and a
+  // few words, the whole reason in its tooltip; a click checks it again.
+  const health = new Map(); // name → { key: the server as checked, h: what was found, null while checking }
+  const healthKey = (s) => JSON.stringify([s.transport, s.command, s.args, s.env, s.url, s.headers, s.signIn]);
+  function healthEl(name) {
+    const b = el("button", "lib-health");
+    b.type = "button";
+    b.dataset.server = name;
+    b.onclick = (e) => {
+      e.stopPropagation(); // the row opens the editor
+      const s = lib.servers.find((x) => x.name === name);
+      if (s && health.get(name)?.h) checkHealth([s], true);
+    };
+    paintHealth(b);
+    return b;
+  }
+  async function checkHealth(list, fresh) {
+    if (!list.length) return;
+    const keys = new Map(list.map((s) => [s.name, healthKey(s)]));
+    for (const [name, key] of keys) { health.set(name, { key, h: null }); paintHealth(name); }
+    let got = {}, failed = null;
+    try { got = (await api("library/mcp/check", { names: [...keys.keys()], fresh: !!fresh })).servers || {}; } catch (e) { failed = e.message; }
+    for (const [name, key] of keys) {
+      // a server changed while it was checked has been asked for again
+      if (health.get(name)?.key !== key) continue;
+      const h = got[name] || (failed ? { state: "error", why: "request", detail: failed } : null);
+      if (h) health.set(name, { key, h }); else health.delete(name);
+      paintHealth(name);
+    }
+  }
+  function healthWords(h, s) {
+    if (h.state === "ok") return [h.tools === 1 ? t("1 tool") : t("{n} tools", { n: h.tools }), t("It started and listed its tools")];
+    if (h.state === "auth") {
+      const why = h.oauth
+        ? (s?.transport === "http" ? t("The server asks for a sign-in — open it to sign in once in magpie") : t("The server asks for a sign-in"))
+        : t("The server refused magpie (HTTP {code}) — a key in its headers may be missing or wrong", { code: h.code || 401 });
+      return [t("needs sign-in"), h.detail ? why + "\n" + h.detail : why];
+    }
+    const more = (x) => (h.detail ? x + "\n" + h.detail : x);
+    switch (h.why) {
+      case "notfound": return [t("can't start: {cmd} not found", { cmd: h.detail }), t("Can't start it: there is no {cmd} on the PATH magpie has", { cmd: h.detail })];
+      case "start": return [t("can't start"), more(t("Can't start it"))];
+      case "exited": return [h.code ? t("exited ({code})", { code: h.code }) : t("exited"), more(h.code ? t("It exited with code {code} before listing its tools", { code: h.code }) : t("It exited before listing its tools"))];
+      case "timeout": return [t("no answer"), more(t("No answer in 15 seconds"))];
+      case "http": return ["HTTP " + h.code, t("The server answered {status}", { status: h.detail })];
+      case "refused": return [t("connection refused"), more(t("Nothing is listening at that address"))];
+      case "unreachable": return [t("can't reach"), more(t("Can't reach the server"))];
+      case "protocol": return [t("bad reply"), more(t("It answered, but not as an MCP server does"))];
+      default: return [t("couldn't check"), more(t("magpie couldn't check it"))];
+    }
+  }
+  // paintHealth fills a row's status in place, by the button or the
+  // server's name, so a check ending moves nothing on the page
+  function paintHealth(x) {
+    const boxes = typeof x === "string" ? page.querySelectorAll(`.lib-health[data-server="${CSS.escape(x)}"]`) : [x];
+    for (const b of boxes) {
+      const e = health.get(b.dataset.server);
+      b.hidden = !e;
+      if (!e) continue;
+      if (!e.h) {
+        b.className = "lib-health checking";
+        b.replaceChildren(el("span", "", t("checking…")));
+        b.title = t("Connecting to it to list its tools");
+        continue;
+      }
+      const [text, tip] = healthWords(e.h, lib.servers.find((s) => s.name === b.dataset.server));
+      b.className = "lib-health " + (e.h.state === "ok" ? "ok" : e.h.state === "auth" ? "auth" : "err");
+      b.replaceChildren(el("span", "", text));
+      b.title = tip + "\n" + t("Click to check again");
+    }
   }
 
   // magpie's sign-in to a remote server (#615): signed in once here, and

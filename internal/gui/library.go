@@ -303,6 +303,24 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 		}
 		writeJSON(rw, v)
 	})
+	// whether the servers work, by connecting to them: those named, or every
+	// one; a server checked this session as it is now is answered from then
+	mux.HandleFunc("POST /api/library/mcp/check", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Names []string
+			Fresh bool
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		m, err := library.CheckServers(r.Context(), in.Names, in.Fresh)
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, map[string]any{"servers": m})
+	})
 	// every change answers with the page as it is after it, and what it did
 	mux.HandleFunc("POST /api/library/{what}/{action}", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct {
