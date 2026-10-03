@@ -1407,6 +1407,7 @@ const I18N = {
     "Upstream said": "上游返回",
     "First token": "首响",
     "Reasoning tokens": "推理 token",
+    "Called for": "用途",
     "Data source": "数据来源",
     "Session ID": "会话 ID",
     "Nothing more was kept of this request": "这个请求没有更多记录",

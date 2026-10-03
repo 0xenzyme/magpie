@@ -1183,6 +1183,7 @@
     vision: "Image description",
   };
   const kindName = (k) => KIND[k] ? t(KIND[k]) : k;
+  window.kindName = kindName; // the Usage page's Requests say it too (#714)
   function kindTag(r) {
     const k = el("span", "kind", kindName(r.kind));
     k.title = kindWhy(r);

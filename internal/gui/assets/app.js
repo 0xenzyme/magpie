@@ -11548,6 +11548,10 @@ function ledDetail(r, cols) {
   add("Request ID", r.rid);
   add("Endpoint", r.ep);
   add("Session ID", r.session);
+  // a call that isn't a turn of the conversation says what it was for, as
+  // the agent named it: a subagent's, a title, an approval check… — a
+  // model the conversation never picked reads as what it is (#714)
+  if (r.kind) add("Called for", window.kindName ? window.kindName(r.kind) : r.kind);
   if (r.ttft_ms) add("First token", ledTook(r.ttft_ms));
   if (r.reasoning) add("Reasoning tokens", ledNum(r.reasoning));
   if (r.session_provider) add("Recorded provider ID", r.session_provider);
