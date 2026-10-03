@@ -1983,6 +1983,8 @@ async function whatsNewOnce() {
 
 // openWhatsNew is Settings' way back to the notes: the current version's (or
 // those since the last update), after the waiting update's when u has one.
+// The notes that couldn't be had (the site failing, #661) say so, with a
+// retry and the release page, apart from a version that has none.
 async function openWhatsNew(u, b) {
   if (b) { b.disabled = true; b.classList.add("busy"); }
   const w = await api(updatePath("whatsnew?all=1")).catch(() => null);
@@ -1991,16 +1993,20 @@ async function openWhatsNew(u, b) {
   if (u?.notes && u.latest && ["ready", "available", "downloading"].includes(u.state) && !list.some((r) => r.version === u.latest)) {
     list.unshift({ version: u.latest, notes: u.notes, url: u.url, pending: true });
   }
-  if (!list.length) return status(t("Couldn't load the release notes"), "err");
-  showWhatsNew(list);
+  const failed = !w || !!w.error;
+  if (!list.length && !w?.current) return status(t("Couldn't load the release notes"), "err");
+  showWhatsNew(list, false, { failed, current: w?.current, url: w?.url, retry: () => openWhatsNew(u) });
 }
 
 // auto: shown by itself after an update, with "Don't show again today"
 // (#525: releases come many a day); Settings' row opens it without one.
-function showWhatsNew(releases, auto) {
+// more (from Settings): failed, the current version's notes couldn't be
+// had, retry asks again; current and url, the version and its release
+// page, for a dialog with no notes.
+function showWhatsNew(releases, auto, more = {}) {
   const ed = el("div", "editor whatsnew");
   const head = el("div", "ehead");
-  head.append(el("b", "", t("What's new in {v}", { v: "v" + releases[0].version })));
+  head.append(el("b", "", t("What's new in {v}", { v: "v" + (releases[0]?.version || more.current) })));
   ed.append(head);
   for (const r of releases) {
     const sec = el("section", "wn-rel");
@@ -2008,6 +2014,26 @@ function showWhatsNew(releases, auto) {
     h.append(el("b", "", "v" + r.version));
     if (r.pending) h.append(el("span", "badge", t("Not installed yet")));
     sec.append(h, noteBlocks(r.notes));
+    ed.append(sec);
+  }
+  if (more.failed || !releases.length) {
+    const sec = el("section", "wn-rel wn-none" + (more.failed ? " wn-failed" : ""));
+    const h = el("div", "wn-ver");
+    if (more.current) h.append(el("b", "", "v" + more.current));
+    const p = el("p", "wn-msg", more.failed ? t("Couldn't load the release notes") : t("No release notes provided."));
+    const acts = el("div", "wn-acts");
+    if (more.failed && more.retry) {
+      const again = el("button", "text", t("Try again"));
+      again.onclick = async (e) => {
+        e.stopPropagation();
+        again.disabled = true;
+        again.classList.add("busy");
+        await more.retry();
+      };
+      acts.append(again);
+    }
+    if (more.url) acts.append(noteLink(t("Open the release page"), more.url));
+    sec.append(h, p, acts);
     ed.append(sec);
   }
   const bar = el("div", "bar");

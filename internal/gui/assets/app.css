@@ -2261,6 +2261,9 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .whatsnew .wn-notes code { font: 11.5px/1.4 var(--mono, ui-monospace, monospace); padding: 0 4px; border-radius: 4px; background: var(--pill); }
 .whatsnew .wn-link { color: var(--accent); text-decoration: none; }
 .whatsnew .wn-link:hover { text-decoration: underline; }
+.whatsnew .wn-msg { margin: 4px 0 6px; font-size: 12.5px; color: var(--fg-2); }
+.whatsnew .wn-failed .wn-msg { color: var(--red); }
+.whatsnew .wn-acts { display: flex; align-items: center; gap: 12px; font-size: 12.5px; }
 /* Keep native window chrome outside the scrim and dialog. In particular, the
    macOS traffic lights must never sit on top of modal content. */
 body.window.mac .modal { top: calc(50px / var(--zoom, 1)); padding: 16px 24px 24px; }

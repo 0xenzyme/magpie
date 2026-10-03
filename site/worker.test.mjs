@@ -19,8 +19,48 @@ globalThis.caches = {
     put: async (req, res) => void store.set(req.url, await res.text()),
   },
 };
-globalThis.fetch = async (u) => {
+// apiDown stands in for GitHub's API limiting the worker's shared IP (#661);
+// pagesDown for github.com itself failing too. seen keeps each API ask's
+// headers.
+let apiDown = false, pagesDown = false;
+const seen = [];
+const FEED = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>tag:github.com,2008:Repository/1/v0.1.3</id>
+    <updated>2026-10-03T08:54:51Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/yetone/magpie-releases/releases/tag/v0.1.3"/>
+    <title>magpie v0.1.3</title>
+    <content type="html">&lt;h3&gt;Features&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;One thing (#1)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Install&lt;/h3&gt;
+&lt;p&gt;Download it.&lt;/p&gt;
+&lt;h3&gt;新功能&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;一件事 (#1)&lt;/li&gt;
+&lt;/ul&gt;</content>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1/v0.1.2</id>
+    <updated>2026-10-02T08:54:51Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/yetone/magpie-releases/releases/tag/v0.1.2"/>
+    <content type="html">&lt;h3&gt;Fixes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Older, &lt;strong&gt;English&lt;/strong&gt; alone, &lt;code&gt;a &amp;amp;lt; b&lt;/code&gt; &lt;a href=&quot;https://x.dev/&quot;&gt;link&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</content>
+  </entry>
+</feed>`;
+globalThis.fetch = async (u, init = {}) => {
   u = String(u);
+  if (u.startsWith("https://api.github.com/")) {
+    seen.push(new Headers(init.headers));
+    if (apiDown) return new Response('{"message":"API rate limit exceeded"}', { status: 403 });
+  } else if (pagesDown) return new Response("unicorn", { status: 503 });
+  if (u === "https://github.com/yetone/magpie-releases/releases/latest")
+    return new Response(null, { status: 302, headers: { Location: "https://github.com/yetone/magpie-releases/releases/tag/v0.1.3" } });
+  if (u.endsWith("/releases.atom")) return new Response(FEED);
   const gh = (tag) => ({ tag_name: tag, body: BODIES[tag], html_url: "https://github.com/r/" + tag, published_at: "2026-10-01T00:00:00Z", draft: false, prerelease: false, assets: [{ name: "magpie-linux-amd64", size: 1, browser_download_url: "https://dl/x" }] });
   if (u.endsWith("/releases/latest")) return Response.json(gh("v0.1.3"));
   if (u.includes("/releases?per_page=")) return Response.json(Object.keys(BODIES).map(gh));
@@ -102,4 +142,81 @@ test("docs: the bare docs paths open each language's guide", async () => {
     const res = await worker.fetch(new Request("https://usemagpie.ai" + from), env, ctx);
     assert.equal(new URL(res.headers.get("Location"), "https://usemagpie.ai").pathname, to, from);
   }
+});
+
+// #661: the update window showed no notes while GitHub's API limited the
+// worker, and the failure was kept for five minutes.
+const ask = (path, env = {}) => worker.fetch(new Request("https://usemagpie.ai" + path), env, ctx);
+
+test("latest: with the API limited, the notes come from the releases feed, kept briefly", async () => {
+  store.clear();
+  apiDown = true;
+  try {
+    const res = await ask("/api/latest");
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.version, "0.1.3");
+    assert.match(body.notes, /One thing \(#1\)/);
+    assert.doesNotMatch(body.notes, /一件事/);
+    assert.equal(body.assets["magpie-linux-amd64"].sha256, "abc");
+    assert.equal(res.headers.get("Cache-Control"), "public, max-age=60");
+    const zh = await (await ask("/api/latest?lang=zh")).json();
+    assert.match(zh.notes, /^### 新功能\n\n- 一件事 \(#1\)$/);
+  } finally {
+    apiDown = false;
+  }
+});
+
+test("notes: with the API limited, the releases feed's notes, in either language", async () => {
+  store.clear();
+  apiDown = true;
+  try {
+    const res = await ask("/api/notes?after=0.1.1&upto=0.1.3&lang=zh");
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("Cache-Control"), "public, max-age=60");
+    const list = (await res.json()).releases;
+    assert.deepEqual(list.map((r) => r.version), ["0.1.3", "0.1.2"]);
+    assert.equal(list[0].notes, "### 新功能\n\n- 一件事 (#1)");
+    assert.equal(list[1].notes, "### Fixes\n\n- Older, **English** alone, `a &lt; b` [link](https://x.dev/)");
+    assert.equal(list[0].url, "https://github.com/yetone/magpie-releases/releases/tag/v0.1.3");
+  } finally {
+    apiDown = false;
+  }
+});
+
+test("notes and latest: GitHub failing altogether is an error never kept, then the last whole answer", async () => {
+  store.clear();
+  apiDown = pagesDown = true;
+  try {
+    for (const path of ["/api/notes?upto=0.1.3", "/api/latest"]) {
+      const res = await ask(path);
+      assert.equal(res.status, 503, path);
+      assert.equal(res.headers.get("Cache-Control"), "no-store", path);
+    }
+    // a whole answer once, then GitHub fails again: that one, kept briefly
+    apiDown = pagesDown = false;
+    assert.equal((await ask("/api/notes?upto=0.1.3")).headers.get("Cache-Control"), "public, max-age=300");
+    assert.equal((await ask("/api/latest")).status, 200);
+    for (const k of ["https://usemagpie.ai/__releases", "https://usemagpie.ai/__latest"]) store.delete(k);
+    apiDown = pagesDown = true;
+    const res = await ask("/api/notes?upto=0.1.3");
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("Cache-Control"), "public, max-age=60");
+    assert.equal((await res.json()).releases[0].notes, EN);
+    const lat = await ask("/api/latest");
+    assert.equal(lat.status, 200);
+    assert.equal((await lat.json()).notes, EN);
+  } finally {
+    apiDown = pagesDown = false;
+  }
+});
+
+test("api: a GITHUB_TOKEN secret is sent to GitHub's API, and none without it", async () => {
+  store.clear();
+  seen.length = 0;
+  await ask("/api/notes?upto=0.1.3", { GITHUB_TOKEN: "ghp_x" });
+  assert.equal(seen.at(-1).get("Authorization"), "Bearer ghp_x");
+  store.clear();
+  await ask("/api/notes?upto=0.1.3");
+  assert.equal(seen.at(-1).get("Authorization"), null);
 });

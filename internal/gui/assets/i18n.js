@@ -1656,6 +1656,8 @@ const I18N = {
     "Not installed yet": "尚未安装",
     "Don't show again today": "今天不再弹出",
     "Couldn't load the release notes": "无法获取更新说明",
+    "No release notes provided.": "这个版本没有更新说明。",
+    "Open the release page": "打开发布页面",
     "Check": "检查",
     "Couldn't check for updates": "检查更新失败",
     "Couldn't download {v}": "{v} 下载失败",
