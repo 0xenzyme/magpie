@@ -919,6 +919,22 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		}
 		writeJSON(rw, settingsState())
 	})
+	// whether WorkBuddy's daily check-in is pressed each day, the Usage
+	// card's toggle (#694), set on its own as Settings' is
+	mux.HandleFunc("POST /api/settings/workbuddy-checkin", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ On bool }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		s := settings.Load()
+		s.WorkBuddyCheckin = in.On
+		if err := settings.Save(s); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, settingsState())
+	})
 	// how large the window and the panel are drawn: Settings' choice and
 	// Ctrl/Cmd +, − and 0 in either, set on its own so a key pressed while
 	// the Settings page saves something else is never undone by it

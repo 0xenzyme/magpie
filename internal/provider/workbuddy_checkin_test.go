@@ -327,3 +327,40 @@ func TestWorkBuddyCheckinThroughPlugin(t *testing.T) {
 		t.Fatalf("asked %v", paths)
 	}
 }
+
+// The Usage page's WorkBuddy card says how each account's check-in went
+// (#694): matched by its name, or the only account's on a card without
+// one; another vendor's card, and an account not checked in, untouched,
+// and the cards given (the usage cache) left as they were.
+func TestWorkBuddyCheckinOnTheCard(t *testing.T) {
+	accts := []wbAccount{
+		{Login: Login{User: "Ann", On: true}, site: wbCN, creds: wbCreds{UID: "u1"}},
+		{Login: Login{User: "Bob", On: true}, site: wbCN, creds: wbCreds{UID: "u2"}},
+		{Login: Login{User: "Off", On: false}, site: wbCN, creds: wbCreds{UID: "u3"}},
+	}
+	st := map[string]WorkBuddyCheckin{
+		"workbuddy|u1": {Day: "2026-10-03", Outcome: CheckinClaimed, Credit: 50, Streak: 3},
+		"workbuddy|u3": {Day: "2026-10-03", Outcome: CheckinDone},
+	}
+	qs := []SubscriptionQuota{{Provider: "workbuddy", User: "ann"}, {Provider: "workbuddy", User: "Bob"}, {Provider: "workbuddy", User: "Off"}, {Provider: "codex", User: "Ann"}}
+	got := withCheckins(qs, accts, st)
+	if !got[0].Checkins || got[0].Checkin == nil || got[0].Checkin.Credit != 50 || got[0].Checkin.User != "Ann" {
+		t.Fatalf("Ann: %+v", got[0])
+	}
+	if !got[1].Checkins || got[1].Checkin != nil {
+		t.Fatalf("Bob, not checked in yet: %+v", got[1])
+	}
+	if got[2].Checkins || got[2].Checkin != nil || got[3].Checkins || got[3].Checkin != nil {
+		t.Fatalf("an account off, or another vendor's: %+v %+v", got[2], got[3])
+	}
+	if qs[0].Checkins || qs[0].Checkin != nil {
+		t.Fatal("the cards given were changed")
+	}
+	one := withCheckins([]SubscriptionQuota{{Provider: "workbuddy"}}, accts[:1], st)
+	if !one[0].Checkins || one[0].Checkin == nil {
+		t.Fatalf("one account, its card unnamed: %+v", one[0])
+	}
+	if two := withCheckins([]SubscriptionQuota{{Provider: "workbuddy"}}, accts[:2], st); two[0].Checkins {
+		t.Fatalf("an unnamed card of two accounts: %+v", two[0])
+	}
+}

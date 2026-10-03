@@ -430,7 +430,21 @@ func usageRoutes(mux *http.ServeMux, w Windows) {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 		defer cancel()
-		writeJSON(rw, provider.Quotas(ctx))
+		// a WorkBuddy (China) account's card says how its daily check-in
+		// went (#694)
+		writeJSON(rw, provider.WithCheckins(provider.Quotas(ctx)))
+	})
+	// WorkBuddy's daily check-in pressed now, from the Usage card, for
+	// each account not in yet today, as `magpie accounts checkin` does; the
+	// card is read again after
+	mux.HandleFunc("POST /api/usage/workbuddy-checkin", func(rw http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
+		defer cancel()
+		rs := provider.CheckInWorkBuddy(ctx)
+		if rs == nil {
+			rs = []provider.WorkBuddyCheckin{}
+		}
+		writeJSON(rw, rs)
 	})
 	// what was left of each window over time, for the quota cards' curves
 	// (#651); ?days= back

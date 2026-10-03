@@ -9265,6 +9265,9 @@ function renderQuotas() {
       // its tooltip; the curve and the rest only in full
       if (brief) meters.classList.add("brief");
       card.append(meters);
+      // WorkBuddy's daily check-in, how this account's went, and the
+      // switch for it, on the card rather than only in Settings (#694)
+      if (sub.checkins) card.append(checkinRow(sub, sub === subs.find((x) => x.checkins), subs));
       // what was left over time, against an even burn (#651)
       const curve = !brief && !sub.error && quotaCurve(sub);
       if (curve) card.append(curve);
@@ -10308,6 +10311,93 @@ function autoResetButton(q, cls) {
     }
   };
   return b;
+}
+
+// checkinRow is a WorkBuddy (China) account's daily check-in on its
+// Usage card: today's (a Beijing day) done, with the credits and the
+// streak, or why not, or the last day it was; the card's first such row
+// also holds the switch, which is Settings' "Daily check-in", and a press
+// for those not in yet today (#694, Dazzle-sys: 卡片显示今日是否已经签到).
+function checkinRow(q, first, subs) {
+  const on = !!state.settings?.workbuddyCheckin;
+  const r = q.checkin;
+  const today = wbToday();
+  const row = el("div", "wb-checkin");
+  let kind = "", text;
+  const last = r && r.day !== today && (r.outcome === "claimed" || r.outcome === "done") ? t("last checked in {day}", { day: r.day }) : "";
+  if (r && r.day === today) {
+    switch (r.outcome) {
+      case "claimed":
+      case "done":
+        kind = "ok";
+        text = t("Checked in today") + (r.credit ? " +" + r.credit : "") + (r.streak ? " · " + t("{n}-day streak", { n: r.streak }) : "");
+        break;
+      case "ineligible":
+        text = t("Not eligible for the daily check-in");
+        break;
+      case "inactive":
+        text = t("No check-in event now");
+        break;
+      default:
+        kind = "bad";
+        text = t(on ? "Check-in failed; magpie tries again later" : "Check-in failed");
+    }
+  } else {
+    kind = on ? "wait" : "";
+    text = [t(on ? "Not checked in yet today" : "Auto check-in is off"), last].filter(Boolean).join(" · ");
+  }
+  row.dataset.state = kind || "none";
+  const say = el("span", "ci-say");
+  say.append(el("i", "ci-dot" + (kind ? " " + kind : "")), el("span", "", text));
+  say.title = [t("WorkBuddy's daily check-in, as pressing 签到 in WorkBuddy does"), r?.outcome === "failed" ? r.msg : ""].filter(Boolean).join("\n");
+  row.append(say);
+  if (!first) return row;
+  const auto = el("button", "text ci-auto" + (on ? " on" : ""), t("Auto check-in"));
+  auto.type = "button";
+  auto.setAttribute("aria-pressed", String(on));
+  auto.title = t(on ? "On: magpie checks each WorkBuddy (China) account in once a day, as Settings' Daily check-in does. Click to turn it off."
+    : "Check each WorkBuddy (China) account in once a day, as Settings' Daily check-in does");
+  auto.onclick = async (e) => {
+    e.stopPropagation();
+    auto.disabled = true;
+    try {
+      prefs = await writingPrefs(api("settings/workbuddy-checkin", { on: !on }));
+      state.settings = prefs;
+      status(t(on ? "Daily check-in turned off" : "Daily check-in turned on; magpie checks in within a few minutes"), "ok");
+      renderQuotas();
+    } catch (err) {
+      auto.disabled = false;
+      status(err.message, "err");
+    }
+  };
+  row.append(auto);
+  // pressed now: shown while an account isn't in today and could be
+  const due = subs.filter((x) => x.checkins && !(x.checkin?.day === today && x.checkin.outcome !== "failed"));
+  if (due.length) {
+    const now = el("button", "text ci-now", t("Check in now"));
+    now.type = "button";
+    now.title = t("Press 签到 now for the accounts not checked in today");
+    now.onclick = async (e) => {
+      e.stopPropagation();
+      now.disabled = true;
+      now.classList.add("busy");
+      try {
+        const rs = await api("usage/workbuddy-checkin", {});
+        const bad = (rs || []).filter((x) => x.outcome === "failed").length;
+        status(bad ? t("Check-in failed for {n} account(s)", { n: bad }) : t("Checked in"), bad ? "err" : "ok");
+      } catch (err) {
+        status(err.message, "err");
+      }
+      loadQuotas();
+    };
+    row.append(now);
+  }
+  return row;
+}
+
+// wbToday is today as WorkBuddy's check-in counts it, a Beijing day
+function wbToday() {
+  return new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
 }
 
 // askReset: spending a Codex account's reset can't be taken
@@ -14345,7 +14435,7 @@ async function renderUpdate(r, u) {
 // wbCheckinLine is how an account's last WorkBuddy check-in went: today's
 // (a Beijing day) with the credits and the streak, an earlier one by its day.
 function wbCheckinLine(r) {
-  const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+  const today = wbToday();
   if (r.day !== today) {
     return r.outcome === "claimed" || r.outcome === "done" ? t("{user} checked in {day}", { user: r.user, day: r.day }) : "";
   }

@@ -597,6 +597,19 @@ body.window .field.solo { grid-column: auto; }
 .quota-resets .text { margin-left: auto; flex: none; font-size: 11px; padding: 2px 7px; }
 .subscription-card.several .quota-resets:not([hidden]) + .subscription-account { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
 .reset-ask .reset-idle { color: var(--amber); }
+/* a WorkBuddy account's daily check-in on its Usage card (#694) */
+.wb-checkin { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wb-checkin .ci-say { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.wb-checkin .ci-say > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-checkin .ci-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.wb-checkin .ci-dot.ok { background: var(--green); }
+.wb-checkin .ci-dot.bad { background: var(--red); }
+.wb-checkin .ci-dot.wait { background: var(--amber); }
+.wb-checkin[data-state="ok"] .ci-say { color: var(--fg-2); }
+.wb-checkin .text { flex: none; font-size: 11px; padding: 2px 7px; }
+.wb-checkin .ci-auto { margin-left: auto; }
+.subscription-card.several .wb-checkin { margin-bottom: 6px; }
+.wb-checkin .ci-auto.on { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
 .quota-balance { display: flex; align-items: baseline; gap: 6px; font-size: 10.5px; color: var(--muted); }
 .quota-windows + .quota-balance { margin-top: 9px; }
 /* "Every model" at the end of the account's line, above its families */
