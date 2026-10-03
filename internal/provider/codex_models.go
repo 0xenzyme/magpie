@@ -85,7 +85,7 @@ func codexVersion() string {
 		var c struct {
 			ClientVersion string `json:"client_version"`
 		}
-		if b, err := os.ReadFile(filepath.Join(codexCLIHome(), "models_cache.json")); err == nil && json.Unmarshal(b, &c) == nil {
+		if b, err := os.ReadFile(catalog.CodexModelsCache()); err == nil && json.Unmarshal(b, &c) == nil {
 			newer(c.ClientVersion)
 		}
 		if exe := codexExecutable(); exe != "" {
@@ -98,15 +98,6 @@ func codexVersion() string {
 		codexVersionCache.v, codexVersionCache.at = v, time.Now()
 	}
 	return newerVersion(codexVersionCache.v, codexSeen.get())
-}
-
-// codexCLIHome is where Codex CLI keeps its state: CODEX_HOME, else ~/.codex.
-func codexCLIHome() string {
-	if dir := os.Getenv("CODEX_HOME"); dir != "" {
-		return dir
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".codex")
 }
 
 // newerVersion is the later of two versions, a when b isn't one.
@@ -425,7 +416,10 @@ func CodexNativeWindow(restore bool) func(slug string) (n, most int, ok bool) {
 		}
 		for _, m := range live {
 			if m.ID == slug && m.Context > 0 {
-				return m.Context, max(m.MaxContext, m.Context), true
+				// a list without the max (saved before magpie kept
+				// it) leaves the cache's own; Window still raises it to
+				// the window when it's below
+				return m.Context, m.MaxContext, true
 			}
 		}
 		return 0, 0, false

@@ -112,8 +112,9 @@ func TestCodexNativeModelsTakeSetWindows(t *testing.T) {
 	if c, x := window(got["gpt-6.1-sol"]); c != 272000 || x != 872000 {
 		t.Errorf("cached gpt-6.1-sol %d/%d, want 272000/872000", c, x)
 	}
-	if c, x := window(got["gpt-5.5"]); c != 272000 || x != 272000 {
-		t.Errorf("cached gpt-5.5 %d/%d, want 272000/272000", c, x)
+	// the live list has no max for it: the cache's own stays
+	if c, x := window(got["gpt-5.5"]); c != 272000 || x != 400000 {
+		t.Errorf("cached gpt-5.5 %d/%d, want 272000/400000", c, x)
 	}
 }
 

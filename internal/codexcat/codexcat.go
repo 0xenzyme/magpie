@@ -164,8 +164,7 @@ func Entries(ms []catalog.Model, after int) []any {
 // CacheEntries is Codex's own models, as models_cache.json describes them
 // for the ChatGPT account it last asked with, by slug.
 func CacheEntries() map[string]map[string]any {
-	home, _ := os.UserHomeDir()
-	b, err := os.ReadFile(filepath.Join(home, ".codex", "models_cache.json"))
+	b, err := os.ReadFile(catalog.CodexModelsCache())
 	if err != nil {
 		return nil
 	}
