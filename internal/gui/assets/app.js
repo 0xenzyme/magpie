@@ -4,6 +4,8 @@ const $$ = (s) => document.querySelectorAll(s);
 const params = new URLSearchParams(location.search);
 const mode = params.get("mode") || "window";
 document.body.classList.add(mode);
+// The panel loads Wails for ExecJS readiness, but stays attached to the tray.
+if (mode === "panel") $("header.top").style.setProperty("--wails-draggable", "no-drag");
 // `magpie web`: the page in a browser tab, with no window of the app's
 // around it — it opens links itself, and what is the desktop's is left out
 const web = !!window.bootPrefs?.web;
@@ -26,7 +28,8 @@ if (/^Win/.test(navigator.platform)) document.documentElement.classList.add("win
 // Outside the app — a browser on the gateway's page, or on `magpie web` —
 // there is no runtime, and it isn't asked for (a 404 in the browser's
 // console, Jorben on Discord).
-const winRuntime = mode === "window" && !web ? import("/wails/runtime.js").catch(() => null) : Promise.resolve(null);
+// The panel also needs runtime readiness to drain Go's queued ExecJS calls.
+const winRuntime = !web ? import("/wails/runtime.js").catch(() => null) : Promise.resolve(null);
 if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
 // the saved language and theme from boot.js, so the first paint is in them
 if (window.bootPrefs) {
@@ -9032,6 +9035,7 @@ const tokensOf = (t) => t.input + t.output;
 function renderQuotas() {
   renderPanelQuota();
   const subscriptions = $("#subscriptionUsage");
+  const restoreFlash = keepQuotaFlash(subscriptions);
   subscriptions.replaceChildren();
   // the allowances' own heading, apart from the period's cost: used or
   // left turns their meters, and is only there when some card has one (a
@@ -9073,6 +9077,8 @@ function renderQuotas() {
     const pick = folded ? usageShown(subs) : null;
     const card = el("div", "subscription-card" + (first.user ? " several" : ""));
     card.dataset.key = first.provider;
+    card.dataset.provider = first.provider;
+    if (!first.user) card.dataset.card = first.provider;
     const head = el("div", "subscription-head");
     head.append(groups.length > 1 ? usageHandle(first, card) : icon(first.icon), el("b", "", first.name));
     if (!first.user && (first.plan || first.until)) head.append(planSpan(first));
@@ -9084,6 +9090,7 @@ function renderQuotas() {
       const [meters, every] = familyQuota(sub);
       if (sub.user) {
         const who = el("div", "subscription-account");
+        who.dataset.card = trayCardID(sub);
         const u = el("span", "user", sub.user);
         u.title = sub.user;
         who.append(u);
@@ -9123,6 +9130,8 @@ function renderQuotas() {
     if (subs.length > 1) card.append(usageMore(first.provider, subs.length - 1, folded, "text quota-more"));
     subscriptions.append(card);
   }
+  restoreFlash();
+  requestAnimationFrame(focusQuotaCard);
 }
 
 // A subscription with several accounts shows one of them, the others behind
@@ -9146,12 +9155,15 @@ function usageMore(provider, more, folded, cls) {
   b.type = "button";
   b.setAttribute("aria-expanded", String(!folded));
   b.onclick = () => {
-    if (folded) usageOpen.add(provider); else usageOpen.delete(provider);
-    try { localStorage.setItem("magpie.usageOpen", JSON.stringify([...usageOpen])); } catch {}
-    renderQuotas();
+    setUsageOpen(provider, folded);
     if (mode !== "panel") backToReader($("#view-usage"));
   };
   return b;
+}
+function setUsageOpen(provider, open) {
+  if (open) usageOpen.add(provider); else usageOpen.delete(provider);
+  try { localStorage.setItem("magpie.usageOpen", JSON.stringify([...usageOpen])); } catch {}
+  renderQuotas();
 }
 
 // The Usage page's cards in the order they were dragged to (settings
@@ -9514,6 +9526,80 @@ function setPanelTab(tab) {
   queueMicrotask(panelUseShown);
   fit();
 }
+// Scroll to a requested card, or resume its highlight after a redraw.
+function flashCard(card, target = card, elapsed = 0) {
+  if (target) {
+    // The native menu-bar click has no DOM event; permit this requested scroll.
+    readerScrolls(1000);
+    target.scrollIntoView({ block: "nearest", behavior: "instant" });
+  }
+  card.classList.remove("flash");
+  void card.offsetWidth; // restart even if this card is still highlighted
+  card.classList.add("flash");
+  const animation = card.getAnimations().find((a) => a.animationName === "flash");
+  if (animation) animation.currentTime = elapsed;
+  card.onanimationend = (e) => {
+    if (e.target !== card || e.animationName !== "flash") return;
+    card.classList.remove("flash");
+    card.onanimationend = null;
+  };
+}
+
+// A focus refresh rebuilds quota cards. Carry the active animation's time
+// to its replacement, preserving scroll position and the remaining duration.
+function keepQuotaFlash(box) {
+  const view = box.closest(".view"), scroll = view?.scrollTop;
+  const flashes = [...box.querySelectorAll(".subscription-card.flash, .pq-card.flash")].flatMap((card) => {
+    const animation = card.getAnimations().find((a) => a.animationName === "flash");
+    if (!animation) return [];
+    const selector = card.matches(".pq-card") ? `.pq-card[data-card="${CSS.escape(card.dataset.card)}"]`
+      : `.subscription-card[data-provider="${CSS.escape(card.dataset.provider)}"]`;
+    return [{ selector, elapsed: animation.currentTime || 0 }];
+  });
+  return () => {
+    for (const { selector, elapsed } of flashes) {
+      const card = box.querySelector(selector);
+      if (card) flashCard(card, null, elapsed);
+    }
+    if (flashes.length && view) {
+      view.scrollTop = scroll;
+      readerLeaves(view);
+    }
+  };
+}
+
+// Keep the request until quota data has produced the target's DOM node.
+function focusQuotaCard() {
+  if (!quotaFocus) return;
+  if (performance.now() > quotaFocusUntil) { quotaFocus = ""; return; }
+  const box = mode === "panel" ? $("#panelQuota") : $("#subscriptionUsage");
+  if (mode === "panel") setPanelTab("usage");
+  else if (view !== "usage" || usageTab !== "usage") return;
+  const id = CSS.escape(quotaFocus);
+  const target = box.querySelector(`[data-card="${id}"]`) || box.querySelector(`[data-provider="${id}"]`);
+  // The panel omits folded accounts; the main window renders them hidden.
+  const quota = quotas?.find((q) => trayCardID(q) === quotaFocus);
+  if (quota?.user && !usageOpen.has(quota.provider) && (!target || target.hidden)) {
+    setUsageOpen(quota.provider, true);
+    return; // the redraw queues focus once the account is visible
+  }
+  if (!target) {
+    if (quotas && !quotasLoading) quotaFocus = "";
+    return;
+  }
+  quotaFocus = "";
+  flashCard(target.closest(".subscription-card, .pq-card"), target);
+}
+
+// Go calls this when a menu-bar quota cell opens the panel.
+function panelQuotaFocus(id) {
+  if (mode !== "panel") return;
+  quotaFocus = id;
+  quotaFocusUntil = performance.now() + 5000;
+  setPanelTab("usage");
+  requestAnimationFrame(focusQuotaCard);
+}
+
 if (mode === "panel") {
   const tabs = $("#ptabs");
   tabs.hidden = false;
@@ -9738,8 +9824,9 @@ function renderPanelQuota() {
   }
   if (none && panelTab === "usage") setPanelTab("agents");
   box.hidden = none;
+  const restoreFlash = keepQuotaFlash(box);
   box.replaceChildren();
-  if (none) { fit(); return; }
+  if (none) { quotaFocus = ""; fit(); return; }
   if (!quotas) {
     for (let i = 0; i < 2; i++) {
       const card = el("div", "pq-card");
@@ -9795,6 +9882,7 @@ function renderPanelQuota() {
     const grid = el("div", "pq-bals");
     for (const q of bals) {
       const card = el("div", "pq-card bal");
+      card.dataset.card = trayCardID(q);
       card.title = [q.name, q.user].filter(Boolean).join(" · ");
       // whose balance, at a glance: the provider's logo before its name
       const who = el("span", "pq-sub pq-bn");
@@ -9827,8 +9915,10 @@ function renderPanelQuota() {
     g.append(grid);
     box.append(g);
   }
+  restoreFlash();
   panelAge();
   fit();
+  requestAnimationFrame(focusQuotaCard);
 }
 
 // asOfText: an allowance standing in for one that couldn't be read just
@@ -9848,6 +9938,7 @@ function shortWindow(name) {
 
 function panelQuotaCard(q) {
   const card = el("div", "pq-card");
+  card.dataset.card = trayCardID(q);
   card.append(el("span", "pq-user", q.user || q.name));
   card.title = [q.name, q.user, q.plan, q.until ? planTerm(q) : "", q.balance && t("Balance") + " " + q.balance].filter(Boolean).join(" · ");
   if (q.error) {
@@ -11188,6 +11279,8 @@ function renderLedger() {
 
 const USAGE_TABS = [["usage", "Overview"], ["requests", "Requests"], ["sessions", "Sessions"]];
 let usageTab = "usage";
+let quotaFocus = ""; // pending provider/account card requested by the menu bar
+let quotaFocusUntil = 0; // expire before a late quota response can move the reader
 try { const k = localStorage.getItem("magpie.usageTab"); if (USAGE_TABS.some(([id]) => id === k)) usageTab = k; } catch {}
 let sessions = null; // { sessions, terminal, dirs }
 let sessAgent = "all";
@@ -14057,7 +14150,8 @@ function savePrefs(body) {
 // (from a load, a timer, a helper that other clicks share) it is refused,
 // and whatever scroll follows is put back.
 let purposeUntil = 0, held = null;
-const readerScrolls = (ms) => { purposeUntil = Math.max(purposeUntil, performance.now() + ms); held = null; };
+// A new purposeful scroll supersedes any still-pending quota navigation.
+const readerScrolls = (ms) => { quotaFocus = ""; purposeUntil = Math.max(purposeUntil, performance.now() + ms); held = null; };
 function scrollOnPurpose(e, ms = 1000) {
   if (!e?.isTrusted || performance.now() - e.timeStamp > 1000) {
     console.warn("magpie: a scroll not asked for by the reader was refused");
@@ -14723,12 +14817,16 @@ if (mode === "window" && params.get("import")) {
 if (mode === "window" && params.get("view") === "providers" && params.get("edit")) editing = params.get("edit");
 // opened from the tray panel's Usage tab: on the Requests of one provider or agent
 if (mode === "window" && params.get("view") === "usage") {
-  if (params.get("tab") === "requests") usageTab = "requests";
+  // An explicit destination takes precedence over the remembered tab.
+  const tab = params.get("tab");
+  if (tab === "requests" || tab === "usage") usageTab = tab;
+  quotaFocus = usageTab === "usage" ? (params.get("card") || params.get("provider") || "") : "";
+  quotaFocusUntil = performance.now() + 5000;
   ledProvider = params.get("provider") || "";
   ledAgent = params.get("agent") || "";
   ledComputer = params.get("computer") || "";
   const u = new URL(location.href);
-  for (const k of ["tab", "provider", "agent", "computer"]) u.searchParams.delete(k);
+  for (const k of ["tab", "provider", "agent", "computer", "card"]) u.searchParams.delete(k);
   history.replaceState(null, "", u);
 }
 if (mode === "window" && ["providers", "gateway", "routing", "usage", "sessions", "library", "plugins", "settings"].includes(params.get("view"))) show(params.get("view"));

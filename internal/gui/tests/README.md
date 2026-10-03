@@ -449,6 +449,25 @@ Off posts `trayNoLogos: true`, a save of another setting keeps it, On posts it
 back; the row has no left-border stripe, no click moves the page, and there is
 no row with no card picked nor off a Mac; in English and Chinese.
 
+`tray-cell-click.test.cjs` checks menu-bar quota navigation in the panel
+and main window: selecting Allowances/Overview, scrolling to and highlighting
+the matching account or balance, and keeping a click pending while quotas
+load. It checks that the panel loads Wails so native ExecJS can run.
+A focus-triggered redraw preserves the remaining highlight animation in both
+panel and main window. It expands and remembers folded target accounts,
+disables panel-header dragging,
+and cancels navigation after five seconds or a purposeful user scroll.
+It runs in English and Chinese on Chromium and WebKit, with a mocked API. Run with
+`node --test internal/gui/tests/tray-cell-click.test.cjs`.
+
+`TestTrayCellClickReleasedPanel` (darwin, cgo, GUI) runs a separate AppKit
+process with an isolated config and a minimal page: a quota click recreates
+the released panel, queued ExecJS selects the account once Wails is ready,
+the next click closes it, and another release can be reopened and focused.
+It requires a macOS graphical session and does not start the magpie backend
+or create a status item. Run with
+`go test ./internal/gui -run '^TestTrayCellClickReleasedPanel$' -count=1`.
+
 `text-size.test.cjs` checks the Settings page's Text size row (100, 110,
 125 and 150%): a pick posts to /api/settings/text-size without scrolling
 the page, stays picked after a reload (boot.js carries it, and the page's

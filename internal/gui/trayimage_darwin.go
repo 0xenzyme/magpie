@@ -13,6 +13,7 @@ typedef struct {
 	int iconLen;
 	int mono;
 	int plain; // no logo: the rows alone, a thin line before
+	const char *id;
 	const char *letter;
 	const char *rows; // one or two, a newline between
 } mpTrayCell;
@@ -41,6 +42,7 @@ static NSArray *mpCells(mpTrayCell *cells, int n) {
 			if (im != nil && im.representations.count > 0) c[@"icon"] = im;
 			[im release];
 		}
+		c[@"id"] = [NSString stringWithUTF8String:cells[i].id ? cells[i].id : ""];
 		c[@"mono"] = @(cells[i].mono != 0);
 		c[@"plain"] = @(cells[i].plain != 0);
 		c[@"letter"] = [NSString stringWithUTF8String:cells[i].letter ? cells[i].letter : ""];
@@ -234,6 +236,40 @@ static NSImage *mpImage(NSArray *cells, NSImage *bird, CGFloat h) {
 	return im;
 }
 
+// mpStarts writes each cell's start in image points, following mpDraw's layout.
+// Plain cells start at their separator; others start at their logo.
+static void mpStarts(NSArray *cells, CGFloat h, CGFloat *out) {
+	CGFloat pos = h + mpBirdGap;
+	BOOL first = YES;
+	int i = 0;
+	for (NSDictionary *c in cells) {
+		if ([c[@"plain"] boolValue]) {
+			out[i] = first ? pos : pos + mpSepGap;
+			pos += mpLead(c, first);
+		} else {
+			pos += mpLead(c, first) - mpLogo - mpLogoGap;
+			out[i] = pos;
+			pos += mpLogo + mpLogoGap;
+		}
+		pos += mpColumn(c);
+		i++;
+		first = NO;
+	}
+}
+
+// mpCellAt returns the cell at x, including its trailing gap.
+// The bird and points outside the image return -1.
+static int mpCellAt(NSArray *cells, CGFloat h, CGFloat x, CGFloat w) {
+	if (cells.count == 0 || x < h + mpBirdGap || x >= w) return -1;
+	int n = (int)cells.count;
+	CGFloat starts[n];
+	mpStarts(cells, h, starts);
+	for (int i = 0; i < n; i++) {
+		if (x < (i + 1 < n ? starts[i + 1] : w)) return i;
+	}
+	return -1;
+}
+
 static NSStatusBarButton *mpFind(NSView *v) {
 	if ([v isKindOfClass:[NSStatusBarButton class]]) return (NSStatusBarButton *)v;
 	for (NSView *s in v.subviews) {
@@ -256,12 +292,29 @@ static NSStatusBarButton *mpButton(void) {
 static NSArray *mpShown;
 static NSImage *mpBird;
 
+// mpCellClicked copies the drawn card's identity to Go before it can be replaced.
+extern void mpCellClicked(char *id);
+
+static CGFloat mpHitW = 0;
+
+// Used by the single status-item monitor and native tests. Modified clicks
+// retain the button's normal action; an unmodified quota click uses its ID.
+static BOOL mpClickCell(NSArray *cells, CGFloat h, CGFloat x, CGFloat w, NSEventModifierFlags flags) {
+	if (flags & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption | NSEventModifierFlagShift)) return NO;
+	int i = mpCellAt(cells, h, x, w);
+	if (i < 0) return NO;
+	mpCellClicked((char *)[cells[i][@"id"] UTF8String]);
+	return YES;
+}
+
 static void mpApply(void) {
 	NSStatusBarButton *b = mpButton();
 	if (b == nil || mpShown == nil) return;
 	b.title = @"";
-	b.image = mpImage(mpShown, mpBird, [[NSStatusBar systemStatusBar] thickness]);
+	NSImage *im = mpImage(mpShown, mpBird, [[NSStatusBar systemStatusBar] thickness]);
+	b.image = im;
 	b.imagePosition = NSImageOnly;
+	mpHitW = im.size.width;
 }
 
 static NSImage *mpBirdImage(const void *bird, int len) {
@@ -317,6 +370,7 @@ static void mpHide(void) {
 	dispatch_async(dispatch_get_main_queue(), ^{
 		[mpShown release];
 		mpShown = nil;
+		mpHitW = 0; // every click is the item's whole one again
 	});
 }
 
@@ -338,6 +392,12 @@ static void mpOwnClicks(void) {
 			[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^NSEvent *(NSEvent *e) {
 				NSStatusBarButton *b = mpButton();
 				if (b == nil || e.window != b.window) return e;
+				NSPoint p = [b convertPoint:e.locationInWindow fromView:nil];
+				if (!NSPointInRect(p, b.bounds)) return e;
+				// Route quota clicks before the generic action, within this
+				// one monitor; local monitor ordering is not guaranteed.
+				CGFloat x = p.x - (b.bounds.size.width - mpHitW) / 2;
+				if (mpClickCell(mpShown, [[NSStatusBar systemStatusBar] thickness], x, mpHitW, e.modifierFlags)) return nil;
 				[NSApp sendAction:b.action to:b.target from:b];
 				return nil;
 			}];
@@ -383,6 +443,33 @@ static void *mpPNG(mpTrayCell *cells, int n, const void *bird, int len, CGFloat 
 	}
 	return out;
 }
+
+// Native hit-testing helpers for Go tests, using the actual image layout.
+static int mpCellAtCells(mpTrayCell *cells, int n, CGFloat h, CGFloat x) {
+	@autoreleasepool {
+		NSArray *cs = mpCells(cells, n);
+		return mpCellAt(cs, h, x, mpWidth(cs, h));
+	}
+}
+
+static CGFloat mpCellStartAt(mpTrayCell *cells, int n, CGFloat h, int i) {
+	@autoreleasepool {
+		NSArray *cs = mpCells(cells, n);
+		if (i < 0 || i >= n) return -1;
+		CGFloat starts[n];
+		mpStarts(cs, h, starts);
+		return starts[i];
+	}
+}
+
+// Exercise the same identity lookup and C-to-Go callback without a live status item.
+static int mpClickCellsAt(mpTrayCell *cells, int n, CGFloat h, CGFloat x, unsigned long flags) {
+	@autoreleasepool {
+		NSArray *cs = mpCells(cells, n);
+		return mpClickCell(cs, h, x, mpWidth(cs, h), flags);
+	}
+}
+
 */
 import "C"
 
@@ -406,8 +493,8 @@ func withCells(cells []trayCell, f func(*C.mpTrayCell, C.int)) {
 	cs := (*[1 << 16]C.mpTrayCell)(C.malloc(C.size_t(len(cells)) * C.size_t(unsafe.Sizeof(C.mpTrayCell{}))))[:len(cells):len(cells)]
 	var owned []unsafe.Pointer
 	for i, c := range cells {
-		cs[i] = C.mpTrayCell{letter: C.CString(c.Letter), rows: C.CString(strings.Join(c.Rows, "\n"))}
-		owned = append(owned, unsafe.Pointer(cs[i].letter), unsafe.Pointer(cs[i].rows))
+		cs[i] = C.mpTrayCell{id: C.CString(c.ID), letter: C.CString(c.Letter), rows: C.CString(strings.Join(c.Rows, "\n"))}
+		owned = append(owned, unsafe.Pointer(cs[i].id), unsafe.Pointer(cs[i].letter), unsafe.Pointer(cs[i].rows))
 		if len(c.Icon) > 0 {
 			cs[i].icon, cs[i].iconLen = C.CBytes(c.Icon), C.int(len(c.Icon))
 			owned = append(owned, cs[i].icon)
@@ -485,4 +572,32 @@ func cBool(b bool) C.int {
 		return 1
 	}
 	return 0
+}
+
+// These native test wrappers stay here because Go does not support cgo
+// imports in _test.go files. They do not install monitors or create windows.
+// trayImageCellAt tests the native hit map; -1 means no quota cell.
+func trayImageCellAt(cells []trayCell, h, x float64) int {
+	at := -1
+	withCells(cells, func(cs *C.mpTrayCell, count C.int) {
+		at = int(C.mpCellAtCells(cs, count, C.CGFloat(h), C.CGFloat(x)))
+	})
+	return at
+}
+
+// trayImageCellStart returns cell i's start in image points, or -1 if absent.
+func trayImageCellStart(cells []trayCell, h float64, i int) float64 {
+	s := -1.0
+	withCells(cells, func(cs *C.mpTrayCell, count C.int) {
+		s = float64(C.mpCellStartAt(cs, count, C.CGFloat(h), C.int(i)))
+	})
+	return s
+}
+
+func trayImageClickAt(cells []trayCell, h, x float64, modifiers uint64) bool {
+	hit := false
+	withCells(cells, func(cs *C.mpTrayCell, count C.int) {
+		hit = C.mpClickCellsAt(cs, count, C.CGFloat(h), C.CGFloat(x), C.ulong(modifiers)) != 0
+	})
+	return hit
 }

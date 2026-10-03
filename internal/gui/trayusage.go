@@ -3,6 +3,7 @@ package gui
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
@@ -200,6 +201,7 @@ func trayInUseCard(cards []provider.SubscriptionQuota, pid string) (provider.Sub
 // label's parts stacked, the shortest window over the longer ("42%" over
 // "18%"), or its balance alone.
 type trayCell struct {
+	ID     string // stable provider/account identity, captured with the drawn cell
 	Icon   []byte // the logo as the Usage page has it (SVG or PNG); nil for none
 	Mono   bool   // a black glyph, drawn in the menu bar's text colour
 	Letter string // drawn in its place when there is no logo, or it can't be read
@@ -212,15 +214,14 @@ type trayCell struct {
 func trayPlain(cells []trayCell) []trayCell {
 	out := make([]trayCell, len(cells))
 	for i, c := range cells {
-		out[i] = trayCell{Plain: true, Rows: c.Rows}
+		out[i] = trayCell{ID: c.ID, Plain: true, Rows: c.Rows}
 	}
 	return out
 }
 
 // trayUsageView is what the tray shows for the cards: a cell for each
-// that has a label; the labels as one line of text, " | " between cards,
-// for a tray that shows text and not the cells; and the tooltip spelling
-// each out.
+// that has a label, with its stable identity for clicks; labels joined by
+// " | " for a tray that shows text; and a tooltip spelling each out.
 func trayUsageView(cards []provider.SubscriptionQuota, now time.Time, left bool) (cells []trayCell, label, tip string) {
 	var labels, tips []string
 	for _, q := range cards {
@@ -232,7 +233,7 @@ func trayUsageView(cards []provider.SubscriptionQuota, now time.Time, left bool)
 			continue
 		}
 		labels = append(labels, l)
-		c := trayCell{Rows: strings.Split(l, " · ")}
+		c := trayCell{ID: trayCardID(q), Rows: strings.Split(l, " · ")}
 		for i, r := range c.Rows {
 			c.Rows[i] = trayRow(r)
 		}
@@ -354,3 +355,13 @@ func svgNumber(d string, i int) int {
 // onTrayUsage brings the tray's text up to date at once, when the Settings
 // page changes which card it shows; set by the process that has the tray.
 var onTrayUsage func()
+
+// onTrayCellClick receives the stable card ID from the native image.
+// Set by the tray process; it must schedule window work without blocking.
+var onTrayCellClick func(id string)
+
+// panelQuotaJS safely quotes the card ID for the panel's focus handler.
+func panelQuotaJS(card string) string {
+	id, _ := json.Marshal(card) // quoted and escaped: a JSON string is a JS one
+	return "panelQuotaFocus(" + string(id) + ")"
+}

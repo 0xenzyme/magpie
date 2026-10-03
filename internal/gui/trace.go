@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/yetone/magpie/internal/gateway"
@@ -67,8 +68,9 @@ func pricedRoutes(routes []gateway.Route) []routeJSON {
 // mainView is the tab the window is asked to open on, as the page's view
 // parameter: the Routing page on one request (req, its id) when the tray
 // panel's Routing tab asks for it, or the Usage page's Requests on one
-// provider or agent when its Usage tab does. Anything but an id, or a name
-// of the kind a provider or an agent has, is dropped.
+// provider or agent when its Usage tab does, its Overview (the allowances)
+// when a menu-bar cell's click does. Anything but an id, or a name of the
+// kind a provider or an agent has, is dropped.
 func mainView(q url.Values) string {
 	view := q.Get("view")
 	switch view {
@@ -77,8 +79,11 @@ func mainView(q url.Values) string {
 			view += "&req=" + strconv.FormatInt(id, 10)
 		}
 	case "usage":
-		if q.Get("tab") == "requests" {
-			view += "&tab=requests"
+		if tab := q.Get("tab"); tab == "requests" || tab == "usage" {
+			view += "&tab=" + tab
+		}
+		if card := q.Get("card"); q.Get("tab") == "usage" && card != "" {
+			view += "&card=" + url.QueryEscape(card)
 		}
 		for _, k := range []string{"provider", "agent"} {
 			if v := q.Get(k); mainName.MatchString(v) {
@@ -105,6 +110,20 @@ func mainURL(view, query string) string { return "/?view=" + view + query }
 // argView is a tab named on the command line (`magpie gui settings`, a
 // restart to update) as ShowMain takes it: a name, never parameters.
 func argView(s string) string { return url.QueryEscape(s) }
+
+// quotaView opens the Usage overview at a provider/account card.
+// Invalid provider names fall back to the overview without a target.
+func quotaView(id string) string {
+	provider, _, hasAccount := strings.Cut(id, "|")
+	view := "usage&tab=usage"
+	if mainName.MatchString(provider) {
+		view += "&provider=" + url.QueryEscape(provider)
+		if hasAccount {
+			view += "&card=" + url.QueryEscape(id)
+		}
+	}
+	return view
+}
 
 // traceRoutes serves the routing trace for the Gateway view to play: it
 // waits up to 25 s for something to change after the seq it is given, so
