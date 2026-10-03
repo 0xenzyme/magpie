@@ -37,6 +37,18 @@ func SetRouting(id, routing string) error {
 	return Save(*p)
 }
 
+// SetSink sends a provider's keys or accounts rate limited with quota
+// left to the back of its order, or lets them keep their place
+// (Provider.Sink).
+func SetSink(id string, sink bool) error {
+	p, err := Find(id)
+	if err != nil {
+		return err
+	}
+	p.Sink = sink
+	return Save(*p)
+}
+
 // SetKeepLogin keeps Codex or Claude Code signed in to the account the
 // user made first (Provider.KeepLogin), or lets magpie move it on again.
 // Either way it is no longer kept on one of the user's choosing

@@ -92,7 +92,8 @@ type GroupRef struct {
 	Routing  string   `json:"routing"`
 	Affinity string   `json:"affinity"`
 	Auto     bool     `json:"auto,omitempty"`
-	Members  []string `json:"members"` // those ready, as provider/model[:effort fixed on it]
+	Sink     bool     `json:"sink,omitempty"` // provider.Group.Sink, as it applies
+	Members  []string `json:"members"`        // those ready, as provider/model[:effort fixed on it]
 	// Subs: the groups in the group, at any depth, outermost first
 	Subs []SubGroup `json:"subs,omitempty"`
 	// Via: for each of Members, the groups in the group it is of, as
@@ -120,7 +121,7 @@ type NestedRule struct {
 
 // groupRef is the trace's g, with its models ms.
 func groupRef(g provider.Group, ms []provider.Member) *GroupRef {
-	ref := &GroupRef{ID: g.ID, Name: g.Name, Routing: g.Routing, Affinity: g.Affinity, Auto: g.Auto}
+	ref := &GroupRef{ID: g.ID, Name: g.Name, Routing: g.Routing, Affinity: g.Affinity, Auto: g.Auto, Sink: sinks(g.Sink, g.Routing)}
 	seen := map[string]bool{}
 	for _, m := range ms {
 		ref.Members = append(ref.Members, provider.WithMemberEffort(m.Provider.ID+"/"+m.Model, m.Effort))
@@ -190,6 +191,10 @@ type Weighed struct {
 	// Via: the groups in the group it is of, outermost first, when it is
 	// of a group in the group asked for
 	Via []string `json:"via,omitempty"`
+	// Sunk: when it was rate limited with quota left, sending it to the
+	// back of an order that sinks (sink.go); nil when it didn't, or the
+	// order doesn't sink
+	Sunk *time.Time `json:"sunk,omitempty"`
 }
 
 // Try is one candidate trying the request.
@@ -275,6 +280,9 @@ func weighed(c candidate, p provider.Provider, wg weighing, fallback bool, from 
 	}
 	if wg.tokens != nil {
 		w.Tokens = wg.tokens[c.rest]
+	}
+	if sinks(p.Sink, p.Routing) {
+		markSunk(&w, c)
 	}
 	return w
 }

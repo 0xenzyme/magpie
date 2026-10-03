@@ -7003,17 +7003,27 @@ const STAYS = [
   ["turn", "Within a turn", "A conversation stays put within a turn, while the agent sends tool results back; when you speak again, routing decides afresh."],
   ["off", "Off", "Every request is routed afresh, whoever answered its conversation before."],
 ];
+// what one rate limited while it still has quota does then (provider.Sink,
+// 01huadalang): keeps its place, back first once its rest ends, or goes to
+// the back of the order so the load goes round — as on the Routing page
+// (routing.js SINK_OPTS)
+const SINKS = [
+  [false, "Keeps its place", "One rate limited while it still has quota rests as long as the vendor asks, then takes its place in the order again."],
+  [true, "Goes to the back", "One rate limited (429) while it still has quota goes to the back of the order, behind every one not rate limited since, and comes round again once those ahead of it are rate limited in turn — so the load goes round rather than back to the first each time. Out of quota, it rests as usual. Kept until magpie restarts."],
+];
 // routingOfDraft: what the editor's Save sends of them — only what was
 // picked and differs from what is saved
 function routingOfDraft(p) {
   const out = {};
   if (draft?.routing !== undefined && draft.routing !== (p.routing || "")) out.routing = draft.routing;
   if (draft?.affinity !== undefined && draft.affinity !== (p.affinity || "")) out.affinity = draft.affinity;
+  if (draft?.sink !== undefined && draft.sink !== !!p.sink) out.sink = draft.sink;
   return out;
 }
 function renderRouting(p) {
   const routingNow = () => draft.routing ?? (p.routing || "");
   const affinityNow = () => draft.affinity ?? (p.affinity || "");
+  const sinkNow = () => draft.sink ?? !!p.sink;
   // what Codex or Claude Code sends past magpie goes to the account it is
   // signed in to, which magpie moves on once Smart would count it spent
   // and back once the first has room (provider.KeepOnAnAccountWithRoom,
@@ -7039,12 +7049,25 @@ function renderRouting(p) {
     const cur = ROUTINGS.find(([id]) => id === routingNow()) || ROUTINGS[0];
     rHint.textContent = t(cur[2]) + own(cur[0]);
     rUnsaved.hidden = routingNow() === (p.routing || "");
+    // in turn goes round already
+    kLabel.hidden = kWrap.hidden = routingNow() === "rotate";
   };
   const rPick = segs(ROUTINGS.map(([id, name]) => [id, t(name)]), routingNow(), (routing) => { draft.routing = routing; drawRouting(); });
   const rRow = el("div", "route-pick");
   rRow.append(rPick, rUnsaved);
   const rWrap = el("div");
   rWrap.append(rRow, rHint);
+  const kHint = el("div", "hint"), kUnsaved = unsaved();
+  const drawSink = () => {
+    kHint.textContent = t(SINKS[sinkNow() ? 1 : 0][2]);
+    kUnsaved.hidden = sinkNow() === !!p.sink;
+  };
+  const kPick = segs(SINKS.map(([on, name]) => [on ? "sink" : "", t(name)]), sinkNow() ? "sink" : "", (v) => { draft.sink = v === "sink"; drawSink(); });
+  kPick.classList.add("sink-pick");
+  const kRow = el("div", "route-pick");
+  kRow.append(kPick, kUnsaved);
+  const kWrap = el("div", "sink-wrap"), kLabel = el("label", "", t("Rate limited"));
+  kWrap.append(kRow, kHint);
   const sHint = el("div", "hint"), sUnsaved = unsaved();
   const drawStays = () => {
     const cur = STAYS.find(([id]) => id === affinityNow()) || STAYS[0];
@@ -7057,8 +7080,9 @@ function renderRouting(p) {
   const sWrap = el("div");
   sWrap.append(sRow, sHint);
   drawRouting();
+  drawSink();
   drawStays();
-  return [el("label", "", t("Routing")), rWrap, el("label", "", t("Stays")), sWrap];
+  return [el("label", "", t("Routing")), rWrap, kLabel, kWrap, el("label", "", t("Stays")), sWrap];
 }
 
 // renderFallback: where requests go when this provider can't take them —

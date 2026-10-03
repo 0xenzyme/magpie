@@ -101,6 +101,9 @@ type providerJSON struct {
 	Fallback []string `json:"fallback"` // where requests go when this one can't take them
 	Routing  string   `json:"routing"`  // how requests spread over its keys or accounts
 	Affinity string   `json:"affinity"` // how long a conversation stays with who answered it
+	// Sink: a key or account rate limited with quota left goes to the
+	// back of the order (provider.Provider.Sink)
+	Sink bool `json:"sink,omitempty"`
 	// KeepLogin: magpie keeps Codex or Claude Code signed in to the first
 	// account rather than moving it on when that runs low (#524)
 	KeepLogin bool `json:"keepLogin,omitempty"`
@@ -350,7 +353,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		Catalog: p.Catalog, Website: p.Website, KeysURL: p.KeysURL,
 		Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, Headers: p.Headers, Searches: p.Searches, BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, ModelsURL: p.ModelsURL,
 		Ready: p.Ready(), Chosen: p.Models, Models: []modelJSON{}, Agents: []providerAgent{},
-		Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
+		Fallback: p.Fallback, Routing: p.Routing, Sink: p.Sink, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
 		MaxConcurrency: p.MaxConcurrency, PluginConcurrency: p.PluginConcurrency(),
 	}
 	if out.Fallback == nil {
@@ -725,6 +728,10 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// sent it.
 			Routing  *string `json:"routing"`
 			Affinity *string `json:"affinity"`
+			// Sink, for sink and save: whether one rate limited with
+			// quota left goes to the back (provider.Provider.Sink); a
+			// save that leaves it out keeps it
+			Sink *bool `json:"sink"`
 			// Test, for test: models to send a request each, in place of
 			// one per endpoint
 			Test []string `json:"test"`
@@ -753,6 +760,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		}
 		if req.Affinity != nil {
 			in.Affinity = *req.Affinity
+		}
+		if req.Sink != nil {
+			in.Sink = *req.Sink
 		}
 		var moved []agent.Move
 		switch r.PathValue("action") {
@@ -898,6 +908,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 					if req.Affinity == nil {
 						in.Affinity = old.Affinity
 					}
+					if req.Sink == nil {
+						in.Sink = old.Sink
+					}
 					in.KeepLogin = old.KeepLogin // set on its own, with keeplogin
 					in.KeepLoginAs = old.KeepLoginAs
 					in.Off = old.Off // and this with off and on
@@ -1013,6 +1026,11 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			agent.SyncCatalog()
 		case "affinity":
 			if err := provider.SetAffinity(in.ID, in.Affinity); err != nil {
+				fail(rw, err)
+				return
+			}
+		case "sink":
+			if err := provider.SetSink(in.ID, in.Sink); err != nil {
 				fail(rw, err)
 				return
 			}

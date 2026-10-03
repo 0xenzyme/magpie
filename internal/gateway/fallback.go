@@ -315,6 +315,9 @@ func (s *Server) planGroup(g provider.Group, ms []provider.Member, from provider
 	var asides []candidate
 	var wAsides []Weighed
 	out := planLevel(g, ms, 0, from, &pl, &asides, &wAsides)
+	if sinks(g.Sink, g.Routing) {
+		out, pl.order = sinkPlanned(out, pl.order)
+	}
 	out, pl.order = append(out, asides...), append(pl.order, wAsides...)
 	if len(out) == 0 {
 		return nil, pl
@@ -412,6 +415,7 @@ func planLevel(g provider.Group, ms []provider.Member, depth int, from provider.
 			}
 			w := weighed(c, u.m.Provider, wg, false, from)
 			w.Routing, w.Via = g.Routing, u.m.Groups()
+			w.Sunk = nil // weighed as the group's, whose own Sink tells
 			w.Turn = i == 0 && g.Routing == provider.Rotate && len(weighedHeads) > 1
 			pl.order = append(pl.order, w)
 			out = append(out, c)

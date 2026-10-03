@@ -85,6 +85,14 @@ type Provider struct {
 	// failing is passed over for as long as that lasts.
 	Routing string `json:"routing,omitempty"`
 
+	// Sink sends a key or account that a 429 rate limited while it still
+	// had quota to the back of the order Routing gives (01huadalang): it
+	// is tried again only after every one not rate limited since — so the
+	// load goes round, rather than back to the first each time its rest
+	// ends. Off, the default, it keeps its place. Not for "rotate", which
+	// goes round already. See gateway.sink.
+	Sink bool `json:"sink,omitempty"`
+
 	// Affinity is how long a conversation stays with the key or account
 	// that answered it, so the vendor's prompt cache it filled is read
 	// again rather than lost (see Affinities): "" auto, "session",
@@ -318,6 +326,7 @@ func All() []Provider {
 		}
 		pk := picks[a.ID]
 		a.Models, a.Unlisted, a.Off, a.Fallback, a.Routing, a.Affinity, a.KeepLogin, a.KeepLoginAs, a.Contexts, a.Family = pk.Models, pk.Unlisted, pk.Off, pk.Fallback, pk.Routing, pk.Affinity, pk.KeepLogin, pk.KeepLoginAs, pk.Contexts, pk.Family
+		a.Sink = pk.Sink
 		a.Proxy, a.AccountProxies, a.AccountModels = pk.Proxy, pk.AccountProxies, pk.AccountModels
 		a.MaxConcurrency = pk.MaxConcurrency
 		if a.ID == "cursor" { // picked before its efforts were one model
@@ -421,7 +430,7 @@ func Save(p Provider) error {
 		if p.ID == "kiro" {
 			key = p.Key
 		}
-		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, Contexts: p.Contexts, Family: p.Family, Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, MaxConcurrency: p.MaxConcurrency, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID), Tucked: tuckedAccount(p.ID)}
+		p = Provider{ID: p.ID, Key: key, Models: p.Models, Unlisted: p.Unlisted, Off: p.Off, Fallback: p.Fallback, Routing: p.Routing, Sink: p.Sink, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, Contexts: p.Contexts, Family: p.Family, Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, MaxConcurrency: p.MaxConcurrency, Hidden: hiddenAccount(p.ID), Quiet: quietAccount(p.ID), Tucked: tuckedAccount(p.ID)}
 	} else {
 		p.AccountProxies = nil // a provider of a key has no accounts to proxy apart
 		if subscriptionID(p.ID) && !stored(p.ID) {
@@ -506,7 +515,7 @@ func AddCopy(p Provider, from string) (string, error) {
 	if p.Key == "" {
 		p.Key, p.KeyName, p.KeyProtocol = src.Key, src.KeyName, src.KeyProtocol
 		p.Keys = slices.Clone(src.Keys)
-		p.Routing, p.Affinity = src.Routing, src.Affinity
+		p.Routing, p.Sink, p.Affinity = src.Routing, src.Sink, src.Affinity
 	}
 	if p.BalanceToken == "" {
 		p.BalanceToken = src.BalanceToken

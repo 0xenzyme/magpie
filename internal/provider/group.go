@@ -103,6 +103,10 @@ type Group struct {
 	Members  []string `json:"members"`            // "provider/model[:effort]" or "group/<id>", in order (see MemberEffort)
 	Routing  string   `json:"routing,omitempty"`  // as Provider.Routing, over all the members' keys and accounts; or Manual
 	Affinity string   `json:"affinity,omitempty"` // as Provider.Affinity
+	// Sink is Provider.Sink over the group's members' accounts and keys
+	// together: one rate limited with quota left goes behind every other
+	// member's. Not for "rotate" or Manual.
+	Sink bool `json:"sink,omitempty"`
 	// Off are the members switched off: kept where they are in the
 	// order, with their rules, but sent nothing until switched on again,
 	// so trying a group without one doesn't mean taking it out.

@@ -338,6 +338,10 @@ func (s *Server) restAfterMarked(c candidate, status int, header http.Header, bo
 		d = min(d, longestQuota)
 	case failRate:
 		d, r.By, r.Failures = s.rateRest(c, header, body, sharedPool, now)
+		// rate limited with quota left: to the back, where the order sinks
+		if c.full(now).IsZero() && !(c.isOpenRouterFree() && sharedPool) {
+			sink(c.restKey(), now)
+		}
 	case failVerify:
 		d, r.By = verifyRest, "verify"
 		// the error as the agent was given it, and the link in it
@@ -567,8 +571,18 @@ func learns(c candidate, lefts map[allowanceKey]left) bool {
 }
 
 // weigh orders one provider's candidates as its routing says, and tells
-// what it went by.
+// what it went by: with Sink on, those rate limited with quota left behind
+// the others (sink.go).
 func weigh(p provider.Provider, cs []candidate, model string, from provider.Protocol) ([]candidate, weighing) {
+	cs, wg := weighRouted(p, cs, model, from)
+	if sinks(p.Sink, p.Routing) {
+		cs = sinkLast(cs)
+	}
+	return cs, wg
+}
+
+// weighRouted is weigh by the routing alone.
+func weighRouted(p provider.Provider, cs []candidate, model string, from provider.Protocol) ([]candidate, weighing) {
 	var wg weighing
 	if len(cs) < 2 {
 		return cs, wg
