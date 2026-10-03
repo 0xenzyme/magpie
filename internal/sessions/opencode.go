@@ -82,7 +82,12 @@ type ocMessage struct {
 	// ZCode's newer messages say modelId, which the key matches too (the
 	// decoder takes a key in any case when none is spelt as it is)
 	ModelID string `json:"modelID"`
-	Time    struct {
+	// the provider the reply came from: magpie's gateway is "magpie"
+	ProviderID string `json:"providerID,omitempty"`
+	// what ended the reply, when something did: {name, data {message}}, or
+	// in OpenCode 2 {type, message}
+	Error json.RawMessage `json:"error,omitempty"`
+	Time  struct {
 		Created   int64 `json:"created"`
 		Completed int64 `json:"completed"`
 	} `json:"time"`
@@ -190,11 +195,17 @@ func openCodeDBFiles(agent, path string) []file {
 	if db == nil {
 		return nil
 	}
+	return openCodeDBFilesIn(agent, path, db, "COUNT(m.id)")
+}
+
+// openCodeDBFilesIn is openCodeDBFiles on a database already open, a
+// session's size what the SQL size makes of its messages m.
+func openCodeDBFilesIn(agent, path string, db *sql.DB, size string) []file {
 	var store ocStore = ocDB{db}
 	if agent == "zcode" {
 		store = zcDB{ocDB{db}}
 	}
-	const q = `SELECT s.id, COALESCE(s.parent_id, ''), s.time_updated, COUNT(m.id), COALESCE(MAX(m.time_updated), 0)
+	q := `SELECT s.id, COALESCE(s.parent_id, ''), s.time_updated, ` + size + `, COALESCE(MAX(m.time_updated), 0)
 		FROM %s s LEFT JOIN %s m ON m.session_id = s.id %s GROUP BY s.id`
 	parent := map[string]string{}
 	old := fmt.Sprintf(q, "session", "message", "")
@@ -305,7 +316,7 @@ func (s ocV2DB) messages(sid string) [][]byte {
 	}
 	defer rows.Close()
 	var out [][]byte
-	last := ""
+	last, lastProvider := "", ""
 	for rows.Next() {
 		var id, typ string
 		var b []byte
@@ -315,21 +326,22 @@ func (s ocV2DB) messages(sid string) [][]byte {
 		var m ocMessage
 		var v struct {
 			Model *struct {
-				ID string `json:"id"`
+				ID         string `json:"id"`
+				ProviderID string `json:"providerID"`
 			} `json:"model"`
 		}
 		if json.Unmarshal(b, &m) != nil || json.Unmarshal(b, &v) != nil {
 			continue
 		}
-		m.ID, m.Role, m.ModelID = id, "assistant", last
+		m.ID, m.Role, m.ModelID, m.ProviderID = id, "assistant", last, lastProvider
 		if v.Model != nil && v.Model.ID != "" {
-			m.ModelID = v.Model.ID
+			m.ModelID, m.ProviderID = v.Model.ID, v.Model.ProviderID
 		}
 		switch typ {
 		case "user":
-			m.Role, m.ModelID, m.Tokens = "user", "", nil
+			m.Role, m.ModelID, m.ProviderID, m.Tokens = "user", "", "", nil
 		case "assistant":
-			last = m.ModelID
+			last, lastProvider = m.ModelID, m.ProviderID
 		}
 		if o, err := json.Marshal(m); err == nil {
 			out = append(out, o)

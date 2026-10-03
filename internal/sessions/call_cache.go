@@ -43,6 +43,7 @@ func resetCalls() {
 	callCounts = map[string]int{}
 	callRoot = ""
 	callGeneration++
+	resetOCCalls()
 }
 
 func pruneCalls(files []file) {
@@ -148,6 +149,23 @@ func readCalls(f file) *callFile {
 		}
 		callsMu.Unlock()
 		return old
+	}
+	if f.agent == "opencode" {
+		// rows, not lines: a session that changed is read again whole
+		st, ok := readOpenCodeCalls(f)
+		if !ok && old != nil {
+			return old // not readable now: what was read before
+		}
+		if ok {
+			st.Size, st.Mod = f.size, f.mod.UnixNano()
+			writeCalls(st, 0, false)
+		}
+		callsMu.Lock()
+		if ok && generation == callGeneration {
+			keepCalls(f.path, st)
+		}
+		callsMu.Unlock()
+		return st
 	}
 	st := prepareCalls(f, old)
 	continued := old != nil && st.Off == old.Off && st.Off > 0
