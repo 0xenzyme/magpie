@@ -596,6 +596,61 @@ func retryable(status int, body []byte) bool {
 	return false
 }
 
+// unsaidMargin is how far past a model's window a request's estimate
+// must go to be taken as too long for it: estimate counts a token as four
+// bytes, which most text runs under (Devin counted 173,954 tokens of one
+// estimated at 151,851), so one past it by a fifth hardly fits.
+const unsaidMargin = 1.2
+
+// tooLongUnsaid says a failure that doesn't say why was the request being too
+// long for the model, as some vendors put it: Devin's 502 "capacity
+// issues", WorkBuddy's 400 "Invalid request parameters", Qoder's 400
+// "Error in upstream response" — each for a conversation well past the
+// model's window, and answered at a size it holds. Retried, or asked of
+// another account of the model, it fails the same, and the agent, told it
+// as a vendor's error, never compacts. The message it is told instead
+// says the prompt is too long. Not for a rate limit, an account's
+// trouble, a model it doesn't serve, or one already saying it overflowed.
+func tooLongUnsaid(p provider.Provider, model string, tokens, status int, body []byte) (string, bool) {
+	switch status {
+	case 400, 413, 422, 500, 502, 503, 504:
+	default:
+		return "", false
+	}
+	if overflowed(status, body) || failure(status, body) != failOther || quotaWords.Match(body) ||
+		unservedWords.Match(body) || refusedWords.Match(body) || provider.EdgeBlocked(body) {
+		return "", false
+	}
+	window := windowOf(p, model)
+	if window <= 0 || float64(tokens) < float64(window)*unsaidMargin {
+		return "", false
+	}
+	msg := fmt.Sprintf("prompt is too long: about %d tokens, more than %s's context window of %d", tokens, model, window)
+	said := strings.TrimSpace(vendorMessage(body))
+	if len(said) > 200 {
+		said = said[:200] + "…"
+	}
+	// the vendor's words, unless they'd read as a limit of another kind
+	if full := fmt.Sprintf("%s (%s answered %d: %s)", msg, p.Name, status, said); said != "" && tooLong(400, full) {
+		return full, true
+	}
+	return fmt.Sprintf("%s (%s answered %d)", msg, p.Name, status), true
+}
+
+// windowOf is the tokens a provider's model takes, where known: the
+// user's (Provider.ContextOf), else its catalog entry's.
+func windowOf(p provider.Provider, model string) int {
+	if n := p.ContextOf(model); n > 0 {
+		return n
+	}
+	for _, e := range provider.Served() {
+		if e.Group == "" && e.Provider.ID == p.ID && (e.Model == model || e.ID == model) && e.Context > 0 {
+			return e.Context
+		}
+	}
+	return 0
+}
+
 const (
 	// lastRetries is how many times the last one left is tried again after
 	// a failure that passes — a busy vendor, a dropped connection.

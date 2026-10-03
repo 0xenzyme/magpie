@@ -1443,6 +1443,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			stop()
 		}
 		hw.settle()
+		outgrew := false // a failure that didn't say so was the request's length
+		if !hw.passing && !hw.refused && hw.code() >= 400 {
+			if req, err := parse(from, attemptBody); err == nil {
+				if msg, ok := tooLongUnsaid(c.p, c.model, estimate(req), hw.code(), hw.errBody()); ok {
+					// told as an overflow: not asked again, of this one or
+					// another, and nobody rests
+					hw.failure, hw.failMsg, outgrew = http.StatusBadRequest, msg, true
+				}
+			}
+		}
 		if hw.failure != 0 { // the stream failed before any of it was sent
 			call.Status, call.Error = hw.failure, c.p.Name+": "+hw.failMsg
 		}
@@ -1496,7 +1506,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				continue
 			}
 		}
-		if updated && !hw.passing && hw.code() == 400 {
+		if updated && !outgrew && !hw.passing && hw.code() == 400 {
 			// the upstream turned the update items away: asked again as
 			// the agent sent it, and if that goes, never sent them again
 			plainFor = c.who() + "|" + c.model
@@ -1667,6 +1677,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			call.Status, call.Error = other.Status, other.Error
 			writeError(w, from, call.Status, call.Error)
 			break
+		} else if outgrew {
+			// in the agent's own words for it, for it to compact
+			writeError(w, from, call.Status, hw.failMsg)
 		} else {
 			hw.release()
 		}
