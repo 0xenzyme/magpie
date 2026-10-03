@@ -78,8 +78,9 @@ type Provider struct {
 	// "" smart, the first while it has quota to spare, then whichever has
 	// the most; "order" in order, the next one only when the one before
 	// can't take it; "rotate" each in turn; "usage" the least used first;
-	// "pace" the one with the most of its week left per hour until it
-	// renews first, so less of a week is lost at its reset.
+	// "pace" the one with the most remaining allowance per hour until
+	// its window resets first, so less allowance is lost at reset.
+	// The window can be shorter than a week.
 	// Whichever it is, one out of credit, out of quota, rate limited or
 	// failing is passed over for as long as that lasts.
 	Routing string `json:"routing,omitempty"`

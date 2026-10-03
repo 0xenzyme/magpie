@@ -55,6 +55,16 @@ node --test --test-concurrency=1 internal/gui/tests/gateway-caller-keys.test.cjs
 
 ## Other Browser Regressions
 
+`routing-sealed-task.test.cjs` checks that routing explains why an encrypted
+subagent task excludes non-ChatGPT providers and why the parent account goes
+first (#619). It also checks plain tasks, old traces, direct model requests,
+short-window allowance wording and rules with no eligible candidate, in
+English and Chinese on Chromium and WebKit:
+
+```sh
+node --test internal/gui/tests/routing-sealed-task.test.cjs
+```
+
 `routing-sessions.test.cjs` checks the Routing request list in Chromium and
 WebKit, English and Chinese: the list defaults to By request and remembers
 the grouping choice across reloads; sessions are separated by agent and ID across

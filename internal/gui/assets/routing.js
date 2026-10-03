@@ -243,6 +243,7 @@
     const f = r.order[0];
     if (!f) return t("Nothing could take {model}.", { model: r.model });
     const w = who(f);
+    if (r.sealedTask && r.leadAccount === f.id) return t("{who} goes first: it answered the parent agent and may be needed to read this encrypted task.", { who: w });
     if (r.order.length === 1) {
       if (f.rest) return t("{who} is the only one, so it's tried though it is resting.", { who: w });
       return f.kind === "account" ? t("{who} is the only account on for {model} — nothing to choose between.", { who: w, model: r.model })
@@ -267,11 +268,11 @@
         return t("Least used first: {who} goes first.", { who: w });
       case "pace":
         if (f.kind === "account" && f.known) {
-          // what the pace went by: the week's share left over the hours until it renews
+          // The allowance window used for pace, which may be shorter than a week.
           const left = known0(f.due) ? Math.min(100, Math.round((f.pace || 0) * Math.max(1, (at(f.due) - at(r.time)) / 36e5))) : null;
           return left !== null
-            ? t("Weekly pace: {who} has the most of its week left for the hours until it renews — {n} left, renews in {d}.", { who: w, n: pct(left), d: dur(at(f.due) - at(r.time)) })
-            : t("Weekly pace: {who} has the most of its week left for the hours until it renews — {n} used.", { who: w, n: pct(f.used) });
+            ? t("Weekly pace: {who} has the most remaining allowance per hour until reset — {n} left, resets in {d}.", { who: w, n: pct(left), d: dur(at(f.due) - at(r.time)) })
+            : t("Weekly pace: {who} has the most remaining allowance per hour until reset — {n} used.", { who: w, n: pct(f.used) });
         }
         if (f.kind === "key") return t("Weekly pace: {who} served the fewest tokens lately — {n}.", { who: w, n: tokens(f.tokens || 0) });
         return t("Weekly pace: {who} goes first.", { who: w });
@@ -375,12 +376,12 @@
       if (x.then?.length) return t("Turn {turn} begins and rule {n} matches — {when} — so {use} goes first; if it fails, {then}, which the rules after it that match too name, then the group's others.", { turn: x.turn, n: x.n, when, use: x.use, then: x.then.map((id) => useName(r, id)).join(", ") });
       return t("Turn {turn} begins and rule {n} matches — {when} — so {use} goes first; the group's others stay behind it if it fails.", { turn: x.turn, n: x.n, when, use: x.use });
     }
-    if (x.use && x.instead) return lead ? t("Rule {n} matches, but {use} has nothing ready now, so {instead} goes first: a rule after it that matches too names it.", { n: x.n, use: x.use, instead: useName(r, x.instead) }) : null;
+    if (x.use && x.instead) return lead ? t("Rule {n} matches, but {use} has no account or key that can take this request, so a later matching rule puts {instead} first.", { n: x.n, use: x.use, instead: useName(r, x.instead) }) : null;
     if (lead) return null;
-    if (x.use) return t("Rule {n} matches, but {use} has nothing ready now, so the group's order stands.", { n: x.n, use: x.use });
+    if (x.use) return t("Rule {n} matches, but {use} has no account or key that can take this request, so the group's order stands.", { n: x.n, use: x.use });
     if (x.waits) return t("This turn began before magpie saw it, so the rules wait for the next one.");
     if (x.held) return null;
-    return t("No rule matches turn {turn} (about {n} tokens{img}), so the group routes it as usual.", { turn: x.turn, n: tokens(x.tokens), img: x.images ? t(", with an image") : "" });
+    return t("No rule matches turn {turn} (about {n} tokens{img}).", { turn: x.turn, n: tokens(x.tokens), img: x.images ? t(", with an image") : "" });
   }
   // treeText is a group's models, those of a group in it in brackets after
   // its name: a/m, Fast [b/m, c/m]
@@ -409,11 +410,11 @@
       const x = n.rule, g = n.name || n.group;
       if (!x) continue;
       const when = (x.when || []).map(condText).join(", ");
-      if (x.use && x.instead) out.push(t("In {group}, rule {n} matches, but {use} has nothing ready now, so {instead} goes first: a rule after it that matches too names it.", { group: g, n: x.n, use: x.use, instead: x.instead }));
-      else if (x.use && x.unready) out.push(t("In {group}, rule {n} matches, but {use} has nothing ready now, so {group}'s order stands.", { group: g, n: x.n, use: x.use }));
+      if (x.use && x.instead) out.push(t("In {group}, rule {n} matches, but {use} has no account or key that can take this request, so a later matching rule puts {instead} first.", { group: g, n: x.n, use: x.use, instead: x.instead }));
+      else if (x.use && x.unready) out.push(t("In {group}, rule {n} matches, but {use} has no account or key that can take this request, so {group}'s order stands.", { group: g, n: x.n, use: x.use }));
       else if (x.use && x.held) out.push(t("In {group}, rule {n} ({when}) sent turn {turn} to {use} as it began; the turn stays with whoever took it then.", { group: g, n: x.n, when, turn: x.turn, use: x.use }));
       else if (x.use) out.push(t("In {group}, rule {n} matches — {when} — so {use} goes first there.", { group: g, n: x.n, when, use: x.use }));
-      else if (!x.waits) out.push(t("In {group}, no rule matches, so it routes as usual.", { group: g }));
+      else if (!x.waits) out.push(t("In {group}, no rule matches.", { group: g }));
     }
     const f = r.order[0];
     if (f?.via?.length && r.group) {
@@ -1084,6 +1085,9 @@
       ? t("{agent} asked for {model}: {name} serves it, and the vendor is asked for {sent}", { agent: agentName(r.agent), model: r.model, name: main.name, sent: main.model })
       : t("{agent} asked for {model}", { agent: agentName(r.agent), model: r.model }) + " → " + (main?.name || r.provider), ""]);
     if (r.kind) items.push([kindWhy(r), "aside kind"]);
+    if (r.sealedTask) items.push([t(r.group
+      ? "This subagent task is encrypted. Only ChatGPT accounts can read it; other providers (such as Claude) are excluded regardless of quota."
+      : "This subagent task is encrypted. Only ChatGPT accounts can read it."), "aside"]);
     items.push([affWhy(r, true) || ruleWhy(r, true) || firstWhy(r), "why"]);
     for (const s of nestedWhy(r)) items.push([s, "why"]);
     for (const a of asides(r)) items.push([a, "aside"]);
@@ -1190,6 +1194,9 @@
   window.routedWhy = routedWhy;
   function kindWhy(r) {
     const agent = agentName(r.agent);
+    if (KIND[r.kind] === "Subagent") return r.group
+      ? t("{agent} requested a subagent; magpie selects its model within this routing group.", { agent })
+      : t("{agent} requested a subagent on {model}.", { agent, model: r.model });
     if (r.kind === "luna_reserve") return t("{agent} sent this turn on Luna Reserve, which it turns to once the plan's own allowance is used up; it picks the model itself.", { agent });
     if (r.kind === "web_search") return r.for
       ? t("magpie ran this web search for {agent}'s {model}, which can't search the web by itself: {searcher} searched, and {model} goes on answering once it has what was found. Not a turn of the conversation.", { agent: agentName(r.for.agent), model: r.for.model, searcher: r.model })

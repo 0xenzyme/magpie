@@ -38,6 +38,8 @@ type Route struct {
 	Provider      string       `json:"provider"`                // the provider the model resolved to
 	Group         *GroupRef    `json:"group,omitempty"`         // the routing group the agent asked for
 	Rule          *RuleHit     `json:"rule,omitempty"`          // the group's rules for it, when it has any
+	SealedTask    bool         `json:"sealedTask,omitempty"`    // only ChatGPT accounts can read this subagent's task
+	LeadAccount   string       `json:"leadAccount,omitempty"`   // the parent account put first for a sealed task
 	// Nested: the rules of the groups in the group, down the way to the
 	// one that went first, each as it decided
 	Nested   []NestedRule `json:"nested,omitempty"`
@@ -167,8 +169,8 @@ type Weighed struct {
 	Limit    float64           `json:"limit,omitempty"`
 	Unit     string            `json:"unit,omitempty"`
 	Renews   []time.Time       `json:"renews,omitempty"` // when those windows renew, the biggest first
-	Pace     float64           `json:"pace,omitempty"`   // weekly pace: share of its week left per hour until it renews
-	Due      *time.Time        `json:"due,omitempty"`    // weekly pace: when the window that pace went by renews
+	Pace     float64           `json:"pace,omitempty"`   // remaining allowance per hour until its window resets
+	Due      *time.Time        `json:"due,omitempty"`    // when the allowance window used for pace resets
 	Tokens   float64           `json:"tokens,omitempty"` // least used: tokens it served lately
 	Turn     bool              `json:"turn,omitempty"`   // in turn: it was this one's turn
 	Fit      int               `json:"fit,omitempty"`    // keyFit

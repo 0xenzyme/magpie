@@ -157,10 +157,10 @@ func sealedReaders(cands []candidate, pl planned) ([]candidate, planned) {
 // leadFirst puts first the account that answered the lead, the thread
 // parent names, in scope: the one that sealed its subagent's task, which
 // another account may not open, as it doesn't another's reasoning.
-func leadFirst(scope, parent string, cands []candidate, pl planned) ([]candidate, planned) {
+func leadFirst(scope, parent string, cands []candidate, pl planned) ([]candidate, planned, string) {
 	parent = strings.TrimSpace(parent)
 	if parent == "" {
-		return cands, pl
+		return cands, pl, ""
 	}
 	sticks.Lock()
 	st, had := stickOf(scope + "|" + parent)
@@ -176,16 +176,19 @@ func leadFirst(scope, parent string, cands []candidate, pl planned) ([]candidate
 	}
 	sticks.Unlock()
 	if !had || time.Since(st.at) > stickKeep {
-		return cands, pl
+		return cands, pl, ""
 	}
 	for i, c := range cands {
 		if i > 0 && c.who() == st.who {
 			cands = append(append([]candidate{c}, cands[:i]...), cands[i+1:]...)
 			pl.order = append(append([]Weighed{pl.order[i]}, pl.order[:i]...), pl.order[i+1:]...)
-			break
+			return cands, pl, c.rest
 		}
 	}
-	return cands, pl
+	if len(cands) > 0 && cands[0].who() == st.who {
+		return cands, pl, cands[0].rest
+	}
+	return cands, pl, ""
 }
 
 // Only native sealed agent tasks need this guidance. Other encrypted_content

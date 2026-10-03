@@ -1214,12 +1214,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	// (#63): its reasoning, sealed by the account that wrote it, is refused
 	// by another.
 	cands, pl, aff, stuck := affine(scope, mode, rotate, r.Header, from, body, cands, pl)
+	leadAccount := ""
 	if sealedTask && !aff.Kept {
 		parent := metadata.Parent
 		if parent == "" {
 			parent = r.Header.Get("x-codex-parent-thread-id")
 		}
-		cands, pl = leadFirst(leadScope, parent, cands, pl)
+		cands, pl, leadAccount = leadFirst(leadScope, parent, cands, pl)
 	}
 	if hit != nil && hit.Use != "" && !(hit.Held && aff.Kept) {
 		// the rule's member first, over whoever answered last, as a turn
@@ -1303,7 +1304,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	if len(cands) == 1 {
 		shown = nil // nobody else to stay away from
 	}
-	tr := s.trace.begin(Route{Pinned: pin, Time: start, Agent: call.Agent, Session: sessionOf(r.Header), ParentSession: titleParentSession(r.Header, metadata, call.Kind), Kind: call.Kind, For: call.For, Model: call.Model, Effort: requestEffort(from, body), Provider: p.ID, Group: group, Rule: hit, Nested: nested, Affinity: shown, Order: pl.order, Left: pl.left})
+	tr := s.trace.begin(Route{Pinned: pin, Time: start, Agent: call.Agent, Session: sessionOf(r.Header), ParentSession: titleParentSession(r.Header, metadata, call.Kind), Kind: call.Kind, For: call.For, Model: call.Model, Effort: requestEffort(from, body), Provider: p.ID, Group: group, Rule: hit, Nested: nested, SealedTask: sealedTask, LeadAccount: leadAccount, Affinity: shown, Order: pl.order, Left: pl.left})
 	if telemetry != nil {
 		telemetry.routeID = tr.ID
 	}
