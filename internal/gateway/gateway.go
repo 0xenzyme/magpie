@@ -2463,6 +2463,9 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 			r := *req
 			r.Effort, req = onEffort(p, model), &r
 		}
+		if forcesTool(req.ToolChoice) && !s.fits(p.ID, forcedRefused(model), to) {
+			req = unforced(req)
+		}
 		if to == provider.Anthropic && p.IsBedrock() && req.Metadata != nil {
 			// not the plain id Bedrock checks metadata.user_id against (#176)
 			r := *req
@@ -2517,6 +2520,13 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 			s.markUnfit(p.ID, offRefused(model), to)
 			r := *req
 			r.Effort, req = onEffort(p, model), &r
+			continue
+		}
+		if forcesTool(req.ToolChoice) && res.StatusCode == http.StatusBadRequest && toolChoiceRefused.Match(b) {
+			// a model that can't be made to call a tool (#668): asked
+			// again with the call left to it, and so from then on
+			s.markUnfit(p.ID, forcedRefused(model), to)
+			req = unforced(req)
 			continue
 		}
 		if to == provider.Chat && res.StatusCode == http.StatusBadRequest && req.Effort != "none" &&
@@ -3328,6 +3338,37 @@ func onEffort(p provider.Provider, model string) string {
 // offRefused is how unfit remembers a provider refusing reasoning turned
 // off for model.
 func offRefused(model string) string { return "reasoning off\x00" + model }
+
+// forcedRefused is how unfit remembers a provider refusing a tool_choice
+// that forces a call (a named tool, or required) for model.
+func forcedRefused(model string) string { return "tool forced\x00" + model }
+
+// forcesTool reports whether a tool_choice forces a call.
+func forcesTool(choice string) bool {
+	return choice == "required" || strings.HasPrefix(choice, "name:")
+}
+
+// toolChoiceRefused is a model turning a forced tool_choice away. Claude
+// Opus 5.5, Sonnet 5.5 and Fable 5.1 answer any {type:"tool"} or
+// {type:"any"} with `tool_choice: type "tool" and "any" are not supported
+// for this model.`, on Anthropic's API and OpenRouter alike, whatever the
+// schema; and a vendor that holds the forced tool to strict mode instead
+// answers `tools.N.custom: For 'object' type, 'additionalProperties' must
+// be explicitly set to false` (#668), which Anthropic says only of a
+// strict tool, and magpie sends none.
+var toolChoiceRefused = regexp.MustCompile(`(?i)tool_choice\W+type\W+tool\W+and\W+any\W+are not supported|tools\.\d+\.custom\W+for\W+object\W+type\W+additionalProperties\W+must be explicitly set to false`)
+
+// unforced is req with its forced tool_choice left to the model: a named
+// tool is the only one offered, as the Claude subscription's bridge does,
+// and required becomes auto.
+func unforced(req *Request) *Request {
+	r := *req
+	if name, ok := strings.CutPrefix(r.ToolChoice, "name:"); ok {
+		r.Tools = slices.DeleteFunc(slices.Clone(r.Tools), func(t Tool) bool { return t.Name != name })
+	}
+	r.ToolChoice = "auto"
+	return &r
+}
 
 // effortLevelsNamed is an error that lists the reasoning levels a model
 // takes, as one refusing "none" does: Command Code's `expected one of
