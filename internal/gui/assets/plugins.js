@@ -368,7 +368,20 @@
       meta.append(d);
     }
     if (l.npm?.version) meta.append(el("span", "pm-ver", "v" + (e?.version || l.npm.version)));
-    if (e && e.latest && e.version && newer(e.latest, e.version)) meta.append(el("span", "pm-chip up", t("Update")));
+    if (e && e.latest && e.version && newer(e.latest, e.version)) {
+      // the chip says there is an update, so it is the one that brings it
+      // (Discord: 显示更新但是好像没有更新按钮)
+      const b = busy.get(l.package) || busy.get(e.spec);
+      const up = el("button", "pm-chip up", b === "upgrade" ? t("Updating…") : t("Update to {v}", { v: "v" + e.latest }));
+      up.type = "button";
+      up.disabled = busy.size > 0 || checking || !!e.off;
+      up.onclick = (ev) => {
+        ev.stopPropagation();
+        act(l.package, "upgrade", { spec: e.spec }, () => status(t("{name} updated to v{v}", { name: l.name, v: e.latest }), "ok"));
+      };
+      up.onkeydown = (ev) => ev.stopPropagation();
+      meta.append(up);
+    }
     if (e?.error && !e.off) meta.append(el("span", "pm-chip bad", t("Didn't load")));
     else if (e?.off) meta.append(el("span", "pm-chip", t("Off")));
     if (l.replaces) {

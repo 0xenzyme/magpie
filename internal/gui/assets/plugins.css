@@ -72,6 +72,9 @@
 .pm-ver { font: 10.5px var(--code); color: var(--muted); }
 .pm-chip { display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 5px; font-size: 10.5px; font-weight: 500; background: var(--pill); color: var(--fg-2); }
 .pm-chip.up { background: var(--accent-soft); color: var(--accent); }
+button.pm-chip { border: 0; font-family: inherit; cursor: pointer; }
+button.pm-chip.up:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); }
+button.pm-chip:disabled { cursor: default; opacity: .6; }
 .pm-chip.bad { background: var(--red-soft); color: var(--red); }
 .pm-chip.moved { gap: 4px; background: var(--accent-soft); color: var(--accent); }
 .pm-chip.moved .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
