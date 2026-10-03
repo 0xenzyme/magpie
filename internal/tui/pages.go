@@ -579,7 +579,106 @@ func quotasCmd() tea.Msg {
 	provider.AskClaudeUsage() // the page opened, or r pressed
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
-	return quotaMsg(provider.Quotas(ctx))
+	// a WorkBuddy (China) account's line says how its daily check-in went,
+	// as its card in the app does
+	return quotaMsg(provider.WithCheckins(provider.Quotas(ctx)))
+}
+
+// checkinMsg is what came of c, WorkBuddy's daily check-in pressed now.
+type checkinMsg struct {
+	text string
+	ok   bool
+}
+
+// The check-in; vars so tests can stand in for WorkBuddy.
+var (
+	checkinHere  = provider.CheckInWorkBuddy
+	hasWorkBuddy = provider.HasWorkBuddy
+)
+
+// checkinCmd presses WorkBuddy's daily check-in (签到) now for every
+// WorkBuddy (China) account signed in here not in yet today, all at once,
+// as the app's Usage card's "Check in now" and magpie accounts checkin do:
+// the built-in's or the plugin's (akic404 on Discord: the TUI had no way
+// to). It says how each account stands: the credits and streak, in
+// already today, or why not. A shared magpie's accounts are checked in
+// on that magpie, from its own app, TUI or CLI.
+func checkinCmd() tea.Msg {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	var parts []string
+	failed := 0
+	if hasWorkBuddy() {
+		for _, r := range checkinHere(ctx) {
+			if r.Outcome == provider.CheckinFailed {
+				failed++
+			}
+			parts = append(parts, checkinWords(r))
+		}
+	}
+	if len(parts) == 0 {
+		return checkinMsg{text: "no WorkBuddy (China) account is signed in · only WorkBuddy (China) has the daily check-in"}
+	}
+	return checkinMsg{text: strings.Join(parts, "; "), ok: failed == 0}
+}
+
+// checkinWords is how an account's check-in stands, in a few words.
+func checkinWords(r provider.WorkBuddyCheckin) string {
+	who := r.User
+	if who == "" {
+		who = "WorkBuddy"
+	}
+	switch r.Outcome {
+	case provider.CheckinClaimed, provider.CheckinDone:
+		s := who + " checked in today"
+		if r.Credit > 0 {
+			s += fmt.Sprintf(" +%g", r.Credit)
+		}
+		if r.Streak > 0 {
+			s += fmt.Sprintf(" · a %d-day streak", r.Streak)
+		}
+		if r.Outcome == provider.CheckinDone || !r.Asked {
+			s += " · already"
+		}
+		return s
+	case provider.CheckinIneligible:
+		return who + " isn't eligible for the check-in"
+	case provider.CheckinInactive:
+		return who + ": no check-in event now"
+	}
+	msg := r.Msg
+	if msg == "" {
+		msg = "no answer"
+	}
+	return who + " couldn't check in: " + msg
+}
+
+// checkinCell is a WorkBuddy (China) account's check-in on its line: today's
+// done, with the credits, or not yet; empty for an account without one.
+func checkinCell(q provider.SubscriptionQuota, now time.Time) string {
+	if !q.Checkins {
+		return ""
+	}
+	r := q.Checkin
+	if r == nil || r.Day != provider.CheckinDay(now) {
+		return sMuted.Render("签到 not yet today · c")
+	}
+	switch r.Outcome {
+	case provider.CheckinClaimed, provider.CheckinDone:
+		s := sOK.Render("签到 ✓")
+		if r.Credit > 0 {
+			s += sText.Render(fmt.Sprintf(" +%g", r.Credit))
+		}
+		if r.Streak > 0 {
+			s += sFaint.Render(fmt.Sprintf(" · %d-day streak", r.Streak))
+		}
+		return s
+	case provider.CheckinIneligible:
+		return sMuted.Render("签到 not eligible")
+	case provider.CheckinInactive:
+		return sMuted.Render("签到 no event now")
+	}
+	return sBad.Render("签到 failed") + sMuted.Render(" · c tries again")
 }
 
 func (m model) updateUsage(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -588,6 +687,10 @@ func (m model) updateUsage(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		m.qleft = !m.qleft
 		return m, nil
+	case "c":
+		// WorkBuddy's daily check-in, as the app's "Check in now"
+		m.flash, m.flashOK = "checking WorkBuddy in…", true
+		return m, checkinCmd
 	case "l", "right":
 		m.period = periods[(i+1)%len(periods)]
 	case "h", "left":
@@ -793,15 +896,20 @@ func quotaLines(qs []provider.SubscriptionQuota, asked, left bool, width int, no
 			t = sName.Render(trunc(p, tw))
 		}
 		line := padRight(t, tw)
+		// a WorkBuddy (China) account's check-in, after whatever else
+		ci := checkinCell(q, now)
+		if ci != "" {
+			ci = "   " + ci
+		}
 		switch {
 		case q.Balance != "":
-			out = append(out, line+"  "+sText.Render(q.Balance)+sMuted.Render(" left"))
+			out = append(out, line+"  "+sText.Render(q.Balance)+sMuted.Render(" left")+ci)
 			continue
 		case q.Error != "":
-			out = append(out, line+"  "+sMuted.Render(trunc(q.Error, max(20, width-tw-2))))
+			out = append(out, line+"  "+sMuted.Render(trunc(q.Error, max(20, width-tw-2-lipgloss.Width(ci))))+ci)
 			continue
 		case len(q.Windows) == 0:
-			out = append(out, line+"  "+sMuted.Render("no usage reported"))
+			out = append(out, line+"  "+sMuted.Render("no usage reported")+ci)
 			continue
 		}
 		// the windows follow the name, those that don't fit on lines below
@@ -809,6 +917,9 @@ func quotaLines(qs []provider.SubscriptionQuota, asked, left bool, width int, no
 		var cells []string
 		for _, w := range provider.PooledWindows(q.Windows) {
 			cells = append(cells, quotaCell(w, left, now))
+		}
+		if ci != "" {
+			cells = append(cells, ci[3:])
 		}
 		if r := q.Resets; r != nil {
 			c := sText.Render("↺ " + r.Words())

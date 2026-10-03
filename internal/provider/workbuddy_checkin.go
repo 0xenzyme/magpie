@@ -79,6 +79,10 @@ const wbCheckinSoon = time.Minute
 // needs no time zone database (Windows has none Go can read without one).
 var beijing = time.FixedZone("CST", 8*60*60)
 
+// CheckinDay is the day (Beijing, "2006-01-02") WorkBuddy's check-in
+// counts t in: a WorkBuddyCheckin of that Day is today's.
+func CheckinDay(t time.Time) string { return wbCheckinDay(t) }
+
 // wbCheckinDay is the Beijing day ("2006-01-02") t falls on.
 func wbCheckinDay(t time.Time) string { return t.In(beijing).Format("2006-01-02") }
 

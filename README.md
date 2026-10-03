@@ -174,6 +174,12 @@ its provider there (`Claude Sonnet 5 · Relay A · office`) — the ids stay ids
 (`office/relay-a/claude-sonnet-5`), only these labels carry the names — and its image
 models are listed under Settings → Images and draw through it.
 
+WorkBuddy (China)'s daily check-in (签到) is pressed from the app's Usage card
+(*Check in now*), `magpie accounts checkin`, or `c` on the TUI's Usage page,
+which checks in every account signed in on this computer at once; its
+WorkBuddy lines say how today's went. A shared magpie's accounts are checked
+in on that magpie, from its own app, TUI or CLI.
+
 The gateway issues **gateway keys** for clients, separate from a provider's
 upstream API keys. Turn on **Settings → Share on local network**, then open
 **Gateway → Gateway keys → Add gateway key**. This block appears only while
