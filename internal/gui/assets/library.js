@@ -1220,12 +1220,16 @@
   // magpie's sign-in to a remote server (#615): signed in once here, and
   // every agent given the server reaches it through magpie, with it
   let mcpSigning = null; // { name, id, state, error } while one is under way
-  function signInBox(s) {
+  // name is the server as saved ("" for one being added); ready saves what
+  // the editor shows when it isn't that (a URL changed to the one that
+  // signs in, as Exa's ?login) and gives the name it's saved as, for the
+  // sign-in to be to the server the form shows
+  function signInBox(name, ready) {
     const box = el("div", "lib-signin");
     const draw = () => {
       box.replaceChildren();
-      const cur = lib.servers.find((x) => x.name === s.name)?.signIn || {};
-      const sg = mcpSigning?.name === s.name ? mcpSigning : null;
+      const cur = lib.servers.find((x) => x.name === name)?.signIn || {};
+      const sg = mcpSigning?.name === name ? mcpSigning : null;
       const line = el("div", "lib-signin-line");
       if (sg && (sg.state === "starting" || sg.state === "waiting")) {
         line.append(el("span", "note", sg.state === "starting" ? t("Opening the sign-in…") : t("Finish signing in in your browser…")),
@@ -1244,16 +1248,26 @@
       if (sg?.state === "failed") box.append(el("div", "lib-signin-err", sg.error));
     };
     async function start() {
-      mcpSigning = { name: s.name, state: "starting" };
+      const was = name;
+      mcpSigning = { name, state: "starting" };
       draw();
       try {
-        const st = await api("library/mcp-signin", { name: s.name });
+        if (ready) {
+          const saved = await ready();
+          // canceled while it was saved
+          if (mcpSigning?.name !== was || mcpSigning.id) return;
+          name = saved;
+          mcpSigning = { name, state: "starting" };
+        }
+        const st = await api("library/mcp-signin", { name });
         if (web && st.url) api("open", { url: st.url }).catch(() => {});
-        mcpSigning = { ...st, name: s.name };
+        mcpSigning = { ...st, name };
         draw();
         follow(st.id);
       } catch (e) {
-        mcpSigning = { name: s.name, state: "failed", error: e.message };
+        if (!mcpSigning) return; // canceled
+        // magpie's words in the reader's language, where it has them
+        mcpSigning = { name, state: "failed", error: t(e.message) };
         draw();
       }
     }
@@ -1268,17 +1282,17 @@
         if (st.state === "done") {
           mcpSigning = null;
           await api("library").then(take, () => {});
-          status(t("Signed in to {name} — the agents given it use magpie's sign-in", { name: s.name }), "ok");
+          status(t("Signed in to {name} — the agents given it use magpie's sign-in", { name }), "ok");
           render();
-        } else mcpSigning = st.state === "canceled" ? null : { ...st, name: s.name };
+        } else mcpSigning = st.state === "canceled" ? null : { ...st, name };
         draw();
         return;
       }
     }
     async function signOut() {
       try {
-        take(await api("library/mcp-signout", { name: s.name }));
-        status(t("Signed out of {name} — the agents are given the server's own address again", { name: s.name }), "ok");
+        take(await api("library/mcp-signout", { name }));
+        status(t("Signed out of {name} — the agents are given the server's own address again", { name }), "ok");
         render();
         draw();
       } catch (e) { status(e.message, "err", 6000); }
@@ -1433,9 +1447,9 @@
         url.classList.add("mono");
         g.append(...field("URL", url));
         g.append(...field(t("Headers"), pairs(d.headers, "Authorization", "Bearer …", (v) => { d.headers = v; })));
-        // the server as saved: one being added or turned into another is
-        // signed in to once it is saved
-        if (s?.transport === "http" && d.transport === "http") g.append(...field(t("Sign-in"), signInBox(s), t("For a server that asks you to sign in (OAuth): magpie signs in once, and every agent given it uses that sign-in")));
+        // Sign in saves the form first when it isn't what's saved, so a URL
+        // just changed (or a server just added) is the one signed in to
+        if (d.transport === "http") g.append(...field(t("Sign-in"), signInBox(s ? s.name : "", ready), t("For a server that asks you to sign in (OAuth): magpie signs in once, and every agent given it uses that sign-in")));
       }
       slot.append(g);
       // its own icon while it runs as it did; another way of running is another server
@@ -1449,18 +1463,38 @@
       if (await change("servers/remove", { name: s.name }, t("{name} is out of the library and the agents it was given to", { name: s.name }))) closeLibModal();
     }));
     bar.append(el("span", "grow"), button(t("Cancel"), "", closeLibModal));
-    const save = async () => {
-      err.textContent = "";
+    // send saves the form; s is then the server as saved, for a save after
+    // a sign-in's to be of it
+    const send = async () => {
       const body = { old: s ? s.name : "", server: { name: d.name, transport: d.transport, agents: d.agents } };
       if (d.transport === "stdio") Object.assign(body.server, { command: d.command, args: d.args, env: d.env });
       else Object.assign(body.server, { url: d.url, headers: d.headers });
+      take(await api("library/servers/save", body));
+      const was = s;
+      s = lib.servers.find((x) => x.name === d.name) || s;
+      return was;
+    };
+    const save = async () => {
+      err.textContent = "";
       try {
-        take(await api("library/servers/save", body));
-        report(lib.result, s ? t("{name} saved", { name: d.name }) : "");
+        const was = await send();
+        report(lib.result, was ? t("{name} saved", { name: d.name }) : "");
         closeLibModal();
         render();
       } catch (e) { err.textContent = e.message; }
     };
+    // before a sign-in: the form saved, the dialog left open, when it
+    // isn't the server as saved
+    const sorted = (h) => JSON.stringify(Object.entries(h || {}).sort());
+    async function ready() {
+      if (s && d.name === s.name && d.transport === s.transport && d.url === (s.url || "") && sorted(d.headers) === sorted(s.headers)) return s.name;
+      err.textContent = "";
+      const was = await send();
+      report(lib.result, was ? t("{name} saved", { name: d.name }) : "");
+      ok.textContent = t("Save");
+      render();
+      return s.name;
+    }
     const ok = button(s ? t("Save") : t("Add"), "primary", save);
     bar.append(ok);
     ed.append(bar);

@@ -912,6 +912,7 @@ const I18N = {
     "Sign-in": "登录",
     "For a server that asks you to sign in (OAuth): magpie signs in once, and every agent given it uses that sign-in": "适用于要求登录（OAuth）的服务器：在 magpie 里登录一次，分配到它的每个 agent 都用这次登录",
     "Opening the sign-in…": "正在打开登录…",
+    "this server already works without signing in, so there is nothing to sign in to: the agents given it can use it as it is. A key it takes goes in Headers; a server that signs in at another address (as Exa's ?login) needs that URL": "这个服务器不登录就已经能用，没有可登录的：分配到它的 agent 直接就能用。它要的密钥填在请求头里；要在另一个地址登录的服务器（如 Exa 的 ?login）需要填那个 URL",
     "Finish signing in in your browser…": "请在浏览器中完成登录…",
     "The agents given it use magpie's sign-in": "分配到它的 agent 都用 magpie 的登录",
     "Sign-in ran out": "登录已失效",
