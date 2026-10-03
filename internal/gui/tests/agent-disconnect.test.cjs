@@ -15,7 +15,7 @@ const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
 
 const assets = path.resolve(__dirname, "../assets");
-const options = ["gpt-5.4", "magpie/relay/m1"].map((m) => ({ value: m, label: "Label " + m }));
+const options = ["gpt-5.4", "magpie/relay/m1"].map((m) => ({ value: m, label: "Label " + m, ...(m.startsWith("magpie/") ? { ref: "relay/m1" } : {}) }));
 const fresh = () => ({
   agents: [
     { id: "codex", name: "Codex", icon: "generic", path: "/fixture/codex", wired: true, fields: [{ key: "model", label: "model", value: "magpie/relay/m1", options }] },
@@ -55,7 +55,7 @@ function server(lang, posts) {
 
 const words = {
   en: { item: "Disconnect from magpie", ask: "Disconnect Codex from magpie?", go: "Disconnect", cancel: "Cancel", done: /Codex no longer goes through magpie/ },
-  zh: { item: "断开 magpie（还原配置）", ask: "断开 Codex 与 magpie 的连接？", go: "断开", cancel: "取消", done: /Codex 已不再经过 magpie/ },
+  zh: { item: "断开 magpie（还原配置）", ask: "断开 Codex 和 magpie？", go: "断开", cancel: "取消", done: /Codex 已不再经过 magpie/ },
 };
 const row = (id) => `.row.agent[data-id="${id}"]`;
 
@@ -111,12 +111,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await ask.waitFor({ state: "detached" });
       assert.deepEqual(posts, []);
 
-      // the model picker has it too, beside Default; Claude Code's hasn't
-      await page.locator(`${row("claude")} .field[data-key="model"]`).click();
-      await page.locator("#pop:not([hidden]) #list li").first().waitFor();
-      assert.equal(await page.locator("#list li", { hasText: w.item }).count(), 0);
-      await page.keyboard.press("Escape");
-      await page.locator("#pop").waitFor({ state: "hidden" });
+      // the model picker, in the opened row, has it too, beside Default;
+      // Claude Code, not connected, has no picker to open
+      assert.equal(await page.locator(`${row("claude")} .field`).count(), 0);
+      assert.equal(await page.locator(`${row("claude")} .ag-link`).count(), 0);
+      await page.locator(`${row("codex")} .ag-link`).click();
       await page.locator(`${row("codex")} .field[data-key="model"]`).click();
       const pickItem = page.locator("#list li", { hasText: w.item });
       await pickItem.waitFor();
@@ -128,7 +127,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
       await ask.locator(".bar button", { hasText: w.go }).click();
       await ask.waitFor({ state: "detached" });
-      await page.waitForFunction((r) => document.querySelector(r + ' .field[data-key="model"] .v')?.textContent === "Label gpt-5.4", row("codex"));
+      await page.waitForFunction((r) => document.querySelector(r + " .ag-conn")?.getAttribute("aria-checked") === "false", row("codex"));
       assert.deepEqual(posts, ["/api/agents/disconnect/codex"]);
       assert.match(await page.locator("#status").textContent(), w.done);
       await openMenu("codex");

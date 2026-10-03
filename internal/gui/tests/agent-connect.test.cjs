@@ -55,7 +55,7 @@ function server(lang, posts) {
 
 const words = {
   en: { off: "Not connected · Codex uses its own settings", on: "Connected · pick magpie's models with /model in Codex", go: "Disconnect", done: /Codex is connected to magpie/ },
-  zh: { off: "未接入 · Codex 用它自己的设置", on: "已接入 · 在 Codex 里用 /model 选 magpie 的模型", go: "断开", done: /Codex 已接入 magpie/ },
+  zh: { off: "未接入 · 用 Codex 自己的设置", on: "已接入 · 在 Codex 里用 /model 选 magpie 的模型", go: "断开", done: /Codex 已接入 magpie/ },
 };
 const row = (id) => `.row.agent[data-id="${id}"]`;
 
@@ -86,7 +86,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const tops = () => page.evaluate(() => [document.scrollingElement.scrollTop, document.querySelector("#view-agents")?.scrollTop]);
       const top = await tops();
       const sw = () => page.locator(`${row("codex")} .ag-conn`);
-      const said = () => page.locator(`${row("codex")} .ag-conn-line`).textContent();
+      const said = () => page.locator(`${row("codex")} .ag-st`).textContent();
 
       assert.equal(await page.locator(`${row("cursor")} .ag-conn`).count(), 0, "nothing of magpie's to connect it to");
       assert.equal(await sw().getAttribute("role"), "switch");

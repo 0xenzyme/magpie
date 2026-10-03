@@ -295,37 +295,114 @@ func (a *Agent) Connect() error {
 	if len(a.Fields) == 0 || a.Wired() {
 		return nil
 	}
-	f := a.Fields[0]
-	if f.Options == nil {
-		return fmt.Errorf("%s can't be connected to magpie", a.Name)
-	}
+	// the field magpie is picked in: the one listing magpie's models (for
+	// Gemini CLI its model, its first field being how it signs in), else one
+	// whose value is magpie itself
 	vals := a.Values()
-	cur, _, _ := a.split(vals[f.Key])
-	if i := strings.LastIndex(cur, "/"); i >= 0 {
-		cur = cur[i+1:]
-	}
-	pick, same := "", ""
-	for _, o := range f.Options(vals) {
-		switch {
-		case o.Value == magpieID:
-			return a.Apply(f.Key, magpieID)
-		case o.Ref == "" || o.Group == RoutingGroups:
-		case pick == "":
-			pick = o.Value
-			fallthrough
-		case same == "" && cur != "" && strings.HasSuffix(o.Ref, "/"+cur):
-			if strings.HasSuffix(o.Ref, "/"+cur) {
-				same = o.Value
+	var f *Field
+	var opts []Option
+	for pass := 0; pass < 2 && f == nil; pass++ {
+		for i := range a.Fields {
+			if a.Fields[i].Options == nil {
+				continue
+			}
+			list := a.Fields[i].Options(vals)
+			for _, o := range list {
+				if pass == 0 && o.Ref != "" || pass == 1 && o.Value == magpieID {
+					f, opts = &a.Fields[i], list
+					break
+				}
+			}
+			if f != nil {
+				break
 			}
 		}
 	}
-	if same != "" {
+	if f == nil {
+		return fmt.Errorf("%s can't be connected to magpie", a.Name)
+	}
+	cur := connectWas(vals[f.Key], opts)
+	if cur == "" && f.Key != a.Fields[0].Key {
+		cur = connectWas(a.Values()[a.Fields[0].Key], nil)
+	}
+	if cur == "" {
+		// on its default: the first of its own models
+		for _, o := range opts {
+			if o.Ref == "" && o.Group == a.Name && o.Value != magpieID {
+				cur = connectWas(o.Value, opts)
+				break
+			}
+		}
+	}
+	// the model it is on now, through magpie (or of its family, for an
+	// alias): on the account it is signed in to (its vendor's) first, then
+	// on a subscription, before a key's; else its own vendor's; else a
+	// subscription's; else the first
+	var pick, same, alike, own, sub string
+	sameRank, alikeRank := -1, -1
+	for _, o := range opts {
+		if o.Value == magpieID {
+			return a.Apply(f.Key, magpieID)
+		}
+		if o.Ref == "" || o.Group == RoutingGroups {
+			continue
+		}
+		rank := 0
+		if o.own || o.Group == a.Name {
+			rank = 2
+		} else if o.sub {
+			rank = 1
+		}
+		if pick == "" {
+			pick = o.Value
+		}
+		id := o.Ref[strings.LastIndex(o.Ref, "/")+1:]
+		if cur != "" && (id == cur || strings.TrimSuffix(id, "[1m]") == cur) && rank > sameRank {
+			same, sameRank = o.Value, rank
+		}
+		// an alias (opus) no label read: the model of that family
+		if cur != "" && !strings.Contains(cur, "-") && strings.Contains(id+"-", "-"+cur+"-") && rank > alikeRank {
+			alike, alikeRank = o.Value, rank
+		}
+		if own == "" && (o.own || o.Group == a.Name) {
+			own = o.Value
+		}
+		if sub == "" && o.sub {
+			sub = o.Value
+		}
+	}
+	switch {
+	case same != "":
 		pick = same
+	case alike != "":
+		pick = alike
+	case own != "":
+		pick = own
+	case sub != "":
+		pick = sub
 	}
 	if pick == "" {
 		return fmt.Errorf("magpie has no models %s can use: add a subscription or a provider first", a.Name)
 	}
 	return a.Apply(f.Key, pick)
+}
+
+// connectWas is the model an agent is on before it is connected, as a
+// model id: its own option's alias read through the label that names the
+// model ("opus · claude-opus-5-5"), a provider's prefix taken off.
+func connectWas(v string, opts []Option) string {
+	for _, o := range opts {
+		if o.Value == v && o.Ref == "" {
+			if _, id, ok := strings.Cut(o.Label, " · "); ok {
+				v = strings.TrimSpace(id)
+			}
+			break
+		}
+	}
+	if i := strings.LastIndex(v, "/"); i >= 0 {
+		v = v[i+1:]
+	}
+	return strings.TrimSpace(v)
 }
 
 // Disconnect takes magpie out of the agent's config and puts back what the

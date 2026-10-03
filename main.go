@@ -144,6 +144,16 @@ func run(args []string) error {
 	if len(args) > 0 && args[0] == "healthcheck" {
 		return healthcheck() // every few seconds in a container: nothing else
 	}
+	if len(args) == 2 && args[0] == agent.DryRunArg {
+		// an agent disconnected on a copy of its files under a temporary
+		// home, for the Agents page to show what disconnecting changes
+		// (agent.DisconnectPreview)
+		a, err := agent.Find(args[1])
+		if err != nil {
+			return err
+		}
+		return a.Disconnect()
+	}
 	makeDirs()
 	settings.Migrate()
 	agent.RenameLegacy()

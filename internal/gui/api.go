@@ -166,6 +166,11 @@ type agentJSON struct {
 	// Models: how many of the catalog its lists show, for an agent that
 	// picks among it (agent_models.go)
 	Models *modelCountJSON `json:"models,omitempty"`
+	// Source: what an agent not connected runs on now (agent.Source), and
+	// Stale: copies of a connected one still running on the list they
+	// started with (agent.Stale), for the line under its name
+	Source string `json:"source,omitempty"`
+	Stale  int    `json:"stale,omitempty"`
 }
 
 // clientJSON is an agent, or another client the gateway knows, as a
@@ -644,6 +649,27 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			return
 		}
 		writeJSON(rw, c)
+	})
+	// what disconnecting an agent changes in its files, line by line, for
+	// the dialog asking it (agent.DisconnectPreview); its files when the
+	// preview can't be had
+	mux.HandleFunc("GET /api/agents/preview/{id}", func(rw http.ResponseWriter, r *http.Request) {
+		a, err := agent.Find(r.PathValue("id"))
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		exe, err := os.Executable()
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		changes, err := agent.DisconnectPreview(a, exe)
+		out := map[string]any{"changes": changes}
+		if err != nil {
+			out["error"] = err.Error()
+		}
+		writeJSON(rw, out)
 	})
 	mux.HandleFunc("POST /api/agents/{action}/{id}", func(rw http.ResponseWriter, r *http.Request) {
 		a, err := agent.Find(r.PathValue("id"))
@@ -1195,6 +1221,11 @@ func state() stateJSON {
 		aj.Models = agentModelCount(a.ID, aj.Fields)
 		aj.Drift = a.Drift()
 		aj.Wired = a.Wired()
+		if aj.Wired {
+			aj.Stale = a.Stale()
+		} else {
+			aj.Source = a.Source()
+		}
 		if a.Import != nil {
 			aj.Import, aj.Added = a.Import(), a.Added != nil && a.Added()
 		}

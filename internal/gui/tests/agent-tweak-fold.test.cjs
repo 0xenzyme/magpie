@@ -16,9 +16,9 @@ const opt = (v) => ({ value: v, label: v });
 function agents({ ultracode = "", effort = "", tierEffort = "", subEffort = "", model = "" } = {}) {
   return [
     {
-      id: "claude", name: "Claude Code", path: "/test/claude.json", icon: "claudecode-color",
+      id: "claude", name: "Claude Code", path: "/test/claude.json", icon: "claudecode-color", wired: true,
       fields: [
-        { key: "model", label: "model", value: model, options: [opt("claude-sonnet-4.5")] },
+        { key: "model", label: "model", value: model, options: [{ ...opt("claude-sonnet-4.5"), ref: "claude/claude-sonnet-4.5" }] },
         { key: "effort", label: "effort", value: effort, options: [opt("high"), opt("xhigh")] },
         { key: "ultracode", label: "ultracode", value: ultracode, options: [opt("on")] },
         { key: "opus_effort", label: "opus effort", value: tierEffort, options: [opt("high")] },
@@ -91,6 +91,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
   test(`${engine}: turning ultracode on keeps every agent in view`, async (t) => {
     const { page, errors } = await open(t, engine, {});
     assert.deepEqual((await arranged(page)).folded, [], "a fresh magpie shows them all");
+    // in its connected row, opened
+    await page.locator('.row.agent[data-id="claude"] .ag-link').click();
     const toggle = page.locator('.row.agent[data-id="claude"] [data-key="ultracode"]');
     await toggle.click();
     await page.waitForFunction(() => document.querySelector('.row.agent[data-id="claude"] [data-key="ultracode"]')?.getAttribute("aria-pressed") === "true");

@@ -7,7 +7,8 @@
 // a model Claude Code asks Anthropic for itself says so: the row's tooltip
 // says it isn't through magpie and why the file names no magpie endpoint,
 // and picking one says "straight to Anthropic". A magpie model says neither.
-// No click moves the page. In English and Chinese, Chromium and WebKit.
+// The model is picked in the connected row, opened from its link. No click
+// moves the page. In English and Chinese, Chromium and WebKit.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -26,7 +27,7 @@ const filler = [{ key: "model", label: "model", value: "magpie/deepseek/pro", op
 const fresh = () => ({
   agents: [
     ...Array.from({ length: 5 }, (_, i) => ({ id: "agent-" + i, name: "Agent " + i, path: "/test/" + i, fields: filler })),
-    { id: "claude", name: "Claude Code", icon: "claudecode-color", path: "~/.claude/settings.json",
+    { id: "claude", name: "Claude Code", icon: "claudecode-color", path: "~/.claude/settings.json", wired: true,
       fields: [{ key: "model", label: "model", value: "sonnet", options }] },
     ...Array.from({ length: 8 }, (_, i) => ({ id: "more-" + i, name: "More " + i, path: "/test/m" + i, fields: filler })),
   ],
@@ -85,7 +86,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const sets = [];
       await page.route("**/*", server(lang, sets));
       await page.goto("http://magpie.test/");
-      const field = page.locator(`${row} .field[data-key="model"]`);
+      await page.locator(`${row} .ag-link`).click();
+      const field = page.locator(`${row} .ag-exp .field[data-key="model"]`);
       await field.waitFor();
 
       // the alias, as the model it stands for, with Claude's logo
@@ -97,7 +99,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // the page scrolled, a pick moves nothing and says where it goes
       const view = page.locator("#view-agents");
       await page.mouse.move(400, 300);
-      for (let i = 0; i < 2; i++) { await page.mouse.wheel(0, 30); await page.waitForTimeout(20); }
+      // down to the opened row's picker, so the click has no need to scroll
+      for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, 30); await page.waitForTimeout(20); }
       await page.waitForTimeout(300);
       const top = await view.evaluate((v) => v.scrollTop);
       assert(top > 0, "the list must be scrolled");

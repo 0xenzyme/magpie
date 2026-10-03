@@ -6,8 +6,9 @@
 // through (Qwen3.8-Flash free, 0.1× struck through; 0.2× with 0.5× struck
 // through). A small grey badge on the provider editor's model chips and in
 // an agent's model picker, its title saying it; a model with no rate has
-// none. Clicking a chip picks it and scrolls nothing; no stripe. In English
-// and Chinese, Chromium and WebKit.
+// none (the picker in a connected agent's opened row). Clicking a chip
+// picks it and scrolls nothing; no stripe. In English and Chinese,
+// Chromium and WebKit.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -29,11 +30,11 @@ const qoder = {
   key: { set: true, masked: "sk-…one" }, keyList: [], balanceToken: { takes: false, set: false }, proxy: "",
 };
 const options = [
-  { value: "magpie/qoder/qmodel_38max", label: "Qwen3.8-Max", note: "Qoder · via magpie", group: "Qoder", rate: 0.5 },
-  { value: "magpie/qoder/qfmodel", label: "Qwen3.8-Flash", note: "Qoder · via magpie", group: "Qoder", free: true, rateWas: 0.1 },
-  { value: "magpie/qoder/plain", label: "Plain", note: "Qoder · via magpie", group: "Qoder" },
+  { value: "magpie/qoder/qmodel_38max", ref: "qoder/qmodel_38max", label: "Qwen3.8-Max", note: "Qoder · via magpie", group: "Qoder", rate: 0.5 },
+  { value: "magpie/qoder/qfmodel", ref: "qoder/qfmodel", label: "Qwen3.8-Flash", note: "Qoder · via magpie", group: "Qoder", free: true, rateWas: 0.1 },
+  { value: "magpie/qoder/plain", ref: "qoder/plain", label: "Plain", note: "Qoder · via magpie", group: "Qoder" },
 ];
-const agents = [{ id: "claude", name: "Claude Code", path: "/test/claude", fields: [{ key: "model", label: "model", value: "magpie/qoder/plain", options }] }];
+const agents = [{ id: "claude", name: "Claude Code", path: "/test/claude", wired: true, fields: [{ key: "model", label: "model", value: "magpie/qoder/plain", options }] }];
 
 function serve(lang) {
   const providers = { providers: [qoder], presets: [], excluded: [], gateway: { running: true, window: true } };
@@ -128,7 +129,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
       // an agent's model picker
       await page.goto("http://magpie.test/");
-      await page.locator('.row.agent[data-id="claude"] .field[data-key="model"]').click();
+      await page.locator('.row.agent[data-id="claude"] .ag-link').click();
+      await page.locator('.row.agent[data-id="claude"] .ag-exp .field[data-key="model"]').click();
       const list = page.locator("#pop:not([hidden]) #list");
       await list.locator("li").filter({ hasText: "Qwen3.8-Max" }).first().waitFor();
       const rows = await list.locator("li[data-i]").evaluateAll((ls) => ls.map((l) => {

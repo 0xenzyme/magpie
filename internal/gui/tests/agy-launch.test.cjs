@@ -1,8 +1,8 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
 // Antigravity CLI (agy) takes magpie's gateway only from its environment, so
 // its row on the Agents page has a square that copies the command starting
-// it on magpie, while it is on one of magpie's models: the command in its
-// tooltip, one click copying it (posted to /api/copy) and saying so, with the
+// it on magpie, once it is connected (its model picker stays in the row, as
+// agy picks no model once started): the command in its tooltip, one click copying it (posted to /api/copy) and saying so, with the
 // page left where it was; none on an agent without one; in the tray panel's
 // opened row too; the words in Chinese. No backend: the API is faked here.
 const assert = require("node:assert/strict");
@@ -13,9 +13,9 @@ const { chromium, webkit } = require("playwright");
 
 const assets = path.resolve(__dirname, "../assets");
 const LAUNCH = "GEMINI_API_KEY=magpie-agy GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:3425 agy --model 'magpie/deepseek/pro'";
-const models = ["magpie/deepseek/pro", "model-b"].map((m) => ({ value: m, label: m }));
+const models = [{ value: "magpie/deepseek/pro", label: "magpie/deepseek/pro", ref: "deepseek/pro" }, { value: "model-b", label: "model-b" }];
 const agent = (id, name, launch) => ({
-  id, name, path: "/test/" + id, launch,
+  id, name, path: "/test/" + id, launch, wired: !!launch,
   fields: [{ key: "model", label: "model", value: "magpie/deepseek/pro", options: models }],
 });
 const state = {

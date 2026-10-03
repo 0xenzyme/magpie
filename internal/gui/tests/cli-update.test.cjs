@@ -111,10 +111,18 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const posts = [];
       const page = await open("en", posts);
       const view = page.locator("#view-agents");
-      // the reader scrolls down a little, so a scroll would show
-      await page.mouse.move(400, 300);
-      for (let i = 0; i < 6; i++) { await page.mouse.wheel(0, 40); await page.waitForTimeout(20); }
-      await page.waitForTimeout(300);
+      // the reader scrolls down until a pill is in view, clear of the
+      // footer, so a scroll would show
+      const wheelTo = async (id) => {
+        const pill = page.locator(`${row(id)} .ag-up`);
+        await page.mouse.move(400, 300);
+        for (let i = 0; i < 30 && await pill.evaluate((b) => b.getBoundingClientRect().bottom > 460); i++) {
+          await page.mouse.wheel(0, 40);
+          await page.waitForTimeout(60);
+        }
+        await page.waitForTimeout(300);
+      };
+      await wheelTo("codex");
       const top = await view.evaluate((v) => v.scrollTop);
       assert(top > 0, "the list must be scrolled");
       const was = await page.locator(`${row("codex")} .ag-up`).evaluate((b) => b.getBoundingClientRect().top);
@@ -134,6 +142,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert(Math.abs(now - was) <= 3, `the row moved ${now - was}px`);
 
       // one that fails says why, and can be tried again
+      await wheelTo("gemini");
       await page.locator(`${row("gemini")} .ag-up`).click();
       await page.waitForTimeout(1000);
       assert.match(await page.locator("#status").textContent(), /EACCES/);

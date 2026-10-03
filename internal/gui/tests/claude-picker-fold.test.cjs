@@ -12,7 +12,8 @@
 // a click on it leaves the keys to the filter (focus went to the page, and
 // Esc and the arrows did nothing); a query shows the rows it finds, so an id
 // typed in full is picked with Enter (which only opened the fold); and a
-// star on a dated id still shows (its row was gone, Favorites empty).
+// star on a dated id still shows (its row was gone, Favorites empty). The
+// picker is the connected row's, opened from its link.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -37,7 +38,7 @@ const options = [
   via("claude/claude-opus-4-5-20251101", "Claude Opus 4.5", "claude/claude-opus-4-5"),
 ];
 const state = (value) => ({
-  agents: [{ id: "claude", name: "Claude Code", icon: "claudecode-color", path: "/test/settings.json",
+  agents: [{ id: "claude", name: "Claude Code", icon: "claudecode-color", path: "/test/settings.json", wired: true,
     fields: [{ key: "model", label: "model", value, options }] }],
   profiles: [],
 });
@@ -89,7 +90,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.route("**/*", server(lang, value, sets));
       await page.goto("http://magpie.test/");
       await page.locator(row).waitFor();
-      await page.locator(`${row} .field[data-key="model"]`).click();
+      await page.locator(`${row} .ag-link`).click();
+      await page.locator(`${row} .ag-exp .field[data-key="model"]`).click();
       await page.locator("#pop:not([hidden]) #list li").first().waitFor();
       await page.waitForTimeout(400); // the picker grows open
       return page;
@@ -147,7 +149,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator(`${row} .field[data-key="model"]`).click();
         await page.locator("#pop:not([hidden]) #list li").first().waitFor();
         list = await rows(page);
-        assert.deepEqual(list[1], { v: "Claude Opus 5.5", n: "me@example.com · via magpie", cur: true, fold: false }, JSON.stringify(list));
+        // after Default and, connected, the way back
+        assert.deepEqual(list[2], { v: "Claude Opus 5.5", n: "me@example.com · via magpie", cur: true, fold: false }, JSON.stringify(list));
         assert.equal(list.filter((r) => r.fold).map((r) => r.v).join(), w.one);
         await page.context().close();
       });

@@ -239,6 +239,7 @@ function renderAgents() {
   page.removeAttribute("aria-busy");
   const list = $("#agents");
   list.replaceChildren();
+  agentsLead(list);
   if (!state.agents.length) {
     const e = el("div", "empty-state");
     e.append(el("b", "", t("No agents found")), el("span", "", t("Install Claude Code, Codex, Gemini CLI, OpenCode… and magpie will list them here.")));
@@ -269,13 +270,12 @@ function renderAgents() {
     // the squares share one cell, side by side: two (Codex's subagents and
     // sign-in) wrapped the second under the first
     const extras = el("span", "extras-cell");
-    for (const f of sorted) {
-      if (extra(f)) { extras.append(extraField(a, f)); continue; }
-      const b = el("button", "field " + (plain === 1 ? "solo" : wide(f) ? "main" : "side"));
+    const fieldBtn = (f, cls) => {
+      const b = el("button", "field " + cls);
       const opt = optionFor(f, f.value);
       b.title = t("{label}: {value}", { label: t(f.label), value: f.value || t("agent default") }) + (opt?.note ? ` · ${opt.note}` : "");
       if (f.value && opt?.direct) b.title += "\n" + directSaid(a, opt);
-      const effort = f.key === "effort" || f.label === "effort" || f.label === "thinking";
+      const effort = f.key === "effort" || f.label === "effort" || f.label === "thinking" || TIER_EFFORTS.includes(f.label);
       if (opt?.icon || opt?.icons?.length) b.append(optionIcon(opt));
       // a field with no logo of its own still leads with an icon: how much
       // effort, or the agent's own for its default, as the picker shows it
@@ -290,7 +290,11 @@ function renderAgents() {
       b.append(c);
       b.dataset.key = f.key;
       b.onclick = (ev) => openPicker(a, f, b, ev);
-      fields.append(b);
+      return b;
+    };
+    for (const f of sorted) {
+      if (extra(f)) { extras.append(extraField(a, f)); continue; }
+      fields.append(fieldBtn(f, plain === 1 ? "solo" : wide(f) ? "main" : "side"));
     }
     // an agent that takes the gateway only from its environment (agy): a
     // square that copies the command starting it on magpie
@@ -396,15 +400,17 @@ function renderAgents() {
     }
     // on the name's own line, so the row keeps its height and the pickers
     // their columns
+    // a row with 「接入」 says it on its line under the name instead
+    const kind = mode !== "panel" ? connectKind(a) : "";
     if (a.drift) {
       row.classList.add("drifted");
-      who.append(driftFix(a));
+      if (!kind) who.append(driftFix(a));
     }
     // the CLI's version, and an update when one is out (#202); the panel's
     // name column has no room for it
     if (mode !== "panel") who.append(cliTag(a));
     // which of magpie's models its lists show, on a line under the name
-    if (mode !== "panel" && a.models) {
+    if (mode !== "panel" && a.models && !kind) {
       const line = el("div", "ag-models-line");
       line.append(modelsEntry(a));
       who.append(line);
@@ -413,10 +419,15 @@ function renderAgents() {
     // connected to magpie or not, said under the name, with where the agent
     // picks among magpie's models itself
     const sw = connectable(a) ? connectSwitch(a) : null;
-    if (sw && mode !== "panel") {
-      who.append(el("div", "ag-conn-line" + (a.wired ? " on" : ""), connectSaid(a)));
-      who.classList.add("with-models");
-      row.classList.toggle("unplugged", !a.wired);
+    if (kind) {
+      // Claude Code's tiers and subagents have rows of their own when opened
+      if (a.id === "claude") {
+        for (const f of a.fields.filter((f) => TIERS.includes(f.label) || f.label === "subagents")) extras.querySelector(`[data-key="${CSS.escape(f.key)}"]`)?.remove();
+        extras.querySelector('[data-key="tiers"]')?.remove();
+      }
+      row.append(agentHandle(a, row, inFold), who);
+      connectRow(a, row, who, { fields, extras, fieldBtn, sw, kind });
+      return row;
     }
     if (sw && openBox) {
       const line = el("div", "ag-conn-row");
@@ -711,14 +722,14 @@ function profileDetail(p, footed) {
 // driftFix is the one thing a drifted agent shows: an amber pill after its
 // name that sets magpie's settings again. What is off is its tooltip; taking
 // the config as it is now is in the row's menu.
-function driftFix(a) {
+function driftFix(a, label = "Apply again") {
   const d = a.drift, f = a.fields.find((x) => x.key === d.field);
   const want = (f && optionFor(f, d.want)?.label) || d.want;
   const fix = el("button", "ag-fix");
   fix.type = "button";
   fix.title = `${t(DRIFT_WHY[d.kind] || DRIFT_WHY.unwired, { agent: a.name, model: want })}\n${d.detail}`;
-  fix.setAttribute("aria-label", t("Apply again"));
-  fix.append(svg(REAPPLY, 11, 1.8), el("span", "", t("Apply again")));
+  fix.setAttribute("aria-label", t(label));
+  fix.append(svg(REAPPLY, 11, 1.8), el("span", "", t(label)));
   fix.onclick = (e) => { e.stopPropagation(); reapplyAgent(a, fix); };
   return fix;
 }
@@ -740,9 +751,13 @@ const DISCONNECT_TIP = "Take out everything magpie wrote into {agent}'s config a
 // its provider and its own model list has magpie's models (agent.Connect);
 // off, magpie takes out what it wrote (askDisconnect). An agent with none of
 // magpie's models to offer (Cursor, Copilot) has no switch.
+// the field magpie is picked in: the first, or Gemini CLI's model, its
+// first being how it signs in
+const connectField = (a) => a.fields.find((f) => f.options.some((o) => o.ref)) || a.fields.find((f) => f.options.some((o) => o.value === "magpie"));
+// connectable: magpie has models for it — in its pickers, or every one
+// hidden from its lists, which leave its pickers but not the way back (#356)
 function connectable(a) {
-  const f = a.fields[0];
-  return !a.import && !!f && f.options.some((o) => o.ref || o.value === "magpie");
+  return !a.import && (!!connectField(a) || !!a.models?.listed);
 }
 
 // PICKS_IN is where an agent picks a model itself, for the words under it.
@@ -783,6 +798,393 @@ function connectSwitch(a) {
   return s;
 }
 
+// ---------- 「接入」 in the window (the owner's design boards) ----------
+// A row there answers one thing: does the agent go through magpie. Its
+// switch stands where the model and effort pickers stood, a line under the
+// name says what it runs on and where it picks a model, and a connected
+// one opens to what else there is: when it takes effect, which models it
+// lists, what a new session starts on, the files magpie changed, and the
+// way back.
+
+// agents with no way onto magpie: no switch, the reason instead
+const NATIVE_ONLY = {
+  cursor: "Only Cursor's own models",
+  copilot: "Only GitHub Copilot's own models",
+  goose: "Only Goose's own providers",
+  devin: "Only Devin's own models",
+};
+// agents that pick no model once started: the one they start on stays in
+// the row
+const NO_PICKER = new Set(["gemini", "hermes", "agy", "muse"]);
+// what turning one on costs, said in its opened row
+const CONNECT_COST = {
+  gemini: "Gemini CLI's requests all go through magpie; its Google sign-in is turned off first and comes back when you disconnect",
+};
+// agents that read magpie's list only as they start: copies already
+// running keep the list they started with (agent.Stale)
+const STARTS_WITH = new Set(["codex", "claude"]);
+
+let agentExpanded = null; // the connected agent opened in the window
+const staleSeen = {}; // agent id → the running copies the reader was told of
+const previews = {}; // agent id → its disconnect preview, as last read
+
+const anyMagpieModels = () => state.agents.some((a) => connectField(a)?.options.some((o) => o.ref));
+
+// connectKind: "ok" (a switch), "empty" (a switch for when magpie has
+// models), "no" (never), "" (the row as it was: an app with a link of its own)
+function connectKind(a) {
+  if (a.import) return "";
+  if (connectable(a)) return "ok";
+  if (NATIVE_ONLY[a.id]) return "no";
+  if (a.fields.length && !anyMagpieModels()) return "empty";
+  return "";
+}
+
+// the models it lists the reader hasn't seen yet: counted once, said in
+// bold for a while, then counted as seen
+const SEEN_KEY = "magpie.agentModelsSeen";
+let seenTimer = null;
+function newModels(a) {
+  if (!a.wired || !a.models) return 0;
+  let seen = {};
+  try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || "{}") || {}; } catch { /* none kept */ }
+  const was = seen[a.id], now = a.models.shown;
+  const keep = () => { try { seen[a.id] = now; localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch { /* not kept */ } };
+  if (was === undefined || now <= was) { if (was !== now) keep(); return 0; }
+  clearTimeout(seenTimer);
+  seenTimer = setTimeout(() => { keep(); renderAgents(); }, 12000);
+  return now - was;
+}
+
+const staleNow = (a) => a.wired && a.stale > 0 && staleSeen[a.id] !== a.stale;
+
+// connectLine: the dot and the words under an agent's name
+function connectLine(a, kind) {
+  const line = el("div", "ag-st");
+  const dot = el("span", "ag-dot");
+  const words = el("span", "ag-st-t");
+  line.append(dot, words);
+  const say = (s, cls) => { words.textContent = s; if (cls) line.classList.add(cls); };
+  if (kind === "no") { say(t(NATIVE_ONLY[a.id])); return line; }
+  if (kind === "empty") { say(t("Add a key or a subscription first; then there are models to connect")); return line; }
+  if (!a.wired) {
+    const src = a.source || "";
+    if (a.id === "agy") say(t("Not connected · once connected, start it with magpie's command"));
+    else if (src === "sub") say(t("Not connected · now on its Claude subscription"));
+    else if (src === "chatgpt") say(t("Not connected · now signed in with ChatGPT · OpenAI's models stay available once connected"));
+    else if (src === "key") say(t("Not connected · now on an API key of its own"));
+    else if (src.startsWith("providers:")) say(t("Not connected · now has {n} providers of its own", { n: src.slice(10) }));
+    else say(t("Not connected · {agent} uses its own settings", { agent: a.name }));
+    return line;
+  }
+  if (a.drift) {
+    say(t(DRIFT_WHY[a.drift.kind] || DRIFT_WHY.unwired, { agent: a.name, model: a.drift.want }), "bad");
+    words.title = a.drift.detail || "";
+    line.append(driftFix(a, "Reconnect"));
+    return line;
+  }
+  line.classList.add("on");
+  if (staleNow(a)) {
+    if (a.id === "claude") say(t("Connected · new sessions take it"));
+    else say(t("Connected · takes effect once {agent} is reopened", { agent: a.name }), "wait");
+    return line;
+  }
+  const fresh = newModels(a);
+  if (fresh) {
+    const [pre, post] = t("{n} models · {new} show in new {agent} sessions", { n: a.models.shown, agent: a.name }).split("{new}");
+    words.append(pre, el("b", "", t("{n} new", { n: fresh })), post || "");
+    return line;
+  }
+  const at = PICKS_IN[a.id];
+  if (a.id === "claude") say(t("Connected · switch the opus · sonnet · haiku tiers in /model"));
+  else if (NO_PICKER.has(a.id)) {
+    const f = connectField(a), o = f && optionFor(f, f.value);
+    say(o ? t("Connected · starts on {model}", { model: o.label || f.value }) : t("Connected · pick the model it starts on"));
+  } else if (at && a.models) say(t("{n} models in {agent}'s {cmd}", { n: a.models.shown, agent: a.name, cmd: at }));
+  else say(connectSaid(a));
+  return line;
+}
+
+// expandLink opens a connected agent's row, and closes it again
+function expandLink(a) {
+  const open = agentExpanded === a.id;
+  const b = el("button", "ag-link" + (open ? " open" : ""));
+  b.type = "button";
+  b.setAttribute("aria-expanded", String(open));
+  b.append(el("span", "", open ? t("Collapse") : a.id === "claude" ? t("Tiers") : a.models ? t("Models {n}", { n: a.models.shown }) : t("Details")));
+  if (!open) {
+    const c = el("span", "chev");
+    c.append(svg(CHEV_R, 10, 1.6));
+    b.append(c);
+  }
+  b.onclick = (e) => {
+    e.stopPropagation();
+    agentExpanded = open ? null : a.id;
+    renderAgents();
+  };
+  return b;
+}
+
+// connectRow finishes a window row that has 「接入」
+function connectRow(a, row, who, { fields, extras, fieldBtn, sw, kind }) {
+  // its list open, what was picked there until the state has it
+  if (agentModels?.a.id === a.id && agentModels.count) a.models = agentModels.count;
+  row.classList.add("conn");
+  row.classList.toggle("unplugged", kind === "ok" && !a.wired);
+  who.classList.add("with-models");
+  who.append(connectLine(a, kind));
+  const noPicker = NO_PICKER.has(a.id);
+  if (kind === "ok") {
+    if (noPicker && a.wired) row.append(fields);
+    if (a.wired) row.append(expandLink(a));
+    row.append(sw);
+  } else if (kind === "empty") {
+    const add = el("button", "ag-add", t("Add a provider"));
+    add.type = "button";
+    add.onclick = (e) => { e.stopPropagation(); addProviderFromAgents(); };
+    const off = el("button", "lib-switch ag-conn");
+    off.type = "button";
+    off.disabled = true;
+    off.setAttribute("role", "switch");
+    off.setAttribute("aria-checked", "false");
+    off.setAttribute("aria-label", t("Connect {agent} to magpie", { agent: a.name }));
+    off.title = t("Add a key or a subscription first; then there are models to connect");
+    off.append(el("i"));
+    row.append(add, off);
+  } else row.append(el("span", "ag-cant", t("Can't connect")));
+  if (kind === "ok" && a.wired && agentExpanded === a.id) {
+    row.classList.add("expanded");
+    row.append(connectPanel(a, { fields: noPicker ? null : fields, extras, fieldBtn }));
+  }
+}
+
+// agentsLead: above the window's list, what 「接入」 does, said once in a
+// line; while no agent is connected, as a welcome, with a way to add a
+// provider when magpie has no models to give
+function agentsLead(list) {
+  let lead = $("#agentsLead");
+  if (!lead) {
+    lead = el("div", "ag-lead");
+    lead.id = "agentsLead";
+    list.before(lead);
+  }
+  lead.replaceChildren();
+  const kinds = mode === "panel" ? [] : state.agents.map(connectKind);
+  lead.hidden = !kinds.some((k) => k === "ok" || k === "empty");
+  if (lead.hidden) return;
+  const first = !state.agents.some((a) => a.wired);
+  lead.classList.toggle("welcome", first);
+  if (!first) {
+    const [pre, post] = t("Switch an agent on and the models you set up in magpie show up as the {magpie} provider in its own model list.").split("{magpie}");
+    lead.append(pre, el("b", "", "magpie"), post || "");
+    return;
+  }
+  lead.append(el("b", "ag-lead-h", t("Let your agents use the models you set up in magpie")));
+  lead.append(el("p", "", t("Switch an agent on and your models show up as the magpie provider in its own model list. Then change models in the agent; switch it off and it goes back to how it was.")));
+  if (!anyMagpieModels()) {
+    const add = el("button", "text primary", t("Add a provider"));
+    add.type = "button";
+    add.onclick = () => addProviderFromAgents();
+    lead.append(add);
+  }
+}
+
+function addProviderFromAgents() {
+  show("providers");
+  $("#addProvider")?.click();
+}
+
+// connectPanel: a connected agent's row, opened
+function connectPanel(a, { fields, fieldBtn }) {
+  const box = el("div", "ag-exp");
+  box.onclick = (e) => e.stopPropagation();
+  const kv = (k, ...v) => {
+    const r = el("div", "ag-kv");
+    const val = el("div", "ag-v");
+    val.append(...v);
+    r.append(el("div", "ag-k", k), val);
+    box.append(r);
+    return val;
+  };
+  const line = (...parts) => {
+    const l = el("div", "ag-vl");
+    l.append(...parts);
+    return l;
+  };
+  const code = (s) => el("code", "ag-code", s);
+  // where it picks, and when the copies running take it
+  const at = PICKS_IN[a.id];
+  if (at || STARTS_WITH.has(a.id)) {
+    const parts = [];
+    // the command in the words as code, wherever the language puts it
+    const said = (s, cmd) => { const [pre, post] = t(s, { agent: a.name }).split("{cmd}"); return line(pre, code(cmd), post || ""); };
+    if (a.id === "claude") parts.push(said("New sessions take it; switch the tiers in {cmd}.", "/model"));
+    else if (STARTS_WITH.has(a.id)) parts.push(said("Reopen {agent}, then pick any model in {cmd}.", at));
+    else parts.push(said("Pick any model in {agent}'s {cmd}.", at));
+    if (staleNow(a)) {
+      const w = line();
+      w.classList.add("ag-warn");
+      w.append(el("span", "ag-dot"), el("span", "", t(a.stale === 1 ? "1 running {agent} still has the old list" : "{n} running {agent} still have the old list", { n: a.stale, agent: a.name })));
+      const later = el("button", "ag-quiet", t("Got it"));
+      later.type = "button";
+      later.onclick = () => { staleSeen[a.id] = a.stale; renderAgents(); };
+      w.append(later);
+      parts.push(w);
+    }
+    kv(t("In {agent}", { agent: a.name }), ...parts);
+  }
+  // Claude Code's tiers, each with the /model that picks it
+  if (a.id === "claude") {
+    const tiers = a.fields.filter((f) => TIERS.includes(f.label) && f.options.length);
+    const hint = { opus: "/model opus", sonnet: "/model sonnet", haiku: "/model haiku", fable: "/model fable" };
+    const also = { sonnet: " · " + t("the default tier"), haiku: " · " + t("also for small background tasks") };
+    const rows = tiers.map((f) => {
+      const l = line(el("span", "ag-tier", f.label[0].toUpperCase() + f.label.slice(1)), fieldBtn(f, "ag-pick"));
+      // the tier's own effort (#536), while there are levels to pick;
+      // unset, it runs at the effort Claude Code asks for
+      const e = a.fields.find((x) => x.label === f.label + " effort" && (x.options.length || x.value));
+      if (e) {
+        const b = fieldBtn(e, "ag-eff");
+        b.title = t("{label}: {value}", { label: t(e.label), value: e.value ? effortName(optionFor(e, e.value) || { value: e.value }) : t("the effort Claude Code asks for") });
+        b.setAttribute("aria-label", b.title);
+        l.append(b);
+      }
+      l.append(el("span", "ag-hint", (hint[f.label] || "") + (also[f.label] || "")));
+      return l;
+    });
+    const sub = a.fields.find((f) => f.label === "subagents" && (f.options.length || f.value));
+    if (sub) rows.push(line(el("span", "ag-tier", t("Subagents")), fieldBtn(sub, "ag-pick")));
+    if (rows.length) kv(t("Tiers"), ...rows);
+    const main = a.fields.find((f) => f.key === "model");
+    const hasSub = main?.options.some((o) => (o.ref || "").startsWith("claude/"));
+    if (hasSub) kv(t("Claude models"), line(t("Your Claude subscription is in magpie; picking a claude-* model goes through it as before")));
+    else {
+      const add = el("button", "ag-quiet accent", t("Add a Claude subscription"));
+      add.type = "button";
+      add.onclick = () => addProviderFromAgents();
+      kv(t("Claude models"), line(t("claude-* models need a Claude subscription in magpie"), add));
+    }
+  }
+  // which of magpie's models it lists, by whose they are
+  if (a.models) {
+    const chips = line();
+    chips.classList.add("ag-chips");
+    for (const g of a.models.by || []) {
+      const c = el("span", "ag-chip");
+      if (g.icons?.length) c.append(optionIcon({ icons: g.icons }));
+      else if (g.icon) c.append(icon(g.icon));
+      c.append(el("span", "", g.name === ROUTING_GROUPS ? t(g.name) : g.name), el("span", "n", String(g.n)));
+      chips.append(c);
+    }
+    const hidden = a.models.listed - a.models.shown;
+    if (hidden > 0) chips.append(el("span", "ag-hint", t("{n} hidden", { n: hidden })));
+    const pick = el("button", "ag-quiet");
+    pick.type = "button";
+    pick.append(el("span", "", t("Pick")));
+    const c = el("span", "chev");
+    c.append(svg(CHEV_R, 10, 1.6));
+    pick.append(c);
+    pick.onclick = (ev) => openAgentModels(a, pick, ev);
+    // drawn again while its list is open: the list stays, held to it
+    if (agentModels?.a.id === a.id) {
+      pick.classList.add("open");
+      agentModels.anchor = pick;
+    }
+    chips.append(pick);
+    kv(t("Model list"), chips);
+  }
+  // what a new session starts on: optional, the agent's own last pick unset
+  if (fields && a.id !== "claude") {
+    kv(t("New sessions"), line(fields), el("div", "ag-hint", t("Optional · unset, {agent} starts on its own last pick", { agent: a.name })));
+  } else if (fields && a.id === "claude") {
+    kv(t("New sessions"), line(fields));
+  }
+  if (CONNECT_COST[a.id]) kv(t("Once connected"), line(t(CONNECT_COST[a.id])));
+  if (a.launch) {
+    const cp = el("button", "ag-quiet", t("Copy"));
+    cp.type = "button";
+    cp.onclick = () => copy(a.launch, t("Launch command"), null, t("Copied — run it to start {name} on magpie", { name: a.name }));
+    kv(t("Start it with"), line(code(a.launch), cp));
+  }
+  // the files magpie changed, and the way back
+  const foot = el("div", "ag-foot");
+  const files = el("span", "ag-files");
+  const view = el("button", "ag-quiet");
+  view.type = "button";
+  view.hidden = true;
+  const diff = el("div", "ag-diff-box");
+  diff.hidden = true;
+  view.onclick = () => {
+    diff.hidden = !diff.hidden;
+    view.firstChild.textContent = diff.hidden ? t("View") : t("Hide changes");
+    view.classList.toggle("open", !diff.hidden);
+  };
+  view.append(el("span", "", t("View")));
+  const vc = el("span", "chev");
+  vc.append(svg(CHEV_R, 10, 1.6));
+  view.append(vc);
+  const off = el("button", "ag-quiet red", t("Disconnect and restore"));
+  off.type = "button";
+  off.onclick = () => askDisconnect(a);
+  foot.append(files, view, el("span", "grow"), off);
+  box.append(foot, diff);
+  const fill = (changes) => {
+    if (!changes?.length) return;
+    files.replaceChildren(t("Changed "));
+    changes.forEach((c, i) => {
+      if (i) files.append(" · ");
+      files.append(el("span", "ag-path", i ? c.path.split("/").pop() : c.path));
+    });
+    view.hidden = false;
+    diff.replaceChildren(changesList(changes));
+  };
+  if (previews[a.id]) fill(previews[a.id]);
+  loadPreview(a).then(fill, () => {});
+  return box;
+}
+
+async function loadPreview(a) {
+  const r = await api("agents/preview/" + a.id);
+  if (r?.error) throw new Error(r.error);
+  previews[a.id] = r?.changes || [];
+  return previews[a.id];
+}
+
+// changesList: what disconnecting does to each file, line by line
+function changesList(changes) {
+  const box = el("div", "ag-diff");
+  for (const c of changes) {
+    const f = el("div", "ag-diff-file");
+    const h = el("div", "ag-diff-path");
+    h.append(el("span", "", c.path));
+    if (c.removed) h.append(el("span", "ag-tag del", t("Deleted")));
+    if (c.created) h.append(el("span", "ag-tag", t("Created")));
+    f.append(h);
+    const line = (l) => {
+      const r = el("div", "ag-diff-line " + (l.op === "-" ? "del" : "back"));
+      // the indent shows where it was, and isn't struck through
+      const code = el("code"), ind = l.text.match(/^\s*/)[0];
+      code.append(el("span", "ind", ind), el("span", "t", l.text.slice(ind.length)));
+      r.append(el("span", "op", l.op === "-" ? "−" : "↺"), code);
+      if (l.op !== "-") r.append(el("span", "ag-tag", t("value before connecting")));
+      if (l.op === "~" && l.was) r.title = t("Now: {line}", { line: l.was });
+      return r;
+    };
+    // a list magpie wrote whole (Claude Code's modelPicker, Codex's
+    // catalog) is a few lines and the rest on asking
+    const lines = c.lines || [], FEW = 8;
+    f.append(...lines.slice(0, FEW).map(line));
+    if (lines.length > FEW + 2) {
+      const rest = el("button", "ag-diff-more", t("{n} more lines", { n: lines.length - FEW }));
+      rest.type = "button";
+      rest.onclick = () => rest.replaceWith(...lines.slice(FEW).map(line));
+      f.append(rest);
+    } else f.append(...lines.slice(FEW).map(line));
+    box.append(f);
+  }
+  return box;
+}
+
 // askDisconnect takes magpie out of an agent's config once asked: every
 // field magpie set, and its endpoint and key, give way to what the agent
 // had before magpie (agent.Disconnect). Picking Default isn't that: it is
@@ -792,9 +1194,22 @@ function askDisconnect(a) {
   const head = el("div", "ehead");
   head.append(icon(a.icon), el("b", "", t("Disconnect {agent} from magpie?", { agent: a.name })));
   ed.append(head);
-  ed.append(el("p", "lib-confirm", t("magpie takes out everything it wrote into {agent}'s config — its endpoint, key, models and effort — and puts back the settings {agent} had before. magpie's providers and accounts stay as they are.", { agent: a.name })));
+  ed.append(el("p", "lib-confirm", t("{agent} goes back to how it was before it was connected; these are the places put back.", { agent: a.name })));
+  // what changes, line by line, read from a dry run on a copy (preview.go);
+  // where none can be had, the old words
+  const said = el("p", "lib-confirm", t("magpie takes out everything it wrote into {agent}'s config — its endpoint, key, models and effort — and puts back the settings {agent} had before. magpie's providers and accounts stay as they are.", { agent: a.name }));
+  const body = el("div", "ag-diff-wrap");
+  const show = (changes) => {
+    if (changes?.length) body.replaceChildren(changesList(changes));
+    else body.replaceChildren(said);
+  };
+  if (previews[a.id]) show(previews[a.id]);
+  else body.append(el("div", "ag-diff-loading", t("Reading what changes…")));
+  loadPreview(a).then(show, () => show(null));
+  ed.append(body);
+  if (a.id === "codex") ed.append(el("p", "ag-note", t("magpie's provider table stays, so sessions opened on magpie's models still open")));
   const bar = el("div", "bar");
-  const go = el("button", "text primary danger-fill", t("Disconnect"));
+  const go = el("button", "text primary danger-fill", t("Disconnect and restore"));
   go.onclick = async (e) => {
     e.stopPropagation();
     go.disabled = true;
@@ -802,6 +1217,8 @@ function askDisconnect(a) {
     try {
       state = await api("agents/disconnect/" + a.id, {});
       closeConfirmAsk();
+      delete previews[a.id];
+      if (agentExpanded === a.id) agentExpanded = null;
       renderAgents();
       const msg = t("{agent} no longer goes through magpie; its own settings are back", { agent: a.name });
       if (state.notice) status(`${msg}. ${t(state.notice)}`, "warn", 9000);
@@ -814,7 +1231,7 @@ function askDisconnect(a) {
   };
   const cancel = el("button", "text", t("Cancel"));
   cancel.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); };
-  bar.append(el("span", "grow"), cancel, go);
+  bar.append(STARTS_WITH.has(a.id) ? el("span", "ag-bar-note", t("Running {agent} copies take it once reopened", { agent: a.name })) : el("span"), el("span", "grow"), cancel, go);
   ed.append(bar);
   confirmAsk = ed;
   openModal(ed);
@@ -1387,9 +1804,19 @@ async function openAgentModels(a, anchor, ev) {
   const save = () => {
     me.changed = true;
     const hidden = models.filter((m) => m.hidden).map((m) => m.id);
-    const count = { shown: models.length - hidden.length, listed: models.length };
+    // by whose they are, as the state counts them, for a connected row's chips
+    const by = [];
+    for (const m of models) {
+      if (m.hidden) continue;
+      let g = by.find((x) => x.name === m.group);
+      if (!g) by.push(g = m.group === ROUTING_GROUPS ? { name: m.group, icons: m.icons, n: 0 } : { name: m.group, icon: m.icon, n: 0 });
+      g.n++;
+    }
+    const count = { shown: models.length - hidden.length, listed: models.length, by };
     me.count = a.models = count;
-    fillModelsEntry(me.anchor, a);
+    // the line under the name counts them; an opened row is drawn again
+    if (me.anchor.classList.contains("ag-models")) fillModelsEntry(me.anchor, a);
+    else renderAgents();
     me.saving = me.saving.then(() => api("agent-models/" + encodeURIComponent(a.id), { hidden }))
       .catch((e) => status(e.message, "err"));
   };
@@ -2533,7 +2960,10 @@ function renderEffortPicker() {
     }
     // a tier's effort, opened from the tiers' square: that square's title
     // and light follow the level
-    if (TIER_EFFORTS.includes(opened.field.label)) {
+    if (TIER_EFFORTS.includes(opened.field.label) && opened.anchor.classList.contains("ag-eff")) {
+      opened.anchor.title = t("{label}: {value}", { label: t(opened.field.label), value: option.value ? effortName(option) : t("the effort Claude Code asks for") });
+      opened.anchor.setAttribute("aria-label", opened.anchor.title);
+    } else if (TIER_EFFORTS.includes(opened.field.label)) {
       const menu = tierMenu(opened.agent);
       if (menu) {
         opened.anchor.classList.toggle("set", menu.custom);

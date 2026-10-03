@@ -55,6 +55,9 @@ type Option struct {
 
 	// own: served on the agent's own sign-in (viaMagpie), for Same
 	own bool
+	// sub: served on a subscription signed in in magpie, not a key; a
+	// Claude account only for Claude Code, which alone may use it safely
+	sub bool
 }
 
 // Field is one tunable setting of an agent. Set with an empty value puts
