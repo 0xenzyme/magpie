@@ -362,8 +362,10 @@ func move(from, to string) error {
 	if _, err := os.Lstat(to); err == nil {
 		return fmt.Errorf("%s is already there", to)
 	}
-	if os.Rename(from, to) == nil {
+	if err := os.Rename(from, to); err == nil {
 		return nil
+	} else if !errors.Is(err, crossDeviceErr) {
+		return err
 	}
 	if err := copyAll(from, to); err != nil {
 		os.RemoveAll(to)
@@ -391,7 +393,7 @@ func copyAll(from, to string) error {
 			if err != nil {
 				return err
 			}
-			return os.Symlink(target, dst)
+			return copySymlink(target, dst, fi)
 		}
 		if !fi.Mode().IsRegular() {
 			return nil
