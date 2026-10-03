@@ -57,6 +57,8 @@ func setup(t *testing.T) (claude, codex string) {
 	// the home folder: never the real one's
 	t.Setenv("HOME", filepath.Join(dir, "home"))
 	t.Setenv("USERPROFILE", filepath.Join(dir, "home"))
+	// Alma keeps its chats in the user's config folder: %APPDATA% on Windows
+	t.Setenv("APPDATA", filepath.Join(dir, "appdata"))
 	PriceOf = func(_ settings.Settings, m string) (catalog.Price, bool) {
 		switch m {
 		case "claude-opus-5-5":

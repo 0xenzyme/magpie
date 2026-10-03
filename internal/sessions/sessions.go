@@ -2,7 +2,7 @@
 // files — Claude Code's projects/*/<id>.jsonl (and Qoder's, the same kind),
 // Codex's rollout files, OpenCode's database (or its older JSON files) and
 // ZCode's, Pi's session files and omp's, DeepSeek Harness's, Cline's, Grok
-// Build's, WorkBuddy's, Droid's and Cursor CLI's chat stores — with the tokens each spent, what that cost at the
+// Build's, WorkBuddy's, Droid's, Cursor CLI's and Alma's chat stores — with the tokens each spent, what that cost at the
 // effective price, and the command that resumes it. It only ever reads the
 // agents' folders.
 //
@@ -70,7 +70,7 @@ type Model struct {
 // Session is one agent session.
 type Session struct {
 	ReadOnly bool      `json:"read_only,omitempty"`
-	Agent    string    `json:"agent"` // magpie agent id: claude, codex, opencode, pi, omp, zcode, dsh, cline, qoder, qoder-cn, grok, workbuddy, droid, cursor, hermes
+	Agent    string    `json:"agent"` // magpie agent id: claude, codex, opencode, pi, omp, zcode, dsh, cline, qoder, qoder-cn, grok, workbuddy, droid, cursor, hermes, alma
 	ID       string    `json:"id"`
 	Cwd      string    `json:"cwd"`
 	Title    string    `json:"title"` // the first prompt, else the agent's own title
@@ -295,6 +295,9 @@ type file struct {
 	// transcript
 	manifest string
 	hermes   *hermesDB
+	// Alma: its database, and what tells the chat's rows changed
+	alma     *almaStore
+	rev      string
 	readOnly bool
 }
 
@@ -366,7 +369,7 @@ func allFiles() []file {
 	var out []file
 	for _, fs := range [][]file{callFiles(), openCodeFiles(), piFiles(),
 		zcodeFiles(), dshFiles(), clineFiles(), ccFiles("qoder", QoderDir("qoder")), ccFiles("qoder-cn", QoderDir("qoder-cn")),
-		grokFiles(), workbuddyFiles(), droidFiles(), ompFiles(), cursorFiles(), hermesFiles()} {
+		grokFiles(), workbuddyFiles(), droidFiles(), ompFiles(), cursorFiles(), hermesFiles(), almaFiles()} {
 		out = append(out, fs...)
 	}
 	return out
@@ -389,6 +392,7 @@ func Dirs() []string {
 		{OmpDir(), filepath.Join(OmpDir(), "sessions")},
 		{FactoryDir(), filepath.Join(FactoryDir(), "sessions")},
 		{CursorDir(), filepath.Join(CursorDir(), "chats")},
+		{AlmaDir(), almaDB()},
 	} {
 		if _, err := os.Stat(d.sessions); err == nil {
 			out = append(out, d.dir)
@@ -600,7 +604,7 @@ func writeCache(c *save) {
 func refresh(want, all []file) {
 	var todo []file
 	for _, f := range want {
-		if s := cache[f.path]; s == nil || s.Size != f.size || s.Mod != f.mod.UnixNano() || (f.agent == "hermes" && (f.hermes == nil || f.hermes.revision == "" || s.DBRevision != f.hermes.revision)) {
+		if s := cache[f.path]; s == nil || s.Size != f.size || s.Mod != f.mod.UnixNano() || (f.agent == "hermes" && (f.hermes == nil || f.hermes.revision == "" || s.DBRevision != f.hermes.revision)) || (f.agent == "alma" && s.DBRevision != f.rev) {
 			todo = append(todo, f)
 		}
 	}
@@ -915,6 +919,8 @@ func parse(f file, old *state) *state {
 	switch f.agent {
 	case "hermes":
 		return parseHermes(f)
+	case "alma":
+		return parseAlma(f)
 	case "opencode", "zcode":
 		return parseOpenCode(f)
 	case "dsh":

@@ -22,7 +22,9 @@ import (
 //
 // Only the agents whose sessions are files of their own can be deleted:
 // Claude Code's (and Qoder's and WorkBuddy's, kept the same way), Codex's,
-// Pi's, omp's and Cursor CLI's (a chat's folder, its store and meta.json). The agents' indexes are left as they are: Codex's
+// Pi's, omp's and Cursor CLI's (a chat's folder, its store and meta.json).
+// Hermes's and Alma's are rows in a database the agent keeps open and
+// writes, so they are only listed. The agents' indexes are left as they are: Codex's
 // session_index.jsonl (names by thread id) and its state database, and
 // Claude Code's history.jsonl (the prompts typed, for the up arrow), are
 // written by the agent while it runs, and a name or a prompt left for a
