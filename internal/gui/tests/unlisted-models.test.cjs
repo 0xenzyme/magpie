@@ -101,9 +101,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // the window's picker: hy3 is reached through Mine, picked at a click
       let posts = [];
       let page = await open("http://magpie.test/", posts);
-      // connected: its picker is in its opened row
-      await page.locator(`${row} .ag-link`).click();
-      const field = page.locator(`${row} .ag-exp .field[data-key="model"]`);
+      // connected: its picker is in its row
+      const field = page.locator(`${row} > .field.ag-start[data-key="model"]`);
       await field.waitFor();
       const view = page.locator("#view-agents");
       await filterFor(page, field, "hy3");

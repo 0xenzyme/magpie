@@ -2655,7 +2655,12 @@ body.window .row.agent > .ag-conn { margin-left: 12px; align-self: center; curso
 .ag-lead .ag-lead-h { display: block; font-size: 14px; margin-bottom: 4px; }
 .ag-lead p { margin: 0; line-height: 1.55; color: var(--muted); }
 .ag-lead .text.primary { margin-top: 12px; }
-body.window .row.agent.conn { flex-wrap: wrap; min-height: 56px; }
+/* the first line keeps its place opened: a line of its own height, the
+   row not centring what it holds; no gap between its lines, which the
+   opened part couldn't fold away: it starts where the shut row ended */
+body.window .row.agent.conn { flex-wrap: wrap; min-height: 56px; align-content: flex-start; row-gap: 0; }
+body.window .row.agent.conn > .who { min-height: 42px; align-content: center; }
+body.window .row + .row.agent.conn > .who { min-height: 41px; } /* the line above it is in the 56px */
 .ag-st { flex: 0 0 100%; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 18px; color: var(--muted); }
 .ag-st .ag-st-t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ag-st .ag-st-t b { font-weight: 600; color: var(--fg-2); }
@@ -2680,6 +2685,16 @@ body.window .row.agent.conn { flex-wrap: wrap; min-height: 56px; }
 .row.agent.conn > .ag-link + .ag-conn { margin-left: 4px; }
 .row.agent.conn > .who + .ag-conn, .row.agent.conn > .who + .ag-add, .row.agent.conn > .who + .ag-cant { margin-left: auto; }
 .row.agent.conn > .ag-conn:disabled { opacity: .4; cursor: default; }
+/* the model it starts on, beside the switch: one width down the list, so
+   the pickers and the switches line up */
+.row.agent.conn > .field.ag-start { flex: none; width: 196px; margin-left: 8px; align-self: center; justify-content: flex-start; }
+.row.agent.conn > .who + .field.ag-start { margin-left: auto; }
+.row.agent.conn > .field.ag-start .v { flex: 1; text-align: left; }
+.row.agent.conn > .field.ag-start .chev { margin-left: auto; }
+.row.agent.conn > .field.ag-start + .ag-conn { margin-left: 10px; }
+.row.agent.conn > .field.launch { flex: none; margin-left: 8px; align-self: center; }
+.row.agent.conn > .who + .field.launch { margin-left: auto; }
+.row.agent.conn > .field.launch + .field.ag-start { margin-left: 0; }
 .ag-add { flex: none; height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--pill); color: var(--fg); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
 .ag-add:hover { background: var(--pill-hover); }
 .ag-cant { flex: none; font-size: 12px; color: var(--faint); }
@@ -2742,4 +2757,8 @@ body.window .row.agent.conn { flex-wrap: wrap; min-height: 56px; }
   .ag-vl > .fields > .field.side { flex: 1 0 124px; }
   .ag-vl > .fields > .extras-cell { flex-wrap: wrap; max-width: 100%; }
   .ag-vl .field.ag-pick { flex: 1 1 160px; width: auto; min-width: 0; }
+  /* short of room, the model it starts on takes a line of its own under
+     the name, the link and the switch staying beside it */
+  .row.agent.conn > .field.ag-start, .row.agent.conn > .who + .field.ag-start { order: 1; flex: 1 1 100%; width: auto; margin: 9px 0 0 34px; }
+  .row.agent.conn > .ag-exp { order: 2; }
 }

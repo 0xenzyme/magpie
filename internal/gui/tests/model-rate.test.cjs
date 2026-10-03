@@ -129,8 +129,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
       // an agent's model picker
       await page.goto("http://magpie.test/");
-      await page.locator('.row.agent[data-id="claude"] .ag-link').click();
-      await page.locator('.row.agent[data-id="claude"] .ag-exp .field[data-key="model"]').click();
+      await page.locator('.row.agent[data-id="claude"] > .field.ag-start[data-key="model"]').click();
       const list = page.locator("#pop:not([hidden]) #list");
       await list.locator("li").filter({ hasText: "Qwen3.8-Max" }).first().waitFor();
       const rows = await list.locator("li[data-i]").evaluateAll((ls) => ls.map((l) => {

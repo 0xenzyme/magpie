@@ -1,6 +1,7 @@
 // An agent's name must stay readable when the main window is narrow or
-// enlarged, without making its 「接入」 switch and the link that opens it run
-// past the row; the switches line up down the list.
+// enlarged, without making its 「接入」 switch, the link that opens it and
+// the model it starts on run past the row; the switches and the model
+// pickers line up down the list.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -68,7 +69,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.locator('.row.agent[data-id="claude"] .ag-conn').waitFor();
       const boxes = () => page.locator(".row.agent").evaluateAll((els) => els.map((el) => {
         const box = (e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width }; };
-        return { row: box(el), who: box(el.querySelector(".who")), controls: [...el.querySelectorAll(":scope > .ag-link, :scope > .ag-conn")].map(box) };
+        return { row: box(el), who: box(el.querySelector(".who")), controls: [...el.querySelectorAll(":scope > .ag-link, :scope > .ag-conn")].map(box), start: box(el.querySelector(":scope > .ag-start")) };
       }));
       for (const width of [520, 560, 600, 660, 601, 960]) {
         await page.setViewportSize({ width, height: 700 });
@@ -83,6 +84,13 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
             assert(ok, `controls stay clear of the name at ${width}px: ${JSON.stringify({ who, c })}`);
           }
         }
+        // the model it starts on, one click away: inside the row, the same
+        // width down the list, beside the switch or on a line under the name
+        for (const { row, who, start } of rows) {
+          assert(start.width >= 120 && start.right <= row.right - 8, `the model picker fits at ${width}px: ${JSON.stringify({ row, start })}`);
+          assert(width > 600 ? start.x >= who.right : start.y >= who.bottom - 1, `the model picker stays clear of the name at ${width}px: ${JSON.stringify({ who, start })}`);
+        }
+        assert(Math.abs(rows[0].start.right - rows[1].start.right) < 1 && Math.abs(rows[0].start.width - rows[1].start.width) < 1, `the model pickers line up at ${width}px`);
         const rights = rows.map((r) => r.controls[1].right);
         assert(Math.abs(rights[0] - rights[1]) < 1, `the switches line up at ${width}px: ${JSON.stringify(rights)}`);
         if (width === 520) narrowShot = await page.screenshot();

@@ -897,10 +897,7 @@ function connectLine(a, kind) {
   }
   const at = PICKS_IN[a.id];
   if (a.id === "claude") say(t("Connected · switch the opus · sonnet · haiku tiers in /model"));
-  else if (NO_PICKER.has(a.id)) {
-    const f = connectField(a), o = f && optionFor(f, f.value);
-    say(o ? t("Connected · starts on {model}", { model: o.label || f.value }) : t("Connected · pick the model it starts on"));
-  } else if (at && a.models) say(t("Connected · {n} models in {agent}'s {cmd}", { n: a.models.shown, agent: a.name, cmd: at }));
+  else if (NO_PICKER.has(a.id)) say(t("Connected · starts on the model picked here")); else if (at && a.models) say(t("Connected · {n} models in {agent}'s {cmd}", { n: a.models.shown, agent: a.name, cmd: at }));
   else say(connectSaid(a));
   return line;
 }
@@ -919,9 +916,58 @@ function expandLink(a) {
   }
   b.onclick = (e) => {
     e.stopPropagation();
+    const shut = document.querySelector("#agents .row.agent.expanded > .ag-exp");
     agentExpanded = open ? null : a.id;
-    renderAgents();
+    const want = agentExpanded;
+    // the one open slides shut first, then the list is drawn again
+    sheet(shut, false, () => {
+      if (agentExpanded !== want) return;
+      renderAgents();
+      if (want) sheet(document.querySelector(`#agents .row.agent[data-id="${CSS.escape(want)}"] > .ag-exp`), true);
+    });
   };
+  return b;
+}
+
+// sheet slides a row's opened part open or shut, as a sheet moves on iOS:
+// its height on iOS's own curve, what is in it fading in a little below
+function sheet(box, open, done) {
+  if (!box || !box.animate || matchMedia("(prefers-reduced-motion: reduce)").matches) { done?.(); return; }
+  const cs = getComputedStyle(box);
+  const full = { height: box.offsetHeight + "px", paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, marginTop: cs.marginTop, marginBottom: cs.marginBottom, borderTopWidth: cs.borderTopWidth, opacity: 1 };
+  const none = { height: "0px", paddingTop: "0px", paddingBottom: "0px", marginTop: "0px", marginBottom: "0px", borderTopWidth: "0px", opacity: 0 };
+  const ease = "cubic-bezier(.32, .72, 0, 1)";
+  box.style.overflow = "hidden";
+  const run = box.animate(open ? [none, full] : [full, none], { duration: open ? 460 : 340, easing: ease, fill: open ? "none" : "forwards" });
+  for (const c of box.children) c.animate(open ? [{ opacity: 0, transform: "translateY(-6px)" }, { opacity: 1, transform: "none" }] : [{ opacity: 1 }, { opacity: 0 }], { duration: open ? 420 : 200, delay: open ? 60 : 0, easing: open ? ease : "ease-out", fill: "backwards" });
+  run.onfinish = () => { if (open) box.style.overflow = ""; done?.(); };
+  run.oncancel = run.onfinish;
+}
+
+// startField: the field an agent's model is picked in, magpie's among
+// its options (Gemini CLI's model, not how it signs in)
+function startField(a) {
+  return a.fields.find((f) => f.key === "model" && f.options.some((o) => o.ref)) || connectField(a);
+}
+
+// startButton picks the model an agent starts on, from the row. Not
+// connected, it lists magpie's models alone, and the one picked connects
+// the agent and starts it on it; connected, every choice there is.
+function startButton(a, f, fieldBtn) {
+  const b = fieldBtn(f, "ag-start");
+  if (!a.wired) {
+    b.replaceChildren(el("span", "v empty", t("Pick a model")));
+    const c = el("span", "chev");
+    c.append(svg(CHEV, 11, 1.7));
+    b.append(c);
+    b.title = t("Pick one of magpie's models: {agent} is connected and starts on it", { agent: a.name });
+    b.onclick = (ev) => openPicker(a, f, b, ev, (o) => !!o.ref);
+  } else if (!f.value && a.id !== "claude") {
+    b.querySelector(".v").textContent = t("Its last pick");
+    b.title = t("Unset, {agent} starts on its own last pick", { agent: a.name });
+  }
+  // Codex's is the very value its /model picks: one choice
+  if (a.wired && a.id === "codex") b.title += "\n" + t("The same choice as {agent}'s {cmd}: change it here or there", { agent: a.name, cmd: PICKS_IN.codex });
   return b;
 }
 
@@ -933,10 +979,17 @@ function connectRow(a, row, who, { fields, extras, fieldBtn, sw, kind }) {
   row.classList.toggle("unplugged", kind === "ok" && !a.wired);
   who.classList.add("with-models");
   who.append(connectLine(a, kind));
-  const noPicker = NO_PICKER.has(a.id);
+  // the model it starts on, one click away beside the switch (the owner:
+  // both ways at once): picked here, it is connected first if it wasn't
+  const start = kind === "ok" ? startField(a) : null;
+  if (start) fields.querySelector(`:scope > [data-key="${CSS.escape(start.key)}"]`)?.remove();
   if (kind === "ok") {
-    if (noPicker && a.wired) row.append(fields);
     if (a.wired) row.append(expandLink(a));
+    // the square copying the command that starts it on magpie (agy), the
+    // only way it takes magpie: on the row, before the model
+    const launch = a.wired && fields.querySelector(".field.launch");
+    if (launch) row.append(launch);
+    if (start) row.append(startButton(a, start, fieldBtn));
     row.append(sw);
   } else if (kind === "empty") {
     const add = el("button", "ag-add", t("Add a provider"));
@@ -954,7 +1007,7 @@ function connectRow(a, row, who, { fields, extras, fieldBtn, sw, kind }) {
   } else row.append(el("span", "ag-cant", t("Can't connect")));
   if (kind === "ok" && a.wired && agentExpanded === a.id) {
     row.classList.add("expanded");
-    row.append(connectPanel(a, { fields: noPicker ? null : fields, extras, fieldBtn }));
+    row.append(connectPanel(a, { fields: fields.querySelector(".field") ? fields : null, extras, fieldBtn }));
   }
 }
 
@@ -975,12 +1028,12 @@ function agentsLead(list) {
   const first = !state.agents.some((a) => a.wired);
   lead.classList.toggle("welcome", first);
   if (!first) {
-    const [pre, post] = t("Switch an agent on and the models you set up in magpie show up as the {magpie} provider in its own model list.").split("{magpie}");
+    const [pre, post] = t("Switch an agent on and the models you set up in magpie show up as the {magpie} provider in its own model list; or pick its model right here.").split("{magpie}");
     lead.append(pre, el("b", "", "magpie"), post || "");
     return;
   }
   lead.append(el("b", "ag-lead-h", t("Let your agents use the models you set up in magpie")));
-  lead.append(el("p", "", t("Switch an agent on and your models show up as the magpie provider in its own model list. Then change models in the agent; switch it off and it goes back to how it was.")));
+  lead.append(el("p", "", t("Switch an agent on and your models show up as the magpie provider in its own model list, to change in the agent. Or pick a model right here: the agent is connected and starts on it. Switch it off and it goes back to how it was.")));
   if (!anyMagpieModels()) {
     const add = el("button", "text primary", t("Add a provider"));
     add.type = "button";
@@ -1097,13 +1150,8 @@ function connectPanel(a, { fields, fieldBtn }) {
   }
   // what a new session starts on: optional, the agent's own last pick
   // unset; Codex's is the very value its /model picks, so one choice
-  if (fields && a.id === "codex") {
-    kv(t("New sessions"), line(fields), el("div", "ag-hint", t("The same choice as {agent}'s {cmd}: change it here or there", { agent: a.name, cmd: at })));
-  } else if (fields && a.id !== "claude") {
-    kv(t("New sessions"), line(fields), el("div", "ag-hint", t("Optional · unset, {agent} starts on its own last pick", { agent: a.name })));
-  } else if (fields && a.id === "claude") {
-    kv(t("New sessions"), line(fields));
-  }
+  // the model it starts on is on the row; what goes with it here
+  if (fields) kv(t("New sessions"), line(fields));
   if (CONNECT_COST[a.id]) kv(t("Once connected"), line(t(CONNECT_COST[a.id])));
   if (a.launch) {
     const cp = el("button", "ag-quiet", t("Copy"));

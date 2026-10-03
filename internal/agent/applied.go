@@ -293,6 +293,24 @@ func (a *Agent) Wired() bool {
 	return false
 }
 
+// Pick sets a field from the Agents page's model picker. One of magpie's
+// models picked on an agent not connected yet connects it first, as its
+// switch does, then starts it on that model (the owner: the switch, and a
+// model picked in magpie in one click, both): the agent gets magpie's whole
+// list, and Disconnect puts back what it had before.
+func (a *Agent) Pick(key, v string) error {
+	if f := a.Field(key); f != nil && !a.Wired() {
+		vals := a.Values()
+		vals[key] = v
+		if v == magpieID || magpieValue(a, *f, v, vals) {
+			if err := a.Connect(); err != nil {
+				return err
+			}
+		}
+	}
+	return a.Apply(key, v)
+}
+
 // Connect puts magpie into the agent's config, the Agents page's switch
 // (the owner: an agent is connected to magpie, and its models are picked in
 // the agent): the agent's main field goes to one of magpie's models — the

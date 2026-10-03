@@ -608,7 +608,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			http.Error(rw, "unknown field", http.StatusBadRequest)
 			return
 		}
-		if err := a.Apply(f.Key, strings.TrimSpace(in.Value)); err != nil {
+		if err := a.Pick(f.Key, strings.TrimSpace(in.Value)); err != nil {
 			fail(rw, err)
 			return
 		}

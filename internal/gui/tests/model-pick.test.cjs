@@ -73,12 +73,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.locator(row).waitFor();
       return page;
     };
-    // the window: the connected agent's row opened, and scrolled down to its
-    // picker as a reader would (the page puts back any scroll that isn't
+    // the window: scrolled down to the connected agent's picker, in its row,
+    // as a reader would (the page puts back any scroll that isn't
     // the reader's), by at least `least` turns of the wheel
     const toPicker = async (page, field, least = 0) => {
       const view = page.locator("#view-agents");
-      await page.locator(`${row} .ag-link`).click();
       await page.mouse.move(400, 300);
       const shown = async () => { const f = await field.boundingBox(), v = await view.boundingBox(); return f.y + f.height + 8 <= v.y + v.height; };
       for (let i = 0; i < least || !(await shown()); i++) { await page.mouse.wheel(0, 30); await page.waitForTimeout(i < least ? 20 : 80); }
@@ -96,7 +95,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const sets = [];
         const page = await open("http://magpie.test/", lang, sets);
         const view = page.locator("#view-agents");
-        const field = page.locator(`${row} .ag-exp .field[data-key="model"]`);
+        const field = page.locator(`${row} > .field.ag-start[data-key="model"]`);
         await toPicker(page, field, 2);
         const top = await view.evaluate((v) => v.scrollTop);
         assert(top > 0, "the list must be scrolled");
@@ -136,7 +135,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     await t.test("a refused pick puts the old model back", async () => {
       const sets = [];
       const page = await open("http://magpie.test/", "en", sets, { refuse: true });
-      const field = page.locator(`${row} .ag-exp .field[data-key="model"]`);
+      const field = page.locator(`${row} > .field.ag-start[data-key="model"]`);
       await toPicker(page, field);
       await field.click();
       await page.locator("#pop:not([hidden]) #list li").first().waitFor();

@@ -54,9 +54,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await page.waitForTimeout(700);
           await page.locator(`${row} .ag-open .field[data-key="model"]`).click();
         } else {
-          // the window: in the connected agent's opened row
-          await page.locator(`${row} .ag-link`).click();
-          await page.locator(`${row} .ag-exp .field[data-key="model"]`).click();
+          // the window: beside the connected agent's switch
+          await page.locator(`${row} > .field.ag-start[data-key="model"]`).click();
         }
         const li = page.locator("#pop:not([hidden]) #list li").filter({ hasText: "Label claude-opus-5-5" }).first();
         await li.waitFor();

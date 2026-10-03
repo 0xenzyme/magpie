@@ -274,3 +274,42 @@ func TestClaudeDisconnectKeepsTheUsersEffort(t *testing.T) {
 		t.Fatalf("connected again on %v:\n%s", v, readFile(path))
 	}
 }
+
+// A model of magpie's picked on the Agents page for an agent not connected
+// connects it first, as its switch does (the owner: the switch, and one
+// click in magpie, both): Goose starts on the model picked, and
+// disconnecting it brings back its own provider and model.
+func TestPickConnectsFirst(t *testing.T) {
+	home := syncHome(t)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	if err := provider.Save(provider.Provider{ID: "oa", Name: "OA", Key: "k", Chat: "http://127.0.0.1:1/v1", Models: []string{"gpt-5.5", "gpt-5.4"}}); err != nil {
+		t.Fatal(err)
+	}
+	a := goose(home, filepath.Join(home, ".config"))
+	writeFile(t, a.Path, "GOOSE_PROVIDER: anthropic\nGOOSE_MODEL: claude-opus-5-5\n")
+	var key, pick string
+	for _, f := range a.Fields {
+		for _, o := range f.Options(a.Values()) {
+			if o.Ref == "oa/gpt-5.4" {
+				key, pick = f.Key, o.Value
+			}
+		}
+	}
+	if pick == "" {
+		t.Fatal("no oa/gpt-5.4 to pick")
+	}
+	if err := a.Pick(key, pick); err != nil {
+		t.Fatal(err)
+	}
+	if !a.Wired() || a.Values()[key] != pick {
+		t.Fatalf("picked %q: %v\n%s", pick, a.Values(), readFile(a.Path))
+	}
+	if err := a.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	for k, want := range map[string]string{"GOOSE_PROVIDER": "anthropic", "GOOSE_MODEL": "claude-opus-5-5"} {
+		if v, _ := edit.GetYAMLTop(a.Path, k); v != want {
+			t.Fatalf("%s = %q after disconnecting:\n%s", k, v, readFile(a.Path))
+		}
+	}
+}

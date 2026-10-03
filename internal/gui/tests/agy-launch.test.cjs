@@ -1,8 +1,8 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
 // Antigravity CLI (agy) takes magpie's gateway only from its environment, so
 // its row on the Agents page has a square that copies the command starting
-// it on magpie, once it is connected (its model picker stays in the row, as
-// agy picks no model once started): the command in its tooltip, one click copying it (posted to /api/copy) and saying so, with the
+// it on magpie, once it is connected (right before the model picker beside
+// its switch, agy picking no model once started): the command in its tooltip, one click copying it (posted to /api/copy) and saying so, with the
 // page left where it was; none on an agent without one; in the tray panel's
 // opened row too; the words in Chinese. No backend: the API is faked here.
 const assert = require("node:assert/strict");
@@ -71,9 +71,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const title = await b.getAttribute("title");
       assert.match(title, /Antigravity CLI takes magpie only from its environment/);
       assert(title.includes(LAUNCH), title);
-      // in the squares' column, the model picker beside it on its line
-      const [sq, pick] = await page.evaluate((r) => [".field.launch", ".field:not(.extra)"].map((s) => document.querySelector(r + " " + s).getBoundingClientRect()), row("agy"));
-      assert(sq.left > pick.right - 1, "the square comes after the picker");
+      // on the row, right before the model it starts on, so the pickers
+      // and the switches line up down the list
+      const [sq, pick] = await page.evaluate((r) => [".field.launch", ".field.ag-start"].map((s) => document.querySelector(r + " " + s).getBoundingClientRect()), row("agy"));
+      assert(sq.right <= pick.left + 1 && pick.left - sq.right <= 12, "the square comes right before the picker");
       assert(Math.abs((sq.top + sq.height / 2) - (pick.top + pick.height / 2)) <= 2, "the square is on the picker's line");
       // scrolled a little, so a scroll would show
       const view = page.locator("#view-agents");

@@ -7,7 +7,7 @@
 // a model Claude Code asks Anthropic for itself says so: the row's tooltip
 // says it isn't through magpie and why the file names no magpie endpoint,
 // and picking one says "straight to Anthropic". A magpie model says neither.
-// The model is picked in the connected row, opened from its link. No click
+// The model is picked beside the connected row's switch. No click
 // moves the page. In English and Chinese, Chromium and WebKit.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -86,8 +86,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const sets = [];
       await page.route("**/*", server(lang, sets));
       await page.goto("http://magpie.test/");
-      await page.locator(`${row} .ag-link`).click();
-      const field = page.locator(`${row} .ag-exp .field[data-key="model"]`);
+      // beside the switch, one click away
+      const field = page.locator(`${row} > .field.ag-start[data-key="model"]`);
       await field.waitFor();
 
       // the alias, as the model it stands for, with Claude's logo
@@ -99,7 +99,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // the page scrolled, a pick moves nothing and says where it goes
       const view = page.locator("#view-agents");
       await page.mouse.move(400, 300);
-      // down to the opened row's picker, so the click has no need to scroll
+      // down to the row's picker, so the click has no need to scroll
       for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, 30); await page.waitForTimeout(20); }
       await page.waitForTimeout(300);
       const top = await view.evaluate((v) => v.scrollTop);

@@ -136,7 +136,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       for (const id of ids) {
         // Hermes picks no model once started: its pickers stay in the row
         const more = page.locator(`${row(id)} .ag-link`);
-        if (await more.count()) { await more.click(); await page.waitForTimeout(100); }
+        // the one open slides shut before this one opens
+        if (await more.count()) { await more.click(); await page.locator(`${row(id)} .ag-exp`).waitFor(); }
         icons.push(await lit(page, id));
       }
       const panel = await load("en", [], "http://magpie.test/?mode=panel");

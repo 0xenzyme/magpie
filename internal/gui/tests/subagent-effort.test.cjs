@@ -103,11 +103,13 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await page.locator('.row.agent[data-id="cc-magpie"] .field.extra[data-key="subagent"]').getAttribute("aria-label"), w.follows);
       await expand(codex);
 
-      // a square beside the subagents' one; model and effort alone are pickers
+      // a square beside the subagents' one; model (in the row, connected) and
+      // effort alone are pickers
       const square = page.locator(`${codex} .ag-exp .extras-cell .field.extra[data-key="subagent_effort"]`);
       assert.equal(await square.count(), 1);
       assert.equal(await page.locator(`${codex} .extras-cell .field.extra[data-key="subagent"]`).count(), 1);
-      assert.deepEqual(await page.locator(`${codex} .ag-exp .field:not(.extra)`).evaluateAll((es) => es.map((e) => e.dataset.key)), ["model", "effort"]);
+      assert.equal(await page.locator(`${codex} > .field.ag-start[data-key="model"]`).count(), 1);
+      assert.deepEqual(await page.locator(`${codex} .ag-exp .field:not(.extra)`).evaluateAll((es) => es.map((e) => e.dataset.key)), ["effort"]);
       assert.equal(await square.getAttribute("aria-label"), w.unset);
       assert.equal(await square.evaluate((e) => e.classList.contains("set")), false);
 

@@ -13,7 +13,7 @@
 // Esc and the arrows did nothing); a query shows the rows it finds, so an id
 // typed in full is picked with Enter (which only opened the fold); and a
 // star on a dated id still shows (its row was gone, Favorites empty). The
-// picker is the connected row's, opened from its link.
+// picker is the one beside the connected row's switch.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -90,8 +90,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.route("**/*", server(lang, value, sets));
       await page.goto("http://magpie.test/");
       await page.locator(row).waitFor();
-      await page.locator(`${row} .ag-link`).click();
-      await page.locator(`${row} .ag-exp .field[data-key="model"]`).click();
+      await page.locator(`${row} > .field.ag-start[data-key="model"]`).click();
       await page.locator("#pop:not([hidden]) #list li").first().waitFor();
       await page.waitForTimeout(400); // the picker grows open
       return page;

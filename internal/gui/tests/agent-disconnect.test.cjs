@@ -111,12 +111,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await ask.waitFor({ state: "detached" });
       assert.deepEqual(posts, []);
 
-      // the model picker, in the opened row, has it too, beside Default;
-      // Claude Code, not connected, has no picker to open
-      assert.equal(await page.locator(`${row("claude")} .field`).count(), 0);
+      // the model picker beside the switch has it too, beside Default;
+      // Claude Code, not connected, has only magpie's models to pick there
+      // and no row to open
+      assert.equal(await page.locator(`${row("claude")} .field:not(.ag-start)`).count(), 0);
       assert.equal(await page.locator(`${row("claude")} .ag-link`).count(), 0);
-      await page.locator(`${row("codex")} .ag-link`).click();
-      await page.locator(`${row("codex")} .field[data-key="model"]`).click();
+      await page.locator(`${row("codex")} > .field.ag-start[data-key="model"]`).click();
       const pickItem = page.locator("#list li", { hasText: w.item });
       await pickItem.waitFor();
       assert.ok(await pickItem.getAttribute("title"), "it says what it does");
