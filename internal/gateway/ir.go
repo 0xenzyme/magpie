@@ -159,6 +159,7 @@ const (
 	KUsage                      // Usage
 	KError                      // Text
 	KSearch                     // Text (the query), Hits: a web search run for the model
+	KImage                      // Name (media type), Text (base64): an image the model made
 )
 
 // Event is one thing a streaming reply said.
@@ -308,6 +309,9 @@ func (c *collector) add(ev Event) {
 	case KSearch:
 		c.closeTool()
 		c.res.Parts = append(c.res.Parts, Part{Kind: Search, Text: ev.Text, Hits: ev.Hits})
+	case KImage:
+		c.closeTool()
+		c.res.Parts = append(c.res.Parts, Part{Kind: Image, MediaType: ev.Name, Data: ev.Text})
 	}
 }
 

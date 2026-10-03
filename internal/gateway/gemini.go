@@ -403,6 +403,10 @@ func geminiParts(parts []Part) []map[string]any {
 			if p.Text != "" {
 				out = append(out, map[string]any{"text": p.Text, "thought": true})
 			}
+		case Image:
+			if p.Data != "" {
+				out = append(out, map[string]any{"inlineData": map[string]any{"mimeType": p.MediaType, "data": p.Data}})
+			}
 		case ToolCall:
 			id := p.ID
 			if id == "" {
@@ -487,6 +491,9 @@ func (e *geminiEncoder) event(ev Event) {
 	case KThink:
 		e.flushTool()
 		e.chunk(geminiParts([]Part{{Kind: Thinking, Text: ev.Text}}), "", nil)
+	case KImage:
+		e.flushTool()
+		e.chunk(geminiParts([]Part{{Kind: Image, MediaType: ev.Name, Data: ev.Text}}), "", nil)
 	case KToolStart:
 		e.flushTool()
 		e.tool = &Part{Kind: ToolCall, ID: ev.ID, Name: ev.Name}
