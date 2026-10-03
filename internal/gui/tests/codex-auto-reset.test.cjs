@@ -199,10 +199,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         "Auto-use resets", "Auto-use resets:", "when the week runs out, or before one expires", "Auto-use: on", "Auto-use: off",
         "auto-used before it expires", "not auto-used",
         "{who} no longer uses a reset by itself", "{who} uses a reset by itself when its week runs out, or before one expires",
-        "Auto-use is on: the reset that runs out first is used about 3 hours before it does, if this account's windows have been used, so it isn't lost.",
+        "Auto-use is on: the reset that runs out first is used about half an hour before it does, if this account's windows have been used, so what they have left can be used until then and it isn't lost; at once if the account is held up until after then.",
         "Auto-use is off: the reset that runs out first is lost unless it's used by hand before then.",
-        "On: a reset is used by itself when this account's week is used up and no other account can answer, one a week at most, and the one about to run out is used about 3 hours before it does, if the account has been used. The five hours running out never uses one. Click to turn it off.",
-        "Off: this account's resets are used only by hand. Turned on, one is used by itself when its week is used up and no other account can answer, one a week at most, and the one about to run out about 3 hours before it does, if the account has been used. The five hours running out never uses one.",
+        "On: a reset is used by itself when this account's week is used up and no other account can answer, one a week at most, and the one about to run out is used about half an hour before it does, if the account has been used, or at once when the account is held up until after then. Otherwise the five hours running out never uses one. Click to turn it off.",
+        "Off: this account's resets are used only by hand. Turned on, one is used by itself when its week is used up and no other account can answer, one a week at most, and the one about to run out about half an hour before it does, if the account has been used, or at once when the account is held up until after then. Otherwise the five hours running out never uses one.",
       ].filter((k) => !I18N.zh[k]));
       assert.deepEqual(missing, [], "every string has its Chinese");
       // the credit is 重置卡 in Chinese wherever it is counted or spent

@@ -108,7 +108,8 @@ type Settings struct {
 	// of their rate-limit resets by themselves once their weekly window is
 	// used up and no other account can take the request: at most one a
 	// week each (see provider.AutoUseCodexReset); and one about to run out
-	// unused shortly before it does (provider.SpendExpiringCodexResets).
+	// unused half an hour before it does, or at once when the account is
+	// held up past then (provider.SpendExpiringCodexResets).
 	CodexAutoReset []string `json:"codexAutoReset,omitempty"`
 	// WorkBuddyCheckin presses WorkBuddy's daily check-in (签到) for each
 	// signed-in WorkBuddy (China) account once a Beijing day, claiming the

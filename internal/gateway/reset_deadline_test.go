@@ -10,10 +10,10 @@ import (
 
 // A Codex account that spends a reset about to run out by itself (auto-use
 // on, its windows used) loses what its week has left when that reset is
-// spent, resetExpiryLead before it runs out: Weekly pace and Smart take
+// spent, resetExpiryLead (half an hour) before it runs out: Weekly pace and Smart take
 // that for its deadline when it is sooner than the week renews (#717,
 // #718, thedavidweng: A with 80% left renewing in five days and a reset
-// running out in four hours went behind B with 50% left renewing in two).
+// running out that afternoon went behind B with 50% left renewing in two).
 // Holding a reset that runs out after the week renews, or none, changes
 // nothing; the 90% and 98% tiers are kept; the trace says when the reset
 // set it.
@@ -58,8 +58,9 @@ func TestResetSpentIsTheDeadline(t *testing.T) {
 		if got, _, _ := order(); got != "ba" {
 			t.Fatalf("%s, no reset: %s", name, got)
 		}
-		// the issue's case: A's reset is spent in an hour, its 80% lost
-		share["a@x.com"] = week(20, 120*time.Hour, 4*time.Hour)
+		// the issue's case: A's reset runs out in an hour and a half, spent
+		// in one, its 80% lost
+		share["a@x.com"] = week(20, 120*time.Hour, 90*time.Minute)
 		got, wg, cs := order()
 		if got != "ab" {
 			t.Fatalf("%s, reset spent before the week renews: %s", name, got)
@@ -84,13 +85,13 @@ func TestResetSpentIsTheDeadline(t *testing.T) {
 		}
 		// A sooner than the week renews, but at 90% of its five hours:
 		// it waits behind B all the same
-		share["a@x.com"] = week(20, 120*time.Hour, 4*time.Hour)
+		share["a@x.com"] = week(20, 120*time.Hour, 90*time.Minute)
 		share["a@x.com"][0].Used = 92
 		if got, _, _ := order(); got != "ba" {
 			t.Fatalf("%s, low tier kept: %s", name, got)
 		}
 		// all but used up: last, whatever its reset
-		share["a@x.com"] = week(99, 120*time.Hour, 4*time.Hour)
+		share["a@x.com"] = week(99, 120*time.Hour, 90*time.Minute)
 		if got, _, _ := order(); got != "ba" {
 			t.Fatalf("%s, spent tier kept: %s", name, got)
 		}

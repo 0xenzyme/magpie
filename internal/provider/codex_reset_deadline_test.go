@@ -25,8 +25,8 @@ func TestPaceUntilAutoUsedReset(t *testing.T) {
 		return a
 	}
 	// the issue's A: 80% left, the week renewing in five days, a reset
-	// running out in four hours — spent in one
-	a := week(20, 120*time.Hour, 4*time.Hour)
+	// running out in an hour and a half — spent in one
+	a := week(20, 120*time.Hour, 90*time.Minute)
 	if p, due := a.Pace("m", now); !near(p, 80) || !due.Equal(now.Add(time.Hour)) {
 		t.Fatalf("by the reset spent: %v %v", p, due)
 	}
@@ -45,16 +45,17 @@ func TestPaceUntilAutoUsedReset(t *testing.T) {
 	if r := b.Renewal("m", now); !r[0].Equal(now.Add(48 * time.Hour)) {
 		t.Fatalf("week sooner, renewals: %v", r)
 	}
-	// within the lead already: spent on the next look, an hour at least
-	if p, due := week(20, 120*time.Hour, 2*time.Hour).Pace("m", now); !near(p, 80) || !due.Equal(now) {
+	// within the lead already: spent on the next look
+	if p, due := week(20, 120*time.Hour, 20*time.Minute).Pace("m", now); !near(p, 80) || !due.Equal(now) {
 		t.Fatalf("within the lead: %v %v", p, due)
 	}
 	// run out already: nothing to spend
 	if p, _ := week(20, 120*time.Hour, -time.Minute).Pace("m", now); !near(p, 80.0/120) {
 		t.Fatalf("ran out: %v", p)
 	}
-	// five hours alone are cut short too
-	five := Allowance{{Used: 40, Resets: now.Add(4 * time.Hour), Span: 5 * time.Hour}}.restartedBy(now.Add(5 * time.Hour))
+	// five hours alone are cut short too: the reset runs out in two and a
+	// half hours, spent in two
+	five := Allowance{{Used: 40, Resets: now.Add(4 * time.Hour), Span: 5 * time.Hour}}.restartedBy(now.Add(150 * time.Minute))
 	if p, due := five.Pace("m", now); !near(p, 60.0/2) || !due.Equal(now.Add(2*time.Hour)) {
 		t.Fatalf("five hours alone: %v %v", p, due)
 	}
@@ -119,5 +120,31 @@ func TestResetRunsOutForRouting(t *testing.T) {
 	}
 	if got := all["other@example.com"].Restarts(now); !got.IsZero() {
 		t.Fatalf("an account not let spend its resets: restarts %v", got)
+	}
+}
+
+// Routing takes the reset as spent when check spends it: half an hour
+// before it runs out, or now when the account is held up past then (#718).
+func TestRestartsWhenHeldUp(t *testing.T) {
+	now := time.Now()
+	acct := func(fiveUsed float64, fiveBack time.Duration) Allowance {
+		five := Limit{Used: fiveUsed, Span: 5 * time.Hour}
+		if fiveBack != 0 {
+			five.Resets = now.Add(fiveBack)
+		}
+		return Allowance{five, {Used: 32, Resets: now.Add(120 * time.Hour), Span: 7 * 24 * time.Hour}}.restartedBy(now.Add(3 * time.Hour))
+	}
+	for name, c := range map[string]struct {
+		a    Allowance
+		want time.Time
+	}{
+		"free again before it is spent":  {acct(100, 110*time.Minute), now.Add(150 * time.Minute)},
+		"held up past it":                {acct(100, 160*time.Minute), now},
+		"held up, not saying until when": {acct(100, 0), now},
+		"not held up":                    {acct(60, 110*time.Minute), now.Add(150 * time.Minute)},
+	} {
+		if got := c.a.Restarts(now); !got.Equal(c.want) {
+			t.Errorf("%s: restarts %v, want %v", name, got, c.want)
+		}
 	}
 }

@@ -30,10 +30,11 @@ const quotaUsage = `usage: magpie quota [<provider>…] [--json]
   named). It can't be undone, so it asks first; --yes doesn't. quota auto-reset on lets
   the account spend one by itself when its weekly window is used up and no other
   account can take a request, one a week at most (the five hours running out never
-  does), and spend the one about to expire about 3 hours before it does, if the
-  account's windows have been used, so it isn't lost. It is the account's standing
-  setting, held resets or not; off stops it, and alone it says which accounts have it
-  on. It is off until turned on.
+  does), and spend the one about to expire about half an hour before it does, if
+  the account's windows have been used, so what they have left can be used until
+  then and it isn't lost; at once when the account is held up until after then.
+  It is the account's standing setting, held resets or not; off stops it, and alone
+  it says which accounts have it on. It is off until turned on.
   quota alert 80 has the magpie app notify when any window of a subscription or plan
   reaches 80% used, once each time the window runs (not windows set aside, such as
   on-demand spending); --balance 5 when a balance falls to 5 or under, in its own
@@ -254,7 +255,7 @@ func quotaAutoResetCmd(args []string) error {
 		return err
 	}
 	if on {
-		fmt.Println(green.Render("✓"), user+":", "uses a reset by itself once its week is used up and no other account can answer, one a week at most, and the one about to expire shortly before it does")
+		fmt.Println(green.Render("✓"), user+":", "uses a reset by itself once its week is used up and no other account can answer, one a week at most, and the one about to expire half an hour before it does, or at once when held up past then")
 	} else {
 		fmt.Println(green.Render("✓"), user+":", "no longer uses a reset by itself")
 	}
