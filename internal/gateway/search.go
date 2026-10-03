@@ -76,13 +76,14 @@ func searchesItself(p provider.Provider, proto provider.Protocol) bool {
 }
 
 // searchHosts are the APIs that search by themselves: OpenAI's, xAI's,
-// DeepSeek's, Zhipu's and Z.ai's web_search tool (DeepSeek's and Zhipu's on
-// their Responses API only: their Chat API has no such tool, and whether
-// DeepSeek's Anthropic one searches isn't known), Anthropic's
-// web_search_20250305, OpenRouter's web plugin, Gemini's googleSearch.
+// DeepSeek's, Zhipu's and Z.ai's web_search tool (Zhipu's on its Responses
+// API only, DeepSeek's on its Responses and Anthropic APIs: their Chat APIs
+// have no such tool), Anthropic's web_search_20250305 (DeepSeek's Anthropic
+// API runs it too, answering web_search_tool_result blocks, #669),
+// OpenRouter's web plugin, Gemini's googleSearch.
 var searchHosts = map[provider.Protocol][]string{
 	provider.Responses: {"api.openai.com", "api.x.ai", "api.deepseek.com", "open.bigmodel.cn", "api.z.ai"},
-	provider.Anthropic: {"api.anthropic.com"},
+	provider.Anthropic: {"api.anthropic.com", "api.deepseek.com"},
 	provider.Chat:      {"openrouter.ai"},
 	provider.Gemini:    {"generativelanguage.googleapis.com"},
 }
@@ -313,7 +314,13 @@ func (s *Server) webSearch(ctx context.Context, query string) (string, []Hit, er
 
 var errNoSearcher = errors.New("no provider that can search the web, nor a search API, is set up in magpie")
 
-// modelSearch searches the web with the searcher's model.
+// searchersInTurn is how many searchers a search is asked of, in turn,
+// before it goes to the search APIs.
+const searchersInTurn = 3
+
+// modelSearch searches the web with the searcher's model; one that fails
+// or finds nothing gives way to the next searcher magpie would pick, all
+// of them within searchTimeout.
 func (s *Server) modelSearch(ctx context.Context, query string) (string, []Hit, error) {
 	p, model, ok := searcher()
 	if !ok {
@@ -321,6 +328,33 @@ func (s *Server) modelSearch(ctx context.Context, query string) (string, []Hit, 
 	}
 	ctx, cancel := context.WithTimeout(context.WithValue(ctx, searchingKey{}, true), searchTimeout)
 	defer cancel()
+	type pick struct{ id, model string }
+	tried := []pick{{p.ID, model}}
+	said, hits, err := s.searchWith(ctx, p, model, query)
+	for _, c := range Searchers() {
+		if err == nil || ctx.Err() != nil || len(tried) >= searchersInTurn {
+			break
+		}
+		if c.Small == "" || slices.ContainsFunc(tried, func(t pick) bool { return t.id == c.Provider.ID }) {
+			continue
+		}
+		tried = append(tried, pick{c.Provider.ID, c.Small})
+		var next error
+		if said, hits, next = s.searchWith(ctx, c.Provider, c.Small, query); next != nil {
+			err = errors.Join(err, next)
+		} else {
+			err = nil
+		}
+	}
+	return said, hits, err
+}
+
+// searchWith asks one searcher's model to search: what it said, with the
+// pages its searches found. A reply with no page found and no address in
+// what it says found nothing: the model answered without searching (#669:
+// DeepSeek on its Chat API, which has no search tool, said it couldn't, or
+// wrote its own tool-call markup as text).
+func (s *Server) searchWith(ctx context.Context, p provider.Provider, model, query string) (string, []Hit, error) {
 	body, _ := json.Marshal(map[string]any{
 		"model": p.ID + "/" + model, "max_tokens": 4096, "stream": false, "system": searchSystem,
 		"messages": []map[string]any{{"role": "user", "content": "Search the web for: " + query}},
@@ -362,18 +396,28 @@ func (s *Server) modelSearch(ctx context.Context, query string) (string, []Hit, 
 		case "text":
 			text.WriteString(b.Text)
 		case "web_search_tool_result":
-			var hits []Hit
-			json.Unmarshal(b.Content, &hits)
-			for _, h := range hits {
-				if h.URL != "" {
-					sources = append(sources, "- "+h.Title+" — "+h.URL)
-					found = append(found, h)
+			// each result read on its own, its title, address and age
+			// only: a vendor's encrypted_content is for that vendor, and
+			// an error ({"type":"web_search_tool_result_error"}) has none
+			var results []json.RawMessage
+			json.Unmarshal(b.Content, &results)
+			for _, raw := range results {
+				var h struct {
+					Title   string `json:"title"`
+					URL     string `json:"url"`
+					PageAge any    `json:"page_age"`
 				}
+				if json.Unmarshal(raw, &h) != nil || h.URL == "" {
+					continue
+				}
+				age, _ := h.PageAge.(string)
+				sources = append(sources, "- "+h.Title+" — "+h.URL)
+				found = append(found, Hit{Title: h.Title, URL: h.URL, PageAge: age})
 			}
 		}
 	}
 	said := strings.TrimSpace(text.String())
-	if said == "" {
+	if said == "" || (len(found) == 0 && !strings.Contains(said, "://")) {
 		return "", nil, fmt.Errorf("%s/%s found nothing", p.ID, model)
 	}
 	if len(sources) > 0 && len(sources) <= 20 {

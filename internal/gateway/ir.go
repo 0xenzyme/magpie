@@ -59,6 +59,8 @@ type Part struct {
 type Hit struct {
 	Title string `json:"title"`
 	URL   string `json:"url"`
+	// PageAge is how old the search said the page is, "" when it didn't
+	PageAge string `json:"page_age,omitempty"`
 }
 
 // attachmentText is the fallback when a protocol cannot carry a Gemini file.

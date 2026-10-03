@@ -2847,16 +2847,19 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 	if p.OpenCodeFree(model) {
 		zen = &zenReply{z: zenFreeTools(request)}
 	}
-	if request.WebSearch && !searching(r.Context()) {
+	if request.WebSearch {
 		// an API on which the provider searches by itself comes first;
-		// without one, its model is given magpie's search
+		// without one, its model is given magpie's search. A searcher
+		// asked for another model goes there too: on its first API
+		// (DeepSeek's Chat) it had no search tool and answered from
+		// nothing (#669)
 		for _, t := range s.usable(p, model) {
 			if searchesItself(p, t) {
 				to = t
 				break
 			}
 		}
-		if canSearch() && !searchesItself(p, to) {
+		if !searching(r.Context()) && canSearch() && !searchesItself(p, to) {
 			ask := s.askTranslated(p, to, model, r.Header, w.Header())
 			if zen != nil {
 				ask = zenRound(zen.z, ask)

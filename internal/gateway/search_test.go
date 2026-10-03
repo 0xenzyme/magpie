@@ -332,10 +332,9 @@ func TestDeepSeekSearchesOnResponses(t *testing.T) {
 	if !searchesItself(p, provider.Responses) {
 		t.Error("DeepSeek doesn't search by itself on its Responses API")
 	}
-	for _, proto := range []provider.Protocol{provider.Chat, provider.Anthropic} {
-		if searchesItself(p, proto) {
-			t.Errorf("DeepSeek searches by itself on %s", proto)
-		}
+	// its Anthropic API searches too (TestDeepSeekNativeSearchResults)
+	if searchesItself(p, provider.Chat) {
+		t.Error("DeepSeek searches by itself on its Chat API")
 	}
 }
 

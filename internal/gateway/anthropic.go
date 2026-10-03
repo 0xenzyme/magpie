@@ -764,8 +764,14 @@ func renderAnthropic(res Result, model string) []byte {
 func searchResultBlock(id string, hits []Hit) map[string]any {
 	results := []map[string]any{}
 	for _, h := range hits {
+		// never the searcher's encrypted_content: it is sealed for the
+		// vendor that searched, and the client would send it to another
+		var age any
+		if h.PageAge != "" {
+			age = h.PageAge
+		}
 		results = append(results, map[string]any{"type": "web_search_result", "title": h.Title, "url": h.URL,
-			"encrypted_content": "", "page_age": nil})
+			"encrypted_content": "", "page_age": age})
 	}
 	return map[string]any{"type": "web_search_tool_result", "tool_use_id": id, "content": results}
 }
