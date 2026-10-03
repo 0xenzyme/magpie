@@ -4487,7 +4487,7 @@ function renderAdd() {
     const plugged = pluginSubs().filter((x) => !(movedSub(x.agent) && SUBS.some((y) => y.agent === x.agent))).filter((x) => !f || x.name.toLowerCase().includes(f) || x.agent.includes(f) || "plugin".includes(f));
     if (plugged.length) {
       any = true;
-      const grid = section("From plugins", "signed in by an OpenCode plugin");
+      const grid = section("From plugins", "signed in by an OpenCode plugin or a pi package");
       for (const x of plugged) grid.append(subTile(x));
       const w = plugged.find((x) => signing?.agent === x.agent);
       if (w) tiles.append(renderSigning(w));

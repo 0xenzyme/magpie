@@ -290,6 +290,9 @@ func Add(ctx context.Context, spec string) (Entry, error) {
 			return Entry{}, err
 		}
 	}
+	if err := ensurePi(ctx, Target(spec)); err != nil {
+		return Entry{}, err
+	}
 	listMu.Lock()
 	defer listMu.Unlock()
 	l := Load()
@@ -319,10 +322,13 @@ func Add(ctx context.Context, spec string) (Entry, error) {
 func Update(ctx context.Context) error {
 	var errs []error
 	for _, e := range Load().Plugins {
-		if IsPath(e.Spec) {
-			continue
+		if !IsPath(e.Spec) {
+			if err := reinstall(ctx, e.Spec); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", e.Spec, err))
+				continue
+			}
 		}
-		if err := reinstall(ctx, e.Spec); err != nil {
+		if err := ensurePi(ctx, Target(e.Spec)); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", e.Spec, err))
 		}
 	}
@@ -406,6 +412,73 @@ func install(ctx context.Context, spec string) error {
 		return fmt.Errorf("bun add %s: %v: %s", spec, err, lastLines(string(out), 6))
 	}
 	return nil
+}
+
+// piAgent is the package pi's extensions import pi from; the host loads
+// them with it (pi.js), whichever of its names they import.
+const piAgent = "@earendil-works/pi-coding-agent"
+
+// IsPi is whether the plugin at target is pi's (a pi package or
+// extension) rather than OpenCode's, as host.js's pi.js tells them.
+func IsPi(target string) bool {
+	st, err := os.Stat(target)
+	if err != nil {
+		return false
+	}
+	if !st.IsDir() {
+		b, err := os.ReadFile(target)
+		if err != nil {
+			return false
+		}
+		s := string(b)
+		for _, n := range []string{piAgent, "@mariozechner/pi-coding-agent"} {
+			if strings.Contains(s, `"`+n+`"`) || strings.Contains(s, `'`+n+`'`) {
+				return true
+			}
+		}
+		return false
+	}
+	b, err := os.ReadFile(filepath.Join(target, "package.json"))
+	if err != nil {
+		return false
+	}
+	var pkg struct {
+		Pi       any               `json:"pi"`
+		Keywords []string          `json:"keywords"`
+		Deps     map[string]string `json:"dependencies"`
+		Peers    map[string]string `json:"peerDependencies"`
+	}
+	if json.Unmarshal(b, &pkg) != nil {
+		return false
+	}
+	if _, ok := pkg.Pi.(map[string]any); ok || slices.Contains(pkg.Keywords, "pi-package") {
+		return true
+	}
+	for _, d := range []map[string]string{pkg.Deps, pkg.Peers} {
+		if _, ok := d[piAgent]; ok {
+			return true
+		}
+		if _, ok := d["@mariozechner/pi-coding-agent"]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// ensurePi installs pi for a pi plugin that came without it (one that
+// doesn't name it among what it depends on, or one on disk), as pi itself
+// is what loads it.
+func ensurePi(ctx context.Context, target string) error {
+	if !IsPi(target) {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(Dir(), "node_modules", piAgent, "package.json")); err == nil {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(target, "node_modules", piAgent, "package.json")); err == nil {
+		return nil
+	}
+	return install(ctx, piAgent)
 }
 
 // reinstall installs spec again: an npm one with bun add, a git one with

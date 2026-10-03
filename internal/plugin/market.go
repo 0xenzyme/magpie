@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -421,7 +422,9 @@ type Hit struct {
 	NPM
 }
 
-// Search asks npm for OpenCode plugins matching q.
+// Search asks npm for plugins matching q: OpenCode plugins, and pi
+// packages, which list "pi-package" among their keywords as pi's own
+// gallery asks.
 func Search(ctx context.Context, q string) ([]Hit, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
@@ -429,7 +432,46 @@ func Search(ctx context.Context, q string) ([]Hit, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	v := url.Values{"text": {q + " opencode"}, "size": {"30"}}
+	var (
+		wg       sync.WaitGroup
+		oc, pi   []Hit
+		ocE, piE error
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		// a plugin, not a tool that mentions OpenCode: its name says so,
+		// or its keywords name an OpenCode plugin
+		oc, ocE = searchNPM(ctx, q+" opencode", func(text string, _ []string) bool {
+			return strings.Contains(text, "opencode") && (strings.Contains(text, "auth") || strings.Contains(text, "plugin") || strings.Contains(text, "provider"))
+		})
+	}()
+	go func() {
+		defer wg.Done()
+		// a pi package that signs in to a provider or brings one; one
+		// that only adds pi a command or a tool has nothing for magpie
+		pi, piE = searchNPM(ctx, "keywords:pi-package "+q, func(text string, kw []string) bool {
+			return slices.Contains(kw, "pi-package") && (strings.Contains(text, "auth") || strings.Contains(text, "provider"))
+		})
+	}()
+	wg.Wait()
+	if ocE != nil && piE != nil {
+		return nil, ocE
+	}
+	out, seen := []Hit{}, map[string]bool{}
+	for _, h := range append(oc, pi...) {
+		if !seen[h.Package] {
+			seen[h.Package] = true
+			out = append(out, h)
+		}
+	}
+	return out, nil
+}
+
+// searchNPM is npm's search for text, the packages keep says are plugins
+// (given their name and keywords, lowercased, and the keywords).
+func searchNPM(ctx context.Context, text string, keep func(string, []string) bool) ([]Hit, error) {
+	v := url.Values{"text": {text}, "size": {"30"}}
 	b, err := fetchJSON(ctx, npmRegistry+"/-/v1/search?"+v.Encode(), 4<<20)
 	if err != nil {
 		return nil, err
@@ -458,13 +500,10 @@ func Search(ctx context.Context, q string) ([]Hit, error) {
 	if err := json.Unmarshal(b, &r); err != nil {
 		return nil, err
 	}
-	out := []Hit{}
+	var out []Hit
 	for _, o := range r.Objects {
 		p := o.Package
-		// a plugin, not a tool that mentions OpenCode: its name says so,
-		// or its keywords name an OpenCode plugin
-		text := strings.ToLower(p.Name + " " + strings.Join(p.Keywords, " "))
-		if !strings.Contains(text, "opencode") || !(strings.Contains(text, "auth") || strings.Contains(text, "plugin") || strings.Contains(text, "provider")) {
+		if !keep(strings.ToLower(p.Name+" "+strings.Join(p.Keywords, " ")), p.Keywords) {
 			continue
 		}
 		out = append(out, Hit{Package: p.Name, NPM: NPM{

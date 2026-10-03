@@ -541,7 +541,7 @@
     const known = new Set(listings.map((l) => l.package));
     const box = el("section", "pm-sec");
     const h = el("div", "pm-sechead");
-    h.append(el("h3", "", t("On npm")), el("span", "", t("OpenCode plugins anyone published — read what one does before you install it")));
+    h.append(el("h3", "", t("On npm")), el("span", "", t("OpenCode plugins and pi packages anyone published — read what one does before you install it")));
     box.append(h);
     if (!hits) box.append(el("p", "pm-note", t("Type two letters or more to search npm")));
     else if (hits.loading) box.append(skeleton(2));

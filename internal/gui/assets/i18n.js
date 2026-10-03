@@ -1032,7 +1032,7 @@ const I18N = {
     // OpenCode's provider plugins: Settings → Plugins, the add sheet's "From plugins"
     "Plugins": "插件",
     "From plugins": "来自插件",
-    "signed in by an OpenCode plugin": "由 OpenCode 插件登录",
+    "signed in by an OpenCode plugin or a pi package": "由 OpenCode 插件或 pi 包登录",
     "from the plugin {spec}": "来自插件 {spec}",
     "The plugin has no way to sign in to {name}": "插件没有提供登录 {name} 的方式",
     "How do you sign in to {name}?": "用哪种方式登录 {name}？",
@@ -2562,7 +2562,7 @@ const I18N = {
     "written for magpie, checked against its own sign-ins": "为 magpie 编写，与内置登录对照验证过",
     "Suggested": "推荐",
     "On npm": "npm 上的插件",
-    "OpenCode plugins anyone published — read what one does before you install it": "任何人都可发布的 OpenCode 插件，安装前请先了解它做什么",
+    "OpenCode plugins and pi packages anyone published — read what one does before you install it": "任何人都可发布的 OpenCode 插件和 pi 包，安装前请先了解它做什么",
     "Type two letters or more to search npm": "输入两个及以上字符以搜索 npm",
     "Nothing else on npm": "npm 上没有更多了",
     "No plugin called “{q}”": "没有叫「{q}」的插件",

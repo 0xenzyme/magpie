@@ -1,0 +1,138 @@
+// A pi extension as pi's own examples write one (custom-provider-anthropic):
+// a provider with its own stream and an OAuth sign-in that asks as it goes,
+// another signed in to with a key, and a command, a tool and an event
+// handler, which magpie leaves unused. Its stream tells what pi handed it.
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai"
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
+
+function stream(model, context, options) {
+  const s = createAssistantMessageEventStream()
+  const out = {
+    role: "assistant",
+    content: [],
+    api: model.api,
+    provider: model.provider,
+    model: model.id,
+    usage: { input: 11, output: 7, cacheRead: 3, cacheWrite: 2, totalTokens: 23, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+    stopReason: "stop",
+    timestamp: Date.now(),
+  }
+  const msgs = context.messages
+  const last = msgs[msgs.length - 1]
+  const said = typeof last.content === "string" ? last.content : (last.content ?? []).map((c) => c.text ?? "").join("")
+  const system = msgs.filter((m) => m.role === "system")
+  queueMicrotask(() => {
+    s.push({ type: "start", partial: out })
+    if (said.includes("fail429")) {
+      options?.onResponse?.({ status: 429, headers: { "retry-after": "7" } })
+      out.stopReason = "error"
+      out.errorMessage = "429 Too Many Requests: slow down"
+      s.push({ type: "error", reason: "error", error: out })
+      s.end()
+      return
+    }
+    if (said.includes("think")) {
+      out.content.push({ type: "thinking", thinking: "", thinkingSignature: "" })
+      s.push({ type: "thinking_start", contentIndex: 0, partial: out })
+      out.content[0].thinking = "hmm"
+      s.push({ type: "thinking_delta", contentIndex: 0, delta: "hmm", partial: out })
+      out.content[0].thinkingSignature = "sig-1"
+      s.push({ type: "thinking_end", contentIndex: 0, content: "hmm", partial: out })
+    }
+    if (said.includes("tool")) {
+      const call = { type: "toolCall", id: "call_1", name: "lookup", arguments: { q: "x" }, thoughtSignature: "ts-1" }
+      out.content.push(call)
+      const i = out.content.length - 1
+      s.push({ type: "toolcall_start", contentIndex: i, partial: out })
+      s.push({ type: "toolcall_end", contentIndex: i, toolCall: call, partial: out })
+      out.stopReason = "toolUse"
+      s.push({ type: "done", reason: "toolUse", message: out })
+      s.end()
+      return
+    }
+    // an empty text first, as some vendors send one
+    out.content.push({ type: "text", text: "" })
+    s.push({ type: "text_start", contentIndex: out.content.length - 1, partial: out })
+    s.push({ type: "text_end", contentIndex: out.content.length - 1, content: "", partial: out })
+    const seen = {
+      apiKey: options?.apiKey,
+      reasoning: options?.reasoning ?? null,
+      maxTokens: options?.maxTokens,
+      system: system.map((m) => (typeof m.content === "string" ? m.content : m.content.map((c) => c.text).join(""))).join("|"),
+      tools: system.flatMap((m) => (m.toolsAdded ?? []).map((t) => t.name)),
+      roles: msgs.filter((m) => m.role !== "system").map((m) => m.role),
+      sigs: msgs.flatMap((m) => (m.role === "assistant" ? m.content.map((c) => c.thinkingSignature ?? c.thoughtSignature ?? "") : [])),
+      results: msgs.filter((m) => m.role === "toolResult").map((m) => m.toolName + ":" + m.content.map((c) => c.text ?? c.mimeType).join("")),
+      images: msgs.flatMap((m) => (Array.isArray(m.content) ? m.content.filter((c) => c.type === "image").map((c) => c.mimeType) : [])),
+    }
+    const text = JSON.stringify(seen)
+    out.content.push({ type: "text", text: "" })
+    const i = out.content.length - 1
+    s.push({ type: "text_start", contentIndex: i, partial: out })
+    for (const part of [text.slice(0, 10), text.slice(10)]) {
+      out.content[i].text += part
+      s.push({ type: "text_delta", contentIndex: i, delta: part, partial: out })
+    }
+    s.push({ type: "text_end", contentIndex: i, content: text, partial: out })
+    s.push({ type: "done", reason: "stop", message: out })
+    s.end()
+  })
+  return s
+}
+
+const models = [
+  {
+    id: "fp-think",
+    name: "FP Think",
+    reasoning: true,
+    thinkingLevelMap: { off: null, minimal: null, low: "low", medium: null, high: "high", xhigh: null, max: null },
+    input: ["text", "image"],
+    cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1.25 },
+    contextWindow: 100000,
+    maxTokens: 8000,
+  },
+  { id: "fp-plain", name: "FP Plain", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 500 },
+]
+
+export default function (pi: ExtensionAPI) {
+  pi.registerCommand("fakepi-hello", { description: "says hello", handler: async () => {} })
+  pi.registerTool({
+    name: "fakepi_tool",
+    label: "Fake",
+    description: "a tool for pi's own sessions",
+    parameters: { type: "object", properties: {} },
+    execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
+  })
+  pi.on("session_start", () => {})
+
+  pi.registerProvider("fakepi", {
+    name: "FakePi",
+    baseUrl: "https://fakepi.invalid",
+    api: "fakepi-api",
+    models,
+    oauth: {
+      name: "FakePi Account",
+      async login(cb) {
+        const team = await cb.onPrompt({ message: "Team?", placeholder: "blue" })
+        cb.onAuth({ url: "https://fakepi.invalid/auth?team=" + team, instructions: "Sign in as " + team })
+        const code = await cb.onPrompt({ message: "Paste the code:" })
+        if (code !== "good") throw new Error("that code isn't right")
+        return { refresh: "r-" + team, access: "a-" + team, expires: Date.now() + 3600e3, team }
+      },
+      async refreshToken(c) {
+        return { ...c, access: "renewed-" + c.refresh, expires: Date.now() + 3600e3 }
+      },
+      getApiKey: (c) => c.access,
+    },
+    streamSimple: stream,
+  })
+
+  pi.registerProvider("fakepi-key", {
+    name: "FakePi Key",
+    baseUrl: "https://fakepi.invalid",
+    apiKey: "FAKEPI_KEY",
+    api: "fakepi-key-api",
+    models: [{ ...models[1], id: "fk-1", name: "FK 1" }],
+    streamSimple: stream,
+  })
+}

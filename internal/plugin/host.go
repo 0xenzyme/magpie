@@ -29,6 +29,12 @@ import (
 //go:embed host.js
 var hostJS []byte
 
+// piJS loads pi's extensions as plugins; host.js imports it when a plugin
+// is pi's.
+//
+//go:embed pi.js
+var piJS []byte
+
 // message is a line the host writes.
 type message struct {
 	ID     int64           `json:"id"`
@@ -228,18 +234,22 @@ func (h *host) stop() {
 }
 
 // hostFile is host.js written where Bun can run it.
-func hostFile() (string, error) {
-	sum := sha256.Sum256(hostJS)
+func hostFile() (string, error) { return hostScript("host", hostJS) }
+
+// hostScript is a script of the host written where Bun can run it, named
+// by what it holds.
+func hostScript(name string, js []byte) (string, error) {
+	sum := sha256.Sum256(js)
 	dir := filepath.Join(filepath.Dir(catalog.CachePath()), "plugin-host")
-	p := filepath.Join(dir, "host-"+hex.EncodeToString(sum[:6])+".js")
-	if b, err := os.ReadFile(p); err == nil && string(b) == string(hostJS) {
+	p := filepath.Join(dir, name+"-"+hex.EncodeToString(sum[:6])+".js")
+	if b, err := os.ReadFile(p); err == nil && string(b) == string(js) {
 		return p, nil
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
 	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, hostJS, 0o644); err != nil {
+	if err := os.WriteFile(tmp, js, 0o644); err != nil {
 		return "", err
 	}
 	return p, os.Rename(tmp, p)
@@ -293,6 +303,10 @@ func start(ctx context.Context) (*host, error) {
 // before it started.
 func startOn(ctx context.Context, bun string) (*host, bool, error) {
 	js, err := hostFile()
+	if err != nil {
+		return nil, false, err
+	}
+	pi, err := hostScript("pi", piJS)
 	if err != nil {
 		return nil, false, err
 	}
@@ -355,6 +369,7 @@ func startOn(ctx context.Context, bun string) (*host, bool, error) {
 	err = h.call(ictx, "init", map[string]any{
 		"authPath":      AuthPath(),
 		"modelsDevPath": catalog.Source(),
+		"piPath":        pi,
 		"directory":     settings.Dir(),
 		"config":        l.Config,
 		"plugins":       items,

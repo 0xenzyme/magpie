@@ -39,6 +39,7 @@ process.stdout.write = (chunk, enc, cb) => process.stderr.write(chunk, enc, cb)
 
 let authPath = ""
 let modelsDevPath = ""
+let piPath = "" // pi.js, which loads pi's extensions
 let directory = process.cwd()
 let userConfig = {}
 const hooks = [] // {spec, hooks}
@@ -543,7 +544,26 @@ async function loadPlugins(list) {
     serverUrl: new URL("http://127.0.0.1:4096"),
     $: Bun.$,
   }
+  // pi's packages and extensions are loaded as pi loads them (pi.js)
+  let pi
+  if (piPath) {
+    try {
+      pi = await import(pathToFileURL(piPath).href)
+    } catch (e) {
+      toErr("pi.js:", e)
+    }
+  }
+  const pis = pi ? list.filter((p) => pi.isPi(p.target)) : []
+  if (pis.length) {
+    const h = { readAuth, changeAuth, keyFor, send, directory }
+    const got = await pi.load(h, pis).catch((e) => pis.map((p) => ({ spec: p.spec, error: String(e?.stack ?? e) })))
+    for (const r of got) {
+      for (const x of r.hooks ?? []) hooks.push(x)
+      loaded.push(r.error ? { spec: r.spec, error: r.error } : { spec: r.spec })
+    }
+  }
   for (const p of list) {
+    if (pis.includes(p)) continue
     try {
       let fns = []
       for (const file of entries(p.target)) {
@@ -846,10 +866,13 @@ function applies(prompt, inputs) {
 }
 
 // nextPrompt is the method's next question for inputs so far, as
-// OpenCode's CLI asks them: in order, those whose when/condition hold.
-function nextPrompt(provider, index, inputs) {
+// OpenCode's CLI asks them: in order, those whose when/condition hold. A
+// method may ask its own way (magpie's hook, which pi's sign-ins use, as
+// they ask as they go): ask(inputs) → the next question, or null.
+async function nextPrompt(provider, index, inputs) {
   const m = authOf(provider).methods[index]
   if (!m) throw new Error(`no sign-in method ${index} for ${provider}`)
+  if (typeof m.ask === "function") return (await m.ask(inputs)) ?? null
   for (const p of m.prompts ?? []) {
     if (p.key in inputs) continue
     if (!applies(p, inputs)) continue
@@ -1225,13 +1248,14 @@ const handlers = {
   async init(p) {
     authPath = p.authPath
     modelsDevPath = p.modelsDevPath ?? ""
+    piPath = p.piPath ?? ""
     directory = p.directory ?? directory
     userConfig = p.config ?? {}
     await loadPlugins(p.plugins ?? [])
     return { plugins: loaded }
   },
   providers: (p) => providers(p ?? {}),
-  prompt: (p) => ({ prompt: nextPrompt(p.provider, p.method, p.inputs ?? {}) }),
+  prompt: async (p) => ({ prompt: await nextPrompt(p.provider, p.method, p.inputs ?? {}) }),
   validate: (p) => ({ error: validate(p.provider, p.method, p.key, p.value) }),
   authorize,
   callback,
