@@ -197,7 +197,8 @@
   let bar = null, open = false;
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   function render() {
-    if (!document.body) return;
+    // before <body> (Omarchy found while the head is parsed): once it's there
+    if (!document.body) { document.addEventListener("DOMContentLoaded", render, { once: true }); return; }
     if (!bar) {
       bar = document.createElement("div");
       bar.className = "om-bar";
@@ -262,7 +263,5 @@
   parsing = false;
   // Omarchy found, the look turned off: the chip alone, to turn it back on
   const off = st.on === false && st.seen;
-  if (cur || off) {
-    if (document.body) render(); else document.addEventListener("DOMContentLoaded", render);
-  }
+  if (cur || off) render();
 })();
