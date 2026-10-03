@@ -15,6 +15,7 @@ import (
 	"github.com/yetone/magpie/internal/agentenv"
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/proc"
+	"github.com/yetone/magpie/internal/provider"
 )
 
 // Before an agent is disconnected the user is shown what changes in its
@@ -28,6 +29,37 @@ import (
 // DryRunArg is the command line's first word for the process that
 // disconnects an agent on a copy of its files (main.go).
 const DryRunArg = "agent-disconnect-dry-run"
+
+const (
+	dryProvidersVar  = "MAGPIE_DRY_PROVIDERS"
+	dryProvidersFile = ".magpie-dry-providers"
+)
+
+// dryProviders is, in the process DryRun runs, the ids of the providers the
+// magpie that asked for the preview has on.
+var dryProviders map[string]bool
+
+// DryRun disconnects an agent in the process DisconnectPreview starts, on
+// the copy under its temporary home.
+func DryRun(id string) error {
+	if p := os.Getenv(dryProvidersVar); p != "" {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		dryProviders = map[string]bool{}
+		for _, id := range strings.Split(string(b), "\n") {
+			if id != "" {
+				dryProviders[id] = true
+			}
+		}
+	}
+	a, err := Find(id)
+	if err != nil {
+		return err
+	}
+	return a.Disconnect()
+}
 
 // FileChange is how disconnecting changes one of the agent's files.
 type FileChange struct {
@@ -88,7 +120,21 @@ func DisconnectPreview(a *Agent, exe string) ([]FileChange, error) {
 	if err := copyTop(cfg, filepath.Join(tmp, cfgRel), nil, true); err != nil {
 		return nil, err
 	}
-	env := previewEnv(home, tmp)
+	// magpie's providers as this magpie has them: some come from another
+	// agent's sign-in (Codex's auth.json) the copy doesn't hold, and a
+	// model of theirs is magpie's all the same (dryProviders)
+	var ids []string
+	for _, p := range provider.All() {
+		if p.On() {
+			ids = append(ids, p.ID)
+			ids = append(ids, p.Was...)
+		}
+	}
+	held := filepath.Join(tmp, dryProvidersFile)
+	if err := os.WriteFile(held, []byte(strings.Join(ids, "\n")), 0o600); err != nil {
+		return nil, err
+	}
+	env := append(previewEnv(home, tmp), dryProvidersVar+"="+held)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	cmd := proc.CommandContext(ctx, exe, DryRunArg, a.ID)
@@ -276,13 +322,14 @@ func diffLines(a, b string) []LineDiff {
 	var out []LineDiff
 	var gone, came []string
 	flush := func() {
-		// a line taken out and one put in under the same key are one
-		// going back
+		// a line taken out and one put in under the same key, as deep in
+		// the file, are one going back (Claude's own "model" with
+		// modelPicker's taken out, not one of the picker's)
 		for _, c := range came {
 			k := lineKey(c)
 			paired := false
 			for i, g := range gone {
-				if k != "" && lineKey(g) == k {
+				if k != "" && lineKey(g) == k && indent(g) == indent(c) {
 					out = append(out, LineDiff{Op: "~", Text: mask(c), Was: mask(g)})
 					gone = append(gone[:i], gone[i+1:]...)
 					paired = true
@@ -408,13 +455,16 @@ func lineKey(l string) string {
 	return ""
 }
 
+func indent(l string) string { return l[:len(l)-len(strings.TrimLeft(l, " \t"))] }
+
 var secretKey = regexp.MustCompile(`(?i)(key|token|secret|password|auth)`)
 
 // mask hides the value of a line whose key reads as a secret's; magpie's
 // own token, which is no secret, stays.
 func mask(l string) string {
 	k := lineKey(l)
-	if k == "" || !secretKey.MatchString(k) {
+	// …_TOKENS is a count of them (CLAUDE_CODE_MAX_CONTEXT_TOKENS)
+	if k == "" || !secretKey.MatchString(k) || strings.HasSuffix(strings.ToUpper(k), "TOKENS") {
 		return l
 	}
 	m := keyRe.FindStringIndex(l)

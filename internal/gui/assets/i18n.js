@@ -181,6 +181,8 @@ const I18N = {
     "Model list": "模型列表",
     "New sessions": "新会话默认",
     "Optional · unset, {agent} starts on its own last pick": "可选 · 不设就用 {agent} 自己上次的选择",
+    "The same choice as {agent}'s {cmd}: change it here or there": "和 {agent} 的 {cmd} 是同一个选择，在哪边改都行",
+    "Reopen {agent}: its own models stay in {cmd}, and magpie's join them.": "重开 {agent} 后，{cmd} 里自己的模型照旧，magpie 的模型也在里面。",
     "Once connected": "接入后",
     "Start it with": "启动命令",
     "View": "查看",

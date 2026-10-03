@@ -76,6 +76,9 @@ func viaMagpieFor(agentID, prefix string) []Option {
 
 // isMagpie reports whether a model value is a catalog reference.
 func isMagpie(v string) bool {
+	if pid, _, ok := strings.Cut(v, "/"); ok && dryProviders[pid] {
+		return true
+	}
 	_, _, ok := provider.Resolve(v)
 	return ok && strings.Contains(v, "/")
 }

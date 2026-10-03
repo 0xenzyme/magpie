@@ -148,11 +148,7 @@ func run(args []string) error {
 		// an agent disconnected on a copy of its files under a temporary
 		// home, for the Agents page to show what disconnecting changes
 		// (agent.DisconnectPreview)
-		a, err := agent.Find(args[1])
-		if err != nil {
-			return err
-		}
-		return a.Disconnect()
+		return agent.DryRun(args[1])
 	}
 	makeDirs()
 	settings.Migrate()

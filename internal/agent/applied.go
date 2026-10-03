@@ -208,6 +208,11 @@ func magpieValue(a *Agent, f Field, v string, vals map[string]string) bool {
 	if isMagpie(v) {
 		return true
 	}
+	// spelled as magpie's provider in the agent's own config (OpenCode's
+	// magpie/…): magpie's even when its list there doesn't have the model
+	if ref, ok := strings.CutPrefix(v, magpieID+"/"); ok && isMagpie(ref) {
+		return true
+	}
 	if f.Options == nil {
 		return false
 	}

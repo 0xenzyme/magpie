@@ -2,6 +2,8 @@ package agent
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -35,6 +37,11 @@ func TestDiffLines(t *testing.T) {
 		t.Fatalf("got  %v\nwant %v", got, want)
 	}
 
+	// a key goes back to the line as deep as it, not one of the same name
+	// in a table taken out (Claude's modelPicker)
+	if d := diffLines("{\n  \"picker\": [\n    {\"x\": 1,\n    \"model\": \"a/b\"}\n  ],\n  \"model\": \"a/c\",\n}\n", "{\n  \"model\": \"opus\",\n}\n"); len(d) == 0 || d[0] != (LineDiff{Op: "~", Text: `  "model": "opus",`, Was: `  "model": "a/c",`}) {
+		t.Fatalf("paired with a nested line: %v", d)
+	}
 	if d := diffLines("a\nb\n", "a\nb\n"); len(d) != 0 {
 		t.Fatalf("same texts: %v", d)
 	}
@@ -56,11 +63,12 @@ func TestDiffLines(t *testing.T) {
 
 func TestMask(t *testing.T) {
 	for in, want := range map[string]string{
-		`  "ANTHROPIC_AUTH_TOKEN": "magpie",`: `  "ANTHROPIC_AUTH_TOKEN": "magpie",`,
-		`  "ANTHROPIC_API_KEY": "sk-ant-x",`:  `  "ANTHROPIC_API_KEY": ••••`,
-		`export OPENAI_API_KEY=sk-1`:          `export OPENAI_API_KEY= ••••`,
-		`env_key = "$KEY"`:                    `env_key = "$KEY"`,
-		`model = "x"`:                         `model = "x"`,
+		`  "ANTHROPIC_AUTH_TOKEN": "magpie",`:          `  "ANTHROPIC_AUTH_TOKEN": "magpie",`,
+		`  "ANTHROPIC_API_KEY": "sk-ant-x",`:           `  "ANTHROPIC_API_KEY": ••••`,
+		`export OPENAI_API_KEY=sk-1`:                   `export OPENAI_API_KEY= ••••`,
+		`env_key = "$KEY"`:                             `env_key = "$KEY"`,
+		`model = "x"`:                                  `model = "x"`,
+		`"CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1000000",`: `"CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1000000",`,
 	} {
 		if got := mask(in); got != want {
 			t.Errorf("mask(%q) = %q, want %q", in, got, want)
@@ -83,5 +91,25 @@ func TestElapsed(t *testing.T) {
 		if _, ok := elapsed(in); ok {
 			t.Errorf("elapsed(%q) read", in)
 		}
+	}
+}
+
+// The process that disconnects on a copy takes as magpie's the providers
+// the magpie asking has on, also those it reads from another agent's
+// sign-in the copy doesn't hold (Codex's auth.json on Windows): a Claude Code
+// on codex/… had an empty preview.
+func TestDryRunKnowsTheAskersProviders(t *testing.T) {
+	t.Cleanup(func() { dryProviders = nil })
+	if isMagpie("elsewhere/gpt-x") {
+		t.Fatal("an unknown provider's model is magpie's")
+	}
+	p := filepath.Join(t.TempDir(), dryProvidersFile)
+	if err := os.WriteFile(p, []byte("elsewhere\nother"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(dryProvidersVar, p)
+	_ = DryRun("no-such-agent")
+	if !isMagpie("elsewhere/gpt-x") || isMagpie("third/gpt-x") || isMagpie("elsewhere") {
+		t.Fatalf("held %v", dryProviders)
 	}
 }

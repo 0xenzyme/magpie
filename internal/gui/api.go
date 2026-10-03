@@ -171,6 +171,9 @@ type agentJSON struct {
 	// started with (agent.Stale), for the line under its name
 	Source string `json:"source,omitempty"`
 	Stale  int    `json:"stale,omitempty"`
+	// Joined: connected with its own models still in its list (Codex
+	// signed in with ChatGPT, agent.Agent.Join)
+	Joined bool `json:"joined,omitempty"`
 }
 
 // clientJSON is an agent, or another client the gateway knows, as a
@@ -1223,6 +1226,7 @@ func state() stateJSON {
 		aj.Wired = a.Wired()
 		if aj.Wired {
 			aj.Stale = a.Stale()
+			aj.Joined = a.Joined != nil && a.Joined()
 		} else {
 			aj.Source = a.Source()
 		}

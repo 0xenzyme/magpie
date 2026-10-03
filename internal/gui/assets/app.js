@@ -1019,6 +1019,8 @@ function connectPanel(a, { fields, fieldBtn }) {
     // the command in the words as code, wherever the language puts it
     const said = (s, cmd) => { const [pre, post] = t(s, { agent: a.name }).split("{cmd}"); return line(pre, code(cmd), post || ""); };
     if (a.id === "claude") parts.push(said("New sessions take it; switch the tiers in {cmd}.", "/model"));
+    // its own models still there beside magpie's (Codex on ChatGPT)
+    else if (a.joined) parts.push(said("Reopen {agent}: its own models stay in {cmd}, and magpie's join them.", at));
     else if (STARTS_WITH.has(a.id)) parts.push(said("Reopen {agent}, then pick any model in {cmd}.", at));
     else parts.push(said("Pick any model in {agent}'s {cmd}.", at));
     if (staleNow(a)) {
@@ -1093,8 +1095,11 @@ function connectPanel(a, { fields, fieldBtn }) {
     chips.append(pick);
     kv(t("Model list"), chips);
   }
-  // what a new session starts on: optional, the agent's own last pick unset
-  if (fields && a.id !== "claude") {
+  // what a new session starts on: optional, the agent's own last pick
+  // unset; Codex's is the very value its /model picks, so one choice
+  if (fields && a.id === "codex") {
+    kv(t("New sessions"), line(fields), el("div", "ag-hint", t("The same choice as {agent}'s {cmd}: change it here or there", { agent: a.name, cmd: at })));
+  } else if (fields && a.id !== "claude") {
     kv(t("New sessions"), line(fields), el("div", "ag-hint", t("Optional · unset, {agent} starts on its own last pick", { agent: a.name })));
   } else if (fields && a.id === "claude") {
     kv(t("New sessions"), line(fields));
