@@ -134,7 +134,7 @@
     "add": [2016, 1600], "agents": [2080, 1078], "import": [1280, 1120], "panel": [880, 1000], "picker": [880, 1110],
     "providers": [2080, 1004], "routing": [2080, 1666], "routing-zh": [2080, 1592], "usage": [2080, 1004],
     "nested-routing": [2080, 1434], "nested-routing-zh": [2080, 1362], "intent-rules": [2012, 2150], "intent-rules-zh": [2012, 2088],
-    "intent-routing-hit": [2080, 1184], "intent-routing-hit-zh": [2080, 1112], "intent-trace": [2016, 964], "intent-trace-zh": [2016, 892],
+    "intent-routing-hit": [2080, 1220], "intent-routing-hit-zh": [2080, 1112], "intent-trace": [2016, 964], "intent-trace-zh": [2016, 892],
   };
   const ZH = new Set(["add", "agents", "import", "routing", "usage", "nested-routing", "intent-rules", "intent-routing-hit", "intent-trace"]);
   let shot = false;
