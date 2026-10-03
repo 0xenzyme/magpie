@@ -2330,6 +2330,7 @@ const I18N = {
     "Names from Z to A": "按名称 Z→A",
     "not in the library — bring one in to give it to the others": "不在资源库中 — 导入后可以给其他 Agent",
     "{agents} has no skills folder.": "{agents} 没有技能文件夹。",
+    "Claude Desktop shows skill changes once its window is reloaded ({keys}). It gets a copy of each skill, and one you change in Desktop is left as it is.": "Claude Desktop 在窗口刷新（{keys}）后才会显示技能的变化。它拿到的是每个技能的副本，你在 Desktop 里改过的副本不会被覆盖。",
     "In projects": "项目中",
     "Add a project": "添加项目",
     "Give a project's agents some of these skills as the project's own: magpie links them into its .claude/skills and .agents/skills and keeps them out of git.": "把其中一些技能作为项目自己的技能给项目里的 Agent：magpie 把它们链接到项目的 .claude/skills 和 .agents/skills，并让 git 忽略它们。",

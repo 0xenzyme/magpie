@@ -65,7 +65,12 @@ func (l *Library) sync() *Result {
 	shared := realDir(sharedSkillsDir())
 	for _, first := range []bool{true, false} {
 		for _, t := range all {
-			if (t.Skills != "" && realDir(t.Skills) == shared) == first {
+			switch {
+			case t.Desktop != nil:
+				if !first {
+					l.syncDesktopSkills(t, res)
+				}
+			case (t.Skills != "" && realDir(t.Skills) == shared) == first:
 				l.syncSkills(t, res, all)
 			}
 		}

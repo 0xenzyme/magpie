@@ -1613,6 +1613,10 @@
     if (lib.skills.length || lib.projects.length) renderProjects(body, "skills");
     const skip = shownAgents().filter((a) => !a.skills);
     if (skip.length) body.append(el("p", "lib-aside", t("{agents} has no skills folder.", { agents: skip.map((a) => a.name).join(", ") })));
+    // Desktop reads its skills list again only when its window is reloaded (#638)
+    if (shownAgents().some((a) => a.id === "claude-desktop" && a.skills)) {
+      body.append(el("p", "lib-aside", t("Claude Desktop shows skill changes once its window is reloaded ({keys}). It gets a copy of each skill, and one you change in Desktop is left as it is.", { keys: /^Mac/.test(navigator.platform) ? "⌘R" : "Ctrl+R" })));
+    }
     body.append(discover("skills"));
   }
 

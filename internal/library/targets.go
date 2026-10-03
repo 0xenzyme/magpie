@@ -32,6 +32,10 @@ type Target struct {
 	// the library's changes, rather than a link: one in a WSL distro,
 	// which can't follow a link to a Windows folder.
 	Copy bool
+	// Desktop are Claude Desktop's skills-plugin folders, one for each
+	// account (desktop_skills.go): each gets a copy of the skills and their
+	// entries in its manifest.json. Skills is the first one's skills.
+	Desktop []string
 }
 
 func home() string { h, _ := os.UserHomeDir(); return h }
@@ -265,6 +269,10 @@ func targetOf(a *agent.Agent) *Target {
 		t.MCP = &mcpFile{Path: filepath.Join(filepath.Dir(a.Path), "claude_desktop_config.json"), Format: fmtDesktop}
 		if p := agent.DesktopConfig3p(h); p != t.MCP.Path && isDir(filepath.Dir(p)) {
 			t.MCP.Also = []string{p}
+		}
+		// Cowork's skills, in every account's skills-plugin (#638)
+		if t.Desktop = desktopSkillRoots(a.Dir); len(t.Desktop) > 0 {
+			t.Skills = filepath.Join(t.Desktop[0], "skills")
 		}
 	default:
 		return nil

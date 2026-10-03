@@ -1197,7 +1197,9 @@ func foundSkills(l *Library) []FoundSkill {
 	}
 	places := []place{{dir: skillsDir(), lib: true}, {dir: sharedSkillsDir()}}
 	for _, t := range Targets() {
-		if t.Skills != "" {
+		// Claude Desktop's are its own, built in or made there, kept in its
+		// manifest: one brought in would leave it a link it can't read from
+		if t.Skills != "" && t.Desktop == nil {
 			places = append(places, place{dir: t.Skills, agent: t.Agent.ID})
 		}
 	}
