@@ -73,6 +73,10 @@ func (h *host) watchTrayUsage() {
 					h.tray.SetLabel(label)
 				}
 				h.tray.SetTooltip(tip)
+				// Wails' is a no-op on Linux; until the tray is up, again next time
+				if !setTrayTip(h.tray, tip) {
+					shown = ""
+				}
 			}
 			// Reapply even unchanged cells: a system menu-bar rebuild can
 			// replace the composed image with Wails' bird icon.

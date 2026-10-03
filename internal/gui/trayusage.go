@@ -246,6 +246,14 @@ func trayUsageView(cards []provider.SubscriptionQuota, now time.Time, left bool)
 	return cells, strings.Join(labels, " | "), strings.Join(tips, "\n\n")
 }
 
+// sniTip is the tooltip as a Linux tray item's ToolTip title carries it.
+// Omarchy's bar shows the title as plain text and waybar as Pango markup,
+// where a bare "&" or "<" loses the whole tooltip; their look-alikes read
+// the same in both.
+func sniTip(tip string) string {
+	return strings.NewReplacer("&", "＆", "<", "‹", ">", "›").Replace(tip)
+}
+
 // trayRow is a cell's row cut to fit the menu bar: a balance is a few
 // figures ("¥12345.67"), but one read from a plan's own page can be any
 // text, and the whole of it is in the tooltip.
