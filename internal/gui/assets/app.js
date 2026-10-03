@@ -3391,39 +3391,6 @@ function askForgetSaved(x) {
   cancel.focus();
 }
 
-// removedMenu is what the add sheet offers of an account removed from
-// magpie: back as it was, or signed out for good (#694).
-function removedMenu(anchor, x) {
-  if (protoMenu?.anchor === anchor) return closeProtoMenu(); // a second click puts it away
-  const opts = [
-    { v: "show", name: "Add it back", note: "its accounts and model picks as they were" },
-    { v: "forget", name: "Sign out…", note: "magpie forgets its accounts; adding it again signs in afresh" },
-    // the old "Don't remind me", here too: the row goes, and stays gone
-    // through a refresh or a restart, back behind "Show N hidden" (#116)
-    x.tucked
-      ? { v: "untuck", name: "Show here again", note: "list it under Removed from magpie again" }
-      : { v: "tuck", name: "Don't show here", note: "hide it from this list; Show hidden brings it back" },
-  ];
-  openProtoMenu(anchor, opts, null, (v) => {
-    if (v === "show") providerAction("show", { id: x.provider }, t("{name} added back", { name: x.agentName }));
-    else if (v === "tuck" || v === "untuck") tuckRemoved(x, v);
-    else askForgetAccount(x);
-  }, "Removed from magpie");
-}
-
-// tuckRemoved hides a removed account from the add sheet, or lists it
-// there again; the sheet stays open, the page where it was (#116).
-async function tuckRemoved(x, v) {
-  try {
-    providers = await api("provider/" + v, { id: x.provider });
-    if (v === "tuck") showTucked = false; // the row visibly goes
-    renderAdd();
-    status(t(v === "tuck" ? "{name} hidden here; Show hidden lists it again" : "{name} shown here again", { name: x.agentName }), "ok");
-  } catch (e) {
-    status(e.message, "err");
-  }
-}
-
 // askForgetAccount asks before magpie signs a removed account out for
 // good: what magpie keeps of its sign-ins goes, so adding it again signs in
 // afresh rather than bringing the old account back (#694). The vendor's
@@ -4510,7 +4477,6 @@ function pickForAgent(a, p, btn, ev) {
 
 // The add sheet: presets first (a key is all they need), custom last.
 let presetQuery = "", addReturnPick = null;
-let showTucked = false; // the add sheet lists the removed rows hidden from it (#116)
 function renderAdd() {
   const sheet = $("#addSheet");
   // a redraw (providers reloaded) gives the focus back where it was in it
@@ -4595,33 +4561,30 @@ function renderAdd() {
       const w = plugged.find((x) => signing?.agent === x.agent);
       if (w) tiles.append(renderSigning(w));
     }
-    // the removed ones the user asked not to be reminded of; one hidden
-    // here too ("Don't show here", #116) stays out but for "Show N hidden"
-    // or a search naming it
-    const quiet = (providers.excluded || []).filter((x) => x.quiet && x.provider && (!f || x.agentName.toLowerCase().includes(f) || x.agent.includes(f)));
-    const tucked = quiet.filter((x) => x.tucked);
-    const gone = quiet.filter((x) => !x.tucked || f || showTucked);
-    if (gone.length || tucked.length) {
+    // the removed ones the user asked not to be reminded of, each with its
+    // two ways out side by side: added back as it was, or signed out for
+    // good (#694, mintonight: no menu to open first, and no "Don't show
+    // here": hiding one left its sign-in where it was). One hidden before
+    // (#116) is listed with the rest.
+    const gone = (providers.excluded || []).filter((x) => x.quiet && x.provider && (!f || x.agentName.toLowerCase().includes(f) || x.agent.includes(f)));
+    if (gone.length) {
       any = true;
       const grid = section("Removed from magpie", "still signed in");
-      if (tucked.length && !f) {
-        const more = el("button", "link kind-more", showTucked ? t("Hide the hidden") : t(tucked.length === 1 ? "Show 1 hidden" : "Show {n} hidden", { n: tucked.length }));
-        more.dataset.pick = "removed-hidden"; // keeps the focus through the redraw
-        more.title = t("Removed accounts you chose not to show here");
-        more.setAttribute("aria-expanded", String(showTucked));
-        more.onclick = (e) => { e.stopPropagation(); showTucked = !showTucked; drawTiles(); tiles.querySelector('[data-pick="removed-hidden"]')?.focus({ preventScroll: true }); };
-        grid.previousSibling.append(el("span", "grow"), more);
-      }
-      // each one added back as it was, or signed out for good: added
-      // back, a removed account came with it every time (#694)
       for (const x of gone) {
-        const b = pickRow(x.agentIcon, x.agentName, x.tucked ? " tucked" : "");
-        b.append(el("span", "st", t(x.tucked ? "Hidden here · add back or sign out" : "Add back or sign out")));
-        b.dataset.pick = "removed:" + x.provider; // not the subscription's own row, named alike
-        b.setAttribute("aria-haspopup", "menu");
-        b.setAttribute("aria-expanded", "false");
-        b.onclick = (e) => { e.stopPropagation(); removedMenu(b, x); };
-        grid.append(b);
+        const r = el("div", "tile removed");
+        r.dataset.pick = "removed:" + x.provider; // not the subscription's own row, named alike
+        const nm = el("span", "nm");
+        nm.append(el("span", "n", x.agentName));
+        const back = el("button", "text action", t("Add it back"));
+        back.title = t("its accounts and model picks as they were");
+        back.onclick = (e) => { e.stopPropagation(); providerAction("show", { id: x.provider }, t("{name} added back", { name: x.agentName })); };
+        const out = el("button", "text action danger", t("Sign out…"));
+        out.title = t("magpie forgets its accounts; adding it again signs in afresh");
+        out.onclick = (e) => { e.stopPropagation(); askForgetAccount(x); };
+        const acts = el("span", "acts");
+        acts.append(back, out);
+        r.append(icon(x.agentIcon), nm, acts);
+        grid.append(r);
       }
     }
     for (const [kind, title, hint] of [["vendor", "Vendors", "the makers' own APIs"], ["relay", "Relays", "one key, many vendors"], ["local", "On this machine", ""]]) {

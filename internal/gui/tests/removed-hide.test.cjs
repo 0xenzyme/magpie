@@ -1,15 +1,12 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
-// #116 (marsxxl, v0.1.768): a removed Gemini CLI the user had asked not to
-// be reminded of sat under Add a provider's "Removed from magpie — still
-// signed in" with no way to put it away: "Don't remind me" was only on the
-// Providers page's reminder line, which that choice had already hidden. Its
-// row's menu now has "Don't show here" too (POST /api/provider/tuck): the
-// sheet stays open, the row goes and stays gone after a reload (the backend
-// keeps it), and a "Show 1 hidden" link in the section's heading lists it
-// again, where "Show here again" (untuck) brings it back for good; a search
-// naming it finds it as well. Clicks never move the page, no native select.
-// The reminder line keeps its "Don't remind me". English and Chinese; the
-// API is faked here.
+// #116 (marsxxl, v0.1.768) gave a removed row of Add a provider's "Removed
+// from magpie — still signed in" a "Don't show here" in its menu, behind a
+// "Show N hidden" link. #694 (mintonight) found that pointless (掩耳盗铃):
+// hidden, the account was still signed in; what puts it away is Sign out.
+// The row now has just Add it back and Sign out… side by side, no menu and
+// no hiding: one hidden before is listed with the rest, with the same two
+// buttons, and no "Show N hidden" link is left. The reminder line keeps
+// its "Don't remind me". English and Chinese; the API is faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -50,85 +47,53 @@ function server(lang, asked, st) {
 }
 
 const L = {
-  en: { hide: "Don't show here", again: "Show here again", more: "Show 1 hidden", less: "Hide the hidden", back: "Add it back", out: "Sign out…", quiet: "Don't remind me" },
-  zh: { hide: "不在这里显示", again: "重新在这里显示", more: "显示 1 个已隐藏", less: "收起已隐藏", back: "加回来", out: "退出登录…", quiet: "不再提示" },
+  en: { back: "Add it back", out: "Sign out…", quiet: "Don't remind me", hide: /Don't show here|Show \d+ hidden|Hide the hidden/ },
+  zh: { back: "加回来", out: "退出登录…", quiet: "不再提示", hide: /不在这里显示|显示 \d+ 个已隐藏|收起已隐藏/ },
 };
 
 const scrolls = (page) => page.evaluate(() => [scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop).map((e) => e.scrollTop)].join(","));
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
-  test(engine + ": a removed row can be hidden from the add sheet, and found again", async (t) => {
+  test(engine + ": a removed row has two buttons and nothing hides it", async (t) => {
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
     t.after(() => browser.close());
     for (const lang of ["en", "zh"]) {
-      await t.test(lang + ": Don't show here, Show hidden, Show here again", async () => {
-        const w = L[lang];
-        const page = await (await browser.newContext({ viewport: { width: 900, height: 520 } })).newPage();
-        page.setDefaultTimeout(5000);
-        const errors = [], asked = [], st = { quiet: true, tucked: false };
-        page.on("pageerror", (e) => errors.push(e.message));
-        await page.route("**/*", server(lang, asked, st));
-        await page.goto("http://magpie.test/?view=providers");
-        await page.locator("#addProvider").click();
-        const sheet = page.locator("#addSheet");
-        const row = sheet.locator(`.tile[data-pick="removed:gemini"]`);
-        await row.waitFor();
-        await sheet.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
-        assert.equal(await sheet.locator(".kind-more").count(), 0, "nothing hidden yet");
+      for (const tucked of [false, true]) {
+        await t.test(lang + (tucked ? ": one hidden before is listed with the rest" : ": Add it back, Sign out…, nothing else"), async () => {
+          const w = L[lang];
+          const page = await (await browser.newContext({ viewport: { width: 900, height: 520 } })).newPage();
+          page.setDefaultTimeout(5000);
+          const errors = [], asked = [];
+          page.on("pageerror", (e) => errors.push(e.message));
+          await page.route("**/*", server(lang, asked, { quiet: true, tucked }));
+          await page.goto("http://magpie.test/?view=providers");
+          await page.locator("#addProvider").click();
+          const sheet = page.locator("#addSheet");
+          const row = sheet.locator(`.tile[data-pick="removed:gemini"]`);
+          await row.waitFor();
+          await sheet.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+          assert.equal(await sheet.locator(".kind-more").count(), 0, "no Show N hidden link");
+          assert.doesNotMatch(await sheet.innerText(), w.hide, "nothing offers to hide it");
+          assert.deepEqual((await row.locator("button").allInnerTexts()).map((s) => s.trim()), [w.back, w.out]);
+          assert.equal(await page.locator("select").count(), 0);
 
-        // the row's menu offers to hide it, beside Add it back and Sign out
-        await row.click();
-        const menu = page.locator(".proto-menu");
-        await menu.waitFor();
-        assert.equal(await page.locator("select").count(), 0);
-        assert.deepEqual((await menu.locator(".pm-name").allInnerTexts()).map((s) => s.trim()), [w.back, w.out, w.hide]);
-        const y = await scrolls(page);
-        await menu.locator(".pm-item", { hasText: w.hide }).click();
-        await page.waitForFunction(() => !document.querySelector('#addSheet .tile[data-pick="removed:gemini"]'));
-        assert.deepEqual(asked, [["tuck", { id: "gemini" }]]);
-        assert.equal(await sheet.isVisible(), true, "the sheet stays open");
-        assert.equal(await scrolls(page), y, "hiding it moved the page");
+          // a click on the row itself opens nothing and sends nothing
+          const y = await scrolls(page);
+          await row.locator(".n").click();
+          await new Promise((r) => setTimeout(r, 150));
+          assert.equal(await page.locator(".proto-menu").count(), 0, "a menu opened");
+          assert.deepEqual(asked, []);
+          assert.equal(await scrolls(page), y, "the click moved the page");
+          if (process.env.ARTIFACT_DIR) await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `removed-row-${engine}-${lang}${tucked ? "-tucked" : ""}.png`) });
 
-        // a link in the section's heading says it is there
-        const more = sheet.locator(".kind-more");
-        assert.equal((await more.innerText()).trim(), w.more);
-        if (process.env.ARTIFACT_DIR) await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `removed-hide-${engine}-${lang}.png`) });
-
-        // after a reload (a restart) it is still hidden
-        await page.reload();
-        await page.locator("#addProvider").click();
-        await sheet.locator(".kind-more").waitFor();
-        assert.equal(await row.count(), 0, "hidden again after a reload");
-
-        // Show hidden lists it, the page where it was
-        await sheet.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
-        const y2 = await scrolls(page);
-        await more.click();
-        await row.waitFor();
-        assert.equal(await scrolls(page), y2, "Show hidden moved the page");
-        assert.equal((await more.innerText()).trim(), w.less);
-        assert.match(await row.getAttribute("class"), /\btucked\b/);
-        await row.click();
-        await menu.waitFor();
-        assert.deepEqual((await menu.locator(".pm-name").allInnerTexts()).map((s) => s.trim()), [w.back, w.out, w.again]);
-        await menu.locator(".pm-item", { hasText: w.again }).click();
-        await page.waitForFunction(() => !document.querySelector("#addSheet .kind-more"));
-        assert.deepEqual(asked.at(-1), ["untuck", { id: "gemini" }]);
-        await row.waitFor();
-        assert.doesNotMatch(await row.getAttribute("class"), /\btucked\b/);
-        assert.deepEqual(errors, []);
-      });
-
-      await t.test(lang + ": a search naming a hidden one finds it", async () => {
-        const page = await (await browser.newContext({ viewport: { width: 900, height: 700 } })).newPage();
-        page.setDefaultTimeout(5000);
-        await page.route("**/*", server(lang, [], { quiet: true, tucked: true }));
-        await page.goto("http://magpie.test/?view=providers");
-        await page.locator("#addProvider").click();
-        await page.locator("#addSheet .kind-more").waitFor();
-        await page.locator("#addSheet .find").fill("gemini");
-        await page.locator(`#addSheet .tile[data-pick="removed:gemini"]`).waitFor();
-      });
+          // Add it back, in one click
+          await row.locator("button", { hasText: new RegExp("^" + w.back + "$") }).click();
+          await new Promise((r) => setTimeout(r, 200));
+          assert.deepEqual(asked, [["show", { id: "gemini" }]]);
+          assert.equal(await page.locator(".proto-menu").count(), 0);
+          assert.deepEqual(errors, []);
+        });
+      }
 
       await t.test(lang + ": the reminder line keeps Don't remind me", async () => {
         const w = L[lang];

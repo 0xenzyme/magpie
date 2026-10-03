@@ -2,10 +2,11 @@
 // #694: a subscription removed from magpie sat under "Removed from magpie —
 // still signed in" with Add it back as its only way out, so its account
 // could never go: added back, the old account came with it. Its row now
-// opens the app's menu (no native select, the page left where it was):
-// Add it back as before, or Sign out…, which asks first and then has the
-// backend sign its accounts out (POST /api/provider/forget). The Providers
-// page's reminder line offers Sign out too. English and Chinese; the API is
+// has Add it back and Sign out… side by side (mintonight: no menu to open
+// first, two buttons and no "Don't show here"); Sign out… asks first and
+// then has the backend sign its accounts out (POST /api/provider/forget),
+// the page left where it was, no native select. The Providers page's
+// reminder line offers Sign out too. English and Chinese; the API is
 // faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -44,8 +45,8 @@ function server(lang, asked, quiet) {
 }
 
 const L = {
-  en: { st: "Add back or sign out", back: "Add it back", out: "Sign out…", hide: "Don't show here", ask: "Sign Qoder out of magpie?", go: "Sign out", line: "Sign out" },
-  zh: { st: "加回来或退出登录", back: "加回来", out: "退出登录…", hide: "不在这里显示", ask: "在 magpie 里退出 Qoder？", go: "退出登录", line: "退出登录" },
+  en: { back: "Add it back", out: "Sign out…", ask: "Sign Qoder out of magpie?", go: "Sign out", line: "Sign out" },
+  zh: { back: "加回来", out: "退出登录…", ask: "在 magpie 里退出 Qoder？", go: "退出登录", line: "退出登录" },
 };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -66,28 +67,27 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const row = sheet.locator(`.tile[data-pick="removed:qoder-plugin"]`);
         await row.waitFor();
         await sheet.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
-        assert.equal((await row.locator(".st").innerText()).trim(), w.st);
         assert.equal((await row.locator(".n").innerText()).trim(), "Qoder", "named by its provider, not \"plugin\"");
 
-        // a click opens the menu, sends nothing, and leaves the page where it was
-        await row.scrollIntoViewIfNeeded();
-        const y = await page.evaluate(() => [scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop).map((e) => e.scrollTop)].join(","));
-        await row.click();
-        const menu = page.locator(".proto-menu");
-        await menu.waitFor();
+        // its two ways out, side by side on the row: nothing else, no menu
+        const buttons = row.locator("button");
+        assert.deepEqual((await buttons.allInnerTexts()).map((s) => s.trim()), [w.back, w.out]);
+        const [a, b] = [await buttons.nth(0).boundingBox(), await buttons.nth(1).boundingBox()];
+        assert.ok(Math.abs(a.y - b.y) < 2 && b.x > a.x + a.width - 1, "the buttons sit side by side");
         assert.equal(await page.locator("select").count(), 0);
-        assert.deepEqual(asked, [], "opening the menu changes nothing");
-        assert.equal(await page.evaluate(() => [scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop).map((e) => e.scrollTop)].join(",")), y, "the click moved the page");
-        const items = await menu.locator(".pm-name").allInnerTexts();
-        assert.deepEqual(items.map((s) => s.trim()), [w.back, w.out, w.hide]);
         if (process.env.ARTIFACT_DIR) await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `removed-forget-${engine}-${lang}.png`) });
 
-        // Sign out asks first, then signs it out by its provider id
-        await menu.locator(".pm-item", { hasText: w.out }).click();
+        // Sign out asks first, then signs it out by its provider id; the
+        // click leaves the page where it was
+        await row.scrollIntoViewIfNeeded();
+        const y = await page.evaluate(() => [scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop).map((e) => e.scrollTop)].join(","));
+        await buttons.nth(1).click();
         const ask = page.locator("#modal .forget-ask");
         await ask.waitFor();
         assert.match(await ask.locator(".ehead b").innerText(), new RegExp(w.ask.replace(/[?？]/g, ".")));
         assert.deepEqual(asked, [], "nothing signed out before it is confirmed");
+        assert.equal(await page.locator(".proto-menu").count(), 0, "no menu on the way");
+        assert.equal(await page.evaluate(() => [scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop).map((e) => e.scrollTop)].join(",")), y, "the click moved the page");
         await ask.locator("button", { hasText: new RegExp("^" + w.go + "$") }).click();
         await page.locator("#modal").waitFor({ state: "hidden" });
         assert.deepEqual(asked, [["forget", { id: "qoder-plugin" }]]);
@@ -103,10 +103,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.goto("http://magpie.test/?view=providers");
         await page.locator("#addProvider").click();
         const row = page.locator(`#addSheet .tile[data-pick="removed:qoder-plugin"]`);
-        await row.click();
-        await page.locator(".proto-menu .pm-item", { hasText: w.back }).click();
-        await page.waitForFunction(() => !document.querySelector(".proto-menu"));
+        await row.locator("button", { hasText: new RegExp("^" + w.back + "$") }).click();
         await new Promise((r) => setTimeout(r, 200));
+        assert.equal(await page.locator(".proto-menu").count(), 0, "one click, no menu");
         assert.deepEqual(asked, [["show", { id: "qoder-plugin" }]]);
       });
 

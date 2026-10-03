@@ -1856,9 +1856,11 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .sheet .kind { display: flex; align-items: baseline; gap: 8px; padding: 22px 8px 6px; font-size: 12px; }
 .sheet .kind b { font-size: 13px; font-weight: 600; color: var(--fg); }
 .sheet .kind span { color: var(--faint); }
-/* "Show N hidden": the removed rows hidden from the add sheet (#116) */
-.sheet .kind .kind-more { align-self: center; padding: 0 4px; }
-.sheet .tile.tucked .n, .sheet .tile.tucked > .ic { opacity: .6; }
+/* a removed account: its name, then Add it back and Sign out… side by
+   side, across the row (#694) */
+.sheet .tile.removed { grid-column: 1 / -1; }
+.sheet .tile.removed:hover { background: none; }
+.sheet .tile.removed .acts { flex: none; display: flex; gap: 6px; }
 .sheet .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1px 12px; }
 .sheet .none { padding: 14px 2px; color: var(--muted); font-size: 12px; }
 #gwModels .none { padding: 16px; color: var(--muted); font-size: 12px; text-align: center; }
