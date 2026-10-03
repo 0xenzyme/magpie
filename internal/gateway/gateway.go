@@ -983,8 +983,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	defer discardArchive(capture)
 	r, telemetry := beginOTelRequest(r, call.Kind, body)
 	defer func() { telemetry.end(call, time.Since(start).Milliseconds()) }()
-	if call.Kind == "web_search" {
+	switch call.Kind {
+	case "web_search":
 		call.For = searchFor(r.Context())
+	case "vision":
+		call.For = describedFor(r.Context())
 	}
 	usage.Saw(agent)
 	finishCapture := func() {
@@ -1125,10 +1128,19 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		}
 		return seer()
 	})
+	// a model its list says nothing of is text-only to a describer, as
+	// agents are told: while one describes images they are told every
+	// model takes them, and send the images on to be described
+	if imageInput == nil && !isGroup && hasImage(from, body) && blindTo(p.ID, model, nil) {
+		if _, ok := seeing(); ok {
+			no := false
+			imageInput = &no
+		}
+	}
 	if imageInput != nil && !*imageInput {
 		var currentImage bool
 		if see, ok := seeing(); ok && hasImage(from, body) {
-			seen, err := s.seenBody(r.Context(), from, body, see)
+			seen, err := s.seenBody(withDescribeFor(r.Context(), call.Agent, call.Model, sessionOf(r.Header)), from, body, see)
 			if err != nil {
 				call.Status, call.Error = 502, "image not described"
 				writeError(w, from, 502, fmt.Sprintf("model %q can't see images, and %s couldn't describe the image for it: %v", call.Model, see, err))
@@ -1247,7 +1259,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	var seenGroup func() ([]byte, error)
 	if isGroup && hasImage(from, body) {
 		if see, ok := seeing(); ok {
-			seenGroup = sync.OnceValues(func() ([]byte, error) { return s.seenBody(r.Context(), from, body, see) })
+			seenGroup = sync.OnceValues(func() ([]byte, error) {
+				return s.seenBody(withDescribeFor(r.Context(), call.Agent, call.Model, sessionOf(r.Header)), from, body, see)
+			})
 		}
 	}
 	if isGroup && seenGroup == nil {
@@ -1329,25 +1343,24 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 		}
 		if isGroup {
-			if in := membersImageInput([]provider.Member{{Provider: c.p, Model: c.model}}, nil); in != nil && !*in {
-				if seenGroup != nil {
-					b, err := seenGroup()
-					if err != nil {
-						// only an image of the latest turn fails to be described
-						call.Error = "image not described"
-						if !last {
-							skipped = append(skipped, c.label()+": "+call.Error)
-							continue
-						}
-						see, _ := seeing()
-						call.Status = 502
-						writeError(w, from, 502, fmt.Sprintf("model %q can't see images, and %s couldn't describe the image for it: %v", c.p.ID+"/"+c.model, see, err))
-						break
+			in := membersImageInput([]provider.Member{{Provider: c.p, Model: c.model}}, nil)
+			if seenGroup != nil && blindTo(c.p.ID, c.model, in) {
+				b, err := seenGroup()
+				if err != nil {
+					// only an image of the latest turn fails to be described
+					call.Error = "image not described"
+					if !last {
+						skipped = append(skipped, c.label()+": "+call.Error)
+						continue
 					}
-					attemptBody = b
-				} else {
-					attemptBody, _ = textOnlyBody(from, body) // omit images in prior turns and tool results
+					see, _ := seeing()
+					call.Status = 502
+					writeError(w, from, 502, fmt.Sprintf("model %q can't see images, and %s couldn't describe the image for it: %v", c.p.ID+"/"+c.model, see, err))
+					break
 				}
+				attemptBody = b
+			} else if in != nil && !*in {
+				attemptBody, _ = textOnlyBody(from, body) // omit images in prior turns and tool results
 			}
 		}
 		picked := false // the effort asked for in place of the agent's

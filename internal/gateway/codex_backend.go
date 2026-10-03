@@ -609,6 +609,9 @@ func callKind(h http.Header) string {
 	if v == "" && h.Get("User-Agent") == SearchAgent {
 		v = "web_search"
 	}
+	if v == "" && h.Get("User-Agent") == VisionAgent {
+		v = "vision"
+	}
 	if v == "" && h.Get("x-openai-codex-luna-reserve") != "" {
 		v = "luna_reserve"
 	}
