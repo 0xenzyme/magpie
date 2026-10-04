@@ -390,7 +390,9 @@ static void mpHighlight(int on) {
 
 // mpOwnClicks hands a left click on the item to its action before the
 // button sees it: the button's own tracking would light it on mouse-down
-// and put it out on mouse-up, a flicker before mpHighlight's.
+// and put it out on mouse-up, a flicker before mpHighlight's. One with
+// Command held is left to the button, which is what lets the system move
+// the item (#792: Command-dragging it, as Hidden Bar asks, did nothing).
 static void mpOwnClicks(void) {
 	static dispatch_once_t once;
 	dispatch_once(&once, ^{
@@ -400,6 +402,7 @@ static void mpOwnClicks(void) {
 				if (b == nil || e.window != b.window) return e;
 				NSPoint p = [b convertPoint:e.locationInWindow fromView:nil];
 				if (!NSPointInRect(p, b.bounds)) return e;
+				if (e.modifierFlags & NSEventModifierFlagCommand) return e;
 				// Route quota clicks before the generic action, within this
 				// one monitor; local monitor ordering is not guaranteed.
 				CGFloat x = p.x - (b.bounds.size.width - mpHitW) / 2;
