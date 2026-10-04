@@ -36,6 +36,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -168,6 +169,17 @@ type subscriptionRun struct {
 	// began waiting on them
 	asked    []string
 	parkedAt time.Time
+
+	// shown is the client's tool calls its last reply made, in the order
+	// the client was told them: a client that names them by ids of its own
+	// (AmpCode) has its results paired with them by position (remap)
+	shown []shownCall
+}
+
+// shownCall is one of a reply's calls of the client's tools, as the client
+// was told it: Claude Code's id for it, the tool and its arguments.
+type shownCall struct {
+	id, name, args string
 }
 
 // waitTool collects a tool result that took longer than an agent's patience.
@@ -627,9 +639,14 @@ func (r *subscriptionRun) follows(msgs []Message) bool {
 }
 
 // hashMessages writes the messages' words, tool calls and results to h,
-// calling after, when set, once each message is in.
+// calling after, when set, once each message is in. A call is told by its
+// place among the conversation's calls, and a result by the call it
+// answers, not by their ids: a client may name the calls it was told with
+// ids of its own, the same in every request after (AmpCode's TU-…), and its
+// conversation is the same one all the same.
 func hashMessages(h hash.Hash, msgs []Message, after func(i int)) {
 	role := ""
+	n, calls := 0, map[string]int{} // a call's id → its place
 	for i, m := range msgs {
 		var b strings.Builder
 		for _, p := range m.Parts {
@@ -637,9 +654,15 @@ func hashMessages(h hash.Hash, msgs []Message, after func(i int)) {
 			case Text:
 				b.WriteString(p.Text + " ")
 			case ToolCall:
-				fmt.Fprintf(&b, "\x01call %s %s ", p.Name, p.ID)
+				n++
+				calls[p.ID] = n
+				fmt.Fprintf(&b, "\x01call %s #%d ", p.Name, n)
 			case ToolResult:
-				fmt.Fprintf(&b, "\x01result %s %s ", p.CallID, p.Text)
+				k := "?"
+				if n, ok := calls[p.CallID]; ok {
+					k = fmt.Sprint(n)
+				}
+				fmt.Fprintf(&b, "\x01result #%s %s ", k, p.Text)
 			case File:
 				fmt.Fprintf(&b, "\x01file %s %d %s ", p.MediaType, len(p.Data), p.URL)
 			case Image:
@@ -748,6 +771,16 @@ func (r *subscriptionRun) emit(ev Event) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.segment != nil {
+		switch ev.Kind {
+		case KStart: // a reply begins
+			r.shown = nil
+		case KToolStart:
+			r.shown = append(r.shown, shownCall{id: ev.ID, name: ev.Name})
+		case KToolArgs:
+			if n := len(r.shown); n > 0 {
+				r.shown[n-1].args += ev.Text
+			}
+		}
 		r.segment <- ev
 	}
 }
@@ -1299,6 +1332,26 @@ func closeBlocks(blocks []map[string]any, text *strings.Builder) []map[string]an
 // An image sent beside the results, as a client whose tool messages hold
 // text only sends a tool's (Chat), goes with the result before it.
 func (b *subscriptionBridge) findRun(req *Request) (*subscriptionRun, []Part) {
+	run, fresh, _ := b.match(req)
+	return run, fresh
+}
+
+// The ways a request's tool results find the run they are for, or don't,
+// as the gateway's log tells them.
+const (
+	byExactID      = "exact id"
+	byRemap        = "remapped"
+	historyChanged = "history changed"
+	ambiguousCalls = "ambiguous"
+	runExpired     = "process expired"
+	noRunWaiting   = "no run waiting"
+)
+
+// match is findRun, and how the results found their run (byExactID,
+// byRemap) or why none was found. The results are named by Claude Code's
+// ids for the calls, as the run waits on them, when the client named them
+// by its own (remap).
+func (b *subscriptionBridge) match(req *Request) (*subscriptionRun, []Part, string) {
 	i := len(req.Messages)
 	for i > 0 && req.Messages[i-1].Role != "assistant" {
 		i--
@@ -1319,9 +1372,24 @@ func (b *subscriptionBridge) findRun(req *Request) (*subscriptionRun, []Part) {
 		}
 	}
 	if len(fresh) == 0 {
-		return nil, nil
+		return nil, nil, ""
 	}
 	fresh[0].Images = append(loose, fresh[0].Images...)
+	// the calls the results answer: those of the assistant's last turn
+	var calls []Part
+	k := i
+	for k > 0 && req.Messages[k-1].Role == "assistant" {
+		k--
+	}
+	for _, m := range req.Messages[k:i] {
+		for _, p := range m.Parts {
+			if p.Kind == ToolCall {
+				calls = append(calls, p)
+			}
+		}
+	}
+	var before map[string]bool // the conversation as it stood after each message
+	why := noRunWaiting
 	// Claude emits message_stop just before its MCP calls are all scheduled.
 	// A very fast client can return a result while the callback is still being
 	// registered; give that tiny race a bounded grace period.
@@ -1341,11 +1409,119 @@ func (b *subscriptionBridge) findRun(req *Request) (*subscriptionRun, []Part) {
 		}
 		b.mu.Unlock()
 		if found != nil {
-			return found, fresh
+			return found, fresh, byExactID
 		}
+		if before == nil {
+			before = map[string]bool{}
+			h := sha256.New()
+			hashMessages(h, req.Messages, func(int) { before[hex.EncodeToString(h.Sum(nil))] = true })
+		}
+		run, named, w := b.remap(req.Model, calls, fresh, before)
+		if run != nil {
+			return run, named, byRemap
+		}
+		why = w
 		time.Sleep(25 * time.Millisecond)
 	}
-	return nil, nil
+	return nil, nil, why
+}
+
+// remap finds the run a client's results are for when the client named the
+// calls by ids of its own, the same in every request after (AmpCode
+// rewrites each tool_use id, and the tool_use_id of its result, to a TU-…
+// of its own), so none is an id the run's agent waits on. The run is the
+// one waiting on its reply's calls whose conversation the request goes on
+// from (before, the request's conversation after each of its messages:
+// the run's last is one of them), and whose calls were the client's last
+// turn's, one for one in the same order, each the same tool with the same
+// arguments. Only one may be: two conversations that are the same so far,
+// down to their calls, would have their results told to either, and a new
+// run is started instead. The results are returned named by the run's ids.
+func (b *subscriptionBridge) remap(model string, calls, fresh []Part, before map[string]bool) (*subscriptionRun, []Part, string) {
+	if len(calls) == 0 {
+		return nil, nil, noRunWaiting
+	}
+	theirs := map[string]int{} // the client's id for a call → its place
+	for n, c := range calls {
+		if _, twice := theirs[c.ID]; twice || c.ID == "" {
+			return nil, nil, noRunWaiting
+		}
+		theirs[c.ID] = n
+	}
+	for _, p := range fresh {
+		if _, ok := theirs[p.CallID]; !ok {
+			return nil, nil, noRunWaiting
+		}
+	}
+	b.mu.Lock()
+	runs := make([]*subscriptionRun, 0, len(b.runs))
+	for _, run := range b.runs {
+		runs = append(runs, run)
+	}
+	b.mu.Unlock()
+	why := noRunWaiting
+	var found *subscriptionRun
+	var ids []string // the run's id for each of calls
+	for _, run := range runs {
+		run.mu.Lock()
+		shown, told := slices.Clone(run.shown), run.told
+		waiting := !run.closed && !run.parkedAt.IsZero() && (run.model == "" || model == "" || run.model == model)
+		run.mu.Unlock()
+		if !waiting || len(shown) != len(calls) {
+			continue
+		}
+		same := true
+		for n, c := range calls {
+			same = same && shown[n].name == c.Name && sameArgs(shown[n].args, argsOf(c))
+		}
+		if !same {
+			continue
+		}
+		if told == "" || !before[told] {
+			// the same calls, from a conversation this one doesn't go on
+			// from: compacted or edited since, or another one
+			why = historyChanged
+			continue
+		}
+		if found != nil {
+			return nil, nil, ambiguousCalls
+		}
+		found, ids = run, make([]string, len(shown))
+		for n, c := range shown {
+			ids[n] = c.id
+		}
+	}
+	if found == nil {
+		return nil, nil, why
+	}
+	named := slices.Clone(fresh)
+	waits := false // the run's agent is waiting on one of them
+	b.mu.Lock()
+	for n := range named {
+		named[n].CallID = ids[theirs[named[n].CallID]]
+		waits = waits || b.calls[named[n].CallID] == found
+	}
+	b.mu.Unlock()
+	if !waits {
+		// its agent hasn't made its first call yet, or was answered
+		// already (a request sent again)
+		return nil, nil, noRunWaiting
+	}
+	return found, named, ""
+}
+
+// sameArgs says a call's arguments as the client was told them, a and as
+// it sends them back, b, are the same object, whatever their spacing and
+// the order of their keys.
+func sameArgs(a string, b json.RawMessage) bool {
+	if strings.TrimSpace(a) == "" {
+		a = "{}"
+	}
+	var x, y any
+	if json.Unmarshal([]byte(a), &x) != nil || json.Unmarshal(b, &y) != nil {
+		return strings.TrimSpace(a) == strings.TrimSpace(string(b))
+	}
+	return reflect.DeepEqual(x, y)
 }
 
 // offers says the run's agent was told every one of tools.
@@ -1720,7 +1896,7 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 		}
 	}
 
-	run, results := s.subscription.findRun(req)
+	run, results, how := s.subscription.match(req)
 	// the client rewrote the conversation since the run's last reply, as Pi
 	// does compacting it mid-turn: the run's agent holds the one from before,
 	// would answer from it, and tell the client a context as large as ever,
@@ -1729,7 +1905,7 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 	if run != nil && !run.follows(req.Messages) {
 		log.Printf("%s run on %s let go: earlier messages changed while it waited for tool results", name, model)
 		run.abort()
-		run = nil
+		run, how = nil, ""
 	}
 	// the client offers a tool the run's agent was never told of, as Claude
 	// Code's ToolSearch loads a deferred one mid-turn: the run is handed it
@@ -1745,7 +1921,7 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 		if events, err = run.continueWith(results, more); err != nil {
 			// it ended while it waited: a new one is told the whole
 			// conversation
-			run = nil
+			run, how = nil, runExpired
 		} else if more != nil {
 			run.mu.Lock()
 			for _, t := range req.Tools {
@@ -1753,6 +1929,11 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 			}
 			run.mu.Unlock()
 		}
+	}
+	// how tool results found the run waiting on them, or why a new one is
+	// told the conversation; never what was said
+	if how != "" && how != byExactID {
+		log.Printf("%s on %s: tool results %s", name, model, how)
 	}
 	if run == nil {
 		run, events, err = start(r.Context(), req)
