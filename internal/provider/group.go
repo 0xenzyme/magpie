@@ -958,6 +958,55 @@ func DeleteGroup(id string) error {
 	return store(f)
 }
 
+// DeleteGroups removes several groups at once, as DeleteGroup does each
+// (lc on Discord: they could only be removed one at a time). It is all or
+// none: refused, before any is removed, when one isn't there or a group
+// left holds one as a member or classifier; one held only by another of
+// them goes after it.
+func DeleteGroups(ids []string) error {
+	in := map[string]bool{}
+	var left []string
+	for _, id := range ids {
+		if !in[id] {
+			in[id] = true
+			left = append(left, id)
+		}
+	}
+	all := groupsIn(providerEntries())
+	for _, id := range left {
+		if !slices.ContainsFunc(all, func(g Group) bool { return g.ID == id && !g.Hidden }) {
+			return fmt.Errorf("no group %q", id)
+		}
+	}
+	for _, g := range all {
+		if g.Hidden || in[g.ID] {
+			continue
+		}
+		for _, id := range left {
+			if slices.Contains(g.Members, GroupPrefix+id) {
+				return fmt.Errorf("%s is in %s: take it out first", id, g.Name)
+			}
+			if g.Classifier == GroupPrefix+id {
+				return fmt.Errorf("%s is %s's classifier: choose another first", id, g.Name)
+			}
+		}
+	}
+	for len(left) > 0 {
+		var next []string
+		var last error
+		for _, id := range left {
+			if err := DeleteGroup(id); err != nil {
+				next, last = append(next, id), err
+			}
+		}
+		if len(next) == len(left) {
+			return last
+		}
+		left = next
+	}
+	return nil
+}
+
 // RemovedGroups are the found groups the user removed, whether or not
 // magpie finds them now: each is a record in providers.json ({"id", "hidden":
 // true}) that keeps it removed when two providers serve its model again.
