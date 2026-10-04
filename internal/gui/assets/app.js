@@ -6844,7 +6844,9 @@ function contextsText(cx) {
 function contextPicks(p, cx) {
   const size = (n) => contextsText({ "*": n });
   const picks = [128e3, 200e3, 256e3, 1e6].map((n) => ({ label: size(n).toUpperCase(), value: size(n) }));
-  const big = (p?.models || []).filter((m) => m.max > (m.context || 0));
+  // above the window its vendor says, not the one set here: a model set to
+  // its most still offers it
+  const big = (p?.models || []).filter((m) => m.max > ("listed" in m ? m.listed || 0 : m.context || 0));
   if (big.length) {
     const tops = [...new Set(big.map((m) => m.max))];
     const value = () => {

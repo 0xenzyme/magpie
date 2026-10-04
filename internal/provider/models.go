@@ -1012,15 +1012,7 @@ func buildEntries() []Entry {
 // window and the reply limit a request on it is routed and metered against,
 // with what the user set taken over the vendor's list and models.dev.
 func entryFor(p Provider, m catalog.Model, s settings.Settings) Entry {
-	// a vendor models.dev doesn't list (a custom provider, a proxy)
-	// serves models it knows from others
-	ctx := m.Context
-	if ctx == 0 {
-		ctx = catalog.ContextOf(m.ID)
-	}
-	if n := p.ContextOf(m.ID); n > 0 {
-		ctx = n
-	}
+	ctx := p.WindowOf(m)
 	output := m.Output
 	if output == 0 {
 		output = catalog.OutputOf(m.ID)
@@ -1189,6 +1181,29 @@ func IDs() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// ListedWindow is the window a provider's model takes before the user says
+// one: its vendor's list's, else the one models.dev gives a model of its id.
+// A vendor models.dev doesn't list (a custom provider, a proxy, a plugin
+// whose list says none, as Cline's) serves models it knows from others, under
+// the vendor's prefix too: cline-free/mimo-v2.6-flash is mimo-v2.6-flash.
+func ListedWindow(m catalog.Model) int {
+	if m.Context > 0 {
+		return m.Context
+	}
+	return catalog.ContextOf(m.ID)
+}
+
+// WindowOf is the window one of the provider's models takes, as agents are
+// told it and requests are routed on it: the one the user set (ContextOf)
+// over ListedWindow. The catalog's entries and the Providers page's model
+// lists both read it, so the page shows the window agents are told.
+func (p Provider) WindowOf(m catalog.Model) int {
+	if n := p.ContextOf(m.ID); n > 0 {
+		return n
+	}
+	return ListedWindow(m)
 }
 
 // ContextOf is the context the user set for the provider's model: its own,
