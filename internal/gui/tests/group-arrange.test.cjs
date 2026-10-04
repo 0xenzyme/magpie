@@ -24,7 +24,9 @@ const info = (ids) => ids.map((id) => ({ id, ready: true }));
 const all = {
   one: { id: "one", name: "One", members: ["a/x"], ready: true, memberInfo: info(["a/x"]) },
   two: { id: "two", name: "Two", members: ["b/m"], ready: true, memberInfo: info(["b/m"]) },
-  "auto-m": { id: "auto-m", name: "Model M", members: ["a/m", "b/m"], auto: true, ready: true, memberInfo: info(["a/m", "b/m"]) },
+  // its providers' logos stacked, wider than one logo's handle
+  "auto-m": { id: "auto-m", name: "Model M", members: ["a/m", "b/m"], auto: true, ready: true,
+    memberInfo: [{ id: "a/m", ready: true, provider: "a", icon: "deepseek-color" }, { id: "b/m", ready: true, provider: "b", icon: "qoder" }] },
   "auto-z": { id: "auto-z", name: "auto-z", members: [], auto: true, hidden: true, memberInfo: [] },
 };
 
@@ -93,6 +95,13 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.goto("http://magpie.test/?view=routing");
       await page.locator(".rt-groups > .rt-group").nth(2).waitFor();
       assert.deepEqual(await listed(page), ["one", "two", "auto-m"]);
+      // a stack of logos is held whole in its handle, in its card, clear of
+      // the name (ARNO on Discord: past the card's left edge, over the name)
+      const fit = await page.locator('.rt-group[data-id="auto-m"]').evaluate((r) => {
+        const b = (e) => e.getBoundingClientRect(), row = b(r), h = b(r.querySelector(".rt-ghandle")), st = b(r.querySelector(".ic-stack")), m = b(r.querySelector(".main"));
+        return { stackIn: st.left >= h.left - 0.5 && st.right <= h.right + 0.5, inRow: h.left >= row.left, clear: h.right <= m.left };
+      });
+      assert.deepEqual(fit, { stackIn: true, inRow: true, clear: true });
       await page.locator(".rt-gsec").evaluate((x) => x.scrollIntoView({ block: "center" })); // as the reader would
       await page.waitForTimeout(200);
       const at = () => page.evaluate(() => [...document.querySelectorAll("*")].filter((e) => e.scrollTop).map((e) => [e.id || e.className, e.scrollTop]).join(";"));
