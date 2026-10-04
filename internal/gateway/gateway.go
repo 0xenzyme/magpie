@@ -295,6 +295,9 @@ type Server struct {
 	debug        bool
 	trace        trace // what routing did with each request, for the Gateway view
 	titlePrompts titlePrompts
+	// codexTurns is the model each Codex last had a turn of its own
+	// answered on, by caller (codexMemoryStandIn)
+	codexTurns sync.Map
 	// the listener, swapped when the gateway is shared on the network or
 	// taken off it (see Relisten)
 	lnMu sync.Mutex
@@ -1095,7 +1098,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	} else if m := standIn(agent, asked); m != "" {
 		asked = at(m)
 	}
+	if m := s.codexMemoryStandIn(r, call.Agent, agent, call.Kind, asked); m != "" {
+		asked = m
+	}
 	p, model, ok := provider.Resolve(asked)
+	if ok {
+		s.rememberCodexTurn(r, call.Agent, agent, call.Kind, asked)
+	}
 	if !ok {
 		call.Status, call.Error = 404, "unknown model"
 		if off, isOff := provider.SwitchedOff(asked); isOff {
