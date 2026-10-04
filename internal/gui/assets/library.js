@@ -1783,6 +1783,7 @@
   // skills draws a few rows now and then instead of laying out and painting
   // each as it comes into view.
   let picking = false;         // the skills' rows have a box each, to pick some (#791)
+  let naming = false;          // the pick bar asks the name of a group to put them in
   const picked = new Set();    // the names picked
   let skillQuery = "";         // what the filter over the skills holds
   let skillTimer = 0;          // the filter's redraw, waiting for typing to pause
@@ -1814,19 +1815,27 @@
       grouped = { lib, pick, groups: [g] };
       return grouped.groups;
     }
+    // the user's own groups first, in the order made, each skill in its
+    // group rather than its source's (#791)
+    const mine = (lib.skillGroups || []).map((u) => ({ key: "my:" + u.name, repo: "", mine: u.name, skills: [], names: u.skills }));
+    const inMine = new Map();
+    for (const g of mine) for (const n of g.names) inMine.set(n, g);
     const by = new Map();
     for (const s of lib.skills) {
+      const own = inMine.get(s.name);
+      if (own) { own.skills.push(s); continue; }
       const repo = s.kind === "github" ? repoOf(s.source) : s.origin ? repoOf(s.origin) : "";
       const key = repo ? "gh:" + repo.toLowerCase() : "local";
       let g = by.get(key);
       if (!g) by.set(key, (g = { key, repo, skills: [] }));
       g.skills.push(s);
     }
-    const groups = [...by.values()].sort((a, b) => (a.key === "local") - (b.key === "local") || a.repo.localeCompare(b.repo));
+    const groups = [...mine.filter((g) => g.skills.length),
+      ...[...by.values()].sort((a, b) => (a.key === "local") - (b.key === "local") || a.repo.localeCompare(b.repo))];
     for (const g of groups) {
       g.skills.sort((a, b) => a.name.localeCompare(b.name));
-      g.text = new Map(g.skills.map((s) => [s, (s.name + " " + (s.description || "") + " " + g.repo).toLowerCase()]));
-      g.parts = partsOf(g);
+      g.text = new Map(g.skills.map((s) => [s, (s.name + " " + (s.description || "") + " " + (g.mine || g.repo)).toLowerCase()]));
+      g.parts = g.mine ? null : partsOf(g);
     }
     grouped = { lib, pick, groups };
     return groups;
@@ -2000,7 +2009,9 @@
     card.dataset.group = g.key;
     const head = el("div", "row lib-row click lib-grouphead" + (folded ? "" : " open"));
     const who = el("div", "who");
-    who.append(el("div", "name" + (g.repo ? " mono" : ""), g.repo || t("On this computer")));
+    const title = g.mine || g.repo || t("On this computer");
+    const name = el("div", "name" + (g.repo ? " mono" : ""), title);
+    who.append(name);
     const n = g.skills.length;
     who.append(el("div", "sub", filtering && hits.length !== n ? t("{n} of {total} skills", { n: hits.length, total: n })
       : n === 1 ? t("1 skill") : t("{n} skills", { n })));
@@ -2015,8 +2026,17 @@
       u.title = stale.length === 1 ? t("Fetch {name} from GitHub again", { name: stale[0].name }) : t("Fetch the {n} skills GitHub changed again", { n: stale.length });
       tags.append(u);
     }
-    const have = groupChips(g.skills, all, g.repo || t("On this computer"));
+    const have = groupChips(g.skills, all, title);
     const acts = el("div", "lib-rowacts");
+    // a group of the user's is renamed in place, or let go: its skills go
+    // back to their sources' groups, and stay in the library as they are
+    if (g.mine) {
+      const rn = button(t("Rename"), "lib-updall lib-grouprename", () => renameGroup(g, name));
+      rn.title = t("Rename this group");
+      const un = button(t("Ungroup"), "lib-updall lib-ungroup", () => ungroup(g.mine, null));
+      un.title = t("Let this group go: its skills go back to where they came from, and stay as they are");
+      tags.append(rn, un);
+    }
     if (g.repo) {
       const o = button("", "lib-icon", () => browse("https://github.com/" + g.repo));
       o.append(svg(GLYPH.out, 13, 1.4));
@@ -2025,7 +2045,7 @@
     }
     const chev = el("span", "chev");
     chev.append(svg(CHEV_R, 11, 1.7));
-    const pic = g.repo ? mark(g.skills.find((s) => s.icon)?.icon, GLYPH.skill) : glyph(GLYPH.folder);
+    const pic = g.repo ? mark(g.skills.find((s) => s.icon)?.icon, GLYPH.skill) : glyph(g.mine ? GLYPH.skill : GLYPH.folder);
     if (picking) head.append(pickAll(hits));
     head.append(pic, who, tags, have, acts, chev);
     head.title = folded ? t("Show its skills") : t("Hide its skills");
@@ -2130,6 +2150,7 @@
   }
   // every box drawn, and the bar, as the picks are now
   function syncPicks() {
+    if (!picked.size) naming = false;
     for (const b of page.querySelectorAll(".lib-pickbox")) paintPick(b);
     const bar = page.querySelector(".lib-pickbar");
     if (bar) bar.replaceWith(pickBar(skillAgents()));
@@ -2144,14 +2165,129 @@
     const skills = lib.skills.filter((s) => picked.has(s.name));
     const n = skills.length;
     bar.append(every, el("span", "lib-pickn" + (n ? "" : " none"), n ? t("{n} selected", { n }) : t("Pick skills to turn them on or off together")), el("span", "grow"));
+    if (n && naming) return nameBar(bar, skills);
     if (n) {
       bar.append(groupChips(skills, all, null));
+      // a group of the user's made of them, or the ones in one let go (#791)
+      if (sortOf("libSkills", SKILL_SORTS()) === "source") {
+        const gb = button(t("Group…"), "lib-updall lib-pickgroup", () => { naming = true; syncPicks(); });
+        gb.title = t("Put the skills picked in a group of your own");
+        bar.append(gb);
+        const own = (lib.skillGroups || []).filter((u) => u.skills.some((x) => picked.has(x)));
+        if (own.length) {
+          const ub = button(t("Ungroup"), "lib-updall lib-pickungroup", async () => {
+            for (const u of own) await ungroup(u.name, u.skills.filter((x) => picked.has(x)));
+          });
+          ub.title = t("Take the skills picked out of their groups");
+          bar.append(ub);
+        }
+      }
       const c = button(t("Clear"), "lib-updall lib-pickclear", () => { picked.clear(); syncPicks(); });
       c.title = t("Unpick them all");
       bar.append(c);
     }
     bar.append(button(t("Done"), "action lib-updall lib-pickdone", () => { picking = false; picked.clear(); render(); }));
     return bar;
+  }
+
+  // The bar asking a group's name for the skills picked: a new group's, or
+  // one there is, which they join. Enter makes it, Escape goes back.
+  function nameBar(bar, skills) {
+    bar.classList.add("naming");
+    const f = el("input", "lib-filter lib-groupname");
+    f.placeholder = t("Group name");
+    f.spellcheck = false;
+    f.autocomplete = "off";
+    const have = (lib.skillGroups || []).map((u) => u.name);
+    const go = button(t("Group"), "action lib-updall lib-groupgo", () => makeGroup(f.value, skills));
+    const sync = () => {
+      const v = f.value.trim();
+      go.disabled = !v;
+      go.textContent = have.includes(v) ? t("Add to {name}", { name: v }) : t("Group");
+    };
+    f.oninput = sync;
+    f.onkeydown = (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter" && f.value.trim()) { e.preventDefault(); makeGroup(f.value, skills); }
+      if (e.key === "Escape") { e.preventDefault(); naming = false; syncPicks(); }
+    };
+    sync();
+    const back = button(t("Cancel"), "lib-updall lib-groupcancel", () => { naming = false; syncPicks(); });
+    bar.append(el("span", "lib-pickn", skills.length === 1 ? t("Group 1 skill as") : t("Group {n} skills as", { n: skills.length })), f);
+    // a group there is, to put them in with a click
+    for (const h of have.slice(0, 4)) {
+      const b = button(h, "lib-updall lib-groupto", () => makeGroup(h, skills));
+      b.title = t("Add them to {name}", { name: h });
+      bar.append(b);
+    }
+    bar.append(el("span", "grow"), back, go);
+    requestAnimationFrame(() => f.focus({ preventScroll: true }));
+    return bar;
+  }
+
+  async function makeGroup(name, skills) {
+    name = name.trim();
+    if (!name) return;
+    try {
+      const v = await api("library/skills/group", { name, names: skills.map((s) => s.name) });
+      take(v);
+      folds["my:" + name] = false; // a group just made is shown open
+      saveFolds();
+      picking = false;
+      naming = false;
+      picked.clear();
+      report(v.result, skills.length === 1 ? t("{skill} is in {name}", { skill: skills[0].name, name }) : t("{n} skills are in {name}", { n: skills.length, name }));
+    } catch (e) {
+      status(e.message, "err", 6000);
+    }
+    render();
+  }
+
+  // a group of the user's let go, or only the skills named out of it
+  async function ungroup(name, names) {
+    try {
+      const v = await api("library/skills/ungroup", { name, names: names || [] });
+      take(v);
+      if (names) for (const n of names) picked.delete(n);
+      report(v.result, names ? t("{n} skills are out of {name}", { n: names.length, name }) : t("{name} is no longer a group", { name }));
+    } catch (e) {
+      status(e.message, "err", 6000);
+    }
+    render();
+  }
+
+  // a group's name, made a box to type its new one in
+  function renameGroup(g, name) {
+    const f = el("input", "lib-filter lib-grouprename-in");
+    f.value = g.mine;
+    f.spellcheck = false;
+    f.autocomplete = "off";
+    let done = false;
+    const save = async () => {
+      if (done) return;
+      done = true;
+      const to = f.value.trim();
+      if (!to || to === g.mine) { render(); return; }
+      try {
+        const v = await api("library/skills/group", { old: g.mine, name: to, names: [] });
+        take(v);
+        if (g.key in folds) { folds["my:" + to] = folds[g.key]; delete folds[g.key]; saveFolds(); }
+        report(v.result, t("{old} is now {name}", { old: g.mine, name: to }));
+      } catch (e) {
+        status(e.message, "err", 6000);
+      }
+      render();
+    };
+    f.onclick = (e) => e.stopPropagation();
+    f.onkeydown = (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); save(); }
+      if (e.key === "Escape") { e.preventDefault(); done = true; render(); }
+    };
+    f.onblur = save;
+    name.replaceWith(f);
+    f.focus({ preventScroll: true });
+    f.select();
   }
 
   // ---------- a long list, drawn near the view first ----------
