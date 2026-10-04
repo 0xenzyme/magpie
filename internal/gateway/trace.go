@@ -395,7 +395,7 @@ func (t *trace) update(r *Route, f func(r *Route)) {
 		}
 		if keepRoutes {
 			c := *r
-			c.Order = append([]Weighed(nil), r.Order...)
+			c.Order = append([]Weighed{}, r.Order...) // [] for none: the GUI reads it as a list
 			c.Left = append([]Weighed(nil), r.Left...)
 			c.Tries = append([]Try{}, r.Tries...)
 			c.Usage = append([]RouteUsage(nil), r.Usage...)
@@ -421,7 +421,7 @@ func (s *Server) Trace(ctx context.Context, after int64, wait time.Duration) Tra
 		for _, r := range t.routes {
 			if r.Seq > after {
 				c := *r
-				c.Order = append([]Weighed(nil), r.Order...)
+				c.Order = append([]Weighed{}, r.Order...) // [] for none: the GUI reads it as a list
 				c.Left = append([]Weighed(nil), r.Left...)
 				c.Tries = append([]Try{}, r.Tries...)
 				c.Usage = append([]RouteUsage(nil), r.Usage...)

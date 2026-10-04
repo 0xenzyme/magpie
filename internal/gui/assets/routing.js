@@ -777,6 +777,14 @@
   // tried is the seat a try went to
   const tried = (r, tr) => r.order.find((x) => seat(x) === seat(tr)) || r.order.find((x) => x.id === tr.id);
   const setOf = (r) => r.order.map(seat).sort().join("\n");
+  // whole fills in the lists a route's JSON can leave null: a route the
+  // gateway weighed no seats for has "order": null, and the page reads
+  // r.order, r.tries and r.left as lists everywhere — one null threw in
+  // pick, and clicking such a request (a refused one) opened nothing
+  const whole = (r) => {
+    if (r) { r.order ||= []; r.tries ||= []; r.left ||= []; }
+    return r;
+  };
 
   // staged: the routes the stage shows — a picked one alone; else those
   // playing, and each agent's latest while it lingers, a few agents at most
@@ -1168,7 +1176,7 @@
       const res = await fetch("/api/gateway/route?id=" + encodeURIComponent(id) + "&day=" + encodeURIComponent(time.slice(0, 10)));
       if (res.status === 404) throw new Error(t("Routing history for this request is no longer available."));
       if (!res.ok) throw new Error(await res.text());
-      r = await res.json();
+      r = whole(await res.json());
       noteAccounts(r);
     }
     day = routes.has(id) ? "" : r.time.slice(0, 10);
@@ -1277,7 +1285,7 @@
       const res = await (await fetch("/api/gateway/history?day=" + encodeURIComponent(d || ""))).json();
       days = res.days || [];
       noteAccounts(res.routes);
-      if (d && d === day) { past = res.routes || []; pastCut = !!res.cut; }
+      if (d && d === day) { past = (res.routes || []).map(whole); pastCut = !!res.cut; }
     } catch {}
     renderHist(); // shown once there are days, though none are live
   }
@@ -2096,7 +2104,7 @@
         const fresh = [];
         for (const r of d.routes) {
           if (!routes.has(r.id) && !first) fresh.push(r.id);
-          routes.set(r.id, r);
+          routes.set(r.id, whole(r));
         }
         for (const id of [...routes.keys()].sort((a, b) => a - b).slice(0, -60)) routes.delete(id);
         loaded = true;
