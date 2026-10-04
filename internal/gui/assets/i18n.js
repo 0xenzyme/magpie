@@ -1374,6 +1374,8 @@ const I18N = {
     "Token Plan · pay as you go": "Token Plan · 按量付费",
     "TokenHub · subscription": "TokenHub · 订阅",
     "Plan · China": "套餐 · 中国",
+    "Pay as you go · China": "按量 · 中国",
+    "Pay as you go · Global": "按量 · 国际",
     "Plan · Singapore": "套餐 · 新加坡",
     "Plan · Europe": "套餐 · 欧洲",
     "which endpoint {p} is reached through": "通过哪个入口访问 {p}",

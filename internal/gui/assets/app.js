@@ -5668,6 +5668,10 @@ function pairTile(pr, cn) {
   return b;
 }
 
+// regionAt is the region of a preset a draft's endpoints are at, by its
+// chat URL (a new one's are the preset's own: its first region)
+const regionAt = (pr, d) => pr?.regions?.find((r) => r.chat && r.chat === (d?.chat || pr.chat));
+
 // the first provider made from a preset, which may not have the preset's id
 const presetProvider = (pr) => providers.providers.find((p) => p.preset === pr.id) || providers.providers.find((p) => p.id === pr.id);
 
@@ -6365,8 +6369,15 @@ function drawEditor(p, presetID) {
     h.append(el("span", "grow"));
     // a plugin's provider has plugin://<id> for its base, and its id is no
     // address to open: only a host with a dot or a port makes a link
-    const site = pr?.website || p?.website || (/[.:]/.test(p?.host || "") ? "https://" + p.host : "");
-    if (site) { const b = el("button", "link", hostOf(site) + " ↗"); b.onclick = () => api("open", { url: site }); h.append(b); }
+    // a region with docs of its own (Tencent Cloud's plan and TokenHub) has
+    // its page here, following the region picked below
+    const site = regionAt(pr, draft)?.website || pr?.website || p?.website || (/[.:]/.test(p?.host || "") ? "https://" + p.host : "");
+    if (site) {
+      const b = el("button", "link site", hostOf(site) + " ↗");
+      b.dataset.url = site;
+      b.onclick = () => api("open", { url: b.dataset.url });
+      h.append(b);
+    }
     if (p) h.append(providerSwitch(p));
     ed.append(h);
     if (p?.off) ed.append(el("div", "hint off-note", t("Switched off: agents aren't given its models and no request goes to it. Its keys and settings are kept; switch it on to use it again.")));
@@ -6696,12 +6707,17 @@ function drawEditor(p, presetID) {
   if (pr?.regions?.length) {
     // Bedrock's ten regions don't fit the editor's width: they scroll
     const seg = el("div", "segs regions");
-    const cur = pr.regions.find((r) => r.chat && r.chat === (draft.chat || pr.chat)) || pr.regions.find((r) => r.decide && (r.id === draft.region || (!draft.region && workspaceOf(r.decide, draft.decide ?? p?.decide ?? pr.decide) !== null))) || pr.regions[0];
+    const cur = regionAt(pr, draft) || pr.regions.find((r) => r.decide && (r.id === draft.region || (!draft.region && workspaceOf(r.decide, draft.decide ?? p?.decide ?? pr.decide) !== null))) || pr.regions[0];
     for (const r of pr.regions) {
       const b = el("button", "opt" + (r.id === cur.id ? " on" : ""), t(r.name));
       b.onclick = () => {
         draft.chat = r.chat || ""; draft.responses = r.responses || ""; draft.anthropic = r.anthropic || "";
         draft.keysUrl = r.keysUrl || "";
+        const site = ed.querySelector(".ehead .link.site");
+        if (site && pr.regions.some((x) => x.website)) {
+          site.dataset.url = r.website || pr.website;
+          site.textContent = hostOf(site.dataset.url) + " ↗";
+        }
         onRegion(r);
         for (const x of seg.querySelectorAll(".opt")) x.classList.toggle("on", x === b);
         slide(seg, "regions");

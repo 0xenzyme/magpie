@@ -8,6 +8,7 @@
 package provider
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -805,11 +806,13 @@ func normalize(p Provider) Provider {
 	}
 	p.Models = cleanList(p.Models)
 	p.Fallback = cleanList(p.Fallback)
-	// a provider saved under the id the qianfan preset carried its first
-	// day (qianfan-token-plan, v0.1.394) is the preset since renamed:
-	// its own id stays, so whatever the agents wired to it keeps routing
-	if p.Preset == "qianfan-token-plan" {
-		p.Preset = "baidu-qianfan"
+	// a provider saved under an id a preset carried before (presetAliases:
+	// qianfan's first day's, Tencent Cloud's plan and TokenHub's two) is
+	// the preset since: its endpoints say the region, and its own id
+	// stays, so whatever the agents, groups and usage named it by keeps
+	// finding it
+	if a, ok := presetAliases[p.Preset]; ok {
+		p.Preset = a.preset
 	}
 	// OpenCode Zen serves its free models (-free) signed out, to the key
 	// OpenCode itself sends then: a Zen provider saved with no key of its
@@ -861,10 +864,16 @@ func normalize(p Provider) Provider {
 		}
 		// a region's own key page goes with its endpoints (Qianfan's pay
 		// as you go makes its keys on the IAM page, the plans at the
-		// plan console)
-		for _, r := range pr.Regions {
-			if r.KeysURL != "" && p.atRegion(r) {
-				p.KeysURL = r.KeysURL
+		// plan console), and its own docs and catalog (Tencent Cloud's
+		// TokenHub, models.dev's tencent-tokenhub, beside its plan's none)
+		if r := p.regionOf(pr); r != nil {
+			p.KeysURL = cmp.Or(r.KeysURL, p.KeysURL)
+			p.Website = cmp.Or(r.Website, p.Website)
+			// the catalog follows the region unless the user gave one
+			// of their own: the preset's or a region's is magpie's
+			if slices.ContainsFunc(pr.Regions, func(x Region) bool { return x.Catalog != "" }) &&
+				(p.Catalog == pr.Catalog || slices.ContainsFunc(pr.Regions, func(x Region) bool { return x.Catalog == p.Catalog })) {
+				p.Catalog = cmp.Or(r.Catalog, pr.Catalog)
 			}
 		}
 	}

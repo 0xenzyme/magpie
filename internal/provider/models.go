@@ -429,6 +429,32 @@ func (p Provider) atRegion(r Region) bool {
 	return false
 }
 
+// regionOf is the region of pr the provider sits at, or nil: the one most
+// of its endpoints are as written first, else the one most share their
+// paths with (a mirror, a test). TokenHub's China and global hosts serve
+// the same paths, and a GLM Coding Plan its pay as you go's messages
+// endpoint: the host and the other endpoints tell them apart.
+func (p Provider) regionOf(pr *PresetDef) *Region {
+	var best *Region
+	top := 0
+	for i, r := range pr.Regions {
+		n := 0
+		for _, e := range [][2]string{{p.Chat, r.Chat}, {p.Responses, r.Responses}, {p.Anthropic, r.Anthropic}} {
+			switch {
+			case e[0] == "" || e[1] == "":
+			case strings.EqualFold(e[0], e[1]):
+				n += 4
+			case basePath(e[0]) == basePath(e[1]):
+				n++
+			}
+		}
+		if n > top {
+			best, top = &pr.Regions[i], n
+		}
+	}
+	return best
+}
+
 // basePath is a base URL's path, without scheme or host.
 func basePath(raw string) string {
 	if i := strings.Index(raw, "://"); i >= 0 {
@@ -443,10 +469,18 @@ func basePath(raw string) string {
 // planModels keeps a plan's own models of a vendor's list (PresetDef.Only),
 // or gives the plan's when the list has none; a plan with models but no
 // Only gives them only when there is no list. Any other provider's list is
-// as it came.
+// as it came. A region with models of its own (Tencent Cloud's Token Plan,
+// beside TokenHub's pay as you go) is a plan with those.
 func (p Provider) planModels(ms []catalog.Model) []catalog.Model {
 	pr := Preset(p.Preset)
-	if pr == nil || pr.Only == "" && (len(pr.Models) == 0 || len(ms) > 0) {
+	if pr == nil {
+		return ms
+	}
+	models := pr.Models
+	if r := p.regionOf(pr); r != nil && len(r.Models) > 0 {
+		models = r.Models
+	}
+	if pr.Only == "" && (len(models) == 0 || len(ms) > 0) {
 		return ms
 	}
 	var out, free []catalog.Model
@@ -461,7 +495,7 @@ func (p Provider) planModels(ms []catalog.Model) []catalog.Model {
 		}
 	}
 	if len(out) == 0 {
-		for _, id := range pr.Models {
+		for _, id := range models {
 			out = append(out, catalog.Model{ID: id, Name: id})
 		}
 	}
