@@ -331,6 +331,9 @@ button.rt-session { cursor: pointer; }
 .rt-gedit { cursor: default; }
 .rt-gedit .ehead.fold { cursor: pointer; }
 .rt-gedit .segs { max-width: 100%; }
+.rt-gedit .ctx-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rt-gedit .ctx-wrap .hint { flex-basis: 100%; }
+.rt-gedit .ctx-wrap input.ctx-in { width: 96px; flex: none; }
 .rt-pool { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 12px 10px 14px; }
 .rt-pool .nm { flex: 1 1 12em; display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
 .rt-pool .nm .ic { width: 16px; height: 16px; }
