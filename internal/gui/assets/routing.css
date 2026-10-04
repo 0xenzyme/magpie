@@ -206,9 +206,26 @@ button.rt-session { cursor: pointer; }
 .rt-session .summary { color: var(--muted); font-variant-numeric: tabular-nums; }
 .rt-session .cost { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; }
 .rt-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
-.rt-purpose { max-width: 100%; }
 .rt-filters > .rt-days { flex: 1; min-width: 0; }
 .rt-group-by { flex: none; }
+/* Purpose is a list tool in its heading; the bar below chooses day and view. */
+#view-routing .rt-req-head { height: auto; min-height: 26px; flex-wrap: wrap; }
+.rt-purpose-tools { flex: none; display: inline-flex; align-items: center; margin-left: 8px; border-radius: 6px; }
+.rt-purpose-tools.set { background: var(--pill); }
+.rt-purpose { display: inline-flex; align-items: center; gap: 3px; max-width: 180px; height: 24px; }
+.rt-purpose span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt-purpose svg { flex: none; opacity: .7; transition: transform .15s var(--ease); }
+.rt-purpose.open svg { transform: rotate(180deg); }
+.rt-purpose-tools.set .rt-purpose { color: var(--fg-2); }
+.rt-purpose-clear { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 24px; padding: 0; }
+.pop.proto-menu.rt-purpose-menu { width: 190px; max-width: calc(100vw - 16px); background: var(--card); }
+.rt-purpose-menu .pm-head, .rt-purpose-menu .pm-note { display: none; }
+.rt-purpose-menu .pm-item { align-items: center; padding: 7px 8px; }
+.rt-purpose-menu .pm-name { font-weight: 400; overflow-wrap: anywhere; }
+@container (max-width: 440px) {
+  #view-routing .rt-req-head .note { flex: 1 1 100%; order: 1; margin: 2px 0 0; }
+  .rt-purpose { max-width: 150px; }
+}
 /* one line wants room for the time, the model, where it went at what
    reasoning, and the numbers; in less, where it went and the numbers share
    a line under the model, and in less still each has a line of its own */

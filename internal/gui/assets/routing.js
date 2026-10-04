@@ -90,7 +90,7 @@
   // under the stage: every request the gateway keeps, and each account or
   // key as those requests found it
   const more = $("#rtMore");
-  const reqHead = el("div", "row-head"), reqNote = el("span", "note");
+  const reqHead = el("div", "row-head rt-req-head"), reqNote = el("span", "note");
   const reqs = el("div", "list rt-reqs");
   // the days the history keeps on disk, to look back at one: see listed
   const dayBar = el("div", "rt-days");
@@ -115,11 +115,26 @@
   const hist = el("div", "rt-cols");
   const colA = el("div", "rt-col"), colB = el("div", "rt-col");
   const filters = el("div", "rt-filters");
-  const purposePick = el("button", "sess-pick rt-purpose");
+  const purposeTools = el("div", "rt-purpose-tools");
+  const purposePick = el("button", "text rt-purpose"), purposeLabel = el("span");
   purposePick.type = "button";
   purposePick.id = "rtPurpose";
+  purposePick.setAttribute("aria-haspopup", "menu");
+  purposePick.setAttribute("aria-expanded", "false");
+  purposePick.append(purposeLabel, svg(CHEV, 11, 1.6));
+  const purposeClear = el("button", "text rt-purpose-clear");
+  purposeClear.type = "button";
+  purposeClear.id = "rtPurposeClear";
+  purposeClear.append(svg(CROSS, 11, 1.6));
+  purposeTools.append(purposePick, purposeClear);
   let purpose = "";
-  filters.append(dayBar, groupBar, purposePick);
+  purposeClear.onclick = () => {
+    closeProtoMenu();
+    purpose = "";
+    steady(renderHist);
+    purposePick.focus({ preventScroll: true });
+  };
+  filters.append(dayBar, groupBar);
   colA.append(reqHead, filters, reqs);
   colB.append(actHead, acts);
   hist.append(colA, colB);
@@ -1344,7 +1359,7 @@
   // button made again each time is one WebKit may drop a click on
   const reqLabel = el("span", "label"), replayAll = el("button", "text");
   replayAll.onclick = () => replay(listed(), pinned);
-  reqHead.append(reqLabel, el("span", "grow"), reqNote, replayAll);
+  reqHead.append(reqLabel, el("span", "grow"), reqNote, purposeTools, replayAll);
   // each request's row, kept while what it says is the same: the list
   // is redrawn on every trace update, and made again whole each time it
   // was most of what a busy gateway cost the page (#308)
@@ -1456,11 +1471,29 @@
     const rs = listed();
     const all = allListed();
     hist.hidden = !all.length && !day && !days.length && !purpose;
-    sessPick(purposePick, "All purposes", purpose, purposeOptions(all.map((r) => purposeOf(r.kind)), purpose), "Purpose", (v) => {
-      purpose = v;
-      steady(renderHist);
-    });
-    purposePick.title = t("Filter the request list by purpose");
+    const opts = purposeOptions(all.map((r) => purposeOf(r.kind)), purpose);
+    const selected = opts.find((o) => o.v === purpose);
+    purposeTools.hidden = opts.length < 2 && !purpose;
+    purposeTools.classList.toggle("set", !!purpose);
+    purposeClear.hidden = !purpose;
+    purposeClear.title = t("Clear filter");
+    purposeClear.setAttribute("aria-label", t("Clear filter"));
+    const label = purpose ? t("Purpose: {name}", { name: selected?.name || purpose }) : t("Purpose filter");
+    setText(purposeLabel, label);
+    purposePick.setAttribute("aria-label", label);
+    purposePick.title = t("Filter the request list by purpose") + (purpose ? "\n" + label : "");
+    purposePick.onclick = (e) => {
+      e.stopPropagation();
+      if (purposePick.classList.contains("open")) return closeProtoMenu();
+      // A handful of purposes needs a small menu; explanations stay in tooltips.
+      openProtoMenu(purposePick, [{ v: "", name: t("All purposes"), note: "" }, ...opts].map((o) => ({
+        ...o, literalName: true, title: o.note || o.v, note: "",
+      })), purpose, (v) => {
+        purpose = v;
+        steady(renderHist);
+        purposePick.focus({ preventScroll: true });
+      }, "Purpose", "rt-purpose-menu", "right");
+    };
     setText(reqLabel, t("Requests"));
     setText(replayAll, t("Replay them all"));
     replayAll.hidden = !(rs.filter((r) => r.done).length > 1 && !rp);

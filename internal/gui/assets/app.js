@@ -9987,7 +9987,7 @@ function closeProtoMenu() {
 // ticked or unticked in turn with the menu kept open, choose given the
 // ticked ones, in the menu's order, once it closes (and only if they
 // changed); "" is none of them and closes it, "\x00" a note to read.
-function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key speaks", cls = "") {
+function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key speaks", cls = "", align = "left") {
   closeProtoMenu();
   const multi = Array.isArray(value);
   let picked = multi ? [...value] : null;
@@ -10003,6 +10003,7 @@ function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key sp
   const items = opts.map((o) => {
     const b = el("button", "pm-item");
     b.type = "button";
+    if (o.title) b.title = o.title;
     b.setAttribute("role", multi && o.v && o.v !== "\x00" ? "menuitemcheckbox" : "menuitemradio");
     const words = el("span", "pm-words");
     words.append(el("span", "pm-name", o.literalName ? o.name : t(o.name)), el("span", "pm-note", t(o.note)));
@@ -10025,7 +10026,8 @@ function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key sp
   const r = anchor.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight, pad = 8;
   let y = r.bottom + 5;
   if (y + h > innerHeight - pad && r.top - 5 - h >= pad) { y = r.top - 5 - h; box.classList.add("up"); }
-  box.style.left = Math.max(pad, Math.min(r.left, innerWidth - w - pad)) + "px";
+  const left = align === "right" ? r.right - w : r.left;
+  box.style.left = Math.max(pad, Math.min(left, innerWidth - w - pad)) + "px";
   box.style.top = Math.max(pad, y) + "px";
   anchor.classList.add("open");
   if (anchor.hasAttribute("aria-expanded")) anchor.setAttribute("aria-expanded", "true");

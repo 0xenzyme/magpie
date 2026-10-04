@@ -59,7 +59,9 @@ node --test --test-concurrency=1 internal/gui/tests/gateway-caller-keys.test.cjs
 English and Chinese on Chromium and WebKit. It covers title aliases, literal
 unknown names, unmarked records, pagination and totals, combined failure
 filters and CSV export, route navigation, session grouping, historical days
-and the narrow layout. It uses isolated API fixtures. Run with
+and the narrow layout. Routing also covers keyboard dismissal and clearing
+the purpose while keeping the selected day and session grouping. It uses
+isolated API fixtures. Run with
 `node --test internal/gui/tests/purpose-filter.test.cjs` and the Playwright
 environment described below.
 

@@ -89,12 +89,16 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.route("**/*", server(lang, asked));
       const choose = async (id, value) => {
         await click(page, page.locator(id));
-        const item = page.locator(".sess-menu .pm-item");
-        const matches = await item.evaluateAll((els, v) => els.map((e, i) => e.title === v ? i : -1).filter((i) => i >= 0), value);
+        const routing = id === "#rtPurpose";
+        const wanted = routing ? await page.evaluate((v) => v ? purposeOptions([v], v)[0].name : t("All purposes"), value) : value;
+        const item = page.locator(".proto-menu .pm-item");
+        const matches = await item.evaluateAll((els, { wanted, routing }) => els.map((e, i) =>
+          (routing ? e.querySelector(".pm-name").textContent : e.title) === wanted ? i : -1).filter((i) => i >= 0), { wanted, routing });
         assert.equal(matches.length, 1, `one menu choice for ${value}`);
         const name = await item.nth(matches[0]).locator(".pm-name").textContent();
+        const label = routing ? await page.evaluate(({ value, name }) => value ? t("Purpose: {name}", { name }) : t("Purpose filter"), { value, name }) : name;
         await item.nth(matches[0]).click();
-        await page.waitForFunction(({ id, name }) => document.querySelector(id + " span").textContent === name, { id, name });
+        await page.waitForFunction(({ id, label }) => document.querySelector(id + " span").textContent === label, { id, label });
       };
       const waitRows = async (n) => page.waitForFunction((n) => document.querySelectorAll("#ledWrap tbody tr.led-row").length === n, n);
       await page.goto("http://magpie.test/?view=usage&tab=requests");
@@ -138,6 +142,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // The same aliases and unknown names in both live and historical Routing.
       await page.goto("http://magpie.test/?view=routing");
       await page.locator(".rt-req").nth(7).waitFor();
+      assert.equal(await page.locator("#rtPurpose span").textContent(), lang === "zh" ? "用途" : "Purpose filter");
+      await click(page, page.locator("#rtPurpose"));
+      assert.equal(await page.locator(".rt-purpose-menu input").count(), 0);
+      assert.equal(await page.locator("#rtPurpose").getAttribute("aria-expanded"), "true");
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("Escape");
+      assert.equal(await page.locator("#rtPurpose").getAttribute("aria-expanded"), "false");
+      assert.equal(await page.locator("#rtPurpose").evaluate((e) => e === document.activeElement), true);
       await choose("#rtPurpose", "kind:thread_title");
       assert.equal(await page.locator(".rt-req").count(), 4);
       // Cross-page navigation must reveal a target excluded by the current purpose.
@@ -155,13 +167,19 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await choose("#rtPurpose", "unmarked");
       assert.equal(await page.locator(".rt-req").count(), 1);
       assert.equal(await page.locator(".rt-req .kind").count(), 0);
+      assert.equal(await page.locator("#rtPurpose span").textContent(), lang === "zh" ? "用途：未标记" : "Purpose: Unmarked");
+      await click(page, page.locator("#rtPurposeClear"));
+      assert.equal(await page.locator(".rt-req").count(), 8);
+      assert.equal(await page.locator(".rt-group-by button").last().getAttribute("aria-pressed"), "true");
+      assert.equal(await page.locator(".rt-days .rt-day").nth(1).getAttribute("aria-pressed"), "true");
+      await choose("#rtPurpose", "unmarked");
       await choose("#rtPurpose", "");
       assert.equal(await page.locator(".rt-req").count(), 8);
       await page.setViewportSize({ width: 560, height: 800 });
       // Let the resize handler dismiss any old popup before opening a new one.
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       await choose("#rtPurpose", "kind:thread_title");
-      const bounds = await page.locator(".rt-filters").evaluate((e) => {
+      const bounds = await page.locator(".rt-req-head").evaluate((e) => {
         const r = e.getBoundingClientRect(), b = document.querySelector("#rtPurpose").getBoundingClientRect();
         return { left: b.left >= r.left - 1, right: b.right <= r.right + 1 };
       });
