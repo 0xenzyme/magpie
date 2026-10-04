@@ -489,8 +489,8 @@ func (t *Totals) addRow(r Row) {
 	if r.TTFT > 0 && !r.Failed() {
 		t.Timed++
 		t.TTFT += r.TTFT
-		if r.Output > 0 && r.Millis > r.TTFT {
-			t.DecodeMs += r.Millis - r.TTFT
+		if w := DecodeWindow(r.Output, r.Millis, r.TTFT); w > 0 {
+			t.DecodeMs += w
 			t.DecodeOut += r.Output
 		}
 	}

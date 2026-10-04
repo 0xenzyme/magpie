@@ -149,8 +149,12 @@
     const hm = HM.format(d);
     return d.toDateString() === n.toDateString() ? hm : WD.format(d) + " " + hm;
   }
-  // how long a reply took to begin, and how fast it wrote after (#196)
-  const speedOf = (out, ms, ttft) => out && ttft && ms > ttft ? out / ((ms - ttft) / 1000) : 0;
+  // how long a reply took to begin, and how fast it wrote after (#196):
+  // none for one whose window from its first content to its end is under
+  // 100 ms or would have it write over 10,000 tok/s, as it came in one
+  // burst at its end (usage.DecodeWindow, #731: a whole Gemini tool call,
+  // 8264 tokens 1 ms before the end, read 8,264,000 tok/s)
+  const speedOf = (out, ms, ttft) => out > 0 && ttft > 0 && ms - ttft >= 100 && out * 1000 <= 10000 * (ms - ttft) ? out / ((ms - ttft) / 1000) : 0;
   function firstNote(r, tr) {
     if (!tr.ttft) return "";
     let s = " · " + t("first token in {ms}", { ms: took(tr.ttft) });
