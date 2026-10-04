@@ -83,6 +83,7 @@ and there is a terminal version (`magpie tui`) and a plain CLI.
 | Cursor CLI   | `~/.cursor/cli-config.json`       | model           |
 | Zed          | `~/.config/zed/settings.json` (`$XDG_CONFIG_HOME` on Linux, `%APPDATA%\Zed` on Windows) | model (a `magpie` OpenAI-compatible provider; its catalog in Zed's picker) |
 | VS Code (Chat) | `~/Library/Application Support/Code/User/settings.json` + `chatLanguageModels.json` (`~/.config/Code/User` on Linux, `%APPDATA%\Code\User` on Windows) | model (`chat.defaultModel`; a `magpie` Custom Endpoint group, its catalog in Chat's model picker; VS Code 1.122+, no Copilot sign-in or key needed) |
+| JetBrains Air | `acp.json` in `~/Library/Application Support/JetBrains/Air` (`~/.config/JetBrains/Air` on Linux, `%APPDATA%\JetBrains\Air` on Windows) + `magpie-opencode.json` beside it | model (a `Magpie` ACP agent: OpenCode's `opencode acp` on magpie's provider alone, its models and routing groups in Air's model menu; needs OpenCode installed) |
 | Copilot CLI  | `~/.copilot/settings.json`        | model           |
 | Crush        | `~/.config/crush/crush.json`      | large, small    |
 | DeepSeek Harness (dsh) | `~/.dsh/profiles/*/cordis.patch.yml` (`$DSH_HOME`; a custom provider, Magpie), or `~/.dsh/config.yaml` before dsh 0.1.5 | model, effort |
