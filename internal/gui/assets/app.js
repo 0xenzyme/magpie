@@ -301,26 +301,31 @@ function renderAgents() {
     }
     // an agent that takes the gateway only from its environment (agy): a
     // square that copies the command starting it on magpie
-    if (a.launch) extras.append(launchButton(a));
+    // one with nothing else to set (Cursor Private Inference) has the
+    // command as its one control, in words
+    const launchOnly = !!a.launch && !a.fields.length && !a.import;
+    if (a.launch && !launchOnly) extras.append(launchButton(a));
     if (extras.childNodes.length) fields.append(extras);
     // an app that takes magpie by a link of its own (Cindy) has nothing to
     // pick: its row opens the link, and the app asks to add magpie
     if (a.import && mode !== "panel") fields.append(importButton(a));
+    if (launchOnly && mode !== "panel") fields.append(launchSolo(a));
     // the panel shows what's set as words, and a row's controls only
     // once it's opened: one row at a time, in place
     let sum = null, openBox = null;
     const effortOf = (f) => f.key === "effort" || f.label === "effort" || f.label === "thinking";
-    if (mode === "panel" && a.import) {
-      // in words like the rest, the row itself the link
+    if (mode === "panel" && (a.import || launchOnly)) {
+      // in words like the rest, the row itself the link (or the command)
+      const act = a.import ? importButton(a) : launchSolo(a);
       sum = el("span", "ag-sum");
-      sum.append(el("span", "v" + (a.added ? "" : " empty"), a.added ? "magpie" : t("Add magpie")), el("span"));
+      sum.append(a.import ? el("span", "v" + (a.added ? "" : " empty"), a.added ? "magpie" : t("Add magpie")) : el("span", "v empty", t("Copy launch command")), el("span"));
       const c = el("span", "chev");
-      c.append(svg(OUT, 10, 1.6));
+      c.append(a.import ? svg(OUT, 10, 1.6) : svg(LAUNCH_GLYPH, 10, 1.5));
       sum.append(c);
-      row.title = importButton(a).title;
+      row.title = act.title;
       row.onclick = (ev) => {
         if (ev.target.closest(".ag-handle, .ag-fix, .ag-show")) return;
-        importButton(a).click();
+        act.click();
       };
     } else if (mode === "panel") {
       sum = el("span", "ag-sum");
@@ -1665,7 +1670,9 @@ let panelOpenAgent = null; // the one agent row the panel has opened
 // connected yet away on a fresh magpie.
 const tweak = (f) => f.key === "ultracode" || f.key === "effort" || f.key.endsWith("_effort");
 const onMagpie = (a) => !!(a.added || a.wired || a.drift);
-const agentUsed = (a) => onMagpie(a) || (!connectable(a) && a.fields.some((f) => f.value && !tweak(f)));
+// one whose only control is its launch command (Cursor Private Inference)
+// has nothing set to tell by, and stays up while it is there
+const agentUsed = (a) => onMagpie(a) || (!connectable(a) && a.fields.some((f) => f.value && !tweak(f))) || (!!a.launch && !a.fields.length && !a.import);
 
 // importButton: the one control of an app magpie is added to by its import
 // link: magpie, once the app has it, or an offer to add it
@@ -2466,6 +2473,22 @@ function launchButton(a) {
   b.append(svg(LAUNCH_GLYPH, 13, 1.5));
   b.title = t("{name} takes magpie only from its environment · click to copy the command that starts it:", { name: a.name }) + "\n" + a.launch;
   b.setAttribute("aria-label", b.title);
+  b.onclick = (ev) => {
+    ev.stopPropagation();
+    copy(a.launch, t("Launch command"), null, t("Copied — run it to start {name} on magpie", { name: a.name }));
+  };
+  return b;
+}
+// launchSolo is the one control of an agent that takes magpie only from
+// how it is started and has nothing else to set: the command, in words
+function launchSolo(a) {
+  const b = el("button", "field solo import launch-solo");
+  b.type = "button";
+  b.title = t("{name} takes magpie only from its environment · click to copy the command that starts it:", { name: a.name }) + "\n" + a.launch;
+  b.append(icon("magpie"), el("span", "v empty", t("Copy launch command")));
+  const c = el("span", "chev");
+  c.append(svg(LAUNCH_GLYPH, 11, 1.5));
+  b.append(c);
   b.onclick = (ev) => {
     ev.stopPropagation();
     copy(a.launch, t("Launch command"), null, t("Copied — run it to start {name} on magpie", { name: a.name }));

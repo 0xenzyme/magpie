@@ -559,6 +559,37 @@ func modelObject(e provider.Entry) map[string]any {
 	return m
 }
 
+// cursorLocalModel adds what Cursor Private Inference reads of a model
+// (#299): api_types, the APIs it may ask it on — those the model is relayed
+// on as it is, so a Claude served on Anthropic Messages is asked there and
+// keeps its thinking; any, for one translated anyway — and capabilities,
+// its window, output and whether it takes images, without which it falls
+// back to Chat and limits of its own.
+func cursorLocalModel(m map[string]any, e provider.Entry) {
+	names := map[string]string{"/v1/chat/completions": "chat_completions", "/v1/responses": "responses", "/v1/messages": "anthropic_messages"}
+	types := []string{}
+	for _, p := range nativeEndpoints(e) {
+		types = append(types, names[p])
+	}
+	if len(types) == 0 {
+		types = []string{"chat_completions", "responses", "anthropic_messages"}
+	}
+	m["api_types"] = types
+	c := map[string]any{}
+	if e.Context > 0 {
+		c["context_length"] = e.Context
+	}
+	if e.Output > 0 {
+		c["max_output_tokens"] = e.Output
+	}
+	if e.Images {
+		c["supports_vision"] = true
+	} else if e.ImageInput != nil {
+		c["supports_vision"] = false
+	}
+	m["capabilities"] = c
+}
+
 // nativeEndpoints are the paths a request for the model is relayed on to
 // its provider as it is: the APIs the provider serves it on. None for a
 // routing group, whose members may speak any, or a model every request
@@ -641,6 +672,9 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 			// plain, so two providers' models of one name are told apart
 			// there as they are here
 			m["magpie_label"] = labels[i]
+			if agentOf(r) == "cursor-local" {
+				cursorLocalModel(m, e)
+			}
 			data = append(data, m)
 		}
 	}

@@ -209,8 +209,15 @@ func AgentOf(ua string) string {
 	name, _, _ := strings.Cut(ua, "/")
 	name, _, _ = strings.Cut(name, " ")
 	l := strings.ToLower(name)
+	// a name first: cursor-local is its own, though Cursor's UA (cursor)
+	// begins it
 	for _, k := range knownAgents() {
-		if slices.Contains(k.Names, l) || slices.ContainsFunc(k.UA, func(p string) bool { return strings.HasPrefix(l, p) }) {
+		if slices.Contains(k.Names, l) {
+			return k.ID
+		}
+	}
+	for _, k := range knownAgents() {
+		if slices.ContainsFunc(k.UA, func(p string) bool { return strings.HasPrefix(l, p) }) {
 			return k.ID
 		}
 	}
