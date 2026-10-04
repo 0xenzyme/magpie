@@ -313,3 +313,48 @@ func TestPickConnectsFirst(t *testing.T) {
 		}
 	}
 }
+
+// The switch says how it chose the model it connected an agent on (#726:
+// Codex kept its last pick, Claude Code went to a Sonnet through magpie,
+// with nothing to say why): Claude Code on its opus alias goes to the
+// Opus magpie serves, said "alike"; switched off and on, it is back on what
+// it was on, "again"; one already connected is "kept"; on a model magpie
+// doesn't serve, "first".
+func TestConnectSaysHow(t *testing.T) {
+	home, _ := codexHome(t, "", "")
+	if err := provider.Save(provider.Provider{ID: "aaa", Name: "AAA", Chat: "https://a.example/v1", Key: "k", Models: []string{"first", "claude-opus-5-5", "claude-sonnet-5-5"}}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".claude", "settings.json")
+	writeFile(t, path, `{"model": "opus"}`)
+	c := claude(home)
+	how, err := c.ConnectHow()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if how != (Connection{How: "alike", Field: "model", Value: "aaa/claude-opus-5-5"}) {
+		t.Fatalf("connected %+v:\n%s", how, readFile(path))
+	}
+	if how, _ := c.ConnectHow(); how.How != "kept" {
+		t.Fatalf("again while connected: %+v", how)
+	}
+	if err := c.Apply("model", "aaa/claude-sonnet-5-5"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	if how, err := c.ConnectHow(); err != nil || how.How != "again" {
+		t.Fatalf("switched on again: %+v %v", how, err)
+	}
+	if m, _ := edit.GetJSON(path, "model"); m != "aaa/claude-sonnet-5-5" {
+		t.Fatalf("back on %q", m)
+	}
+	if err := c.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, path, `{"model": "claude-haiku-9"}`)
+	if how, err := c.ConnectHow(); err != nil || how.How != "first" || how.Value == "" {
+		t.Fatalf("on a model magpie lacks: %+v %v", how, err)
+	}
+}

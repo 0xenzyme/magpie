@@ -207,6 +207,9 @@ type stateJSON struct {
 	Profiles []profileJSON `json:"profiles"`
 	Catalog  string        `json:"catalog"`
 	Notice   string        `json:"notice,omitempty"` // advice after a change, e.g. "restart Codex"
+	// Connected is how the 「接入」 switch chose the model the agent starts
+	// on, in the answer to agents/connect (agent.Connection)
+	Connected *agent.Connection `json:"connected,omitempty"`
 	// CLIBehind is the terminal's magpie command, told to the user when
 	// it's a copied file rather than the installer's link: a copy can't
 	// follow updates (#531's lesson). "" when it's the link or absent, or
@@ -695,13 +698,16 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			fail(rw, err)
 			return
 		}
+		var how *agent.Connection
 		switch r.PathValue("action") {
 		case "reapply":
 			err = a.Reapply()
 		case "keep":
 			a.Keep()
 		case "connect":
-			err = a.Connect()
+			var c agent.Connection
+			c, err = a.ConnectHow()
+			how = &c
 		case "disconnect":
 			err = a.Disconnect()
 		default:
@@ -716,6 +722,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		if a.Notice != nil {
 			s.Notice = a.Notice()
 		}
+		s.Connected = how
 		writeJSON(rw, s)
 	})
 	mux.HandleFunc("POST /api/profile/{action}", func(rw http.ResponseWriter, r *http.Request) {

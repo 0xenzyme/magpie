@@ -779,6 +779,26 @@ function connectSaid(a) {
   return at ? t("Connected · pick magpie's models with {cmd} in {agent}", { cmd: at, agent: a.name }) : t("Connected · magpie's models are in {agent}'s model list", { agent: a.name });
 }
 
+// connectedSaid: what the switch connected an agent on, and why (#726:
+// switched on, Codex kept its last pick, Claude Code started on a Sonnet
+// through magpie and Antigravity on some model, with nothing to say why).
+// c is agent.Connection: how the model was chosen.
+const CONNECTED_HOW = {
+  again: "{agent} is connected to magpie · back on {model}, what it was on when it was switched off",
+  same: "{agent} is connected to magpie · on {model} through magpie, the model it was on",
+  alike: "{agent} is connected to magpie · on {model} through magpie, the model it was on",
+  default: "{agent} is connected to magpie · on {model} through magpie: it had no model set, so the first of its own",
+  first: "{agent} is connected to magpie · on {model} through magpie: magpie doesn't serve the model it was on",
+};
+function connectedSaid(a, c) {
+  const plain = t("{agent} is connected to magpie", { agent: a.name });
+  if (c?.how === "joined") return t("{agent} is connected to magpie · it stays on its own last pick; magpie's models join its {cmd}", { agent: a.name, cmd: PICKS_IN[a.id] || "/model" });
+  const now = state.agents.find((x) => x.id === a.id);
+  const f = now && startField(now);
+  const model = f?.value ? optionFor(f, f.value)?.label || f.value : "";
+  return CONNECTED_HOW[c?.how] && model ? t(CONNECTED_HOW[c.how], { agent: a.name, model }) : plain;
+}
+
 function connectSwitch(a) {
   const s = el("button", "lib-switch ag-conn" + (a.wired ? " on" : ""));
   s.type = "button";
@@ -796,8 +816,9 @@ function connectSwitch(a) {
     try {
       state = await api("agents/connect/" + a.id, {});
       renderAgents();
-      const msg = t("{agent} is connected to magpie", { agent: a.name });
+      const msg = connectedSaid(a, state.connected);
       if (state.notice) status(`${msg}. ${t(state.notice)}`, "warn", 9000);
+      else if (msg !== t("{agent} is connected to magpie", { agent: a.name })) status(msg, "ok", 7000);
       else status(msg, "ok");
     } catch (err) {
       s.disabled = false;
@@ -3450,6 +3471,28 @@ function contextTag(n, name) {
   return tag;
 }
 
+// pathTag: an agent's model picker says by each model whether the agent
+// asks it through magpie or of its own vendor directly (Claude Code on its
+// own sign-in), and its Default, while it is connected, that it takes the
+// agent off magpie. Only where the list has both ways: elsewhere every
+// model listed is magpie's, and its note says so.
+function pathTag(o) {
+  if (!pick?.agent || o.custom || o.run) return null;
+  const mixed = pick.field.options?.some((x) => x.direct);
+  let tag = null;
+  if (o.ref && mixed) {
+    tag = el("span", "badge path via", t("via magpie"));
+    tag.title = t("{agent} asks magpie for it", { agent: pick.agent.name });
+  } else if (o.direct) {
+    tag = el("span", "badge path direct", t("direct, not via magpie"));
+    tag.title = t("straight to {vendor}, not through magpie", { vendor: o.direct });
+  } else if (o.reset && o.value === "" && leavesMagpie(pick.agent, pick.field, "", o)) {
+    tag = el("span", "badge path direct", t("off magpie"));
+    tag.title = t("{agent} as installed: magpie's endpoint and models come out", { agent: pick.agent.name });
+  }
+  return tag;
+}
+
 function renderList() {
   const list = $("#list");
   list.replaceChildren();
@@ -3474,6 +3517,12 @@ function renderList() {
     const ctx = contextTag(o.context, o.label);
     if (ctx) words.append(ctx);
     let note = o.note && o.note !== (o.label || o.value) ? (own ? t(o.note) : o.note) : "";
+    // which way the model goes, as a tag the note's ellipsis can't cut
+    // off: "· via magpie" ended a long note (an account's e-mail), and
+    // Claude Code's own models said nothing, so an Opus asked of Anthropic
+    // directly and a Sonnet through magpie looked alike (#726)
+    const path = pathTag(o);
+    if (path) { words.append(path); note = note.replace(/(^| · )via magpie$/, ""); }
     if (q && o.group && !note) note = o.group;
     if (note) words.append(el("span", "n", note));
     li.append(words);
@@ -3577,11 +3626,68 @@ async function commit(value) {
     return;
   }
   if (value === field.value) return;
+  // a pick that takes a connected agent off magpie (its Default, or a
+  // model of its own asked of its vendor directly) is asked first, as the
+  // switch's off is: it moved Claude Code under Not set up at a click
+  // (#726)
+  if (leavesMagpie(agent, field, value, opt)) { askLeave(agent, field, value, opt); return; }
+  return setPick(agent, field, value, opt);
+}
+
+// leavesMagpie: picking value in field takes the connected agent off
+// magpie: its Default in the field it is connected through (Set("") takes
+// out what magpie wired in), or a model of its own it asks its vendor for
+// directly (Claude Code's own, which unroutes it). From one of its own
+// models already, the pick doesn't move it off magpie.
+function leavesMagpie(a, field, value, opt) {
+  if (!a?.wired || !connectable(a) || field !== (startField(a) || connectField(a))) return false;
+  if (optionFor(field, field.value)?.direct) return false;
+  return value === "" || !!opt?.direct;
+}
+
+// askLeave: what such a pick does, and the way back, before it is made.
+// Default isn't Disconnect: it leaves the agent as installed, where
+// Disconnect puts back what it had before magpie, so both are offered.
+function askLeave(a, field, value, opt) {
+  const model = opt?.label || value;
+  const ed = el("div", "editor disconnect-ask leave-ask");
+  const head = el("div", "ehead");
+  head.append(icon(a.icon), el("b", "", t("Take {agent} off magpie?", { agent: a.name })));
+  ed.append(head);
+  ed.append(el("p", "lib-confirm", value === ""
+    ? t("Default is {agent} as installed: magpie's endpoint and models come out, and {agent} starts on its own default model. What it had before magpie isn't put back; Disconnect and restore does that.", { agent: a.name })
+    : t("{model} is {agent}'s own model: {agent} asks {vendor} for it itself, with its own sign-in, not through magpie. Picking it takes {agent} off magpie, and it starts on {model}.", { agent: a.name, model, vendor: opt.direct })));
+  const others = state.agents.some((x) => x.id !== a.id && onMagpie(x) && !isHidden(x));
+  ed.append(el("p", "lib-confirm", others
+    ? t("「接入」 goes off, and {agent} is listed under Not set up with the agents not connected. Switch it on again to go back through magpie.", { agent: a.name })
+    : t("「接入」 goes off. Switch it on again to go back through magpie.")));
+  const bar = el("div", "bar");
+  const go = el("button", "text primary", value === "" ? t("Use default") : t("Use {model}", { model }));
+  go.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); setPick(a, field, value, opt); };
+  const cancel = el("button", "text", t("Cancel"));
+  cancel.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); };
+  bar.append(STARTS_WITH.has(a.id) ? el("span", "ag-bar-note", t("Running {agent} copies take it once reopened", { agent: a.name })) : el("span"), el("span", "grow"), cancel);
+  if (value === "") {
+    const restore = el("button", "text", t("Disconnect and restore"));
+    restore.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); askDisconnect(a); };
+    bar.append(restore);
+  }
+  bar.append(go);
+  ed.append(bar);
+  confirmAsk = ed;
+  openModal(ed);
+  $("#modal").classList.add("lib");
+  cancel.focus({ preventScroll: true });
+}
+
+// setPick writes a value picked for an agent's field
+async function setPick(agent, field, value, opt) {
   // The pick shows at once: the row is drawn with it before magpie has
   // written the config and answered with the whole state, which can take
   // seconds (every agent's lists are read again for it). The answer then
   // draws what the config really says; a refused pick puts the old one back.
   const was = field.value;
+  const leaving = leavesMagpie(agent, field, value, opt);
   const seq = commit.seq = (commit.seq || 0) + 1;
   field.value = value;
   const picked = performance.now();
@@ -3604,6 +3710,7 @@ async function commit(value) {
     flash();
     const shown = opt?.label || value;
     if (state.notice) status(`${agent.name} → ${shown}. ${t(state.notice)}`, "warn", 9000);
+    else if (leaving && value === "") status(t("{agent} no longer goes through magpie · on its own default", { agent: agent.name }), "ok", 6000);
     else if (opt?.direct) status(`${agent.name} ${t(field.label)} → ${shown} · ${t("straight to {vendor}, not through magpie", { vendor: opt.direct })}`, "ok", 6000);
     else status(`${agent.name} ${t(field.label)} → ${shown}`, "ok");
     if (providers) loadProviders();

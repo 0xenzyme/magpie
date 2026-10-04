@@ -303,7 +303,7 @@ func (a *Agent) Pick(key, v string) error {
 		vals := a.Values()
 		vals[key] = v
 		if v == magpieID || magpieValue(a, *f, v, vals) {
-			if err := a.Connect(); err != nil {
+			if _, err := a.connect(); err != nil {
 				return err
 			}
 		}
@@ -320,9 +320,44 @@ func (a *Agent) Pick(key, v string) error {
 // every one of magpie's models. An agent that can keep the model it is on
 // (Join) keeps it. An agent already connected is left as it is.
 func (a *Agent) Connect() error {
+	_, err := a.ConnectHow()
+	return err
+}
+
+// Connection is how Connect chose the model an agent starts on, for the
+// Agents page to say it (#726: Codex showed its last pick, Claude Code a
+// Sonnet through magpie and Antigravity some model, with nothing saying
+// why). How is one of:
+//
+//   - "kept": it was connected already, left as it was
+//   - "again": the models it was on when it was switched off, put back
+//   - "joined": the model it is on stays its own (Codex signed in with
+//     ChatGPT), magpie's models join its list
+//   - "magpie": an app whose one setting is magpie as its provider
+//   - "same": the model it is on now, through magpie
+//   - "alike": the model its alias (opus) stands for, through magpie
+//   - "default": on its own default with no model set: the first of its
+//     own models in its list (the newest, for Claude Code), through magpie
+//   - "first": magpie has none of the model it is on: the first on the
+//     account it is signed in to, else a subscription's, else the first
+//
+// Field and Value are the field set and what it was set to, where Connect
+// picked one model ("" for kept, again and joined).
+type Connection struct {
+	How   string `json:"how"`
+	Field string `json:"field,omitempty"`
+	Value string `json:"value,omitempty"`
+}
+
+// ConnectHow is Connect, saying how the model was chosen.
+func (a *Agent) ConnectHow() (Connection, error) {
 	if len(a.Fields) == 0 || a.Wired() {
-		return nil
+		return Connection{How: "kept"}, nil
 	}
+	return a.connect()
+}
+
+func (a *Agent) connect() (Connection, error) {
 	// what it is on now, for Disconnect to put back what it can't
 	// otherwise (Goose's own model)
 	now := a.Values()
@@ -330,13 +365,13 @@ func (a *Agent) Connect() error {
 	stash(map[string]string{a.ID + ".connect.was": string(b)})
 	// switched off and on again: the models it was on, as they were
 	if ok, err := a.reconnect(now); ok || err != nil {
-		return err
+		return Connection{How: "again"}, err
 	}
 	// the model it is on stays, where the agent can have magpie's models
 	// beside it (the owner: Codex keeps its own last pick)
 	if a.Join != nil {
 		if ok, err := a.Join(); ok || err != nil {
-			return err
+			return Connection{How: "joined"}, err
 		}
 	}
 	// the field magpie is picked in: the one listing magpie's models (for
@@ -363,12 +398,13 @@ func (a *Agent) Connect() error {
 		}
 	}
 	if f == nil {
-		return fmt.Errorf("%s can't be connected to magpie", a.Name)
+		return Connection{}, fmt.Errorf("%s can't be connected to magpie", a.Name)
 	}
 	cur := connectWas(vals[f.Key], opts)
 	if cur == "" && f.Key != a.Fields[0].Key {
 		cur = connectWas(a.Values()[a.Fields[0].Key], nil)
 	}
+	onDefault := cur == ""
 	if cur == "" {
 		// on its default: the first of its own models
 		for _, o := range opts {
@@ -386,7 +422,7 @@ func (a *Agent) Connect() error {
 	sameRank, alikeRank := -1, -1
 	for _, o := range opts {
 		if o.Value == magpieID {
-			return a.Apply(f.Key, magpieID)
+			return Connection{How: "magpie", Field: f.Key, Value: magpieID}, a.Apply(f.Key, magpieID)
 		}
 		if o.Ref == "" || o.Group == RoutingGroups {
 			continue
@@ -415,20 +451,24 @@ func (a *Agent) Connect() error {
 			sub = o.Value
 		}
 	}
+	how := "first"
 	switch {
 	case same != "":
-		pick = same
+		pick, how = same, "same"
+		if onDefault {
+			how = "default"
+		}
 	case alike != "":
-		pick = alike
+		pick, how = alike, "alike"
 	case own != "":
 		pick = own
 	case sub != "":
 		pick = sub
 	}
 	if pick == "" {
-		return fmt.Errorf("magpie has no models %s can use: add a subscription or a provider first", a.Name)
+		return Connection{}, fmt.Errorf("magpie has no models %s can use: add a subscription or a provider first", a.Name)
 	}
-	return a.Apply(f.Key, pick)
+	return Connection{How: how, Field: f.Key, Value: pick}, a.Apply(f.Key, pick)
 }
 
 // connectWas is the model an agent is on before it is connected, as a

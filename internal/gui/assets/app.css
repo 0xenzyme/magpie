@@ -1429,7 +1429,7 @@ body.window .foot { padding-left: 18px; }
 .pop li .ic { width: 16px; height: 16px; }
 .pop li .option-words { display: flex; align-items: center; min-width: 0; flex: 1 1 auto; gap: 9px; }
 .pop li .v { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.pop li .badge.free, .pop li .badge.ctx, .pop li .badge.rate { flex: none; margin-left: -4px; padding: 0 4px; font-size: 9px; line-height: 14px; align-self: center; }
+.pop li .badge.free, .pop li .badge.ctx, .pop li .badge.rate, .pop li .badge.path { flex: none; margin-left: -4px; padding: 0 4px; font-size: 9px; line-height: 14px; align-self: center; }
 .pop li .n { flex: 1 1 0; min-width: 0; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .pop li .favorite { display: none; align-items: center; justify-content: center; color: var(--faint); width: 24px; height: 24px; border-radius: 6px; flex: none; }
 .pop li:hover .favorite, .pop li .favorite.on { display: inline-flex; }
@@ -1665,6 +1665,10 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .badge.off { background: var(--pill); color: var(--muted); }
 .badge.free { background: var(--green-soft); color: var(--green); }
 /* a model's context, when it is a large one: grey, as it is a fact, not a warning */
+/* which way a model goes (#726): through magpie, or straight to its vendor */
+.badge.path { letter-spacing: .02em; text-transform: none; white-space: nowrap; }
+.badge.path.via { background: var(--accent-soft); color: var(--accent); }
+.badge.path.direct { background: var(--pill); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 .badge.ctx { background: var(--pill); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); letter-spacing: .02em; }
 .badge.wsl { background: var(--pill); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); letter-spacing: .02em; text-transform: none; }
 /* a model's credit rate (0.5×): grey, a fact to pick by; a discount's price before it struck through */

@@ -149,7 +149,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator("#pop:not([hidden]) #list li").first().waitFor();
         list = await rows(page);
         // after Default and, connected, the way back
-        assert.deepEqual(list[2], { v: "Claude Opus 5.5", n: "me@example.com · via magpie", cur: true, fold: false }, JSON.stringify(list));
+        assert.deepEqual(list[2], { v: "Claude Opus 5.5", n: "me@example.com", cur: true, fold: false }, JSON.stringify(list));
+        // "via magpie" is said once, as its tag, beside Claude Code's own marked direct (#726)
+        assert.equal(await page.locator("#list li.cur .badge.path.via").textContent(), lang === "en" ? "via magpie" : "经 magpie");
+        assert.equal(await page.locator("#list li:not(.cur)", { hasText: "claude-opus-5-5" }).first().locator(".badge.path.direct").count(), 1);
         assert.equal(list.filter((r) => r.fold).map((r) => r.v).join(), w.one);
         await page.context().close();
       });
@@ -181,7 +184,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator("#q").fill("Claude Opus 5.5");
         const list = await rows(page);
         assert(!list.some((r) => r.fold), JSON.stringify(list));
-        assert(list.some((r) => r.v === "Claude Opus 5.5" && r.n === "me@example.com · via magpie"), JSON.stringify(list));
+        assert(list.some((r) => r.v === "Claude Opus 5.5" && r.n === "me@example.com"), JSON.stringify(list));
         await page.locator("#q").fill("claude/claude-opus-5-5[1m]");
         await page.keyboard.press("Enter");
         await page.waitForFunction(() => document.querySelector("#pop").hidden);
