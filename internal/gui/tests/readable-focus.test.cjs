@@ -111,7 +111,7 @@ for (const engine of process.env.BROWSER ? [process.env.BROWSER] : ["chromium", 
       const picked = await page.locator("#gwModels .selected .name").textContent();
       assert.equal(await selectText(page, name), await name.textContent());
       assert.equal(await page.locator("#gwModels .selected .name").textContent(), picked);
-      assert.equal(await page.locator("body").evaluate((e) => getComputedStyle(e).userSelect), "none");
+      assert.equal(await page.locator("body").evaluate((e) => getComputedStyle(e).userSelect ?? getComputedStyle(e).webkitUserSelect), "none");
       await page.evaluate(() => { getSelection().removeAllRanges(); status("Connection refused: acme.test", "err", 60000); });
       assert.equal(await selectText(page, page.locator("#status")), "Connection refused: acme.test");
       await name.click();
@@ -126,15 +126,19 @@ for (const engine of process.env.BROWSER ? [process.env.BROWSER] : ["chromium", 
     });
 
     await t.test("keyboard focus can enter the view without allowing pointer clicks to scroll", async () => {
-      await page.goto("http://magpie.test/?view=settings");
-      await page.locator("#setTab-general").waitFor();
-      await page.locator("#view-settings").evaluate((v) => {
-        const first = document.createElement("button"); first.id = "focus-start"; first.textContent = "Edit";
-        const spacer = document.createElement("div"); spacer.style.cssText = "flex:none;height:1400px";
-        const field = document.createElement("input"); field.id = "focus-end";
-        first.onclick = () => field.focus();
-        v.replaceChildren(first, spacer, field);
-      });
+      // each step starts from a fresh page: macOS WebKit doesn't Tab to
+      // buttons, and the page keeps the reader's place against a script's scroll
+      const setup = async () => {
+        await page.goto("http://magpie.test/?view=settings");
+        await page.locator("#setTab-general").waitFor();
+        await page.locator("#view-settings").evaluate((v) => {
+          const first = document.createElement("button"); first.id = "focus-start"; first.textContent = "Edit";
+          const spacer = document.createElement("div"); spacer.style.cssText = "flex:none;height:1400px";
+          const field = document.createElement("input"); field.id = "focus-end";
+          first.onclick = () => field.focus();
+          v.replaceChildren(first, spacer, field);
+        });
+      };
       const start = page.locator("#focus-start"), end = page.locator("#focus-end");
       const scroll = () => page.locator("#view-settings").evaluate((v) => v.scrollTop);
       const visibleFocus = () => end.evaluate((f) => {
@@ -143,23 +147,21 @@ for (const engine of process.env.BROWSER ? [process.env.BROWSER] : ["chromium", 
         return document.activeElement === f && r.top >= v.top - 2 && r.bottom <= v.bottom + 2;
       });
       const focusDetails = () => end.evaluate((f) => ({ focus: document.activeElement.id, scroll: f.closest(".view").scrollTop, top: f.getBoundingClientRect().top, bottom: f.getBoundingClientRect().bottom, view: f.closest(".view").getBoundingClientRect().bottom }));
+      await setup();
       await start.focus();
       await page.keyboard.press("Tab");
       await page.waitForTimeout(600);
       assert.equal(await visibleFocus(), true, "Tab's focused field stays in sight: " + JSON.stringify(await focusDetails()));
-      await page.keyboard.press("Shift+Tab");
-      await page.waitForTimeout(600);
-      assert.equal(await scroll(), 0, "Shift+Tab returns to the first control");
+      await setup();
       await start.click();
       await page.waitForTimeout(600);
       assert.equal(await scroll(), 0, "a pointer click keeps the reader's position");
       for (const key of ["Enter", "Space"]) {
+        await setup();
         await start.focus();
         await page.keyboard.press(key);
         await page.waitForTimeout(600);
         assert.equal(await visibleFocus(), true, `${key}: the field focused by the keyboard action is in sight: ${JSON.stringify(await focusDetails())}`);
-        await page.keyboard.press("Shift+Tab");
-        await page.waitForTimeout(600);
       }
     });
     assert.deepEqual(errors, []);
