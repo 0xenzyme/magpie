@@ -752,7 +752,7 @@
       const up = el("button", "text", b === "upgrade" ? t("Updating…") : t("Update"));
       up.disabled = busy.size > 0 || checking;
       // the community's would come by itself: Update brings it now
-      if (pkg.startsWith("@magpie-community/") && !/@(?!latest$)[^@/]+$/.test(e.spec.slice(pkg.length))) up.title = t("magpie updates it by itself within a few hours; Update does it now");
+      if (pkg.startsWith("@magpie-community/") && !/@(?!latest$)[^@/]+$/.test(e.spec.slice(pkg.length))) up.title = t("magpie updates it by itself within the hour; Update does it now");
       up.onclick = () => act(pkg, "upgrade", { spec: e.spec }, () => status(t("{name} updated to v{v}", { name: l?.name || pkg, v: e.latest }), "ok"));
       val.append(up);
     } else if (isGit(e.spec) && !e.off) {

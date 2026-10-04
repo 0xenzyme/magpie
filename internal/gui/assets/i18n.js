@@ -2865,7 +2865,7 @@ const I18N = {
     "npm answered with an error: {error}": "npm 返回错误：{error}",
     "v{have} installed, v{v} on npm": "已安装 v{have}，npm 上有 v{v}",
     "v{v} is the newest on npm": "v{v} 是 npm 上的最新版本",
-    "magpie updates it by itself within a few hours; Update does it now": "magpie 会在几小时内自动更新它；点击“更新”立即更新",
+    "magpie updates it by itself within the hour; Update does it now": "magpie 会在一小时内自动更新它；点击“更新”立即更新",
     "Auto-updated": "已自动更新",
     "magpie updated it from v{from} to v{to} on {date}": "magpie 已于 {date} 自动将它从 v{from} 更新到 v{to}",
     "An update for {name} is out": "{name} 有新版本",
