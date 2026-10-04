@@ -2248,6 +2248,29 @@
     return m ? [m[1], m[2].toLowerCase()] : [id, ""];
   }
   const modelOf = (id) => groups?.models.find((m) => m.id === id) || groups?.models.find((m) => m.id === splitMember(id)[0]);
+  // a group's patterns (#766, provider.IsPattern): a glob, * any run of
+  // characters over the provider/model id in any case, or re:<regexp> over
+  // the whole id. The group keeps them, and the models they match now
+  // follow those it names, in the catalog's order (Group.Matched)
+  const isPattern = (s) => s.startsWith("re:") || s.includes("*");
+  function patternRe(p) {
+    try {
+      if (p.startsWith("re:")) return p.length > 3 ? new RegExp("^(?:" + p.slice(3) + ")$") : null;
+      return new RegExp("^" + p.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$", "i");
+    } catch { return null; }
+  }
+  // the models served now the patterns match, but those the group names
+  // (at any reasoning): as provider.matchesIn finds them
+  function matchedBy(patterns, named) {
+    const res = patterns.map(patternRe).filter(Boolean);
+    const own = new Set(named.map((id) => splitMember(id)[0]));
+    return (groups?.models || []).filter((m) => !own.has(m.id) && res.some((r) => r.test(m.id))).map((m) => m.id);
+  }
+  const patternCount = (p) => { const r = patternRe(p); return r ? (groups?.models || []).filter((m) => r.test(m.id)).length : 0; };
+  const patternWords = (n) => n ? t(n === 1 ? "1 model" : "{n} models", { n }) : t("matches nothing now");
+  // what a group keeps of its members: those it names, not those its
+  // patterns matched when it was read — they are found again each time
+  const namedOf = (g) => (g.members || []).filter((x) => !(g.matched || []).includes(x));
   const fixedOf = (id) => subOf(id) ? "" : splitMember(id)[1];
   const fixedWords = (level) => t("{level} reasoning", { level });
   // a routing group among a group's members: group/<id>
@@ -2270,7 +2293,7 @@
   }
   function drawGroups() {
     const newBtn = el("button", "text", t("New group"));
-    newBtn.onclick = () => { gEdit = { id: "", draft: { name: "", members: [], fast: [], off: [], routing: "", affinity: "", rules: [] } }; renderGroups(); };
+    newBtn.onclick = () => { gEdit = { id: "", draft: { name: "", members: [], match: [], matched: [], fast: [], off: [], routing: "", affinity: "", rules: [] } }; renderGroups(); };
     gHead.replaceChildren(el("span", "label", t("Routing groups")), el("span", "grow"), el("span", "note", t("models agents pick as one")), newBtn);
     drawFound();
     const rows = [];
@@ -2341,6 +2364,12 @@
     const sep = g.routing === "order" ? " → " : " · ";
     const mem = manual ? pickRow(g) : el("div", "mem", g.members.map((id) => memberLabel(g, id) + (g.off?.includes(id) ? ` (${t("off")})` : "")).join(sep));
     main.append(nm, mem);
+    for (const p of g.patterns || []) {
+      const line = el("div", "mem pat" + (p.models ? "" : " none"));
+      line.append(el("code", "", p.pattern), document.createTextNode(" · " + patternWords(p.models)));
+      line.title = p.models ? t("Every model this pattern matches is in the group, as providers list them") : t("No model magpie serves matches this pattern now");
+      main.append(line);
+    }
     const m = GROUP_ROUTE_OPTS.find(([id]) => id === (g.routing || "")) || ROUTE_OPTS[0];
     const tags = el("span", "tags");
     tags.append(el("span", "tag", t(m[1])));
@@ -2358,7 +2387,7 @@
     if (!g.ready) tags.append(el("span", "tag bad", t("no member ready")));
     const edit = el("button", "text", t("Edit"));
     edit.onclick = (e) => { e.stopPropagation(); open(); };
-    const open = () => { gEdit = { id: g.id, draft: { name: g.name, members: [...g.members], fast: [...(g.fast || [])], off: [...(g.off || [])], routing: g.routing || "", pick: g.pick || "", affinity: g.affinity || "", sink: !!g.sink, classifier: g.classifier || "", effort: g.effort || "", levels: [...(g.levels || [])], rules: (g.rules || []).map((r) => ({ ...r, intent: r.intent || "", agents: [...(r.agents || [])], time: r.time ? { ...r.time, days: [...(r.time.days || [])] } : null })) } }; renderGroups(); };
+    const open = () => { gEdit = { id: g.id, draft: { name: g.name, members: [...g.members], match: [...(g.match || [])], matched: [...(g.matched || [])], fast: [...(g.fast || [])], off: [...(g.off || [])], routing: g.routing || "", pick: g.pick || "", affinity: g.affinity || "", sink: !!g.sink, classifier: g.classifier || "", effort: g.effort || "", levels: [...(g.levels || [])], rules: (g.rules || []).map((r) => ({ ...r, intent: r.intent || "", agents: [...(r.agents || [])], time: r.time ? { ...r.time, days: [...(r.time.days || [])] } : null })) } }; renderGroups(); };
     row.onclick = open;
     row.append(ics, main, tags, edit);
     return row;
@@ -2388,7 +2417,7 @@
       b.onclick = (e) => {
         e.stopPropagation(); // the card opens the editor; this picks
         if (on) return;
-        groupAction("save", { id: g.id, name: g.name, members: g.members, routing: "manual", pick: id, affinity: g.affinity || "", sink: !!g.sink, rules: g.rules || [], effort: g.effort || "", classifier: g.classifier || "", context: g.context || 0, levels: g.levels || [], family: g.family || "", fast: g.fast || [], off: g.off || [] },
+        groupAction("save", { id: g.id, name: g.name, members: namedOf(g), match: g.match || [], routing: "manual", pick: id, affinity: g.affinity || "", sink: !!g.sink, rules: g.rules || [], effort: g.effort || "", classifier: g.classifier || "", context: g.context || 0, levels: g.levels || [], family: g.family || "", fast: g.fast || [], off: g.off || [] },
           t("{name}: every request to {model}", { name: g.name, model: memberName(id) }));
       };
       box.append(b);
@@ -2400,7 +2429,7 @@
     // whoever opened it, a draft has what the editor and Add read: a group
     // made from a model (newGroupWith) had no fast, and Add threw on it
     // and did nothing (悠悠哥 on Discord)
-    for (const k of ["members", "fast", "off", "rules"]) if (!Array.isArray(d[k])) d[k] = [];
+    for (const k of ["members", "match", "matched", "fast", "off", "rules"]) if (!Array.isArray(d[k])) d[k] = [];
     const ed = el("div", "editor rt-gedit");
     const h = el("div", "ehead");
     h.append(el("b", "", g ? g.name : t("New group")));
@@ -2454,6 +2483,8 @@
         const n = el("span", "n");
         n.append(el("span", "", memberName(id)));
         if (m || s) n.append(el("small", "", subOf(id) ? memberNote(id) : m.providerName));
+        const matched = d.matched.includes(id);
+        if (matched) n.append(el("small", "", t("by pattern")));
         // switched off, it keeps its place and its rules but is sent
         // nothing: trying the group without it takes no removing and
         // adding back (Group.Off)
@@ -2484,6 +2515,7 @@
             if (to === id) return;
             if (d.members.includes(to)) { status(t("{name} at that reasoning is in the group already", { name: memberName(id) }), "err"); return; }
             d.members[i] = to;
+            d.matched = d.matched.filter((x) => x !== id); // named now, at its own reasoning
             for (const r of d.rules) if (r.use === id) r.use = to;
             d.fast = d.fast.map((x) => x === id ? to : x);
             d.off = d.off.map((x) => x === id ? to : x);
@@ -2505,9 +2537,16 @@
         }
         if (s) row.title = s.members.map((x) => memberLabel(s, x)).join(s.routing === "order" ? " → " : " · ");
         if (!m && !s) { row.classList.add("off"); row.title = t("No provider serves {id} now; it is skipped", { id }); }
+        if (matched) {
+          // a pattern's: it follows the catalog, so it is switched off
+          // rather than taken out — the pattern would find it again
+          row.title = t("In the group by a pattern: switch it off to send it nothing");
+          list.append(row);
+          return;
+        }
         if (i) { const up = el("button", "text", t("Up")); up.onclick = () => { d.members.splice(i - 1, 0, d.members.splice(i, 1)[0]); draw(); }; row.append(up); }
         const rm = el("button", "text", t("Remove"));
-        rm.onclick = () => { d.members.splice(i, 1); d.rules = d.rules.filter((r) => d.members.includes(r.use)); d.fast = d.fast.filter((x) => d.members.includes(x)); d.off = d.off.filter((x) => d.members.includes(x)); draw(); drawRules(); };
+        rm.onclick = () => { d.members.splice(i, 1); rematch(); draw(); drawRules(); };
         row.append(rm);
         list.append(row);
       });
@@ -2530,6 +2569,54 @@
     const mw = el("div");
     mw.append(box, el("div", "hint", t("The first answers for what the model can do. In order, they are tried top first.")));
     ed.append(el("label", "", t("Models")), mw);
+
+    // patterns: models found by their ids, now and as providers list new
+    // ones (#766); what they match follows the models named above
+    function rematch() {
+      const named = d.members.filter((x) => !d.matched.includes(x));
+      d.matched = matchedBy(d.match, named);
+      d.members = [...named, ...d.matched];
+      d.rules = d.rules.filter((r) => d.members.includes(r.use));
+      d.fast = d.fast.filter((x) => d.members.includes(x));
+      d.off = d.off.filter((x) => d.members.includes(x));
+    }
+    const pbox = el("div", "fallback rt-pats");
+    const plist = el("div", "fbl");
+    const pin = keys(input("", t("e.g. openrouter/*:free or re:…")));
+    const pAdd = el("button", "text", t("Add pattern"));
+    const drawPats = () => {
+      plist.replaceChildren(...d.match.map((p) => {
+        const row = el("div", "fbrow"), n = patternCount(p);
+        const c = el("span", "n");
+        c.append(el("code", "", p), el("small", "", patternWords(n)));
+        if (!n) row.classList.add("none");
+        const rm = el("button", "text", t("Remove"));
+        rm.onclick = () => { d.match = d.match.filter((x) => x !== p); rematch(); drawPats(); draw(); drawRules(); };
+        row.append(c, el("span", "grow"), rm);
+        return row;
+      }));
+    };
+    // what was typed, as a pattern the group keeps; "" when it was taken
+    // or there was none, an error said where it is seen otherwise
+    const addPattern = () => {
+      const p = pin.value.trim();
+      if (!p) return "";
+      if (!isPattern(p)) return status(t("A pattern has a * in it, or starts with re:"), "warn"), null;
+      if (!patternRe(p)) return status(t("{pattern} is not a regular expression magpie can read", { pattern: p }), "warn"), null;
+      if (!d.match.includes(p)) d.match.push(p);
+      pin.value = "";
+      rematch(); drawPats(); draw(); drawRules();
+      return "";
+    };
+    pAdd.onclick = () => { addPattern(); };
+    pin.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") addPattern(); else if (e.key === "Escape") { gEdit = null; renderGroups(); } };
+    const padd = el("div", "rt-patadd");
+    padd.append(pin, pAdd);
+    pbox.append(plist, padd);
+    drawPats();
+    const pw = el("div");
+    pw.append(pbox, el("div", "hint", t("Every model a pattern matches is in the group, now and as providers list new ones, after the models above: * is any run of characters in provider/model, re: starts a regular expression.")));
+    ed.append(el("label", "", t("Patterns")), pw);
 
     const rHint = el("div", "hint", t(GROUP_HINT[d.routing] || GROUP_HINT[""]));
     const rw = el("div");
@@ -2795,7 +2882,8 @@
     cancel.onclick = () => { gEdit = null; renderGroups(); };
     const saveBtn = el("button", "text primary", t(g ? "Save" : "Add"));
     const save = () => {
-      if (!d.members.length) { addBtn.focus({ preventScroll: true }); return status(t("A group needs a model in it"), "warn"); }
+      if (addPattern() === null) return pin.focus({ preventScroll: true }); // typed, not added: it is meant
+      if (!d.members.length && !d.match.length) { addBtn.focus({ preventScroll: true }); return status(t("A group needs a model in it"), "warn"); }
       d.rules.forEach((r) => { r.intent = (r.intent || "").trim(); });
       // hours: both times, or none and no days; days alone are all day
       const badTime = d.rules.findIndex((r) => {
@@ -2820,7 +2908,7 @@
       if (own && !d.levels.length) return status(t("Pick a level to offer, or leave them to its models"), "warn");
       saveBtn.classList.add("busy");
       // refused, Add can be pressed again (busy, it takes no clicks)
-      groupAction("save", { id: idOf(), from: g?.id, name: d.name.trim() || idOf(), members: d.members, routing: d.routing, pick: d.pick || "", affinity: d.affinity, sink: !!d.sink && sinkable(d.routing), rules: d.rules, effort: d.effort, classifier: d.rules.some((r) => r.intent) || d.effort === "auto" ? d.classifier : "", context: g?.context || 0, levels: own ? d.levels : [], family: g?.family || "", fast: d.fast.filter((x) => d.members.includes(x)), off: d.off.filter((x) => d.members.includes(x)) }, t(g ? "{name} saved" : "{name} added", { name: d.name.trim() || idOf() }))
+      groupAction("save", { id: idOf(), from: g?.id, name: d.name.trim() || idOf(), members: namedOf(d), match: d.match, routing: d.routing, pick: d.pick || "", affinity: d.affinity, sink: !!d.sink && sinkable(d.routing), rules: d.rules, effort: d.effort, classifier: d.rules.some((r) => r.intent) || d.effort === "auto" ? d.classifier : "", context: g?.context || 0, levels: own ? d.levels : [], family: g?.family || "", fast: d.fast.filter((x) => d.members.includes(x)), off: d.off.filter((x) => d.members.includes(x)) }, t(g ? "{name} saved" : "{name} added", { name: d.name.trim() || idOf() }))
         .then(() => saveBtn.classList.remove("busy"));
     };
     // what goes wrong is said where it is seen, never a click that does nothing

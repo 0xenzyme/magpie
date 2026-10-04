@@ -266,6 +266,11 @@ button.rt-session { cursor: pointer; }
 .rt-group .nm code.mdl { font: 500 11px/1.5 var(--code); color: var(--fg-2); background: var(--card-2); border-radius: 5px; padding: 0 5px; white-space: nowrap; }
 .rt-group .nm small.auto { font-size: 11px; color: var(--faint); white-space: nowrap; }
 .rt-group .mem { margin-top: 2px; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* a pattern the group finds models by, and how many it matches now */
+.rt-group .mem.pat code, .rt-pats code { font: 500 11px/1.5 var(--code); color: var(--fg-2); }
+.rt-group .mem.pat.none, .rt-pats .fbrow.none small { color: var(--amber); }
+.rt-patadd { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+.rt-patadd input { flex: 1; min-width: 0; }
 .rt-group .tags { display: flex; gap: 4px; flex: none; }
 .rt-group .tag { font-size: 11px; line-height: 18px; padding: 0 8px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); white-space: nowrap; }
 .rt-group .tag.bad { color: var(--red); }

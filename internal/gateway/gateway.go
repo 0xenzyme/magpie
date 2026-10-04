@@ -1068,7 +1068,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			return
 		}
 		msg := fmt.Sprintf("magpie knows no model %q", call.Model)
-		if ids := provider.IDs(); len(ids) > 0 {
+		if g, ok := emptyGroup(asked); ok {
+			// a group of its own with nothing in it now — its patterns
+			// match no model served (#766) — said so, not the whole list
+			msg = emptyGroupError(g)
+		} else if ids := provider.IDs(); len(ids) > 0 {
 			msg += "; it has " + strings.Join(ids, ", ")
 		} else {
 			msg += "; add a provider in magpie first"

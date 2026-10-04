@@ -298,6 +298,12 @@ func store(f file) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
+	// a group as it was read has the models its patterns matched then
+	// among its members: they are found again each time, never written
+	f.Groups = slices.Clone(f.Groups)
+	for i := range f.Groups {
+		f.Groups[i] = f.Groups[i].stored()
+	}
 	b, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		return err

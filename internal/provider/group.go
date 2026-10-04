@@ -98,9 +98,18 @@ func (g Group) Live() Group {
 
 // Group is a routing group.
 type Group struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Members  []string `json:"members"`            // "provider/model[:effort]" or "group/<id>", in order (see MemberEffort)
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Members []string `json:"members"` // "provider/model[:effort]" or "group/<id>", in order (see MemberEffort)
+	// Match are patterns its models are found by as well (#766): a glob
+	// over the "provider/model" id with * in it ("openrouter/*:free"), or
+	// a regular expression after "re:". Kept apart from Members, so the
+	// group follows the catalog: read, it has the models they match now
+	// after those it names (see withMatches).
+	Match []string `json:"match,omitempty"`
+	// Matched are the members the patterns match now, as Members has them
+	// after its own. Derived each time the group is read, never stored.
+	Matched  []string `json:"matched,omitempty"`
 	Routing  string   `json:"routing,omitempty"`  // as Provider.Routing, over all the members' keys and accounts; or Manual
 	Affinity string   `json:"affinity,omitempty"` // as Provider.Affinity
 	// Sink is Provider.Sink over the group's members' accounts and keys
@@ -209,7 +218,7 @@ func groupsIn(entries []Entry) []Group {
 			hidden[g.ID] = true
 			continue
 		}
-		out = append(out, g)
+		out = append(out, withMatches(entries, g))
 	}
 	if f.NoAutoGroups {
 		return out
@@ -669,15 +678,27 @@ func SaveGroup(g Group) error {
 	if g.Name == "" {
 		g.Name = g.ID
 	}
-	g.Members = cleanList(g.Members)
-	if len(g.Members) == 0 {
-		return errors.New("a group needs a model in it")
+	// the members it names and its patterns, without what the patterns
+	// matched when it was read: those are found again below, and stored
+	// never
+	members, match := ownMembers(g)
+	g.Members, g.Matched = cleanList(members), nil
+	var err error
+	if g.Match, err = CleanPatterns(match); err != nil {
+		return err
+	}
+	if len(g.Members) == 0 && len(g.Match) == 0 {
+		return errors.New("a group needs a model in it, or a pattern its models match")
 	}
 	f, err := read()
 	if err != nil {
 		return err
 	}
 	entries := providerEntries()
+	// checked with what its patterns match now, so that a rule, a pick, a
+	// fast or an off member may name one of those
+	named := len(g.Members)
+	g.Members = append(g.Members, matchesIn(entries, g)...)
 	if err := cleanFast(entries, &g); err != nil {
 		return err
 	}
@@ -687,7 +708,8 @@ func SaveGroup(g Group) error {
 		}
 		g.Members[i] = cleanMember(entries, m)
 	}
-	g.Members = cleanList(g.Members)
+	own := cleanList(g.Members[:named])
+	g.Members = append(slices.Clone(own), slices.DeleteFunc(cleanList(g.Members[named:]), func(m string) bool { return slices.Contains(own, m) })...)
 	var off []string
 	for _, m := range cleanList(g.Off) {
 		if m = cleanMember(entries, m); slices.Contains(g.Members, m) && !slices.Contains(off, m) {
@@ -695,7 +717,7 @@ func SaveGroup(g Group) error {
 		}
 	}
 	g.Off = off
-	if g.Routing != Manual && len(g.Off) == len(g.Members) {
+	if g.Routing != Manual && len(g.Members) > 0 && len(g.Off) == len(g.Members) {
 		return fmt.Errorf("every model in %s is switched off: switch one on, or it has nothing to send to", g.Name)
 	}
 	for i := range g.Rules {
@@ -721,7 +743,7 @@ func SaveGroup(g Group) error {
 	if !slices.Contains(g.Members, g.Pick) {
 		g.Pick = "" // taken out of the group: its first, when manual
 	}
-	if g.Routing == Manual && g.Pick == "" {
+	if g.Routing == Manual && g.Pick == "" && len(g.Members) > 0 {
 		g.Pick = g.Members[0]
 	}
 	rules, err := cleanRules(g.Rules, g.Members)
@@ -757,6 +779,7 @@ func SaveGroup(g Group) error {
 		}
 	}
 	g.Auto, g.Hidden = false, false
+	g.Members = own // what the patterns match is found again as it is read
 	for i := range f.Groups {
 		if f.Groups[i].ID == g.ID {
 			f.Groups[i] = g
