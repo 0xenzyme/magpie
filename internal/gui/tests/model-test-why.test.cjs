@@ -121,8 +121,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await c.click({ button: "right" });
       const menu = page.locator(".pop.row-menu");
       await menu.waitFor();
-      const item = menu.locator(".rm-item");
-      assert.equal(await item.count(), 1);
+      // Test this model, off, and Copy model ID, which is on
+      const items = menu.locator(".rm-item");
+      assert.equal(await items.count(), 2);
+      assert(await items.nth(1).isEnabled(), "its id can still be copied");
+      const item = items.first();
       assert(await item.isDisabled(), "Test this model is off");
       assert.equal(await item.getAttribute("title"), w.own);
       assert.equal(await item.locator(".rm-why").textContent(), w.own, "the reason is said in the menu");
