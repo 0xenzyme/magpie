@@ -705,6 +705,10 @@
         ttl.append(ub);
       }
       card.append(ttl);
+      // an upgrade under way says what it runs; one that failed says why,
+      // with the tool's exit code and what it said, until the next try (#741)
+      if (rtkUpgrading && rtk.upgrade) card.append(el("p", "lib-rtk-gain", t("Running {cmd} — this can take a few minutes.", { cmd: rtk.upgrade })));
+      else if (rtkUpgradeErr) card.append(el("p", "lib-rtk-note lib-rtk-err", t("The upgrade failed: {why}", { why: rtkUpgradeErr })));
       if (rtk.note) card.append(el("p", "lib-rtk-note", rtk.note));
       // found where magpie looks, but not on the PATH the agents get: their
       // hooks run rtk by name, so it does nothing for them (#601)
@@ -857,18 +861,25 @@
     return false;
   }
   let rtkUpgrading = false;
+  let rtkUpgradeErr = ""; // why the last upgrade failed, shown on the card
   async function upgradeRTK() {
     rtkUpgrading = true;
+    rtkUpgradeErr = "";
     render();
+    let failed = false;
     try {
       rtk = await api("library/rtk/upgrade", {});
       if (rtk.note) status(rtk.note, "", 10000);
       else status(t("RTK is now {v}", { v: rtk.version }), "ok", 6000);
     } catch (e) {
-      status(e.message, "err", 10000);
+      failed = true;
+      rtkUpgradeErr = e.message;
+      status(t("RTK's upgrade failed — the RTK card says why"), "err", 10000);
     }
     rtkUpgrading = false;
     render();
+    // the version it left, whatever the installer said
+    if (failed) loadRTK();
   }
   let rtkPathing = false;
   async function pathRTK() {

@@ -386,6 +386,7 @@ input.lib-setname:focus { border-color: var(--accent); box-shadow: 0 0 0 3px col
 .lib-rtk-gain { margin: 6px 12px 10px; font-size: 12px; line-height: 1.5; color: var(--muted); }
 .lib-card > .lib-acts { padding: 0 12px 12px; }
 .lib-rtk-note { margin: 6px 12px 0; font-size: 12px; line-height: 1.5; color: var(--amber); }
+.lib-rtk-err { color: var(--red); user-select: text; overflow-wrap: anywhere; }
 .lib-rtk-chart { margin: 0 12px 12px; padding: 10px 12px 8px; }
 .lib-rtk-chart .bars { height: 88px; }
 .lib-rtk-foot { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
