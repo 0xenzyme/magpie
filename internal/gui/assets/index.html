@@ -256,6 +256,10 @@
         <div class="who"><div class="name" data-t>Codex subagents on any model</div><div class="sub" data-t>Codex’s OpenAI models hand subagents their tasks as text (multi-agent V1), so a GPT lead can spawn them on magpie’s other models. New threads only; Codex’s own multi_agent_v2 setting still wins</div></div>
         <div id="codexAgentsV1Segs"></div>
       </div>
+      <div class="row pref">
+        <div class="who"><div class="name" data-t>Long conversations</div><div class="sub" data-t>Codex and Claude Code compact a conversation at 272K tokens on a model with a larger window, as they do on OpenAI’s and Anthropic’s own; the model’s full window lets it grow further, with every turn slower and costlier</div></div>
+        <div id="fullContextSegs"></div>
+      </div>
       <div class="row pref" id="codexTitlesRow">
         <div class="who"><div class="name" data-t>Codex thread titles</div><div class="sub" id="codexTitlesSub"></div></div>
         <div class="val" id="codexTitlesPick"></div>

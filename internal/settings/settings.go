@@ -215,6 +215,14 @@ type Settings struct {
 	// as Codex sends them, "off" answered by magpie with no title and sent
 	// nowhere, or a model's id (provider/model, group/<id>) that writes it.
 	CodexTitles string `json:"codexTitles,omitempty"`
+	// FullContext has Codex and Claude Code told a model's whole context
+	// window. Off, a window above WorkingWindow is told as WorkingWindow,
+	// so they compact a long conversation there instead of sending ever
+	// more of it on every turn (X: Chen, a 1M DeepSeek model through
+	// Codex and Claude Code took 70–90s to its first token at 550K):
+	// what OpenAI does with its own models, 272K though they can take
+	// more, and Anthropic with its, 200K unless a [1m] one is picked.
+	FullContext bool `json:"fullContext,omitempty"`
 	// ChinaMirror is the Plugins page's 「国内镜像」 switch: the plugin list,
 	// npm (the plugins' packages and what npm says of them) and Bun's
 	// downloads are asked of mirrors in China first, and of their official
@@ -496,6 +504,20 @@ func CarryPerModel(in, cur *Settings) {
 	for _, f := range perModelFields(dst.Type()) {
 		dst.FieldByIndex(f.Index).Set(src.FieldByIndex(f.Index))
 	}
+}
+
+// WorkingWindow is the context window Codex and Claude Code are told for a
+// model with a larger one, unless FullContext: Codex's own for OpenAI's
+// models that can take more.
+const WorkingWindow = 272000
+
+// Working is the context window an agent is told for a model with one of
+// n tokens (see FullContext).
+func (s Settings) Working(n int) int {
+	if !s.FullContext && n > WorkingWindow {
+		return WorkingWindow
+	}
+	return n
 }
 
 // KeepOwn puts back cur's settings that are this computer's own, which a

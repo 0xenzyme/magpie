@@ -16,6 +16,7 @@ import (
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
+	"github.com/yetone/magpie/internal/settings"
 )
 
 // Claude Code reads its endpoint from the `env` block of settings.json.
@@ -135,6 +136,13 @@ var claudeAliases = []string{"default", "best", "opus", "sonnet", "haiku", "fabl
 // is what tells it where a 128K or a 400K model runs out. A name marked [1m]
 // is 1M whatever it says.
 const claudeContextEnv = "CLAUDE_CODE_MAX_CONTEXT_TOKENS"
+
+// claudeCompactEnv is where Claude Code compacts a conversation, the smaller
+// of it and the model's window, a [1m] one's too. magpie sets it to
+// settings.WorkingWindow, so a 1M model isn't run to 1M with every turn
+// sending all of it (X: Chen, turns of ~550K tokens waiting 70–90s for a
+// first token); settings.FullContext leaves it out.
+const claudeCompactEnv = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
 
 // claudeCapsEnv tells Claude Code what a model it doesn't know can do, as
 // "<model>=effort,xhigh_effort;<model>=…" (a trailing * a prefix, [1m]
@@ -327,6 +335,37 @@ func claudeIn(at place) *Agent {
 		}
 		return nil
 	}
+	// the auto-compact window magpie last wrote, kept apart from the
+	// user's own in the same way
+	compactKey := at.key("claude.compact_window")
+	compactOurs := func() bool {
+		cur := env(claudeCompactEnv)
+		return cur != "" && cur == stashLoad()[compactKey]
+	}
+	dropCompact := func() error {
+		defer forget(compactKey)
+		if compactOurs() {
+			return edit.DelJSON(path, "env."+claudeCompactEnv)
+		}
+		return nil
+	}
+	// writeCompact has Claude Code compact at the working window
+	// (settings.WorkingWindow) on magpie, unless settings.FullContext
+	writeCompact := func() error {
+		if env(claudeCompactEnv) != "" && !compactOurs() {
+			forget(compactKey)
+			return nil
+		}
+		if settings.Load().FullContext {
+			return dropCompact()
+		}
+		w := strconv.Itoa(settings.WorkingWindow)
+		stash(map[string]string{compactKey: w})
+		if env(claudeCompactEnv) == w {
+			return nil
+		}
+		return edit.SetJSON(path, edit.KV{Path: "env." + claudeCompactEnv, Value: w})
+	}
 	// Claude Code's /model lists what modelPicker says (2.1.287): while it
 	// runs on magpie, that is every one of magpie's models, so the user
 	// picks among them in Claude Code itself. One the user wrote is theirs.
@@ -421,6 +460,9 @@ func claudeIn(at place) *Agent {
 		if err := dropWindow(); err != nil {
 			return "", err
 		}
+		if err := dropCompact(); err != nil {
+			return "", err
+		}
 		if err := dropCaps(); err != nil {
 			return "", err
 		}
@@ -462,6 +504,9 @@ func claudeIn(at place) *Agent {
 			}
 			forget(at.key("claude.model"), at.key("claude.base_url"), at.key("claude.auth_token"), mainKey)
 			if err := dropWindow(); err != nil {
+				return err
+			}
+			if err := dropCompact(); err != nil {
 				return err
 			}
 			if err := dropCaps(); err != nil {
@@ -571,6 +616,9 @@ func claudeIn(at place) *Agent {
 		for _, t := range claudeTiers {
 			m, _ := tierAt(tiers[t])
 			models = append(models, m)
+		}
+		if err := writeCompact(); err != nil {
+			return err
 		}
 		if err := writePicker(); err != nil {
 			return err
@@ -878,6 +926,9 @@ func claudeIn(at place) *Agent {
 			models := []string{mainModel()}
 			for _, t := range claudeTiers {
 				models = append(models, env(tierEnv(t)))
+			}
+			if err := writeCompact(); err != nil {
+				return err
 			}
 			if err := writePicker(); err != nil {
 				return err

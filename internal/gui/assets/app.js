@@ -14927,6 +14927,10 @@ function renderTrayUsage(s, keep) {
   // magpie's other models (#141)
   $("#codexAgentsV1Segs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.codexAgentsV1 ? "on" : "off", (v) =>
     writingPrefs(api("settings/codex-agents-v1", { on: v === "on" })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
+  // a 1M model's whole window, or compacting at the working one (X: Chen,
+  // 70–90s to a first token at 550K)
+  $("#fullContextSegs").replaceChildren(segs([["off", t("Compact at 272K")], ["on", t("Full window")]], s.fullContext ? "on" : "off", (v) =>
+    writingPrefs(api("settings/full-context", { on: v === "on" })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
   renderCodexTitles(s);
   const rate = s.fx?.rate;
   const currencySub = $("#currencySub");
