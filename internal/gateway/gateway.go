@@ -2510,6 +2510,11 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	if proto == provider.Chat && sse {
 		tidy = &chatTidy{}
 	}
+	// calls a model wrote into its text are made calls (textcalls.go)
+	var written *textCallTidy
+	if names := chatToolNames(body); proto == provider.Chat && sse && names != nil {
+		written = &textCallTidy{names: names}
+	}
 	var whole *chatWhole
 	if proto == provider.Chat && !sse && strings.Contains(res.Header.Get("Content-Type"), "json") {
 		whole = &chatWhole{}
@@ -2535,6 +2540,9 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			out := buf[:n]
 			if tidy != nil {
 				out = tidy.write(out)
+			}
+			if written != nil {
+				out = written.write(out)
 			}
 			if whole != nil {
 				out = whole.write(out)
@@ -2569,7 +2577,13 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		return out
 	}
 	if tidy != nil {
-		w.Write(sign(tidy.flush()))
+		out := tidy.flush()
+		if written != nil {
+			out = append(written.write(out), written.flush()...)
+		}
+		w.Write(sign(out))
+	} else if written != nil {
+		w.Write(sign(written.flush()))
 	}
 	if whole != nil {
 		out := whole.flush()
@@ -3190,6 +3204,15 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 	// a Gemini reply that says nothing is a failure, not a turn's end
 	// (#667)
 	empty := emptyFails(actual)
+	// calls a model wrote into its text are made calls (textcalls.go)
+	written := func(see func(Event)) (func(Event), func()) {
+		names := textCallNames(request.Tools)
+		if names == nil {
+			return see, func() {}
+		}
+		t := &textCallSee{names: names, see: see}
+		return t.event, t.release
+	}
 	if stream {
 		sw := newSSEWriter(w)
 		enc := encoder(from, sw, request, u)
@@ -3217,6 +3240,7 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 			}
 			enc.event(ev)
 		})
+		see, held := written(see)
 		serr := readSSEAlive(rd, func(_, data string) error {
 			return dec(data, see)
 		}, func() {
@@ -3226,6 +3250,7 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 				enc.keepalive()
 			}
 		})
+		held()
 		if serr != nil && failed == "" {
 			// the upstream died mid-reply: say so in the client's own
 			// protocol instead of finishing as if all went well
@@ -3250,10 +3275,12 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 		return 200, failed
 	}
 	var col collector
-	see := zenSee(zen, col.add)
-	if err := readSSE(rd, func(_, data string) error {
+	see, held := written(zenSee(zen, col.add))
+	err = readSSE(rd, func(_, data string) error {
 		return dec(data, see)
-	}); err != nil {
+	})
+	held()
+	if err != nil {
 		// a partial answer is not an answer
 		msg := p.Name + ": " + err.Error()
 		return writeError(w, from, 502, msg), msg
