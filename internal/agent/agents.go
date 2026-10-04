@@ -74,6 +74,7 @@ func All() []*Agent {
 		goose(home, cfg),
 		cursor(home),
 		zed(home, cfg),
+		vscode(home, cfg),
 		copilot(home),
 		crush(home, cfg),
 		dsh(home),
