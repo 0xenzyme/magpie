@@ -176,6 +176,12 @@ type Agent struct {
 	// names, never taken for one of magpie's models nor moved by what
 	// matches the picker (RenameRefs moves the names in it).
 	SplitSuffix func(v string) (model, suffix string, one bool)
+	// Prefixed, when set, is what each of magpie's values in the agent's
+	// fields starts with ("magpie/", its provider there): a value without
+	// it is a model of one of the agent's own providers, never magpie's,
+	// even when magpie has a provider of the same name (OpenHanako's own
+	// deepseek/deepseek-v4-pro, #835).
+	Prefixed string
 	// detect, when set, says whether the agent is here in place of looking
 	// for its files and binary: a distro's, probed once.
 	detect func() bool
