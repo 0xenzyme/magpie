@@ -4,6 +4,9 @@
 // works. {name} slots are filled by t(str, vars).
 const I18N = {
   zh: {
+    "Replies": "回复",
+    "Name the member in replies": "回复里写明成员",
+    "A reply's model says magpie's provider/model that answered (workbuddy/glm-5.3-flash), not the vendor's own name, for agents that count usage by it. Claude Code, Claude Desktop and Codex keep the vendor's; the X-Magpie-Model header says it to every agent": "回复的 model 写 magpie 里作答的 provider/model（workbuddy/glm-5.3-flash），而不是厂商自己的名字，给按它统计用量的 agent 用。Claude Code、Claude Desktop 和 Codex 仍拿到厂商的名字；X-Magpie-Model 响应头对所有 agent 都会写明",
     "Gateway keys": "网关密钥",
     "Gateway key": "网关密钥",
     "Limit": "限额",
@@ -3020,6 +3023,9 @@ const I18N = {
     "credits": "积分",
   },
   ja: {
+    "Replies": "応答",
+    "Name the member in replies": "応答にメンバー名を記す",
+    "A reply's model says magpie's provider/model that answered (workbuddy/glm-5.3-flash), not the vendor's own name, for agents that count usage by it. Claude Code, Claude Desktop and Codex keep the vendor's; the X-Magpie-Model header says it to every agent": "応答の model に、ベンダー自身の名前ではなく、答えた magpie の provider/model（workbuddy/glm-5.3-flash）を記します。model で使用量を数えるエージェント向け。Claude Code、Claude Desktop、Codex にはベンダーの名前のまま。X-Magpie-Model ヘッダーはどのエージェントにも記します",
     "Gateway keys": "ゲートウェイキー",
     "Gateway key": "ゲートウェイキー",
     "Limit": "上限",
@@ -6013,6 +6019,9 @@ const I18N = {
     "{agent} is signed in to this account and asks its vendor itself, not through magpie, so with no other account on to move it to, {agent} goes on using it past the cap. Add another account, or pick {agent}'s models via magpie, for the cap to hold it": "{agent} はこのアカウントでサインインしており、magpie を経由せず自分でベンダーに要求します。切り替え先となる有効なアカウントが他にないため、{agent} は上限を超えても使い続けます。上限を効かせるには、別のアカウントを追加するか、{agent} のモデルを magpie 経由で選んでください",
   },
   de: {
+    "Replies": "Antworten",
+    "Name the member in replies": "Mitglied in Antworten nennen",
+    "A reply's model says magpie's provider/model that answered (workbuddy/glm-5.3-flash), not the vendor's own name, for agents that count usage by it. Claude Code, Claude Desktop and Codex keep the vendor's; the X-Magpie-Model header says it to every agent": "Das model einer Antwort nennt magpies provider/model, das geantwortet hat (workbuddy/glm-5.3-flash), statt des Namens des Anbieters, für Agenten, die Nutzung danach zählen. Claude Code, Claude Desktop und Codex behalten den des Anbieters; der Header X-Magpie-Model nennt es jedem Agenten",
     "Gateway keys": "Zugangsschlüssel",
     "Gateway key": "Zugangsschlüssel",
     "Limit": "Limit",

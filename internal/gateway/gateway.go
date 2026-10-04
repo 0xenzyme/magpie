@@ -1008,6 +1008,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	// what the vendor saw and said
 	w, body, unmask := redacted(w, body)
 	defer unmask()
+	// the reply's model the member that answered, when asked for (#822)
+	w, r, named := withMemberNames(w, r)
+	defer named()
 	requestBody, requestTruncated := captureRequestBody(body)
 	// the OTLP export may want the bodies uncut (#538): the request is
 	// already whole in memory, so keep it as it came, and the reply goes to
@@ -2009,6 +2012,8 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	// every request to the provider goes through its own proxy, if it has
 	// one (#237)
 	r = r.WithContext(p.Via(r.Context()))
+	// the reply says who answered it (#822)
+	noteMember(w, r, p, model)
 	// A Claude Code subscription must run through the genuine binary. Direct
 	// OAuth HTTP requests are content-classified as third-party traffic when
 	// they carry another agent's harness (Pi, OpenCode, and others).
@@ -2061,6 +2066,7 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 		return writeError(w, from, 502, msg), msg
 	} else if m != model {
 		r, model = r.WithContext(ctx), m
+		noteMember(w, r, p, model)
 	}
 	// a backend that only streams gets a non-streaming request translated
 	// (the provider is always streamed on that path) rather than relayed

@@ -123,6 +123,12 @@ type Settings struct {
 	// signed-in Trae CN account (its plugin's) once a Beijing day, claiming
 	// the credits it gives.
 	TraeCheckin bool `json:"traeCheckin,omitempty"`
+	// MemberModel has a reply's model name the routing group's member
+	// that answered, as magpie's provider/model id (workbuddy/glm-5.3-flash),
+	// rather than the vendor's own name for it, for agents that count
+	// usage by the reply's model (#822). Claude Code, Claude Desktop and
+	// Codex always get the vendor's name: they read it themselves.
+	MemberModel bool `json:"memberModel,omitempty"`
 	// NoStats stops the one event a day that counts magpie's users (see
 	// internal/stats).
 	NoStats bool `json:"noStats,omitempty"`

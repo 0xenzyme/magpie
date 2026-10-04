@@ -14840,6 +14840,7 @@ function renderSettings() {
   renderGitHubToken(s);
   renderImages(s, keep);
   renderSearch(s, keep);
+  renderReplies(s, keep);
   renderRedact(s, keep);
   renderOTel(s, keep);
   renderLAN(s);
@@ -15729,6 +15730,23 @@ function renderSearcher(s, keep, box) {
   box.append(r);
 }
 
+// renderReplies: whether a reply's model names the member of magpie's
+// that answered it (#822), for agents that count usage by it.
+function renderReplies(s, keep) {
+  const box = $("#replyList");
+  box.replaceChildren();
+  const r = el("div", "row pref");
+  r.id = "memberModelRow";
+  const who = el("div", "who");
+  who.append(el("div", "name", t("Name the member in replies")),
+    el("div", "sub", t("A reply's model says magpie's provider/model that answered (workbuddy/glm-5.3-flash), not the vendor's own name, for agents that count usage by it. Claude Code, Claude Desktop and Codex keep the vendor's; the X-Magpie-Model header says it to every agent")));
+  const val = el("div", "val");
+  val.append(segs([["off", t("Off")], ["on", t("On")]], s.memberModel ? "on" : "off",
+    (v) => savePrefs({ ...keep, memberModel: v === "on" })));
+  r.append(who, val);
+  box.append(r);
+}
+
 // renderRedact: what the gateway masks before a request goes to a vendor —
 // secrets, personal data, the user's own words — and puts back in what the
 // vendor answers.
@@ -16109,6 +16127,7 @@ function prefsKeep(s) {
     trayUsages: s.trayUsages || [],
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, traeCheckin: !!s.traeCheckin, noStats: !!s.noStats,
+    memberModel: !!s.memberModel,
     noUpdatePill: !!s.noUpdatePill, noAutoUpdate: !!s.noAutoUpdate, updateEvery: s.updateEvery || 360,
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, trayNoBird: !!s.trayNoBird, vision: s.vision || "", imageGen: s.imageGen || "", searcher: s.searcher || "", currency: s.currency || "usd",
     chineseUnits: !!s.chineseUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };
