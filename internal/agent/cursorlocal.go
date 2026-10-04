@@ -97,7 +97,7 @@ func findCursorLocal(roots []string) string {
 					if exe := plistExecutable(filepath.Join(dir, "Contents", "Info.plist")); exe != "" {
 						return filepath.Join(dir, "Contents", "MacOS", exe)
 					}
-					return filepath.Join(dir, "Contents", "MacOS", p.exe())
+					return filepath.Join(dir, "Contents", "MacOS", p.macExe())
 				}
 				continue
 			}
@@ -129,6 +129,15 @@ func (p cursorProduct) exe() string {
 	}
 	if runtime.GOOS == "linux" {
 		return n
+	}
+	return p.macExe()
+}
+
+// macExe is the program's name in a .app, which is a Mac's on any system.
+func (p cursorProduct) macExe() string {
+	n := p.ApplicationName
+	if n == "" {
+		return "Cursor"
 	}
 	return strings.ToUpper(n[:1]) + n[1:]
 }
