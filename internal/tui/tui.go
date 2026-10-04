@@ -113,6 +113,7 @@ type model struct {
 	gsel      int    // its member or rule picked: the members, then the rules
 	period    usage.Period
 	sum       usage.Summary
+	direct    usage.Summary                // the agents' own calls, read from their session files
 	quotas    []provider.SubscriptionQuota // nil while the vendors are asked
 	qasked    bool                         // quotas were asked for
 	qleft     bool                         // windows read as what is left, not what is used
@@ -187,7 +188,7 @@ func (m *model) reload() {
 			m.gsel = clamp(m.gsel, len(g.Members)+len(g.Rules))
 		}
 	case pageUsage:
-		m.sum = usage.Summarize(m.period)
+		m.sum, m.direct = usage.Summarize(m.period), usage.Direct(m.period)
 	case pageSessions:
 		m.reloadSessions()
 	case pageLibrary:

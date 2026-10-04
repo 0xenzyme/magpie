@@ -535,10 +535,14 @@ func visibleLocal(chunks []*rowChunk) map[rowRef]bool {
 
 // matchKey narrows candidates before comparing their end times. Request IDs
 // are consumed first; fallback matching still requires uniqueness both ways.
+// The agent isn't in it: a session's id names the one conversation, and a
+// client built on Codex (miyi-helper, say) is logged under its own name by
+// the gateway while its Codex session file names Codex, so its calls were
+// counted twice, once through magpie and once as not.
 type matchKey struct {
-	session, agent string
-	tokens         [3]int64
-	failed, hasID  bool
+	session       string
+	tokens        [3]int64
+	failed, hasID bool
 }
 
 // matchTokens is what a call's tokens are matched by: its input with what it
@@ -623,7 +627,7 @@ func matchedBlocks(gateways []*rowChunk, chunks []*rowChunk, skip map[rowRef]boo
 			if session == "" {
 				continue
 			}
-			key := matchKey{session, gateway.Strings[p.Text[0]], matchTokens(p.Tokens), p.Status >= 400 || p.Text[9] != 0, p.Text[11] != 0}
+			key := matchKey{session, matchTokens(p.Tokens), p.Status >= 400 || p.Text[9] != 0, p.Text[11] != 0}
 			g := groups[key]
 			if g == nil {
 				g = &matchGroup{}
@@ -647,7 +651,7 @@ func matchedBlocks(gateways []*rowChunk, chunks []*rowChunk, skip map[rowRef]boo
 			if p.Tokens[0]+p.Tokens[1]+p.Tokens[2]+p.Tokens[3] == 0 && !failed {
 				continue
 			}
-			key := matchKey{session: c.Strings[p.Text[13]], agent: c.Strings[p.Text[0]], tokens: matchTokens(p.Tokens), failed: failed}
+			key := matchKey{session: c.Strings[p.Text[13]], tokens: matchTokens(p.Tokens), failed: failed}
 			count, candidate := 0, (rowRef{})
 			// Without a local ID either gateway partition can match. With an ID,
 			// only an unnamed gateway call can match (different IDs stay distinct).
