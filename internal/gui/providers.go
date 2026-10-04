@@ -674,12 +674,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 	})
 	// the site's own icon, found from the provider's base URL (#12)
 	mux.HandleFunc("POST /api/icons/favicon", func(rw http.ResponseWriter, r *http.Request) {
-		var in struct{ URL string }
+		var in struct{ URL, Name string }
 		if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in); err != nil {
 			fail(rw, err)
 			return
 		}
-		icon, err := provider.FaviconFor(r.Context(), in.URL)
+		icon, err := provider.FaviconFor(r.Context(), in.URL, in.Name)
 		if err != nil {
 			fail(rw, err)
 			return

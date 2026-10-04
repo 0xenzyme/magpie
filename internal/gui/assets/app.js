@@ -6167,7 +6167,7 @@ function iconPicker(ed) {
       site.disabled = true;
       site.textContent = t("Looking…");
       try {
-        const data = await api("icons/favicon", { url: base });
+        const data = await api("icons/favicon", { url: base, name: draft.name || "" });
         draft.icon = data.icon;
         editorError("");
         draw();
