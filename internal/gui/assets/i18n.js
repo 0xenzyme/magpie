@@ -1905,6 +1905,7 @@ const I18N = {
     "Hide accounts": "账号打码",
     "Credits used per day": "每天用掉的积分",
     "Left over time": "剩余额度走势",
+    "Solid: what was left. Dashed: an even pace, full at the cycle's start to empty at its reset; a line above its dashes lasts the cycle, one below runs out before the reset.": "实线：剩余额度。虚线：匀速用量，周期开始时满、重置时用完；实线在虚线上方说明能撑到重置，在下方说明会在重置前用完。",
     "2 days": "2 天",
     "Cycle": "本周期",
     "The last two days": "最近两天",

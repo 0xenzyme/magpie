@@ -10763,6 +10763,8 @@ function quotaCurve(sub) {
   const head = el("div", "qc-head");
   const range = el("span", "qc-range");
   head.append(el("span", "", t("Left over time")), range);
+  // what the dashes are isn't plain from the plot (John on Discord asked)
+  box.title = t("Solid: what was left. Dashed: an even pace, full at the cycle's start to empty at its reset; a line above its dashes lasts the cycle, one below runs out before the reset.");
   const W = 300, H = 60;
   const g = sv("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", class: "qc-plot", role: "img" });
   const axis = el("div", "qc-axis");
