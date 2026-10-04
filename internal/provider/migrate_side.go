@@ -18,7 +18,7 @@ import (
 func init() {
 	movers["devin"] = &mover{
 		pkg:    "@magpie-community/opencode-devin-auth",
-		min:    "0.1.5", // a failure's status and its sign-in mark as the built-in's
+		min:    "0.1.7", // an account named as Devin names its key, not the CLI's own (plugins#17)
 		agents: []string{"devin"},
 		// a variant picked before the families were one model (swe-2-high)
 		// goes to Devin as it is, through the plugin too, which keeps the
