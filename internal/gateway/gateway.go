@@ -2963,6 +2963,10 @@ func wrongEndpoint(status int, body []byte) bool {
 		"use /v1/chat/completions",
 		"not accessible via the", // Copilot
 		"unsupported_api_for_model",
+		// Copilot's /v1/messages, for a model it serves on other APIs
+		// alone (GPT-4.1, Gemini, GPT-5.6: #754); a model it doesn't
+		// serve at all is model_not_supported there
+		"no model endpoints available given user constraints",
 		"is not supported for format",    // OpenCode: "Model grok-4.7 is not supported for format anthropic"
 		"does not support this protocol", // OpenCode, with a key: "Model does not support this protocol"
 	} {
