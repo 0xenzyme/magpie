@@ -481,6 +481,7 @@ const I18N = {
     "{model}, its small model": "{model}（它的小模型）",
     "its web search": "它自带的联网搜索",
     "A Kimi Code plan ({names}) searches for its own models first, with its web search; for other models only when named here": "Kimi Code 套餐（{names}）的模型先用套餐自带的联网搜索；别的模型只有在这里选了它才用",
+    "{names} search for their own models first, with Gemini's Google Search": "{names} 的模型先用自己的 Gemini（Google 搜索）联网搜索",
     "it is no longer in magpie": "它已不在 magpie 里",
     "it is turned off": "它已关闭",
     "it can't search the web by itself": "它自己不能联网搜索",

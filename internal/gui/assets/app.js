@@ -15291,6 +15291,9 @@ function renderSearcher(s, keep, box) {
   const plans = choices.filter((c) => c.service).map((c) => c.name);
   if (plans.length) sub.append(" · ", el("span", "searcher-own",
     t("A Kimi Code plan ({names}) searches for its own models first, with its web search; for other models only when named here", { names: plans.join(", ") })));
+  const googles = choices.filter((c) => c.own).map((c) => c.name);
+  if (googles.length) sub.append(" · ", el("span", "searcher-own",
+    t("{names} search for their own models first, with Gemini's Google Search", { names: googles.join(", ") })));
   if (s.searchRelays?.length) sub.append(" · ", el("span", "searcher-relays",
     t("Relays said to search ({names}) are never picked automatically: they would spend the relay's quota on other models' searches; if one refuses magpie's own request, magpie falls back", { names: s.searchRelays.join(", ") })));
   who.append(el("div", "name", t("Searches for other models")), sub);

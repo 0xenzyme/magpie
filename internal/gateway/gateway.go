@@ -2609,7 +2609,7 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 	dropped := false
 	for {
 		// only a provider that searches by itself is asked to
-		if want := web && searchesItself(p, to); want != req.WebSearch {
+		if want := web && searchesFor(p, to, model, req); want != req.WebSearch {
 			r := *req
 			r.WebSearch, req = want, &r
 		}
@@ -3022,12 +3022,12 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 		// (DeepSeek's Chat) it had no search tool and answered from
 		// nothing (#669)
 		for _, t := range s.usable(p, model) {
-			if searchesItself(p, t) {
+			if searchesFor(p, t, model, request) {
 				to = t
 				break
 			}
 		}
-		if !searching(r.Context()) && canSearchFor(p) && !searchesItself(p, to) {
+		if !searching(r.Context()) && canSearchFor(p) && !searchesFor(p, to, model, request) {
 			ask := s.askTranslated(p, to, model, r.Header, w.Header())
 			if zen != nil {
 				ask = zenRound(zen.z, ask)
