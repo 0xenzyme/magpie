@@ -591,6 +591,9 @@
     ], tab, (id) => {
       tab = id;
       try { localStorage.setItem("magpie.libTab", id); } catch {}
+      // RTK's count read afresh each time its tab is opened: an agent run
+      // since adds to it (#741); the page keeps the last one until then
+      if (id === "rtk" && rtk) loadRTK();
       if (!lib) return page.querySelector(":scope > .lib-skel")?.replaceWith(skeleton(id));
       render(); syncLists();
     });
@@ -729,10 +732,22 @@
         acts.append(button(t("Check again"), rtk.pathDir ? "" : "action", () => { rtk = null; render(); }));
         card.append(acts);
       }
+      // RTK's own count (rtk gain): every agent and terminal, all time —
+      // said on the page, so an empty one isn't read as magpie counting
+      // only some (#741); one rtk couldn't give says why
       const g = rtk.gain;
-      card.append(el("p", "lib-rtk-gain", g
+      const gain = el("p", "lib-rtk-gain", g
         ? t("{saved} tokens saved over {n} commands — {pct}% on average", { saved: tokens(g.saved), n: g.commands.toLocaleString(), pct: Math.round(g.pct) })
-        : t("Nothing saved yet: the agents' commands go through RTK once it's switched on and the agent is restarted.")));
+        : rtk.gainErr
+          ? t("magpie couldn't read what RTK saved: {why}", { why: rtk.gainErr })
+          : t("Nothing saved yet: the agents' commands go through RTK once it's switched on and the agent is restarted."));
+      gain.append(" ", el("span", "lib-rtk-scope", t("RTK's own count (rtk gain): every command run through RTK on this computer, from any agent or terminal.")));
+      card.append(gain);
+      // Codex's Windows sandbox: rtk runs there as another account, or one
+      // that can't write RTK's history, so what it saves isn't in that count
+      if (rtk.codexSandbox) card.append(el("p", "lib-rtk-note lib-rtk-sandbox", rtk.codexSandbox === "elevated"
+        ? t("Codex runs its commands in its Windows sandbox, as its own sandbox account: RTK keeps what it saves there in that account's history, not yours, so it isn't counted here.")
+        : t("Codex runs its commands in its Windows sandbox, which can't write RTK's history: what RTK saves there isn't recorded, so it isn't counted here.")));
       if (rtk.days?.length) card.append(rtkChart(rtk.days));
     } else {
       card.append(ttl);
