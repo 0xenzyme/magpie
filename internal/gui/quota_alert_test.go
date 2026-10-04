@@ -35,4 +35,10 @@ func TestAlertText(t *testing.T) {
 	if _, body := alertText("zh", week, 0, false, now); body != "7 天窗口已用 80%，明天 14:30 重置" {
 		t.Errorf("zh tomorrow: %q", body)
 	}
+	if _, body := alertText("ja", week, 0, false, now); body != "7 日枠を 80% 使用、明日 14:30 にリセット" {
+		t.Errorf("ja tomorrow: %q", body)
+	}
+	if _, body := alertText("ja", week, 0, true, now); body != "7 日枠の残り 20%、明日 14:30 にリセット" {
+		t.Errorf("ja left: %q", body)
+	}
 }

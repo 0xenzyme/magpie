@@ -19,29 +19,42 @@ var trayZh = map[string]string{
 	"Restart Now to Update (%d in flight)": "立即重启以更新（%d 个进行中）",
 }
 
+// trayJa is the tray menu in Japanese.
+var trayJa = map[string]string{
+	"Open magpie":                          "magpie を開く",
+	"Version %s":                           "バージョン %s",
+	"Restart to Update":                    "再起動してアップデート",
+	"Restart to Update to %s":              "再起動して %s にアップデート",
+	"Quit magpie":                          "magpie を終了",
+	"Restart Now to Update":                "今すぐ再起動してアップデート",
+	"Restart Now to Update (%d in flight)": "今すぐ再起動してアップデート（%d 件処理中）",
+}
+
 // onLang relabels the tray menu when the Settings page changes the
 // language; set by the process that has the tray.
 var onLang func()
 
 // trayLang is the language the tray menu is in, as the page picks its own:
-// the setting, or with "system" (or none) the system's, Chinese for any zh.
+// the setting, or with "system" (or none) the system's, Chinese for any zh,
+// Japanese for any ja.
 func trayLang(pref string, system func() string) string {
 	switch pref {
-	case "en", "zh":
+	case "en", "zh", "ja":
 		return pref
 	}
-	if strings.HasPrefix(strings.ToLower(system()), "zh") {
+	switch sys := strings.ToLower(system()); {
+	case strings.HasPrefix(sys, "zh"):
 		return "zh"
+	case strings.HasPrefix(sys, "ja"):
+		return "ja"
 	}
 	return "en"
 }
 
 // trayText is a menu line in the language, English where it has none.
 func trayText(lang, key string, args ...any) string {
-	if lang == "zh" {
-		if s, ok := trayZh[key]; ok {
-			key = s
-		}
+	if s, ok := map[string]map[string]string{"zh": trayZh, "ja": trayJa}[lang][key]; ok {
+		key = s
 	}
 	if len(args) == 0 {
 		return key
