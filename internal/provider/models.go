@@ -1336,6 +1336,68 @@ func SetModelOutput(id string, n int) error {
 	return nil
 }
 
+// OutputsOf is the reply limits the user set on a provider's models, by
+// model id, "*" for all of them: what its editor's Max output shows.
+func OutputsOf(providerID string) map[string]int {
+	out := map[string]int{}
+	for k, n := range settings.Load().ModelOutputs {
+		if model, ok := strings.CutPrefix(k, providerID+"/"); ok && model != "" && n > 0 {
+			out[model] = n
+		}
+	}
+	return out
+}
+
+// SetModelOutputs makes a provider's reply limits outs, by model id, "*"
+// for all of them, as its editor's Max output says (ARNO on Discord: a
+// model's maxTokens was wrong, and only the context window could be set in
+// the editor): those it leaves out are taken away, and every one set has
+// to be a model the provider serves, as for SetModelOutput. Nothing is
+// saved, nor the agents told, when nothing changed.
+func SetModelOutputs(providerID string, outs map[string]int) error {
+	p, err := Find(providerID)
+	if err != nil {
+		return err
+	}
+	for model, n := range outs {
+		if n < 0 {
+			return errorf("an output limit is a number of tokens, not %d", n)
+		}
+		if err := settings.CheckModelKey("an output limit", p.ID+"/"+model); err != nil {
+			return err
+		}
+		if model != "*" && n > 0 && !p.serves(model) {
+			return errorf("%s has no model %s (magpie provider %s lists them)", p.ID, model, p.ID)
+		}
+	}
+	s := settings.Load()
+	changed := false
+	for k := range s.ModelOutputs {
+		if model, ok := strings.CutPrefix(k, p.ID+"/"); ok && outs[model] <= 0 {
+			delete(s.ModelOutputs, k)
+			changed = true
+		}
+	}
+	for model, n := range outs {
+		if n <= 0 || s.ModelOutputs[p.ID+"/"+model] == n {
+			continue
+		}
+		if s.ModelOutputs == nil {
+			s.ModelOutputs = map[string]int{}
+		}
+		s.ModelOutputs[p.ID+"/"+model] = n
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	if err := settings.Save(s); err != nil {
+		return err
+	}
+	catalog.Touched()
+	return nil
+}
+
 // DropModelOutput takes a user's reply limit away under the key it is
 // stored at, and hands that key back, so a caller left without a provider
 // to name it by can still say which entry it cleared. It does not ask
