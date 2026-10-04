@@ -1,11 +1,13 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
 // The owner: the 「接入」 switch, and the model picked in magpie in one click,
 // both. Beside an agent's switch is the model it starts on. Not connected,
-// it reads Pick a model and lists magpie's models alone; the one picked is
-// posted to set, which connects the agent first, and the row is connected,
-// on that model. Connected, its picker has every choice: the agent's own
-// models and its default too. No click moves the page. In English and
-// Chinese; no backend, the API is faked here.
+// it says what the agent is on, as Claude Code's does — its own model, or
+// Default with none set (EZN7L2C3, #834: Claude Code said 默认 and the
+// others 选模型) — and lists the agent's own models with magpie's; a magpie
+// one picked is posted to set, which connects the agent first, and the row
+// is connected, on that model. Connected, its picker has every choice too.
+// No click moves the page. In English and Chinese; no backend, the API is
+// faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -15,7 +17,10 @@ const { chromium, webkit } = require("playwright");
 const assets = path.resolve(__dirname, "../assets");
 const options = [{ value: "gpt-5.4", label: "GPT-5.4" }, { value: "relay/m1", label: "m1", ref: "relay/m1", note: "Relay · via magpie" }, { value: "relay/m2", label: "m2", ref: "relay/m2", note: "Relay · via magpie" }];
 const fresh = () => ({
-  agents: [{ id: "codex", name: "Codex", icon: "generic", path: "/fixture/codex", fields: [{ key: "model", label: "model", value: "gpt-5.4", options }] }],
+  agents: [
+    { id: "codex", name: "Codex", icon: "generic", path: "/fixture/codex", fields: [{ key: "model", label: "model", value: "gpt-5.4", options }] },
+    { id: "grok", name: "Grok Build", icon: "generic", path: "/fixture/grok", fields: [{ key: "model", label: "model", value: "", options: options.slice(1) }] },
+  ],
   profiles: [],
 });
 
@@ -50,8 +55,8 @@ function server(lang, posts) {
 }
 
 const words = {
-  en: { pick: "Pick a model", on: "Connected · pick magpie's models with /model in Codex" },
-  zh: { pick: "选模型", on: "已接入 · 在 Codex 里用 /model 选 magpie 的模型" },
+  en: { pick: "Pick a model", def: "default", on: "Connected · pick magpie's models with /model in Codex" },
+  zh: { pick: "选模型", def: "默认", on: "已接入 · 在 Codex 里用 /model 选 magpie 的模型" },
 };
 const row = '.row.agent[data-id="codex"]';
 
@@ -86,13 +91,22 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         return page.locator("#pop #list li").allTextContents();
       };
 
-      // not connected: magpie's models alone
-      assert.equal((await start.textContent()).trim(), w.pick);
+      // not connected: the model it is on, never Pick a model, and every
+      // choice — its own models with magpie's, the current one first
+      assert.equal((await start.textContent()).trim(), "GPT-5.4");
       assert.equal(await page.locator(`${row} .ag-conn`).getAttribute("aria-checked"), "false");
+      // one with none set says Default, as Claude Code does (#834)
+      const grok = page.locator('.row.agent[data-id="grok"] > .field.ag-start');
+      assert.equal((await grok.textContent()).trim(), w.def);
+      assert.ok(!(await page.locator("#agents").textContent()).includes(w.pick), "no row reads " + w.pick);
+      await grok.click();
+      const gl = await listed();
+      assert.ok(gl.some((s) => s.includes("m1")), gl.join(" | "));
+      await page.keyboard.press("Escape");
       await start.click();
       const off = await listed();
       assert.ok(off.some((s) => s.includes("m1")) && off.some((s) => s.includes("m2")), off.join(" | "));
-      assert.ok(!off.some((s) => s.includes("GPT-5.4")), "the agent's own models aren't offered: " + off.join(" | "));
+      assert.ok(off.some((s) => s.includes("GPT-5.4")) && off.some((s) => s.includes(w.def === "默认" ? "默认" : "Default")), "its own and Default too: " + off.join(" | "));
       await page.locator("#pop #list li", { hasText: "m2" }).first().click();
       await page.waitForFunction((r) => document.querySelector(r + " .ag-conn")?.getAttribute("aria-checked") === "true", row);
       assert.deepEqual(posts, [{ agent: "codex", field: "model", value: "relay/m2" }]);

@@ -1041,22 +1041,25 @@ function startField(a) {
   return a.fields.find((f) => f.key === "model" && f.options.some((o) => o.ref)) || connectField(a);
 }
 
-// startButton picks the model an agent starts on, from the row. Not
-// connected, it lists magpie's models alone, and the one picked connects
-// the agent and starts it on it; connected, every choice there is. One
-// whose list has models of its own beside magpie's (Claude Code's, asked
-// of Anthropic directly) says what it is on off magpie too, its Default or
-// its own Opus, and lists them all as when connected: it read Pick a
-// model, and its list had lost the one picked (EZN7L2C3, #834)
+// startButton picks the model an agent starts on, from the row. It says
+// what the agent is on, connected or not, its Default or a model, and
+// lists every choice: the agent's own models with magpie's. A magpie model
+// picked while it isn't connected connects it and starts it on it. Not
+// connected, only Claude Code said its model, the others Pick a model
+// beside it (EZN7L2C3, #834: 这里似乎需要统一); and Claude Code's list had
+// lost the one picked. A field that isn't a model (a provider) still
+// offers magpie's models alone.
 function startButton(a, f, fieldBtn) {
   const b = fieldBtn(f, "ag-start");
-  if (!a.wired && !f.options.some((o) => o.direct)) {
+  if (!a.wired && f.key !== "model" && !f.options.some((o) => o.direct)) {
     b.replaceChildren(el("span", "v empty", t("Pick a model")));
     const c = el("span", "chev");
     c.append(svg(CHEV, 11, 1.7));
     b.append(c);
     b.title = t("Pick one of magpie's models: {agent} is connected and starts on it", { agent: a.name });
     b.onclick = (ev) => openPicker(a, f, b, ev, (o) => !!o.ref);
+  } else if (!a.wired) {
+    b.title += "\n" + t("Pick one of magpie's models: {agent} is connected and starts on it", { agent: a.name });
   } else if (!f.value && a.id !== "claude") {
     b.querySelector(".v").textContent = t("Its last pick");
     b.title = t("Unset, {agent} starts on its own last pick", { agent: a.name });
