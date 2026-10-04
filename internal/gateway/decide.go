@@ -389,8 +389,10 @@ func (s *Server) postDecide(ctx context.Context, p provider.Provider, model stri
 }
 
 // maxSystemOneBody is the most a System One request may be; larger is 413
-// rather than a truncated body parsed as not a System One request.
-const maxSystemOneBody = 1 << 20
+// rather than a truncated body parsed as not a System One request. A
+// Clef's request may carry up to four embedded images, 13 MiB in all
+// (ARNO on Discord: clef模型是支持图像输入的).
+const maxSystemOneBody = 16 << 20
 
 // serveSystemOne is magpie's own System One API. The model's prefix names
 // the Jev provider (gptload-jev/jev-latest); the rest is what that provider
