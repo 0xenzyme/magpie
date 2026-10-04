@@ -2807,6 +2807,7 @@ body.window .row + .row.agent.conn > .who { min-height: 41px; } /* the line abov
 .ag-add { flex: none; height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--pill); color: var(--fg); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
 .ag-add:hover { background: var(--pill-hover); }
 .ag-cant { flex: none; font-size: 12px; color: var(--faint); }
+.ag-conn-gap { flex: none; width: 32px; margin-left: 10px; }
 .row.agent.conn.unplugged .ag-handle .ic { opacity: .7; }
 /* opened: the settings as named lines on the row's quieter ground */
 .ag-exp { flex: 0 0 calc(100% + 26px); margin: 7px -12px -7px -14px; padding: 4px 16px 14px 50px; border-top: 1px solid var(--line-2); background: var(--card-2); cursor: default; }
@@ -2879,6 +2880,7 @@ body.window .row + .row.agent.conn > .who { min-height: 41px; } /* the line abov
      the name, the link and the switch staying beside it */
   .row.agent.conn > .field.ag-start, .row.agent.conn > .who + .field.ag-start { order: 1; flex: 1 1 100%; width: auto; margin: 9px 0 0 34px; }
   .row.agent.conn > .ag-exp { order: 2; }
+  .ag-conn-gap { display: none; }
 }
 
 /* Checkboxes are drawn as the app's own, not the system's (ARNO on

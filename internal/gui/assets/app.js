@@ -915,9 +915,10 @@ const previews = {}; // agent id → its disconnect preview, as last read
 const anyMagpieModels = () => state.agents.some((a) => connectField(a)?.options.some((o) => o.ref));
 
 // connectKind: "ok" (a switch), "empty" (a switch for when magpie has
-// models), "no" (never), "" (the row as it was: an app with a link of its own)
+// models), "no" (never), "link" (an app magpie is added to by a link of its
+// own: Cindy), "" (the row as it was)
 function connectKind(a) {
-  if (a.import) return "";
+  if (a.import) return "link";
   if (connectable(a)) return "ok";
   if (NATIVE_ONLY[a.id]) return "no";
   if (a.fields.length && !anyMagpieModels()) return "empty";
@@ -950,6 +951,11 @@ function connectLine(a, kind) {
   line.append(dot, words);
   const say = (s, cls) => { words.textContent = s; if (cls) line.classList.add(cls); };
   if (kind === "no") { say(t(NATIVE_ONLY[a.id])); return line; }
+  if (kind === "link") {
+    if (a.added) say(t("Added · magpie is a provider in {agent}", { agent: a.name }), "on");
+    else say(t("Not added · {agent} asks to add magpie when its link opens", { agent: a.name }));
+    return line;
+  }
   if (kind === "empty") { say(t("Add a key or a subscription first; then there are models to connect")); return line; }
   if (!a.wired) {
     const src = a.source || "";
@@ -1091,6 +1097,13 @@ function connectRow(a, row, who, { fields, extras, fieldBtn, sw, kind }) {
     off.title = t("Add a key or a subscription first; then there are models to connect");
     off.append(el("i"));
     row.append(add, off);
+  } else if (kind === "link") {
+    // its link where the others' model stands, and nothing to switch: the
+    // switch's room kept, so the button lines up with the pickers (the
+    // owner: the old row's wide button sat apart from every other)
+    const b = importButton(a);
+    b.classList.add("ag-start");
+    row.append(b, el("span", "ag-conn-gap"));
   } else row.append(el("span", "ag-cant", t("Can't connect")));
   if (kind === "ok" && a.wired && agentExpanded === a.id) {
     row.classList.add("expanded");

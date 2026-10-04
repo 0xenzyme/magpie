@@ -1685,3 +1685,9 @@ faked; no user configuration is read or changed.
 ```sh
 node --test internal/gui/tests/agent-field-names.test.cjs
 ```
+
+`import-row.test.cjs` checks the row of an app magpie is added to by a link
+of its own (Cindy) on the Agents page: a line under its name says whether
+magpie is added (green once it is), its button stands where the other rows'
+model picker does, as wide and lined up with it at 960 and 700px, and a click
+opens the app's link. English and Chinese, Chromium and WebKit.
