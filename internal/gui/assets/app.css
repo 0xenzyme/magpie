@@ -2248,6 +2248,8 @@ input.words { width: 240px; max-width: 100%; }
 input.words.rule-kind { flex: none; width: 110px; }
 input.words.rule-match { flex: 1 1 auto; width: auto; min-width: 0; }
 input.words.search-key, input.words.search-url { flex: 1 1 120px; width: auto; min-width: 0; }
+/* a search API's key, shown: selectable, and broken anywhere rather than widening the row */
+.search-api .sub.revealed { font-family: var(--code); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
 .prefs .val.rule-add .segs { margin-left: 0; }
 .row.pref .sub.err { color: var(--red); white-space: normal; }
 .warm-at { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
