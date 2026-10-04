@@ -366,8 +366,8 @@ var presets = []PresetDef{
 		// docs' model table says (packages/web/src/content/docs/zen.mdx),
 		// so it routes groups like TypeSafe's own (#609's mixed provider)
 		Decide: "https://opencode.ai/zen/v1",
-		// its free models (-free) are served to OpenCode alone, which
-		// magpie asks them as (OpenCodeFree)
+		// its free models (-free, big-pickle) are served to OpenCode
+		// alone, which magpie asks them as (OpenCodeFree)
 		Website: "https://opencode.ai/docs/zen", KeysURL: "https://opencode.ai/auth"},
 	// Kilo Code's gateway, at the OpenRouter-style API its own clients use
 	// (kilo.go): its free models (isFree, ":free") are served with no key,
