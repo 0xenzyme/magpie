@@ -9355,19 +9355,32 @@ function accountCapOf(p, user) { return p?.accountCaps?.[String(user).toLowerCas
 function capHeldOf(q, cap) {
   if (!cap || !q || q.error || !q.windows?.length) return null;
   const now = Date.now();
-  let held = null, unknown = false;
+  // a window of some models only (Opus's week, a pool's) holds the account
+  // for those alone (#760): the account's own windows say when it is back
+  // when one of them holds it, else those windows do and are named
+  const all = { used: 0, back: 0, unknown: false, n: 0 }, some = { used: 0, back: 0, unknown: false, n: 0, names: [] };
   for (const w of q.windows) {
     if (!w.capped || w.used < cap) continue;
     const r = w.resetsAt ? Date.parse(w.resetsAt) : 0;
     if (r && r <= now) continue; // renewed since it was read
-    held = held || { used: 0, back: 0 };
-    held.used = Math.max(held.used, w.used);
-    if (!r) unknown = true; else held.back = Math.max(held.back, r);
+    const h = w.capsSome ? some : all;
+    h.n++;
+    h.used = Math.max(h.used, w.used);
+    if (w.capsSome && !some.names.includes(w.name)) some.names.push(w.name);
+    if (!r) h.unknown = true; else h.back = Math.max(h.back, r);
   }
-  if (held && unknown) held.back = 0;
-  return held;
+  const h = all.n ? all : some.n ? some : null;
+  return h && { used: h.used, back: h.unknown ? 0 : h.back, all: h === all, some: some.names };
 }
 function capHeldNote(held, cap, several) {
+  if (!held.all) {
+    const names = held.some.join(", ");
+    const n = el("span", "using acap-held", held.back ? t("{names} at its cap · back {in}", { names, in: untilText(held.back) }) : t("{names} at its cap", { names }));
+    n.title = t("{names} is at {n}%, past this account's {cap}% cap, so magpie sends the requests it counts to the other accounts until it renews; other models still use this account", { names, n: Math.round(held.used), cap })
+      + (held.back ? " · " + resetText(new Date(held.back), new Date(held.back).toLocaleString()) : "")
+      + (several ? "" : "\n" + t("With no other account on, those requests are refused with a usage-cap error until then"));
+    return n;
+  }
   const n = el("span", "using acap-held", held.back ? t("At its cap · back {in}", { in: untilText(held.back) }) : t("At its cap"));
   n.title = t("A usage window is at {n}%, past this account's {cap}% cap, so magpie counts it as used up and sends requests to the other accounts until that window renews", { n: Math.round(held.used), cap })
     + (held.back ? " · " + resetText(new Date(held.back), new Date(held.back).toLocaleString()) : "")
