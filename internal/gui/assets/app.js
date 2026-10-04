@@ -11709,13 +11709,15 @@ function autoResetTitle(on) {
 }
 
 // autoResetBrief: an account in brief says it too, beside its name — the
-// resets it holds and the say, on or off — its switch a click away in full.
+// resets it holds and the say — with its switch: the account a week ran
+// out on is the one not served, so the one shown in brief, and its switch
+// only in full was lost (#801, ezdemo: 自动使用重置卡的开关的入口找不到了).
 function autoResetBrief(q) {
   if (!autoResetKept(q)) return null;
   const on = autoResetOn(q);
   const s = el("span", "acct-auto" + (on ? " on" : ""));
-  if (q.resets?.count) s.append(el("span", "acct-auto-n", "↺ " + q.resets.count + " · "));
-  s.append(document.createTextNode(t(on ? "Auto-use: on" : "Auto-use: off")));
+  if (q.resets?.count) s.append(el("span", "acct-auto-n", "↺ " + q.resets.count + " ·"));
+  s.append(el("span", "acct-auto-say", t("Auto-use")), autoResetButton(q));
   s.title = (q.resets?.count ? t(q.resets.count === 1 ? "1 reset" : "{n} resets", { n: q.resets.count }) + "\n" : "") + autoResetTitle(on);
   return s;
 }

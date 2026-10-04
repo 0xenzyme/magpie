@@ -1267,7 +1267,7 @@ body.panel .profiles #save { height: 25px; } /* the field's: the line keeps its 
 .resets-kept { color: var(--faint); }
 .resets-kept.on { color: var(--accent); }
 /* in brief: the resets held and the say, beside the account's name */
-.subscription-account .acct-auto { flex: none; margin-left: auto; font-size: 10.5px; color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.subscription-account .acct-auto { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .subscription-account .acct-auto.on { color: var(--accent); }
 .subscription-account .acct-auto-n { color: var(--muted); }
 .subscription-account .acct-auto + .plan { margin-left: 0; }
