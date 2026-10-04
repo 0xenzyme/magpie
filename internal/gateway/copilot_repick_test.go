@@ -209,3 +209,74 @@ func TestCopilotAutoPicksInRoute(t *testing.T) {
 		t.Fatalf("the picks said %+v", tries)
 	}
 }
+
+// copilotStudentList is a Student plan's /models as Copilot lists it now
+// (#256, 22:07): nothing flagged as the chat default or fallback, nothing
+// billed, gpt-4.1 last and out of the picker; the plan is served gpt-4.1
+// alone.
+const copilotStudentList = `{"data":[
+  {"id":"gpt-5.4-mini","model_picker_enabled":true,"policy":{"state":"enabled"},"supported_endpoints":["/chat/completions","/responses"],"capabilities":{"type":"chat"}},
+  {"id":"gpt-6-luna","model_picker_enabled":true,"policy":{"state":"enabled"},"supported_endpoints":["/responses"],"capabilities":{"type":"chat"}},
+  {"id":"kimi-k3","model_picker_enabled":true,"policy":{"state":"enabled"},"supported_endpoints":["/chat/completions"],"capabilities":{"type":"chat"}},
+  {"id":"mai-code-1.1-flash","model_picker_enabled":true,"policy":{"state":"enabled"},"supported_endpoints":["/chat/completions"],"capabilities":{"type":"chat"}},
+  {"id":"gpt-5-mini","model_picker_enabled":true,"policy":{"state":"enabled"},"supported_endpoints":["/chat/completions","/responses"],"capabilities":{"type":"chat"}},
+  {"id":"claude-haiku-4.5","model_picker_enabled":true,"policy":{"state":"enabled"},"supported_endpoints":["/chat/completions"],"capabilities":{"type":"chat"}},
+  {"id":"gpt-4.1","model_picker_enabled":false,"model_picker_category":"versatile","policy":{"state":"enabled"},"capabilities":{"type":"chat"}}]}`
+
+// #256 (infinitr0us, 22:07, v0.1.921): /auto picked gpt-5.6-luna, which
+// Copilot refused "The requested model is not supported."; magpie then went
+// down the list in its order, gpt-4.1 last, five more refusals, and the
+// request failed with 400 before reaching gpt-4.1. The reply named
+// mai-code-1.1-flash, a refused pick. gpt-4.1 is now the first fallback,
+// the reply names it, and the route says each pick's API and whether Auto's
+// session token went with it.
+func TestCopilotAutoFallsBackToBase(t *testing.T) {
+	var mu sync.Mutex
+	var asked []string
+	copilotFake(t, "gho_student256base", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/models":
+			io.WriteString(w, copilotStudentList)
+		case "/auto":
+			io.WriteString(w, `{"session_token":"v2-tok","selected_model":{"id":"gpt-5.6-luna","supported_endpoints":["/responses"]},"expires_at":`+
+				mustString(time.Now().Add(24*time.Hour).Unix())+`}`)
+		case "/models/session":
+			http.NotFound(w, r)
+		default:
+			m := modelOf(b)
+			asked = append(asked, r.URL.Path+" "+m)
+			if m != "gpt-4.1" {
+				w.WriteHeader(400)
+				io.WriteString(w, copilotNotSupported)
+				return
+			}
+			io.WriteString(w, `{"id":"c1","model":"gpt-4.1","choices":[{"index":0,"message":{"role":"assistant","content":"hello from gpt-4.1"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":3}}`)
+		}
+	})
+	s := New()
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest("POST", "/v1/chat/completions",
+		strings.NewReader(`{"model":"copilot/auto","messages":[{"role":"user","content":"Reply with the single word: ok"}]}`)))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "hello from gpt-4.1") {
+		t.Fatalf("copilot/auto: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Magpie-Model"); got != "copilot/gpt-4.1" {
+		t.Errorf("X-Magpie-Model %q, want copilot/gpt-4.1", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Join(asked, "|") != "/responses gpt-5.6-luna|/chat/completions gpt-4.1" {
+		t.Errorf("Copilot was asked %q", asked)
+	}
+	var picks []provider.AutoPick
+	for _, tr := range lastRoute(s).Tries {
+		picks = append(picks, tr.Auto...)
+	}
+	if len(picks) != 2 || picks[0].Model != "gpt-5.6-luna" || picks[0].Via != "/auto" || picks[0].API != "/responses" || !picks[0].Session ||
+		picks[1].Model != "gpt-4.1" || picks[1].API != "/chat/completions" || picks[1].Session {
+		t.Fatalf("the route told the picks %+v", picks)
+	}
+}

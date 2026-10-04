@@ -1559,7 +1559,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			ctx, stop := context.WithCancel(r.Context())
 			hw.stop = stop
 			if autoPicks(c) {
-				ctx, autoPicked = provider.WithAutoPicks(ctx)
+				// the reply names the pick it went as last (#256: it
+				// named one Copilot refused)
+				p := c.p
+				ctx, autoPicked = provider.WithAutoPicks(ctx, func(m string) { noteMember(hw, r, p, m) })
 			}
 			// when the request last went out to the vendor, its body
 			// written: what came before is magpie's, what after the

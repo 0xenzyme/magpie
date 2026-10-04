@@ -83,25 +83,31 @@ const AutoFallback = "fallback"
 // AutoPick is a model Copilot's Auto picked for a try of a request: where
 // the pick came from, why not from /auto when it didn't, and Copilot's
 // refusal of it, which the route shows (#256: a Student plan's picks were
-// refused, the tries logged as "auto").
+// refused, the tries logged as "auto"). API is the path it was sent to
+// (/responses, /chat/completions), Session whether Auto's session token
+// went with it.
 type AutoPick struct {
 	Model   string `json:"model"`
 	Via     string `json:"via"`
 	Skipped string `json:"skipped,omitempty"`
 	Refused string `json:"refused,omitempty"`
+	API     string `json:"api,omitempty"`
+	Session bool   `json:"session,omitempty"`
 }
 
 type autoPicks struct {
-	mu   sync.Mutex
-	list []AutoPick
+	mu     sync.Mutex
+	list   []AutoPick
+	onPick func(model string)
 }
 
 type autoPicksKey struct{}
 
 // WithAutoPicks has the Auto picks a request is sent with noted: the func
-// returns them.
-func WithAutoPicks(ctx context.Context) (context.Context, func() []AutoPick) {
-	p := &autoPicks{}
+// returns them. onPick, when set, is told each model the request goes as,
+// for the reply to name the one it went as last.
+func WithAutoPicks(ctx context.Context, onPick func(model string)) (context.Context, func() []AutoPick) {
+	p := &autoPicks{onPick: onPick}
 	return context.WithValue(ctx, autoPicksKey{}, p), func() []AutoPick {
 		p.mu.Lock()
 		defer p.mu.Unlock()
@@ -109,18 +115,22 @@ func WithAutoPicks(ctx context.Context) (context.Context, func() []AutoPick) {
 	}
 }
 
-// notePick notes the request is sent with a: once, while it isn't refused.
-func notePick(ctx context.Context, a copilotAutoSession) {
+// notePick notes req is sent with a: once, while it isn't refused.
+func notePick(ctx context.Context, a copilotAutoSession, req *http.Request) {
 	p, ok := ctx.Value(autoPicksKey{}).(*autoPicks)
 	if !ok || a.Model == "" {
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if n := len(p.list); n > 0 && p.list[n-1].Model == a.Model && p.list[n-1].Via == a.Via && p.list[n-1].Refused == "" {
+	pick := AutoPick{Model: a.Model, Via: a.Via, Skipped: a.Skipped, API: req.URL.Path, Session: req.Header.Get("Copilot-Session-Token") != ""}
+	if n := len(p.list); n > 0 && p.list[n-1].Model == a.Model && p.list[n-1].Via == a.Via && p.list[n-1].API == pick.API && p.list[n-1].Refused == "" {
 		return
 	}
-	p.list = append(p.list, AutoPick{Model: a.Model, Via: a.Via, Skipped: a.Skipped})
+	p.list = append(p.list, pick)
+	if p.onPick != nil {
+		p.onPick(a.Model)
+	}
 	if a.Skipped != "" {
 		log.Printf("copilot auto: %s picked %s (/auto: %s)", a.Via, a.Model, a.Skipped)
 	}
@@ -379,7 +389,7 @@ func copilotAutoSign(ctx context.Context, app copilotApp, req *http.Request, bod
 		if a.Token != "" {
 			req.Header.Set("Copilot-Session-Token", a.Token)
 		}
-		notePick(ctx, a)
+		notePick(ctx, a, req)
 		return model, nil
 	}
 	// Auto's pick sent again once the account was refused it
@@ -403,7 +413,7 @@ func copilotAutoSign(ctx context.Context, app copilotApp, req *http.Request, bod
 	if a.Token != "" {
 		req.Header.Set("Copilot-Session-Token", a.Token)
 	}
-	notePick(ctx, a)
+	notePick(ctx, a, req)
 	return a.Model, nil
 }
 

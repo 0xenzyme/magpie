@@ -1158,10 +1158,12 @@
     r.tries.forEach((tr, i) => {
       items.push([tryWhy(r, i), tr.done ? (tryOk(tr) ? "ok" : "bad") : "wait"]);
       // each model Copilot's Auto picked for it, where from, and whether
-      // Copilot refused it (#256)
+      // Copilot refused it, on which API and with Auto's session token or
+      // without (#256)
       for (const p of tr.auto || []) {
         let s = t("Copilot's Auto picked {model} ({via})", { model: p.model, via: p.via === "fallback" ? t("the model the account may pick by hand") : p.via });
         if (p.skipped) s += " · " + t("not from /auto: {why}", { why: p.skipped });
+        if (p.api) s += " · " + t(p.session ? "sent to {api} with Auto's session token" : "sent to {api}", { api: p.api });
         if (p.refused) s += " · " + t("Copilot refused it: {error}", { error: p.refused });
         items.push([s, "aside"]);
       }

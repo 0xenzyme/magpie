@@ -3,7 +3,9 @@
 // route logged each refused try as "auto", so which model Copilot refused,
 // and whether /auto or /models/session picked it, wasn't told. Each try's
 // line now names the model Auto picked, and a line under it says where the
-// pick came from, why not /auto when it didn't, and Copilot's refusal.
+// pick came from, why not /auto when it didn't, and Copilot's refusal; and
+// (v0.1.921's report) which API it went to and whether Auto's session token
+// went with it.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -20,9 +22,9 @@ const routes = [{
   id: 100, seq: 100, time: at(0), agent: "opencode", model: "copilot/auto", provider: "copilot", order: [key],
   tries: [
     { id: key.id, model: "auto", start: at(0), done: true, status: 400, ms: 300, error: refused,
-      auto: [{ model: "gpt-5.3-codex", via: "/auto", refused }] },
+      auto: [{ model: "gpt-5.3-codex", via: "/auto", refused, api: "/responses", session: true }] },
     { id: key.id, model: "auto", start: at(0), done: true, status: 200, ms: 400,
-      auto: [{ model: "gpt-4.1", via: "fallback", skipped: "picked gpt-5.3-codex, which the account was refused" }] },
+      auto: [{ model: "gpt-4.1", via: "fallback", skipped: "picked gpt-5.3-codex, which the account was refused", api: "/chat/completions" }] },
   ],
   done: true, status: 200, ms: 700,
 }];
@@ -55,12 +57,12 @@ function serve(lang) {
 
 const want = {
   en: [
-    "Copilot's Auto picked gpt-5.3-codex (/auto) · Copilot refused it: " + refused,
-    "Copilot's Auto picked gpt-4.1 (the model the account may pick by hand) · not from /auto: picked gpt-5.3-codex, which the account was refused",
+    "Copilot's Auto picked gpt-5.3-codex (/auto) · sent to /responses with Auto's session token · Copilot refused it: " + refused,
+    "Copilot's Auto picked gpt-4.1 (the model the account may pick by hand) · not from /auto: picked gpt-5.3-codex, which the account was refused · sent to /chat/completions",
   ],
   zh: [
-    "Copilot 的 Auto 选了 gpt-5.3-codex（/auto） · Copilot 拒绝了它：" + refused,
-    "Copilot 的 Auto 选了 gpt-4.1（账号可手动选的模型） · 未取自 /auto：picked gpt-5.3-codex, which the account was refused",
+    "Copilot 的 Auto 选了 gpt-5.3-codex（/auto） · 发往 /responses，带 Auto 的会话令牌 · Copilot 拒绝了它：" + refused,
+    "Copilot 的 Auto 选了 gpt-4.1（账号可手动选的模型） · 未取自 /auto：picked gpt-5.3-codex, which the account was refused · 发往 /chat/completions",
   ],
 };
 
