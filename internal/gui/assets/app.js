@@ -1043,10 +1043,14 @@ function startField(a) {
 
 // startButton picks the model an agent starts on, from the row. Not
 // connected, it lists magpie's models alone, and the one picked connects
-// the agent and starts it on it; connected, every choice there is.
+// the agent and starts it on it; connected, every choice there is. Off
+// magpie on a model of its own (Claude Code's own Opus, asked of Anthropic
+// directly) it says that model, and lists its own with magpie's as when
+// connected: it read Pick a model, and its list had lost the one picked
+// (EZN7L2C3, #834)
 function startButton(a, f, fieldBtn) {
   const b = fieldBtn(f, "ag-start");
-  if (!a.wired) {
+  if (!a.wired && !(f.value && optionFor(f, f.value)?.direct)) {
     b.replaceChildren(el("span", "v empty", t("Pick a model")));
     const c = el("span", "chev");
     c.append(svg(CHEV, 11, 1.7));
@@ -3576,13 +3580,13 @@ function contextTag(n, name) {
 // pathTag: an agent's model picker says by each model whether the agent
 // asks it through magpie or of its own vendor directly (Claude Code on its
 // own sign-in), and its Default, while it is connected, that it takes the
-// agent off magpie. Only where the list has both ways: elsewhere every
-// model listed is magpie's, and its note says so.
+// agent off magpie. Every agent's picker says it so, in one tag the note's
+// ellipsis can't cut off: the others' "· via magpie" ended their notes,
+// where Claude Code's was a tag (EZN7L2C3, #834)
 function pathTag(o) {
   if (!pick?.agent || o.custom || o.run) return null;
-  const mixed = pick.field.options?.some((x) => x.direct);
   let tag = null;
-  if (o.ref && mixed) {
+  if (o.ref) {
     tag = el("span", "badge path via", t("via magpie"));
     tag.title = t("{agent} asks magpie for it", { agent: pick.agent.name });
   } else if (o.direct) {
