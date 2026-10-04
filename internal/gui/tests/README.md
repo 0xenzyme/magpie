@@ -474,6 +474,12 @@ Off posts `trayNoLogos: true`, a save of another setting keeps it, On posts it
 back; the row has no left-border stripe, no click moves the page, and there is
 no row with no card picked nor off a Mac; in English and Chinese.
 
+`tray-bird.test.cjs` turns the menu bar's magpie icon off and on in Settings:
+on a Mac with a card in the menu bar the Menu bar magpie icon row, under the
+logos row, shows On by default; Off posts `trayNoBird: true`, a save of
+another setting keeps it, On posts it back; no click moves the page, and there
+is no row with no card picked nor off a Mac; in English and Chinese.
+
 `tray-cell-click.test.cjs` checks menu-bar quota navigation in the panel
 and main window: selecting Allowances/Overview, scrolling to and highlighting
 the matching account or balance, and keeping a click pending while quotas

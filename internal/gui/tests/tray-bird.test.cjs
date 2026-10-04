@@ -1,8 +1,8 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
-// Settings → Menu bar logos (Jevin on Discord: the small logos make the menu
-// bar's usage look worse): on a Mac with a card in the menu bar, an On/Off
-// row under the refresh row; Off posts trayNoLogos and On takes it back; a
-// save of another setting keeps it; no row without a card, nor off a Mac;
+// Settings → Menu bar magpie icon (KevinXC on Discord: hide the icon in the
+// menu bar, the allowances alone): on a Mac with a card in the menu bar, an
+// On/Off row under the logos row; Off posts trayNoBird and On takes it back;
+// a save of another setting keeps it; no row without a card, nor off a Mac;
 // no click moves the page. English and Chinese; no backend, the API is
 // faked here.
 const assert = require("node:assert/strict");
@@ -74,34 +74,35 @@ async function open(browser, lang, posts, platform, over) {
 }
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
-  test(engine + ": the menu bar's logos on or off", async (t) => {
+  test(engine + ": the menu bar's magpie icon on or off", async (t) => {
     assert(["chromium", "webkit"].includes(engine), "BROWSER must be chromium or webkit");
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
     const pages = [];
     t.after(async () => {
       if (process.env.ARTIFACT_DIR) {
         await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
-        for (const [i, p] of pages.entries()) await p.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `${engine}-tray-logos-${i}.png`) });
+        for (const [i, p] of pages.entries()) await p.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `${engine}-tray-bird-${i}.png`) });
       }
       await browser.close();
     });
 
     for (const [lang, name, off, on] of [
-      ["en", "Menu bar logos", "Off", "On"],
-      ["zh", "菜单栏订阅图标", "关闭", "开启"],
+      ["en", "Menu bar magpie icon", "Off", "On"],
+      ["zh", "菜单栏 magpie 图标", "关闭", "开启"],
     ]) {
       await t.test(lang, async () => {
         const errors = [], posts = [];
         const { context, page } = await open(browser, lang, posts, "MacIntel");
         pages.push(page);
         page.on("pageerror", (e) => errors.push(e.message));
-        const row = page.locator("#trayLogosRow");
+        const row = page.locator("#trayBirdRow");
         await row.waitFor();
         assert.equal((await row.locator(".name").textContent()).trim(), name);
-        const opts = row.locator("#trayLogosSegs .opt");
+        assert.equal(await row.evaluate((r) => r.previousElementSibling.id), "trayLogosRow", "under the logos row");
+        const opts = row.locator("#trayBirdSegs .opt");
         assert.deepEqual((await opts.allTextContents()).map((s) => s.trim()), [off, on]);
         // logos are on, as before
-        assert.equal(await opts.nth(1).evaluate((b) => b.classList.contains("on")), true, "logos on by default");
+        assert.equal(await opts.nth(1).evaluate((b) => b.classList.contains("on")), true, "the icon on by default");
         assert.equal(await row.evaluate((r) => getComputedStyle(r).borderLeftWidth), "0px");
 
         // scrolled down with a real wheel, once the page has settled, the
@@ -116,8 +117,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
         await opts.nth(0).click();
         for (let i = 0; i < 50 && !posts.length; i++) await page.waitForTimeout(50);
-        assert.equal(posts.at(-1).trayNoLogos, true, "Off posts trayNoLogos");
-        await page.waitForFunction(() => document.querySelector("#trayLogosSegs .opt").classList.contains("on"));
+        assert.equal(posts.at(-1).trayNoBird, true, "Off posts trayNoBird");
+        await page.waitForFunction(() => document.querySelector("#trayBirdSegs .opt").classList.contains("on"));
         await page.waitForTimeout(300);
         assert.equal(await view(page), before, "Off moved the page");
 
@@ -126,16 +127,16 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator("#currencySegs .opt").nth(1).evaluate((b) => b.click()); // out of sight, under the footer
         for (let i = 0; i < 50 && posts.length === sent; i++) await page.waitForTimeout(50);
         assert.equal(posts.at(-1).currency, "cny");
-        assert.equal(posts.at(-1).trayNoLogos, true, "a save of another setting keeps the logos off");
+        assert.equal(posts.at(-1).trayNoBird, true, "a save of another setting keeps the icon off");
 
         // and On takes it back
         await row.scrollIntoViewIfNeeded();
         await page.waitForTimeout(300);
         const back = await view(page);
         sent = posts.length;
-        await page.locator("#trayLogosSegs .opt").nth(1).click();
+        await page.locator("#trayBirdSegs .opt").nth(1).click();
         for (let i = 0; i < 50 && posts.length === sent; i++) await page.waitForTimeout(50);
-        assert.equal(posts.at(-1).trayNoLogos, false, "On posts logos back");
+        assert.equal(posts.at(-1).trayNoBird, false, "On posts the icon back");
         await page.waitForTimeout(300);
         assert.equal(await view(page), back, "On moved the page");
         assert.deepEqual(errors, []);
@@ -145,7 +146,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         for (const [platform, over] of [["MacIntel", { trayUsage: "", trayUsages: [] }], ["Win32", {}]]) {
           const { context, page } = await open(browser, lang, [], platform, over);
           await page.waitForTimeout(200);
-          assert.equal(await page.locator("#trayLogosRow").isVisible(), false, platform + " " + JSON.stringify(over));
+          assert.equal(await page.locator("#trayBirdRow").isVisible(), false, platform + " " + JSON.stringify(over));
           await context.close();
         }
       });

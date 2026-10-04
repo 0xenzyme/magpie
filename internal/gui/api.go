@@ -875,9 +875,9 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			onDock(in)
 		}
 		// the cards the menu bar shows, any of them (TrayUsage is only the first),
-		// how often, and with their logos or not
+		// how often, with their logos or not, and beside the bird or not
 		if (!slices.Equal(settings.Load().TrayUsages, cur.TrayUsages) || in.TrayUsageEvery != cur.TrayUsageEvery ||
-			in.TrayNoLogos != cur.TrayNoLogos) && onTrayUsage != nil {
+			in.TrayNoLogos != cur.TrayNoLogos || in.TrayNoBird != cur.TrayNoBird) && onTrayUsage != nil {
 			onTrayUsage()
 		}
 		// an alert turned on or moved is looked at now, the Mac asked for its

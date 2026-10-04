@@ -175,6 +175,10 @@ type Settings struct {
 	// is its windows stacked alone, a thin line between one card and the
 	// next.
 	TrayNoLogos bool `json:"trayNoLogos,omitempty"`
+	// TrayNoBird leaves magpie's bird out of the Mac menu bar while the
+	// cards are there, the cards alone (KevinXC on Discord); a click on one
+	// still opens the panel, and with no cards the bird is shown.
+	TrayNoBird bool `json:"trayNoBird,omitempty"`
 	// Lightweight lets the webview of a window closed — the tray panel or
 	// the main window — go once it has stayed closed a while, and makes it
 	// again when it is opened (#580): less memory, a moment's wait. This
@@ -527,7 +531,7 @@ func (s Settings) Working(n int) int {
 // Windows box that shows it).
 func (s *Settings) KeepOwn(cur Settings) {
 	s.Window, s.Proxy, s.Dock, s.DockWindow, s.Lightweight = cur.Window, cur.Proxy, cur.Dock, cur.DockWindow, cur.Lightweight
-	s.TrayUsages, s.TrayUsage, s.TrayUsageEvery, s.TrayNoLogos = cur.TrayUsages, cur.TrayUsage, cur.TrayUsageEvery, cur.TrayNoLogos
+	s.TrayUsages, s.TrayUsage, s.TrayUsageEvery, s.TrayNoLogos, s.TrayNoBird = cur.TrayUsages, cur.TrayUsage, cur.TrayUsageEvery, cur.TrayNoLogos, cur.TrayNoBird
 }
 
 // RenamePerModel moves what the user said of a provider's models to the id

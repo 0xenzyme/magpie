@@ -15044,6 +15044,10 @@ function renderTrayUsage(s, keep) {
   $("#trayLogosRow").hidden = !ids.length || !mac;
   $("#trayLogosSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.trayNoLogos ? "off" : "on",
     (v) => savePrefs({ ...keep, trayNoLogos: v === "off" })));
+  // and beside magpie's icon or alone
+  $("#trayBirdRow").hidden = !ids.length || !mac;
+  $("#trayBirdSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.trayNoBird ? "off" : "on",
+    (v) => savePrefs({ ...keep, trayNoBird: v === "off" })));
 }
 const TRAY_EVERY = [1, 3, 5, 10, 30];
 // how often magpie checks for updates by itself, in minutes (settings.UpdateEveries)
@@ -15847,7 +15851,7 @@ function prefsKeep(s) {
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactWords: s.redactWords || [], codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, traeCheckin: !!s.traeCheckin, noStats: !!s.noStats,
     noUpdatePill: !!s.noUpdatePill, noAutoUpdate: !!s.noAutoUpdate, updateEvery: s.updateEvery || 360,
-    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, vision: s.vision || "", imageGen: s.imageGen || "", searcher: s.searcher || "", currency: s.currency || "usd",
+    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, trayNoBird: !!s.trayNoBird, vision: s.vision || "", imageGen: s.imageGen || "", searcher: s.searcher || "", currency: s.currency || "usd",
     chineseUnits: !!s.chineseUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };
 }
 
