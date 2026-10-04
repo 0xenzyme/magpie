@@ -185,3 +185,26 @@ func TestTextWrittenDSMLCallTranslated(t *testing.T) {
 		}
 	}
 }
+
+// #823 again (Dazzle-sys, Trae CN's DeepSeek V4.1 Flash in Pi): a reply
+// that was a <tool_call> with only DeepSeek's closing tags after it, cut
+// short, reached the agent as that text. Tags and nothing else are
+// dropped; a <tool_call> wrapping DeepSeek's own invoke is the call.
+func TestTextWrittenTagsOnly(t *testing.T) {
+	body := `{"model":"a/m","stream":true,"messages":[{"role":"user","content":"hi"}],` + textCallTools + `}`
+	text, calls, finish, raw := relayedChat(t, body,
+		chunkOf("<tool_call>\n</｜DSML｜parameter>\n"), chunkOf("</｜DSML｜invoke>\n</"), stopChunk)
+	if text != "" || len(calls) != 0 || finish != "stop" || strings.Contains(raw, "DSML") {
+		t.Fatalf("tags only: text %q calls %v finish %q\n%s", text, calls, finish, raw)
+	}
+	text, calls, finish, raw = relayedChat(t, body,
+		chunkOf("看一下。<tool_call>\n<｜DSML｜invoke name=\"bash\">\n<｜DSML｜parameter name=\"command\" string=\"true\">ls</｜DSML｜parameter>\n</｜DSML｜invoke>\n</tool_call>"), stopChunk)
+	if text != "看一下。" || calls["bash"] != `{"command":"ls"}` || finish != "tool_calls" || strings.Contains(raw, "DSML") || strings.Contains(raw, "tool_call>") {
+		t.Fatalf("wrapped invoke: text %q calls %v finish %q\n%s", text, calls, finish, raw)
+	}
+	// text with a tag-like end stays
+	text, _, _, _ = relayedChat(t, body, chunkOf("x </tool_call> y"), stopChunk)
+	if text != "x </tool_call> y" {
+		t.Fatalf("lookalike: %q", text)
+	}
+}

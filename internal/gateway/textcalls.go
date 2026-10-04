@@ -114,6 +114,13 @@ func parseTextCalls(s string, names map[string]bool) (calls []writtenCall, rest 
 		switch {
 		case h >= 0 && (d == nil || h < d[0]):
 			left.WriteString(s[:h])
+			if t := strings.TrimLeft(s[h+len("<tool_call>"):], " \t\r\n"); t == "" || strings.HasPrefix(t, "<") {
+				// no JSON after it: DeepSeek's own tags, an invoke or the
+				// closes of one (#823), or nothing; the opener is dropped
+				// and what follows read as it is
+				s = t
+				continue
+			}
 			c, n, good := hermesCall(s[h+len("<tool_call>"):], names)
 			if !good {
 				return nil, "", false
@@ -134,7 +141,25 @@ func parseTextCalls(s string, names map[string]bool) (calls []writtenCall, rest 
 		}
 	}
 	rest = strings.TrimSpace(textCallJunk.ReplaceAllString(left.String(), ""))
-	return calls, rest, len(calls) > 0
+	rest = strings.TrimSpace(strings.TrimSuffix(rest, cutMark(rest)))
+	// tags and nothing else (#823, Dazzle-sys: <tool_call></｜DSML｜parameter>
+	// </｜DSML｜invoke></ was all a reply said) are dropped too: shown to the
+	// agent and read back, they had the model write its next calls the same
+	// way
+	return calls, rest, len(calls) > 0 || rest == ""
+}
+
+// cutMark is the end of s that is a mark's beginning cut short (</ of
+// </tool_call>), "" when there's none; a lone < may be text.
+func cutMark(s string) string {
+	for _, m := range append([]string{"</tool_call>", "</｜DSML｜", "</|DSML|"}, textCallMarks...) {
+		for n := len(m) - 1; n >= 2; n-- {
+			if strings.HasSuffix(s, m[:n]) {
+				return m[:n]
+			}
+		}
+	}
+	return ""
 }
 
 // hermesCall reads the JSON object a <tool_call> opens, and says how much
@@ -320,7 +345,9 @@ func (t *textCallSee) event(ev Event) {
 					t.see(Event{Kind: KToolStart, ID: textCallID(), Name: c.Name})
 					t.see(Event{Kind: KToolArgs, Text: string(c.Args)})
 				}
-				ev.Stop = "tool"
+				if len(calls) > 0 {
+					ev.Stop = "tool"
+				}
 			}
 		}
 		t.release()
@@ -455,9 +482,11 @@ func (t *textCallTidy) line(line []byte) []byte {
 					"function": map[string]any{"name": c.Name, "arguments": string(c.Args)}}
 			}
 			pre = append(pre, t.release()...)
-			pre = append(pre, t.chunk(map[string]any{"tool_calls": tcs}, nil)...)
-			ch["finish_reason"] = "tool_calls"
-			changed = true
+			if len(tcs) > 0 {
+				pre = append(pre, t.chunk(map[string]any{"tool_calls": tcs}, nil)...)
+				ch["finish_reason"] = "tool_calls"
+				changed = true
+			}
 		} else {
 			pre = append(pre, t.release()...)
 		}
