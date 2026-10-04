@@ -78,14 +78,25 @@ func record(id, key, v string) {
 
 // Apply sets one of the agent's fields and remembers it as magpie's, so it
 // can be told apart from what something else writes there later. Every
-// setting of a field by the user goes through here.
+// setting of a field by the user goes through here. A field magpie set
+// before that this one moves too is magpie's doing as well: Claude Code's
+// Default takes its tiers and subagent model out with magpie's endpoint,
+// which read as changed outside magpie, and the drift kept the row up
+// among the connected ones while it said Not connected (#834).
 func (a *Agent) Apply(key, v string) error {
 	f := a.Field(key)
 	if f == nil {
 		return nil
 	}
+	was := a.Values()
 	if err := f.Set(v); err != nil {
 		return err
+	}
+	now := a.Values()
+	for k := range appliedOf(a.ID).Fields {
+		if k != f.Key && now[k] != was[k] {
+			record(a.ID, k, now[k])
+		}
 	}
 	record(a.ID, f.Key, f.Get())
 	return nil

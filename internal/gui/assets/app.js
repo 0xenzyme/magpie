@@ -1043,14 +1043,14 @@ function startField(a) {
 
 // startButton picks the model an agent starts on, from the row. Not
 // connected, it lists magpie's models alone, and the one picked connects
-// the agent and starts it on it; connected, every choice there is. Off
-// magpie on a model of its own (Claude Code's own Opus, asked of Anthropic
-// directly) it says that model, and lists its own with magpie's as when
-// connected: it read Pick a model, and its list had lost the one picked
-// (EZN7L2C3, #834)
+// the agent and starts it on it; connected, every choice there is. One
+// whose list has models of its own beside magpie's (Claude Code's, asked
+// of Anthropic directly) says what it is on off magpie too, its Default or
+// its own Opus, and lists them all as when connected: it read Pick a
+// model, and its list had lost the one picked (EZN7L2C3, #834)
 function startButton(a, f, fieldBtn) {
   const b = fieldBtn(f, "ag-start");
-  if (!a.wired && !(f.value && optionFor(f, f.value)?.direct)) {
+  if (!a.wired && !f.options.some((o) => o.direct)) {
     b.replaceChildren(el("span", "v empty", t("Pick a model")));
     const c = el("span", "chev");
     c.append(svg(CHEV, 11, 1.7));
