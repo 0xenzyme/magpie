@@ -1191,7 +1191,7 @@
     guardian: "Approval check", auto_review: "Approval check", guardian_review: "Approval check",
     review: "Review", compact: "Compaction",
     memory_consolidation: "Memory", memgen: "Memory", memory: "Memory",
-    thread_title: "Title", title: "Title",
+    thread_title: "Title", thread_title_reconsideration: "Title", title_generation: "Title", title: "Title",
     collab_spawn: "Subagent", thread_spawn: "Subagent", agent_job: "Subagent",
     luna_reserve: "Luna Reserve",
     web_search: "Web search",
