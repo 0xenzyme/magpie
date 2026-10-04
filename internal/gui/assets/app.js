@@ -856,9 +856,9 @@ const NATIVE_ONLY = {
 // the row
 const NO_PICKER = new Set(["gemini", "hermes", "morph", "agy", "muse"]);
 // agents whose own model menu is the list picked here: no one model to
-// start on, but which of magpie's it offers (Claude Desktop reads
-// /v1/models as it starts, and the user switches among them in it)
-const MENU_FROM_LIST = new Set(["claude-desktop"]);
+// start on, but which of magpie's it offers (Claude Desktop and Cursor
+// Private Inference read /v1/models, and the user switches among them in it)
+const MENU_FROM_LIST = new Set(["claude-desktop", "cursor-local"]);
 const menuFromList = (a) => MENU_FROM_LIST.has(a.id) && a.wired && !!a.models;
 
 // menuSaid: the models such an agent lists, by name while they are few

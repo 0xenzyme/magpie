@@ -1292,7 +1292,7 @@ func state() stateJSON {
 		}
 		vals := a.Values()
 		aj := agentJSON{ID: a.ID, Name: a.Name, Icon: a.Icon, Path: tilde(a.Path), Fields: agentFields(a, vals)}
-		aj.Models = agentModelCount(a.ID, aj.Fields)
+		aj.Models = agentModelCount(a, aj.Fields)
 		aj.Drift = a.Drift()
 		aj.Wired = a.Wired()
 		if aj.Wired {
