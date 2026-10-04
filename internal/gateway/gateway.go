@@ -1747,7 +1747,21 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				clientResponseID = call.Usage.ResponseID
 			}
 		}
-		if call.Status < 400 {
+		if call.Status < 400 && call.Error != "" && r.Context().Err() == nil {
+			// the reply had begun, its 200 sent, and broke off (#733:
+			// Cursor's "Unable to reach the model provider" after some of
+			// the text): not an answer. What the agent got stays as it is,
+			// but the conversation isn't kept here for the agent's retry,
+			// and a vendor that failed (not a reply too long, nor one its
+			// filter refused) rests, so the retry goes to another member. A
+			// reply the agent stopped itself is booked as before
+			try.Fail = failureOf(c, call.Status, []byte(call.Error))
+			unanswered(stuck, c)
+			if lateRests(call.Error) {
+				rest := s.restAfter(c, call.Status, hw.header, []byte(call.Error))
+				try.Fail, try.Rest = rest.Why, &rest
+			}
+		} else if call.Status < 400 {
 			servedCandidate(c, call.Usage.Input+call.Usage.Output+call.Usage.CacheRead+call.Usage.CacheWrite)
 			// a compaction a rule sent to a model of its own leaves the
 			// conversation, and the turn's size, where they were

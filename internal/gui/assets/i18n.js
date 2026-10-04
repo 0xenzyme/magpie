@@ -2248,6 +2248,8 @@ const I18N = {
     "{who} answered {status} · {fail}. {how}; the request goes on to {next} before any of the reply reaches {agent}.": "{who} 返回 {status} · {fail}。{how}；在任何回复到达 {agent} 之前，请求就转给了 {next}。",
     "{who} answered {status} and nobody is left to try, so {agent} gets the error.": "{who} 返回 {status}，已经没有别的可试，所以 {agent} 收到了这个错误。",
     "{who} answered {status} — an error another account wouldn't fix, so {agent} gets it.": "{who} 返回 {status}——换个账号也解决不了的错误，所以 {agent} 收到了它。",
+    "{who} began answering, then broke off · {fail}. {agent} got what was said before the error; {how}, so {agent}'s next request goes to another first.": "{who} 已开始回答，随后中断 · {fail}。{agent} 收到了出错前已输出的内容；{how}，所以 {agent} 的下一次请求会先交给别的成员。",
+    "{who} began answering, then broke off. {agent} got what was said before the error; the conversation isn't kept on {who} for its next request.": "{who} 已开始回答，随后中断。{agent} 收到了出错前已输出的内容；这段对话的下一次请求不会再固定交给 {who}。",
     "the next": "下一个",
     "It rests {d}, as the vendor's Retry-After says": "按厂商 Retry-After 的要求，它休息 {d}",
     "It sits out half an hour, until someone tops it up": "它先休息半小时，等人充值",

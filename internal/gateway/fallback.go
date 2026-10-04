@@ -600,6 +600,15 @@ func retryable(status int, body []byte) bool {
 	return false
 }
 
+// lateRests says whether a reply that broke off after it began, with this
+// error, was the vendor failing (#733): unreachable, overloaded, out of
+// quota. A conversation grown too long for the model, or a request the
+// vendor turned away as it reads, would fail the same at the next asked:
+// nobody rests for it.
+func lateRests(msg string) bool {
+	return !tooLong(http.StatusBadRequest, msg) && !refusedWords.MatchString(msg)
+}
+
 // unsaidMargin is how far past a model's window a request's estimate
 // must go to be taken as too long for it: estimate counts a token as four
 // bytes, which most text runs under (Devin counted 173,954 tokens of one
