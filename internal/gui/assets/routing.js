@@ -59,7 +59,9 @@
       s.classList.add("rt-errs");
       s.title = t("Show the latest request that failed");
       s.addEventListener("click", () => {
-        const r = listed().find((x) => x.done && x.status >= 400);
+        // the same "bad" the rows and the story tell: a reply that broke
+        // off, not a 200 with a note of magpie's own (Codex's titles off)
+        const r = listed().find((x) => x.done && outcome(x)[1] === "bad");
         if (r) pick(r);
       });
     }
@@ -1146,9 +1148,9 @@
         if (hint) items.push([t(hint), "aside"]);
       }
       // the reply said another model answered it
-      if (tr.done && tr.status < 400 && tr.swapped) items.push([swapWhy(tr), "swap", tr]);
+      if (tr.done && tryOk(tr) && tr.swapped) items.push([swapWhy(tr), "swap", tr]);
       // another magpie's routing group named the member it routed to
-      else if (tr.done && tr.status < 400 && tr.routed) items.push([routedWhy(tr), "aside", tr]);
+      else if (tr.done && tryOk(tr) && tr.routed) items.push([routedWhy(tr), "aside", tr]);
     });
     if (r.done && !r.tries.length) items.push([t("Nothing was tried: {error}", { error: r.error || r.status }), "bad"]);
     const key = JSON.stringify([r.kind, items.map(([s, c, tr]) => [s, c, tr?.model, tr?.served]), r.order.map(logoOf)]);
@@ -1273,8 +1275,11 @@
       const tr = r.tries[r.tries.length - 1], w = tr && tried(r, tr);
       return [w ? t("{who} is answering…", { who: `${who(w)} · ${w.model}` }) : t("routing…"), "wait", tr];
     }
-    const ok = r.tries.find((tr) => tr.done && tr.status < 400), w = ok && tried(r, ok);
-    if (r.status < 400) return [w ? `${who(w)} · ${w.model}` : r.provider, r.tries.length > 1 ? "moved" : "ok", ok];
+    const ok = r.tries.find((tr) => tr.done && tryOk(tr)), w = ok && tried(r, ok);
+    // a 200 whose error is a note of its own — Codex's titles off in
+    // Settings, a reply with no title in it — answered: its try has no
+    // fail. Bad is a reply that broke off, or every try failing
+    if (r.status < 400 && (ok || !r.tries.length)) return [w ? `${who(w)} · ${w.model}` : r.provider, r.tries.length > 1 ? "moved" : "ok", ok];
     const last = r.tries[r.tries.length - 1];
     return [last ? `${r.status} · ${failWord(last.fail)}` : `${r.status || ""} ${r.error || ""}`.trim(), "bad"];
   }
@@ -1501,7 +1506,7 @@
       // all the row says, and its titles
       const title = reqTitle(r, how, tr);
       const sig = JSON.stringify([lang, said, how, title, r.time, r.agent, agentName(r.agent), ag?.icon, r.model, r.provider, r.kind, r.effort,
-        tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tr.status < 400 ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tr.status < 400 ? tr.served : 0, meta, routeCost(r)]);
+        tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tryOk(tr) ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tryOk(tr) ? tr.served : 0, meta, routeCost(r)]);
       ids.add(r.id);
       let x = reqRows.get(r.id);
       if (!x || x.sig !== sig) {
@@ -1560,8 +1565,8 @@
       ft.title = t("Sent in its vendor's fast mode, as the group says");
       to.append(ft);
     }
-    if (tr?.swapped && tr.done && tr.status < 400) to.append(swapTag(tr, true)); // beside the model asked for
-    else if (tr?.routed && tr.done && tr.status < 400) to.append(routedTag(tr));
+    if (tr?.swapped && tr.done && tryOk(tr)) to.append(swapTag(tr, true)); // beside the model asked for
+    else if (tr?.routed && tr.done && tryOk(tr)) to.append(routedTag(tr));
     const info = el("span", "meta");
     info.append(el("span", "", meta.join(" · ")), el("span", "cost", routeCost(r)));
     info.lastChild.title = r.priced ? costNote() : t("No known price or token counts for this request");
@@ -1786,7 +1791,7 @@
         if (!routes.has(id)) break;
         const tr = r.tries[i];
         dot.classList.remove("held");
-        if (tr.status < 400) {
+        if (tryOk(tr)) {
           // the reply's tokens are counted once the route is done
           await until(() => g !== gen || rt().done);
           if (g !== gen) break;
@@ -3330,7 +3335,7 @@
         dot.classList.remove("wait");
         if (n && !--n.lit) n.wire.classList.remove("on");
         const t2 = r.tries[i];
-        if (t2?.status >= 400) {
+        if (t2 && !tryOk(t2)) {
           dot.classList.add("bad");
           await pRest(260);
           await pFly(dot, n, true, 360);
@@ -3404,7 +3409,7 @@
     to.append(el("i", "", "→"));
     const place = w ? where(w) : r.provider;
     if (!r.done) to.append(el("span", "pr-where", w ? t("{who} is answering…", { who: place }) : t("routing…")));
-    else if (r.status >= 400) {
+    else if (how === "bad") {
       const last = r.tries[r.tries.length - 1];
       to.append(el("span", "pr-where", last ? `${r.status} · ${failWord(last.fail)}` : `${r.status || ""} ${r.error || ""}`.trim()));
     } else {
