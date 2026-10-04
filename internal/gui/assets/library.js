@@ -1992,16 +1992,7 @@
       u.title = stale.length === 1 ? t("Fetch {name} from GitHub again", { name: stale[0].name }) : t("Fetch the {n} skills GitHub changed again", { n: stale.length });
       tags.append(u);
     }
-    // which agents have its skills, all of them or some
-    const have = el("div", "lib-have");
-    for (const a of all) {
-      const k = g.skills.filter((s) => s.agents.includes(a.id)).length;
-      if (!k) continue;
-      const i = agentIcon(a.icon);
-      i.title = k === n ? t("{agent} has all of them", { agent: a.name }) : t("{agent} has {n} of them", { agent: a.name, n: k });
-      if (k < n) i.classList.add("some");
-      have.append(i);
-    }
+    const have = groupChips(g, all);
     const acts = el("div", "lib-rowacts");
     if (g.repo) {
       const o = button("", "lib-icon", () => browse("https://github.com/" + g.repo));
@@ -2022,6 +2013,46 @@
     card.append(head);
     if (!folded) card.append(w.el);
     return card;
+  }
+
+  // A group's chips: which agents have its skills, all of them or some,
+  // and a click gives an agent every one of them or takes them all (#787,
+  // mintonight: a repository's skills were on or off one row at a time).
+  // A chip is lit when its agent has them all; one with some is half lit,
+  // and a click gives it the rest. All gives them to every agent shown.
+  function groupChips(g, all) {
+    const n = g.skills.length, names = g.skills.map((s) => s.name);
+    const count = (id) => g.skills.filter((s) => s.agents?.includes(id)).length;
+    const full = all.filter((a) => count(a.id) === n).map((a) => a.id);
+    const box = agentChips(all, full, async (next) => {
+      const on = next.filter((id) => !full.includes(id)), off = full.filter((id) => !next.includes(id));
+      box.classList.add("busy");
+      try {
+        let v = null;
+        if (on.length) v = await api("library/skills/agents-some", { names, agents: on, on: true });
+        if (off.length) v = await api("library/skills/agents-some", { names, agents: off, on: false });
+        if (!v) return;
+        take(v);
+        const who = (ids) => ids.map(nameOf).join(", ");
+        report(v.result, on.length
+          ? t("{repo}'s skills are on for {agents}", { repo: g.repo || t("On this computer"), agents: who(on) })
+          : t("{repo}'s skills are off for {agents}", { repo: g.repo || t("On this computer"), agents: who(off) }));
+      } catch (e) {
+        status(e.message, "err", 6000);
+      }
+      render();
+    }, { all: true });
+    box.classList.add("lib-groupchips");
+    for (const c of box.querySelectorAll(".lib-ag[data-agent]")) {
+      const a = all.find((x) => x.id === c.dataset.agent), k = count(a.id);
+      if (k && k < n) c.classList.add("some");
+      c.title = k === n ? t("{agent} has all of them — click to take them away", { agent: a.name })
+        : k ? t("{agent} has {n} of them — click to give it the rest", { agent: a.name, n: k })
+        : t("Give {agent} all of them", { agent: a.name });
+    }
+    const every = box.querySelector(".lib-ag.all");
+    if (every) every.title = every.classList.contains("on") ? t("Every agent has all of them — click to take them from every one") : t("Give all of them to every agent");
+    return box;
   }
 
   // ---------- a long list, drawn near the view first ----------
