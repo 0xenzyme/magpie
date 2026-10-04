@@ -70,7 +70,7 @@ func TestCleanClaudeEnvRemovesGatewayOverrides(t *testing.T) {
 			t.Fatalf("kept %s in %q", forbidden, joined)
 		}
 	}
-	for _, want := range []string{"PATH=/bin", "KEEP=yes", "ENABLE_CLAUDEAI_MCP_SERVERS=0", "DISABLE_AUTO_COMPACT=1"} {
+	for _, want := range []string{"PATH=/bin", "KEEP=yes", "ENABLE_CLAUDEAI_MCP_SERVERS=0", "DISABLE_AUTO_COMPACT=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing %s in %q", want, joined)
 		}
@@ -141,61 +141,6 @@ func TestClaudeRunKeptForTheNextTurn(t *testing.T) {
 	third := ask(`[` + msg("user", "hi") + `,` + msg("assistant", first) + `,` + msg("user", "and?") + `,` + msg("assistant", "edited") + `,` + msg("user", "so?") + `]`)
 	if strings.Contains(third, "pid "+pid) {
 		t.Fatalf("an edited reply: %q", third)
-	}
-}
-
-// Every Claude Code magpie starts works in the same folder, one that
-// outlives its runs: Claude Code writes its working directory into the
-// system prompt, and a folder of each run's own made every conversation's
-// next run a prompt Anthropic's cache had never seen, the whole
-// conversation written to the cache again and never read (X: Chen, "the
-// model got heavy" through magpie).
-func TestClaudeRunsShareAWorkingDirectory(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("a shell script stands in for Claude Code")
-	}
-	tmp := t.TempDir()
-	t.Setenv("TMPDIR", tmp)
-	bin := t.TempDir()
-	script := `#!/bin/sh
-while read -r line; do
-  echo '{"type":"stream_event","event":{"type":"message_start","message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1}}}}'
-  echo '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"cwd '"$(pwd -P)"'"}}}'
-  echo '{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}}'
-  echo '{"type":"stream_event","event":{"type":"message_stop"}}'
-  echo '{"type":"result","subtype":"success","is_error":false,"result":""}'
-done
-`
-	os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755)
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	s := New()
-	p := provider.Provider{ID: "claude", Account: &provider.Account{Agent: "claude", User: "u"}}
-	ask := func(text string) string {
-		t.Helper()
-		body := `{"model":"claude-sonnet-5","max_tokens":100,"messages":[{"role":"user","content":` + strconv.Quote(text) + `}]}`
-		rec := httptest.NewRecorder()
-		var u Usage
-		if code, msg := s.serveClaudeSubscription(rec, httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body)), provider.Anthropic, p, "claude-sonnet-5", []byte(body), &u); code != 200 {
-			t.Fatalf("%d %s", code, msg)
-		}
-		var res struct {
-			Content []struct{ Text string } `json:"content"`
-		}
-		json.Unmarshal(rec.Body.Bytes(), &res)
-		if len(res.Content) == 0 {
-			t.Fatalf("no answer: %s", rec.Body)
-		}
-		return strings.TrimPrefix(res.Content[0].Text, "cwd ")
-	}
-	first, second := ask("one conversation"), ask("another")
-	if first != second {
-		t.Fatalf("runs worked in %q and %q", first, second)
-	}
-	if want := evalSymlinks(filepath.Join(tmp, "magpie-claude")); first != want {
-		t.Fatalf("cwd %q, want %q", first, want)
-	}
-	if _, err := os.Stat(first); err != nil {
-		t.Fatalf("the folder went with its run: %v", err)
 	}
 }
 

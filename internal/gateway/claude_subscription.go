@@ -63,8 +63,8 @@ type subscriptionBridge struct {
 //
 // It waits as long as the prompt cache it wrote lasts: on a subscription
 // within its limits Claude Code writes Anthropic's cache for an hour
-// (claudeCacheTTL, with its CLAUDE_CODE_PROMPT_CACHE_TTL unset), and a run
-// let go sooner has its conversation told to a new one in one message, a
+// (claudeCacheTTL; cleanClaudeEnv pins its CLAUDE_CODE_PROMPT_CACHE_TTL to
+// 1h), and a run let go sooner has its conversation told to a new one in one message, a
 // prefix the cache has never seen, so the whole of it is written again
 // while what the old run wrote is still there to read (#463: a turn
 // after 39 minutes idle wrote the conversation again). Past the hour the cache is gone
@@ -245,16 +245,38 @@ func sweepBridgeProjects(claudeDir, tempDir string) {
 	}
 }
 
-// claudeRunDir is the folder every bridge run works in, the same one each
-// time: Claude Code writes its working directory into the system prompt,
-// so a folder of each run's own made every new turn's prompt a new one and
-// Anthropic's prompt cache was written again for the whole conversation and
-// never read — a long Claude Code conversation through magpie waited for
-// all of it each turn. A run's own files (tools.json) stay in its own
-// folder, which isn't in the prompt.
-func claudeRunDir() (string, error) {
-	dir := filepath.Join(os.TempDir(), "magpie-claude")
-	return dir, os.MkdirAll(dir, 0o700)
+// claudeWorkDir is the folder every run works in. Claude Code tells its
+// model the working directory in its system prompt, after its own fixed
+// part and before the conversation: a folder of its own for each run made
+// every prompt new to Anthropic's cache from there on, a caller's system
+// prompt and its history written again each time, with only Claude Code's
+// own part (some 2.8k tokens) read.
+//
+// It is in the temp folder, which is in no git repository: Claude Code puts
+// the status and recent commits of the repository its folder is in into
+// the prompt, so a folder under a home kept in git (dotfiles) would send
+// them with every request, and break the cache whenever they change. The
+// folder is the user's own (claudeWorkName: their uid in its name where
+// the temp folder is shared, as /tmp is on Linux), and used only when it
+// is a folder they own that no one else can write to: one someone else
+// made, or could put a CLAUDE.md in, would be read by every run.
+func claudeWorkDir() (string, error) {
+	dir := filepath.Join(os.TempDir(), claudeWorkName())
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	fi, err := os.Lstat(dir)
+	switch {
+	case err != nil:
+		return "", err
+	case !fi.IsDir():
+		return "", fmt.Errorf("%s is not a folder", dir)
+	case othersCanWrite(fi):
+		return "", fmt.Errorf("%s can be written by others (%v)", dir, fi.Mode().Perm())
+	case !ownedByMe(fi):
+		return "", fmt.Errorf("%s belongs to another user", dir)
+	}
+	return dir, nil
 }
 
 func evalSymlinks(path string) string {
@@ -379,13 +401,15 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 	if len(req.Schema) > 0 {
 		args = append(args, "--json-schema", string(req.Schema))
 	}
-	cwd, err := claudeRunDir()
+	work, err := claudeWorkDir()
 	if err != nil {
-		cleanup()
-		return nil, nil, err
+		// a run of its own folder answers all the same, its prompt only
+		// read from the cache as far as Claude Code's own part
+		log.Printf("claude: working in a folder of the run's own: %v", err)
+		work = tmp
 	}
 	cmd := binary.command(context.Background(), args...)
-	cmd.Dir = cwd
+	cmd.Dir = work
 	cmd.Env = binary.env(netproxy.EnvWith(claudeProxy(ctx), cleanClaudeEnv(os.Environ())), configDir)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -792,7 +816,7 @@ func cleanClaudeEnv(env []string) []string {
 	blocked := map[string]bool{
 		"ANTHROPIC_BASE_URL": true, "ANTHROPIC_API_KEY": true, "ANTHROPIC_AUTH_TOKEN": true,
 		"CLAUDECODE": true, "CLAUDE_CODE_ENTRYPOINT": true, "CLAUDE_CODE_SSE_PORT": true,
-		"CLAUDE_CODE_OAUTH_TOKEN": true,
+		"CLAUDE_CODE_OAUTH_TOKEN": true, "CLAUDE_CODE_PROMPT_CACHE_TTL": true,
 	}
 	out := make([]string, 0, len(env)+3)
 	for _, e := range env {
@@ -801,7 +825,15 @@ func cleanClaudeEnv(env []string) []string {
 			out = append(out, e)
 		}
 	}
-	return append(out, "ENABLE_CLAUDEAI_MCP_SERVERS=0", "DISABLE_AUTO_COMPACT=1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1")
+	// no auto memory: every run works in one folder (claudeWorkDir), so a
+	// memory one conversation's caller wrote there would be in the system
+	// prompt of all the account's others, and a change to it would undo
+	// the cache from there on
+	return append(out, "ENABLE_CLAUDEAI_MCP_SERVERS=0", "DISABLE_AUTO_COMPACT=1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1",
+		// an hour's cache, as Claude Code writes it on a subscription within
+		// its limits, always: the mark on the caller's instructions
+		// (renderClaudePrompt) is an hour's, which may not follow a 5m one
+		"CLAUDE_CODE_PROMPT_CACHE_TTL=1h")
 }
 
 type lockedWriter struct{ run *subscriptionRun }
@@ -1313,6 +1345,15 @@ func renderClaudePrompt(req *Request) ([]map[string]any, error) {
 			fmt.Fprintf(&text, "\nYou must call the %s tool.", strings.TrimPrefix(req.ToolChoice, "name:"))
 		}
 		text.WriteString("\n</external_system_instructions>\n\n")
+		// The caller's instructions are a block of their own, marked for the
+		// cache: Claude Code marks only the end of the message, so with them
+		// in one block with the conversation a request whose messages differ
+		// (the next item of a batch, a new conversation under the same
+		// instructions) found nothing cached past Claude Code's own prompt.
+		// The mark's TTL is the one Claude Code uses (claudeCacheTTL, pinned
+		// in cleanClaudeEnv): Anthropic refuses a 1h mark after a 5m one.
+		blocks = append(blocks, map[string]any{"type": "text", "text": text.String(), "cache_control": map[string]string{"type": "ephemeral", "ttl": "1h"}})
+		text.Reset()
 	}
 	for _, m := range req.Messages {
 		label := "Human"
