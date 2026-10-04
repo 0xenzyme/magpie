@@ -28,9 +28,10 @@ and there is a terminal version (`magpie tui`) and a plain CLI.
   ↑↓ agent  ·  ←→ field  ·  ↵ change  ·  s save profile  ·  p profiles  ·  q quit
 ```
 
-- **One small binary.** Under 15 MB with the desktop app (it uses the system
-  webview through [Wails](https://wails.io), nothing bundled), 7 MB for the
-  terminal-only build. macOS, Linux and Windows.
+- **One binary.** About 30 MB with the desktop app (it uses the system
+  webview through [Wails](https://wails.io), nothing bundled; a 15 MB
+  download on a Mac), and under 30 MB for the terminal-only build. macOS,
+  Linux and Windows.
 - **Edits config files surgically.** Only the one key you change is touched;
   comments, ordering and indentation in your `settings.json`, `config.toml`,
   `opencode.jsonc` or `config.yaml` survive intact. Writes are atomic.

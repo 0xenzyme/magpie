@@ -43,7 +43,8 @@ const usage = `magpie — one place to pick every agent's model
   magpie <agent>                  show one agent
   magpie <agent> <model>          set an agent's model   e.g. magpie claude deepseek/deepseek-chat
   magpie <agent> <field> <value>  set another field   e.g. magpie codex effort high
-  magpie <agent> [field] default  back to the agent's own default, magpie's wiring removed
+  magpie <agent> default          take magpie out: the agent back on what it had before
+  magpie <agent> <field> default  that field back to the agent's own default
 
   magpie save <name>              snapshot every agent's settings as a profile
   magpie use <name>               apply a profile
@@ -318,6 +319,9 @@ func run(args []string) error {
 		return list([]*agent.Agent{a}, true, -1)
 	case 2:
 		if args[1] == "default" {
+			if a.Wired() {
+				return disconnect(a)
+			}
 			return set(a, a.Fields[0].Key, "")
 		}
 		// `magpie codex xhigh`: a bare value that belongs to a non-model field
@@ -364,6 +368,36 @@ func set(a *agent.Agent, key, value string) error {
 		shown += " " + muted.Render("(unchanged)")
 	}
 	fmt.Println(green.Render("✓"), bold.Render(a.Name), muted.Render(f.Label), shown)
+	if a.Notice != nil {
+		if n := a.Notice(); n != "" {
+			fmt.Println(muted.Render("  ↻ " + n))
+		}
+	}
+	return nil
+}
+
+// disconnect is `magpie <agent> default` on an agent magpie is wired into:
+// the Agents page's Disconnect, which puts back what the user had before
+// magpie — Claude Code's own model, its endpoint — where a field's default
+// leaves the agent as installed (__jingling on X: magpie claude default
+// took the model they had set away with magpie's)
+func disconnect(a *agent.Agent) error {
+	before := a.Values()
+	if err := a.Disconnect(); err != nil {
+		return err
+	}
+	now := a.Values()
+	for _, f := range a.Fields {
+		if before[f.Key] == now[f.Key] {
+			continue
+		}
+		shown := now[f.Key]
+		if shown == "" {
+			shown = muted.Render("default")
+		}
+		fmt.Println(green.Render("✓"), bold.Render(a.Name), muted.Render(f.Label), shown)
+	}
+	fmt.Println(muted.Render("  disconnected from magpie, back to what it had before"))
 	if a.Notice != nil {
 		if n := a.Notice(); n != "" {
 			fmt.Println(muted.Render("  ↻ " + n))
