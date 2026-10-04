@@ -2312,7 +2312,10 @@
     return i?.name ? `${i.name} · ${i.model}${at}` : id;
   }
   function renderGroups() {
-    if (groups) steady(drawGroups);
+    if (!groups) return;
+    // not under a row being dragged: it is drawn when let go
+    if (groupArranging) { groupRenderPending = true; return; }
+    steady(drawGroups);
   }
   function drawGroups() {
     const newBtn = el("button", "text", t("New group"));
@@ -2377,8 +2380,8 @@
   }
   function groupRow(g) {
     const row = el("div", "rt-group" + (g.ready ? "" : " off"));
-    const ics = el("span", "ics");
-    ics.append(stackIcon(groupIcons(g)));
+    row.dataset.id = g.id;
+    const ics = groupHandle(g, row);
     const main = el("div", "main");
     const nm = el("div", "nm");
     nm.append(el("b", "", g.name), el("code", "mdl", "group/" + g.id));
@@ -2412,8 +2415,89 @@
     edit.onclick = (e) => { e.stopPropagation(); open(); };
     const open = () => { gEdit = { id: g.id, draft: { name: g.name, members: [...g.members], match: [...(g.match || [])], matched: [...(g.matched || [])], fast: [...(g.fast || [])], off: [...(g.off || [])], routing: g.routing || "", pick: g.pick || "", affinity: g.affinity || "", sink: !!g.sink, classifier: g.classifier || "", effort: g.effort || "", levels: [...(g.levels || [])], rules: (g.rules || []).map((r) => ({ ...r, intent: r.intent || "", agents: [...(r.agents || [])], time: r.time ? { ...r.time, days: [...(r.time.days || [])] } : null })) } }; renderGroups(); };
     row.onclick = open;
+    row.oncontextmenu = (e) => { e.preventDefault(); groupMenu(ics, g); };
     row.append(ics, main, tags, edit);
     return row;
+  }
+  // groupHandle is a group row's logos, which are also its handle, as an
+  // agent row's logo is (#779): drag it to move the row, click it (or
+  // right-click the row) for Move up and Move down, and Alt+↑/↓ moves it
+  // from the keyboard. The grip that says so is drawn in the row's margin
+  // only on hover (routing.css), as on the Agents page. The order is the
+  // one /v1/models lists the groups in too, which agents' pickers show.
+  let groupArranging = false, groupRenderPending = false, groupArrangeSeq = 0;
+  const shownGroups = () => groups.groups.filter((g) => !g.hidden).map((g) => g.id);
+  function groupHandle(g, row) {
+    const b = el("button", "ics ag-handle rt-ghandle");
+    b.type = "button";
+    b.setAttribute("aria-label", t("Arrange {agent}", { agent: g.name }));
+    b.setAttribute("aria-haspopup", "menu");
+    b.title = t("Drag to reorder — agents' model lists show the groups in this order · Alt+↑/↓ to move");
+    b.append(stackIcon(groupIcons(g)));
+    b.onkeydown = (e) => {
+      if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      moveGroup(g.id, shownGroups().indexOf(g.id) + (e.key === "ArrowUp" ? -1 : 1), true);
+    };
+    // the card opens the editor; the handle its menu, but not for the
+    // click that ends a drag
+    b.onclick = (e) => { e.stopPropagation(); if (!b.dataset.dragged) groupMenu(b, g); delete b.dataset.dragged; };
+    b.onpointerdown = (e) => {
+      if (groupArranging) return;
+      // an editor open in the list is no row to move past: the rows
+      // dragged among are the cards, and where one is let go is named by
+      // the card it lands on
+      const rows = [...gList.children].filter((r) => r.classList.contains("rt-group"));
+      groupArranging = dragRows(e, b, row, gList, rows, (to) => moveGroup(g.id, shownGroups().indexOf(rows[to].dataset.id)), closeAgentMenu, () => {
+        groupArranging = false;
+        if (groupRenderPending) { groupRenderPending = false; renderGroups(); }
+      });
+    };
+    return b;
+  }
+  function groupMenu(anchor, g) {
+    const again = agentMenu?.anchor === anchor;
+    closeAgentMenu();
+    if (again) return;
+    const ids = shownGroups(), i = ids.indexOf(g.id);
+    openRowMenu(anchor, [
+      { name: "Move up", icon: MOVE_UP, key: ALT + "↑", off: i <= 0, run: () => moveGroup(g.id, i - 1, true) },
+      { name: "Move down", icon: MOVE_DOWN, key: ALT + "↓", off: i < 0 || i >= ids.length - 1, run: () => moveGroup(g.id, i + 1, true) },
+    ]);
+  }
+  // moveGroup puts the group at index `to` among the ones listed; the
+  // removed ones keep their places after them. The list is drawn in its new
+  // order at once and put back if the save fails.
+  async function moveGroup(id, to, keep) {
+    const prev = groups;
+    const ids = shownGroups();
+    const from = ids.indexOf(id);
+    if (from < 0 || to < 0 || to >= ids.length || to === from) return;
+    ids.splice(to, 0, ...ids.splice(from, 1));
+    const order = [...ids, ...prev.groups.filter((g) => g.hidden).map((g) => g.id)];
+    const byId = new Map(prev.groups.map((g) => [g.id, g]));
+    const handle = () => gList.querySelector(`.rt-group[data-id="${CSS.escape(id)}"] .rt-ghandle`);
+    groups = { ...prev, groups: order.map((x) => byId.get(x)) };
+    renderGroups();
+    // the rows were drawn anew: keep the keyboard on this one
+    if (keep) handle()?.focus({ preventScroll: true });
+    const seq = ++groupArrangeSeq;
+    let next;
+    try {
+      next = await api("groups/arrange", { order });
+      status(t("Group order saved"), "ok");
+    } catch (e) {
+      next = prev;
+      status(e.message, "err");
+    }
+    // a later move, made while this one was saved, has the last word
+    if (seq !== groupArrangeSeq) return;
+    const held = document.activeElement === handle();
+    groups = next;
+    renderGroups();
+    if (held) handle()?.focus({ preventScroll: true });
+    load(); // the gateway's model list, the agents' pickers
   }
   // pickRow: a manual group's members on its card, the one every request
   // goes to marked; clicking another sends them there from the next

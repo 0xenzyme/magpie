@@ -246,6 +246,9 @@ func groupRoutes(mux *http.ServeMux) {
 			provider.Group
 			From string `json:"from"` // the id the group had: another is a rename
 			On   bool   `json:"on"`   // found: magpie finds groups on its own
+			// arrange: the groups by id, in the order the Routing page
+			// lists them (#779), which /v1/models follows too
+			Order []string `json:"order"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			fail(rw, err)
@@ -278,6 +281,8 @@ func groupRoutes(mux *http.ServeMux) {
 			err = provider.DeleteGroup(in.ID)
 		case "show":
 			err = provider.ShowGroup(in.ID)
+		case "arrange":
+			err = provider.SetGroupOrder(body.Order)
 		default:
 			http.NotFound(rw, r)
 			return

@@ -121,6 +121,8 @@ const I18N = {
     "Account order saved": "账号位置已保存",
     "Drag to reorder — a model several providers serve goes to the higher one first · Alt+↑/↓ to move": "拖动调整顺序——多个供应商都有的模型，优先用排在前面的 · Alt+↑/↓ 移动",
     "Provider order saved": "供应商顺序已保存",
+    "Drag to reorder — agents' model lists show the groups in this order · Alt+↑/↓ to move": "拖动调整顺序——各 Agent 的模型列表也按这个顺序列出路由组 · Alt+↑/↓ 移动",
+    "Group order saved": "路由组顺序已保存",
     "Drag to reorder · click to move or hide": "拖动以调整顺序 · 点击可移动或隐藏",
     "Arrange {agent}": "调整 {agent}",
     "Drag to reorder · click for more": "拖动以调整顺序 · 点击查看更多",

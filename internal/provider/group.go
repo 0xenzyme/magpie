@@ -204,7 +204,9 @@ func (m Member) Below(depth int) Member {
 const maxNest = 8
 
 // Groups lists the user's groups, then those magpie found, hidden ones
-// too (marked so).
+// too (marked so), in the order the user put them in (SetGroupOrder) where
+// they did: the Routing page, the gateway's model list, the CLI and the
+// TUI all list them so.
 func Groups() []Group {
 	return groupsIn(providerEntries())
 }
@@ -221,7 +223,7 @@ func groupsIn(entries []Entry) []Group {
 		out = append(out, withMatches(entries, g))
 	}
 	if f.NoAutoGroups {
-		return out
+		return orderedGroups(out, f.GroupOrder)
 	}
 	for _, g := range autoGroups(entries, settings.Load().ModelSameAs) {
 		if slices.ContainsFunc(out, func(o Group) bool { return o.ID == g.ID }) {
@@ -230,7 +232,7 @@ func groupsIn(entries []Entry) []Group {
 		g.Hidden = hidden[g.ID]
 		out = append(out, g)
 	}
-	return out
+	return orderedGroups(out, f.GroupOrder)
 }
 
 // AutoGroupsOn reports whether magpie finds groups on its own: a model
@@ -983,6 +985,11 @@ func RenameGroup(from, to string) error {
 		f.Groups = append(f.Groups, Group{ID: from, Hidden: true})
 	}
 	f.Groups = append(f.Groups, g)
+	// renamed, it keeps its place in the order the user put the groups in
+	if i := slices.Index(f.GroupOrder, from); i >= 0 {
+		f.GroupOrder = slices.Clone(f.GroupOrder)
+		f.GroupOrder[i] = to
+	}
 	old, now := GroupPrefix+from, GroupPrefix+to
 	for i := range f.Groups {
 		for j, m := range f.Groups[i].Members {

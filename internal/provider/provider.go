@@ -237,6 +237,10 @@ type file struct {
 	// tab (#499), by id; one not in it follows those that are, in the
 	// order it was added (see SetOrder).
 	Order []string `json:"order,omitempty"`
+	// GroupOrder is the order the user put the routing groups in on the
+	// Routing page (#779), by id, found ones among them; one not in it
+	// follows those that are (see SetGroupOrder).
+	GroupOrder []string `json:"groupOrder,omitempty"`
 }
 
 // Path is the file the user's providers live in.

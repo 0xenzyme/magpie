@@ -260,6 +260,19 @@ button.rt-session { cursor: pointer; }
 .rt-group.off { opacity: .6; }
 .rt-group .ics { display: flex; gap: 3px; flex: none; min-width: 18px; }
 .rt-group .ics .ic { width: 16px; height: 16px; }
+/* a group's logos are its handle (#779), as an agent row's logo is: the
+   grip in the row's left margin is drawn only while the row is under the
+   pointer, dragged, or its handle has the keyboard or its menu open —
+   always there it is clutter, as on the Agents page */
+.rt-group .rt-ghandle { position: relative; align-items: center; justify-content: center; width: auto; min-width: 24px; height: 24px; padding: 0 3px; }
+.rt-group .rt-ghandle::before { content: ""; position: absolute; left: -8px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; opacity: 0; transition: opacity .15s; }
+.rt-group:is(:hover, .dragging) .rt-ghandle::before, .rt-group .rt-ghandle.open::before, .rt-group .rt-ghandle:focus-visible::before { opacity: 1; }
+/* while a row is dragged the others slide out of its way */
+.rt-groups.sorting { user-select: none; -webkit-user-select: none; }
+.rt-groups.sorting > .rt-group { transition: transform .22s cubic-bezier(.22, 1, .36, 1); }
+.rt-groups.sorting .rt-ghandle { cursor: grabbing; }
+.rt-groups > .rt-group.dragging { position: relative; z-index: 2; background: var(--card); box-shadow: 0 6px 18px rgba(20, 22, 30, .12), 0 0 0 1px var(--line); border-radius: 8px; transition: none; }
+@media (prefers-reduced-motion: reduce) { .rt-groups.sorting > .rt-group { transition: none; } }
 .rt-group .main { flex: 1; min-width: 0; }
 .rt-group .nm { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
 .rt-group .nm b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

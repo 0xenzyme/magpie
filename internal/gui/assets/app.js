@@ -1752,6 +1752,8 @@ function setAgentHidden(a, hide) {
 }
 
 const ALT = /^Mac/.test(navigator.platform) ? "⌥" : "Alt+";
+// the arrows of a row menu's Move up and Move down (agents, routing groups)
+const MOVE_UP = "M8 12.5v-9M4 7.25l4-3.75 4 3.75", MOVE_DOWN = "M8 3.5v9M4 8.75l4 3.75 4-3.75";
 const EYE_OFF = "M6.6 3.7A6.9 6.9 0 0 1 8 3.5c3.75 0 6.25 4.5 6.25 4.5a11 11 0 0 1-1.5 2M4.4 4.4C2.7 5.55 1.75 8 1.75 8S4.25 12.5 8 12.5c1.2 0 2.25-.45 3.1-1.05M6.75 6.75a1.75 1.75 0 0 0 2.5 2.5M2 2l12 12";
 const EYE = "M1.75 8S4.25 3.5 8 3.5 14.25 8 14.25 8 11.75 12.5 8 12.5 1.75 8 1.75 8ZM8 9.75a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Z";
 
@@ -2337,8 +2339,8 @@ function openAgentMenu(anchor, a, inFold) {
     : inFold
     ? [{ name: "Hide", icon: EYE_OFF, run: () => setAgentHidden(a, true) }]
     : [
-        { name: "Move up", icon: "M8 12.5v-9M4 7.25l4-3.75 4 3.75", key: ALT + "↑", off: i <= 0, run: () => moveAgent(a.id, i - 1) },
-        { name: "Move down", icon: "M8 3.5v9M4 8.75l4 3.75 4-3.75", key: ALT + "↓", off: i < 0 || i >= shown.length - 1, run: () => moveAgent(a.id, i + 1) },
+        { name: "Move up", icon: MOVE_UP, key: ALT + "↑", off: i <= 0, run: () => moveAgent(a.id, i - 1) },
+        { name: "Move down", icon: MOVE_DOWN, key: ALT + "↓", off: i < 0 || i >= shown.length - 1, run: () => moveAgent(a.id, i + 1) },
         // for a config rewritten in a way magpie can't see: set it again anyway
         ...(reapply ? [{ name: "Apply again", icon: REAPPLY, sep: true, run: () => reapplyAgent(a) }] : []),
         ...(a.drift?.kind === "replaced" ? [{ name: "Keep current settings", icon: CHECK, run: () => keepAgent(a) }] : []),
