@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -317,7 +318,40 @@ func store(f file) error {
 // item or a CLI's among them, and Codex's /models asked for it seven times
 // over, past the 5 s Codex waits for the list (#746).
 func All() []Provider {
-	return slices.Clone(heldOf("all", allProviders)) // callers change theirs
+	held := heldOf("all", allProviders)
+	out := make([]Provider, len(held))
+	for i, p := range held {
+		out[i] = p.clone() // callers change theirs, Keys[i] and Headers included
+	}
+	return out
+}
+
+// clone is p with its settings unshared: slices, maps and pointers copied.
+func (p Provider) clone() Provider {
+	p.Was = slices.Clone(p.Was)
+	p.Keys = slices.Clone(p.Keys)
+	p.Fallback = slices.Clone(p.Fallback)
+	p.Models = slices.Clone(p.Models)
+	p.Headers = maps.Clone(p.Headers)
+	p.AccountProxies = maps.Clone(p.AccountProxies)
+	p.AccountCaps = maps.Clone(p.AccountCaps)
+	p.Contexts = maps.Clone(p.Contexts)
+	if p.AccountModels != nil {
+		m := make(map[string][]string, len(p.AccountModels))
+		for k, v := range p.AccountModels {
+			m[k] = slices.Clone(v)
+		}
+		p.AccountModels = m
+	}
+	if p.MaxConcurrency != nil {
+		v := *p.MaxConcurrency
+		p.MaxConcurrency = &v
+	}
+	if p.ZhipuTeam != nil {
+		v := *p.ZhipuTeam
+		p.ZhipuTeam = &v
+	}
+	return p // Account, the sign-in's runtime, stays shared
 }
 
 // AllBuilt counts the times All built the list anew, for tests.
