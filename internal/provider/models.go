@@ -596,6 +596,23 @@ func sharedImageInput(a, b *bool) *bool {
 	return a
 }
 
+// anyImageInput is a group's answer from two of its members': it takes
+// images when one of them does (the gateway sends a request with an image
+// to the members that see, #756), is text-only when both are, and is
+// unknown otherwise.
+func anyImageInput(a, b *bool) *bool {
+	if a != nil && *a {
+		return a
+	}
+	if b != nil && *b {
+		return b
+	}
+	if a != nil && b != nil {
+		return a
+	}
+	return nil
+}
+
 // Serves reports whether key k can be asked for model: false only when the
 // vendor's lists say another of the provider's keys sees it and k doesn't.
 func (p Provider) Serves(k KeyAccount, model string) bool {
@@ -924,7 +941,7 @@ type Entry struct {
 	Provider   Provider `json:"-"`                // a group's: its first member's
 	Group      string   `json:"group,omitempty"`  // set on a routing group (group.go)
 	Icons      []string `json:"-"`                // a group's: its providers' icons, one per provider
-	Images     bool     `json:"images,omitempty"` // takes images as input (a group's: every member does)
+	Images     bool     `json:"images,omitempty"` // takes images as input (a group's: a member does)
 	ImageInput *bool    `json:"-"`                // explicit answer, nil when unknown
 	// Context is the tokens a prompt may hold, when known (a group's: the
 	// least of its members')

@@ -527,7 +527,7 @@ func groupEntries(entries []Entry) []Entry {
 		if len(ms) == 0 {
 			continue
 		}
-		e := Entry{ID: GroupPrefix + g.ID, Model: ms[0].Model, Name: g.Name, Provider: ms[0].Provider, Group: g.ID, Images: true, Reasoning: true}
+		e := Entry{ID: GroupPrefix + g.ID, Model: ms[0].Model, Name: g.Name, Provider: ms[0].Provider, Group: g.ID, Reasoning: true}
 		var fixed []string // the efforts members are fixed at
 		levelled := false  // a member that follows the agent's effort was met
 		// Codex's ultra (max, with Codex handing parts of the task to agents
@@ -556,7 +556,12 @@ func groupEntries(entries []Entry) []Entry {
 			if output > 0 && (e.Output == 0 || output < e.Output) {
 				e.Output = output
 			}
-			e.Images = e.Images && images
+			// it takes images when a member does: the gateway sends a
+			// request with an image to the members that see it, and the
+			// rest are given it described or without it (#756: an auto
+			// group of DeepSeek V4.1 Flash with a text-only member in it
+			// turned every image away, though its other members see)
+			e.Images = e.Images || images
 			// the window agents are told is the largest a member has:
 			// a conversation too long for one member goes on to a member
 			// with room for it (#700, withRoom in the gateway), so the
@@ -569,7 +574,7 @@ func groupEntries(entries []Entry) []Entry {
 			if i == 0 {
 				e.ImageInput = imageInput
 			} else {
-				e.ImageInput = sharedImageInput(e.ImageInput, imageInput)
+				e.ImageInput = anyImageInput(e.ImageInput, imageInput)
 			}
 			// a group in the group that names its own levels offers them for
 			// its models (the outermost that does)

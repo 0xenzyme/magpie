@@ -1096,7 +1096,6 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		return
 	}
 	var hit *RuleHit
-	var ruled []provider.Member
 	var ruleAt, words string
 	var ruleReq *Request // parsed for the rules of the group or a group in it
 	// a classifier's own call to a group (a group's classifier may be one)
@@ -1115,14 +1114,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	}
 	if ruleReq != nil && g.Ruled() {
 		hit = ruleFor(ruleAt, g, ms, ruleReq, agent, ask)
-		ruled = ruleMembers(hit, ms)
 	}
 	// Some clients send images even when the selected model is known to
 	// accept text only. Reject a new image and omit images from history.
 	var imageInput *bool
 	if isGroup {
-		// the member a rule put first, or what every member takes
-		imageInput = membersImageInput(ms, ruled)
+		// whether a member takes them
+		imageInput = membersImageInput(ms)
 	} else {
 		var known *bool
 		for _, m := range p.Available() {
@@ -1291,19 +1289,27 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		}
 	}
 	if isGroup && seenGroup == nil {
-		_, currentImage := textOnlyBody(from, body)
-		if currentImage {
-			var kept []candidate
-			var order []Weighed
+		// without a model to describe it, a new image goes only to the
+		// members that see it (#756) — to members magpie knows nothing
+		// of when none is known to see, as a model of its own would be
+		// sent it. With one, the members keep their order, a text-only
+		// one given it described.
+		if _, currentImage := textOnlyBody(from, body); currentImage {
+			var sees, unknown []candidate
+			var seesAt, unknownAt []Weighed
 			for i, c := range cands {
-				in := membersImageInput([]provider.Member{{Provider: c.p, Model: c.model}}, nil)
-				if in != nil && !*in {
-					continue
+				in := membersImageInput([]provider.Member{{Provider: c.p, Model: c.model}})
+				switch {
+				case !blindTo(c.p.ID, c.model, in):
+					sees, seesAt = append(sees, c), append(seesAt, pl.order[i])
+				case in == nil:
+					unknown, unknownAt = append(unknown, c), append(unknownAt, pl.order[i])
 				}
-				kept = append(kept, c)
-				order = append(order, pl.order[i])
 			}
-			cands, pl.order = kept, order
+			cands, pl.order = sees, seesAt
+			if len(sees) == 0 {
+				cands, pl.order = unknown, unknownAt
+			}
 			if len(cands) == 0 {
 				call.Status, call.Error = 400, "model does not support image input"
 				writeError(w, from, 400, fmt.Sprintf("model %q does not support image input", call.Model))
@@ -1374,7 +1380,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 		}
 		if isGroup {
-			in := membersImageInput([]provider.Member{{Provider: c.p, Model: c.model}}, nil)
+			in := membersImageInput([]provider.Member{{Provider: c.p, Model: c.model}})
 			if seenGroup != nil && blindTo(c.p.ID, c.model, in) {
 				b, err := seenGroup()
 				if err != nil {
