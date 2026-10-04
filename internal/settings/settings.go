@@ -43,10 +43,13 @@ type Settings struct {
 	// rate (see internal/fx). A vendor's own balance, already in its own
 	// currency (a Chinese relay's ¥), is never touched by this.
 	Currency string `json:"currency,omitempty"`
-	// WesternUnits shortens a large count in K, M and B even when magpie
-	// speaks Chinese, which otherwise says it in 万 and 亿 (8000 万
-	// rather than 80M). It means nothing in English.
-	WesternUnits bool `json:"westernUnits,omitempty"`
+	// ChineseUnits shortens a large count in 万 and 亿 when magpie speaks
+	// Chinese (8000 万 rather than 80M); otherwise it is in K, M and B, as
+	// prices per million tokens and context windows (200K, 1M) are, in
+	// Chinese too (#740). It means nothing in English. It replaces
+	// westernUnits, which asked for K/M/B: what that chose is now the
+	// default, so an old file's is left unread.
+	ChineseUnits bool `json:"chineseUnits,omitempty"`
 	// Dock keeps magpie in the Mac's Dock as well as the menu bar, for a
 	// menu bar too full to show its icon.
 	Dock bool `json:"dock,omitempty"`

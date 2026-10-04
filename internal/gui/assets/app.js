@@ -10263,12 +10263,12 @@ function renderUsageLoading() {
   $("#usageNote").textContent = "";
 }
 
-// a count as a short number: 1.33 亿, 68.1 万 in Chinese, 133M in English
-// and in Chinese with Settings' K/M/B units (westernUnits) — every count on
-// the Usage page and in the panel, tokens or requests, says it this one way
-let westernUnits = false;
+// a count as a short number: 133M, and 1.33 亿, 68.1 万 in Chinese with
+// Settings' 万/亿 units (chineseUnits) — every count on the Usage page and
+// in the panel, tokens or requests, says it this one way
+let chineseUnits = false;
 function fmtN(n) {
-  if (locale === "zh" && !westernUnits) {
+  if (locale === "zh" && chineseUnits) {
     if (n >= 1e8) return +(n / 1e8).toFixed(2) + " 亿";
     if (n >= 1e4) return +(n / 1e4).toFixed(1) + " 万";
     return String(n);
@@ -14215,8 +14215,8 @@ function applyPrefs(s, rate) {
     currency = s.currency || "usd";
     if (applyPrefs.painted) renderCosts();
   }
-  if (westernUnits !== !!s.westernUnits) {
-    westernUnits = !!s.westernUnits;
+  if (chineseUnits !== !!s.chineseUnits) {
+    chineseUnits = !!s.chineseUnits;
     if (applyPrefs.painted) { renderCosts(); if (mode === "panel" && panelTab === "stats") renderPanelUse(); }
   }
   applyPrefs.painted = true;
@@ -14849,8 +14849,8 @@ function renderTrayUsage(s, keep) {
   $("#currencySegs").replaceChildren(segs(CURRENCIES.map(([id, name]) => [id, t(name)]), s.currency || "usd", (v) => savePrefs({ ...keep, currency: v })));
   // 万 and 亿 are Chinese's alone: in English a count is always K, M and B
   $("#unitsRow").hidden = locale !== "zh";
-  $("#unitsSegs").replaceChildren(segs([[false, t("万 / 亿")], [true, t("K / M / B")]], !!s.westernUnits,
-    (v) => savePrefs({ ...keep, westernUnits: v })));
+  $("#unitsSegs").replaceChildren(segs([[false, t("K / M / B")], [true, t("万 / 亿")]], !!s.chineseUnits,
+    (v) => savePrefs({ ...keep, chineseUnits: v })));
   renderAlerts(s, keep);
   // the agents' lists name a model with its provider's after it, all but
   // the names the user gave (#92), or none (#335): set on its own, so the
@@ -15688,7 +15688,7 @@ function prefsKeep(s) {
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, traeCheckin: !!s.traeCheckin, noStats: !!s.noStats,
     noUpdatePill: !!s.noUpdatePill, noAutoUpdate: !!s.noAutoUpdate, updateEvery: s.updateEvery || 360,
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, vision: s.vision || "", imageGen: s.imageGen || "", searcher: s.searcher || "", currency: s.currency || "usd",
-    westernUnits: !!s.westernUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };
+    chineseUnits: !!s.chineseUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };
 }
 
 // savePrefs sends what the page was drawn with (prefsBase) and the choice
