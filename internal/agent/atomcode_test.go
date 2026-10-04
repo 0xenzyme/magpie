@@ -40,6 +40,7 @@ func TestAtomcodeWiring(t *testing.T) {
 		`default_provider = "magpie/fake/m1"`,
 		`default_model = "magpie/fake/m1"`,
 		`[provider_accounts."magpie"]`,
+		`provider = "openai-compatible"`,
 		`base_url = "` + gatewayV1() + `"`,
 		`api_key = "` + gateway.TokenFor("atomcode") + `"`,
 		`[models."magpie/fake/m1"]`,
@@ -268,5 +269,39 @@ func TestAtomcodeEffortLevelsMatchAgentSupport(t *testing.T) {
 	}
 	if got := atomcodeSupportedEfforts(nil); len(got) != 0 {
 		t.Fatalf("non-reasoning model has effort options: %v", got)
+	}
+}
+
+// An effort set while the model table is gone is refused: a fresh table of
+// nothing but a reasoning_effort would be an orphan.
+func TestAtomcodeEffortWithoutModelTableIsRefused(t *testing.T) {
+	home := t.TempDir()
+	atomcodeSaveFake(t)
+	a := atomcode(home)
+	if err := provider.SetModelEfforts("fake/m1", []string{"low", "high"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Apply("model", "magpie/fake/m1"); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".atomcode", "config.toml")
+	if err := edit.DelTOMLTable(path, atomcodeTable("magpie/fake/m1")); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(path)
+	if err := a.Apply("effort", "high"); err == nil {
+		t.Fatal("an effort was set on a missing model table")
+	}
+	after, _ := os.ReadFile(path)
+	if string(before) != string(after) {
+		t.Fatalf("the refused effort changed the config:\n%s", after)
+	}
+	// clearing a gone table's effort is a no-op, not an error
+	if err := a.Apply("effort", ""); err != nil {
+		t.Fatalf("clearing on a missing model table: %v", err)
+	}
+	after, _ = os.ReadFile(path)
+	if string(before) != string(after) {
+		t.Fatalf("the cleared effort changed the config:\n%s", after)
 	}
 }

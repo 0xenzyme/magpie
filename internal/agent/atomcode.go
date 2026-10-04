@@ -32,7 +32,7 @@ import (
 // header prefix of every model table it writes.
 var atomcodeAccount = `provider_accounts."` + magpieID + `"`
 var atomcodeModels = `models."` + magpieID + "/"
-var atomcodeTablePrefixes = []string{atomcodeModels, "models.'" + magpieID + "/", "models." + magpieID + "/"}
+var atomcodeTablePrefixes = []string{atomcodeModels, "models.'" + magpieID + "/"}
 var atomcodeAccountNames = []string{atomcodeAccount, "provider_accounts." + magpieID, "provider_accounts.'" + magpieID + "'"}
 
 var atomcodeEffortLevels = []string{"low", "medium", "high", "xhigh", "max"}
@@ -242,11 +242,18 @@ func atomcode(home string) *Agent {
 				if err != nil {
 					return err
 				}
-				if table == "" {
-					table = atomcodeTable(k)
-				}
 				if v == "" {
+					// clearing a gone table's effort is a no-op, nothing to
+					// orphan; a real table loses its reasoning_effort
+					if table == "" {
+						return nil
+					}
 					return edit.DelTOMLKey(path, table, "reasoning_effort")
+				}
+				if table == "" {
+					// the table is gone (Drift says so too): a fresh one of
+					// nothing but an effort would be an orphan
+					return fmt.Errorf("AtomCode's [models.%s] (config.toml) is gone — pick the model again", strconv.Quote(k))
 				}
 				ref := strings.TrimPrefix(k, magpieID+"/")
 				var offered []string
@@ -284,7 +291,8 @@ func atomcode(home string) *Agent {
 func atomcodeTables(path string) []edit.Table {
 	efforts := atomcodeExistingEfforts(path)
 	out := []edit.Table{{Name: atomcodeAccount, KVs: []edit.KV{
-		{Path: "provider", Value: "openai"},
+		// openai-compatible is the documented preset for a custom endpoint
+		{Path: "provider", Value: "openai-compatible"},
 		{Path: "base_url", Value: gatewayV1()},
 		{Path: "api_key", Value: gateway.TokenFor("atomcode")},
 	}}}
