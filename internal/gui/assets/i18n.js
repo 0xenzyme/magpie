@@ -1659,6 +1659,8 @@ const I18N = {
     "{n} days": "{n} 天",
     "{d} active": "活跃 {d}",
     "Latest sessions": "最近的会话",
+    "All sessions": "全部会话",
+    "Open in Sessions": "在会话页打开",
     "Top sessions": "最耗会话",
     "Output tokens": "输出 Token",
     "Messages": "消息",

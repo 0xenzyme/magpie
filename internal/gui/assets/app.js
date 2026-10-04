@@ -12846,7 +12846,6 @@ try {
 let sessStats = null; // { from, to, days: [{ date, usage, active }], agents } for sessRange
 let sessModel = ""; // "" for every model
 let sessFolder = ""; // "" for every folder
-const sessOpen = new Set(); // agent:id of the sessions opened to their details
 // the sessions of the range summed up under the filters, by the server:
 // { count, median, p90, days, top: { tokens, cost, active } }, and the
 // query it answers
@@ -14024,59 +14023,55 @@ function wslBadge(s) {
   return b;
 }
 
-function sessionItem(s) {
-  const key = sessKey(s);
-  const item = el("div", "sess-item" + (sessOpen.has(key) ? " open" : ""));
-  const r = el("div", "row sess");
-  r.append(icon(s.icon || "generic"));
-  const who = el("div", "who");
-  who.append(el("div", "name", s.title || t("(no prompt)")));
-  // where magpie's gateway sent its calls, the most first: a routing
-  // group's member and the reasoning it was asked for
-  const via = s.via?.length ? "→ " + [s.via[0].model, s.via[0].effort].filter(Boolean).join(" · ") + (s.via.length > 1 ? " +" + (s.via.length - 1) : "") : "";
-  const sub = el("div", "sub", [s.cwd ? baseName(s.cwd) : "", s.models.slice(0, 2).map((m) => m.model).join(", ") + (s.models.length > 2 ? " +" + (s.models.length - 2) : "") + (via ? " " + via : ""), ago(s.last)].filter(Boolean).join(" · "));
-  sub.title = [s.cwd, ...(s.via || []).map(viaText)].filter(Boolean).join("\n");
-  if (s.wsl) sub.prepend(wslBadge(s), " ");
-  who.append(sub);
-  r.append(who);
-  const num = el("div", "num");
-  num.append(el("b", "", fmtN(sessTokens(s))), el("small", "", t("{a} in · {b} out", { a: fmtN(s.input), b: fmtN(s.output) }) + (s.cache_read ? " · " + t("{n} cached", { n: fmtN(s.cache_read) }) : "")));
-  r.append(num);
+// sessSpent is a session's tokens and cost, as the two right-hand columns
+// of its row: the Usage page's list and the Sessions page's (#752)
+function sessSpent(s) {
+  const tokens = sessTokens(s);
+  const num = el("div", "num" + (tokens ? "" : " none"));
+  num.append(el("b", "", tokens ? fmtN(tokens) : "—"));
+  if (tokens) num.append(el("small", "", t("{a} in · {b} out", { a: fmtN(s.input), b: fmtN(s.output) }) + (s.cache_read ? " · " + t("{n} cached", { n: fmtN(s.cache_read) }) : "")));
   const sc = sessCost(s);
   const cost = el("div", "cost" + (sc === "—" ? " none" : ""), sc);
   if (sc === "—") cost.title = t("No known price for {models}", { models: s.models.map((m) => m.model).join(", ") || "—" });
   else if (s.unpriced) cost.title = t("Not counted: {models}, with no known price", { models: s.models.filter((m) => !m.priced).map((m) => m.model).join(", ") });
-  r.append(cost);
-  if (s.resume) {
-    const res = el("button", "sess-resume", t("Resume"));
-    res.title = t("Copy the command that resumes it: {cmd}", { cmd: s.resume });
-    res.onclick = async (ev) => {
-      ev.stopPropagation();
-      await copy(s.resume, t("Resume command"));
-      res.textContent = t("Copied");
-      res.classList.add("done");
-      clearTimeout(res.copiedT);
-      res.copiedT = setTimeout(() => { res.textContent = t("Resume"); res.classList.remove("done"); }, 1400);
-    };
-    r.append(res);
-    if (sessions?.terminal) {
-      const term = el("button", "copy sess-term");
-      term.title = t("Open in session terminal");
-      term.append(svg("M3 4.5 6 7.5 3 10.5M7.5 11.5h5.5", 13, 1.6));
-      term.onclick = (ev) => {
-        ev.stopPropagation();
-        api("sessions/terminal", { agent: s.agent, id: s.id }).then(() => status(t("Opening in session terminal"), "ok"), (e) => status(e.message, "err"));
-      };
-      r.append(term);
-    }
-  }
-  r.onclick = () => {
+  return [num, cost];
+}
+
+// sessModelsText: a session's models, the first two and how many more, and
+// where magpie's gateway sent its calls, the most first: a routing group's
+// member and the reasoning it was asked for
+function sessModelsText(s) {
+  const via = s.via?.length ? "→ " + [s.via[0].model, s.via[0].effort].filter(Boolean).join(" · ") + (s.via.length > 1 ? " +" + (s.via.length - 1) : "") : "";
+  return s.models.slice(0, 2).map((m) => m.model).join(", ") + (s.models.length > 2 ? " +" + (s.models.length - 2) : "") + (via ? " " + via : "");
+}
+
+// A row of the Usage page's list: what the session spent. It opens on the
+// Sessions page, where it is resumed, read in full and deleted (#752: the
+// two lists were one done twice, each lacking half).
+function sessionItem(s) {
+  const item = el("div", "sess-item");
+  const r = el("div", "row sess sess-link");
+  r.tabIndex = 0;
+  r.setAttribute("role", "link");
+  r.title = t("Open in Sessions");
+  r.append(icon(s.icon || "generic"));
+  const who = el("div", "who");
+  who.append(el("div", "name", s.title || t("(no prompt)")));
+  const sub = el("div", "sub", [s.cwd ? baseName(s.cwd) : "", sessModelsText(s), ago(s.last)].filter(Boolean).join(" · "));
+  sub.title = [s.cwd, ...(s.via || []).map(viaText)].filter(Boolean).join("\n");
+  if (s.wsl) sub.prepend(wslBadge(s), " ");
+  who.append(sub);
+  r.append(who, ...sessSpent(s));
+  const go = el("span", "sess-go");
+  go.append(svg(CHEV_R, 12, 1.6));
+  r.append(go);
+  const open = (e) => {
     if (window.getSelection()?.toString()) return;
-    if (sessOpen.has(key)) sessOpen.delete(key); else sessOpen.add(key);
-    item.replaceWith(sessionItem(s));
+    window.openSessionOnPage?.(s, e);
   };
+  r.onclick = open;
+  r.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(e); } };
   item.append(r);
-  if (sessOpen.has(key)) item.append(sessionDetail(s));
   return item;
 }
 
@@ -14100,7 +14095,16 @@ function sessionDetail(s) {
     l.append(el("span", "k", t("Resume")), code, copyBtn(s.resume, t("Resume command")));
     d.append(l);
   }
-  if (s.models.length) {
+  sessUsageDetail(d, s, line);
+  if (s.path) line(t("File"), s.path);
+  return d;
+}
+
+// sessUsageDetail adds to a session's details what it spent by model, and
+// what the gateway sent its calls to, at what reasoning; line(label, value)
+// adds a line of the details
+function sessUsageDetail(d, s, line) {
+  if (s.models?.length) {
     const m = el("div", "sess-models");
     for (const x of s.models) {
       m.append(el("span", "model", x.model),
@@ -14109,10 +14113,7 @@ function sessionDetail(s) {
     }
     d.append(m);
   }
-  // what the gateway sent the session's calls to, at what reasoning
   (s.via || []).forEach((v, i) => line(i ? "" : t("Routed"), viaText(v) + " · " + t("{n} tokens", { n: fmtN(v.tokens) })));
-  if (s.path) line(t("File"), s.path);
-  return d;
 }
 
 // one place a session's calls went through magpie, in words
@@ -14120,6 +14121,8 @@ function viaText(v) {
   return `${v.provider}/${v.model}` + (v.effort ? " · " + v.effort : "") + " · " + t("{n} calls", { n: v.calls });
 }
 
+// All sessions: the Sessions page, on the agent picked here if one is
+$("#sessAll").onclick = (e) => window.openSessionOnPage?.(sessAgent === "all" ? {} : { agent: sessAgent }, e);
 $("#sessQ").oninput = (e) => { sessQuery = e.target.value; if (sessions) renderSessions(); };
 $("#sessQ").onkeydown = (e) => { if (e.key === "Escape" && e.target.value) { e.stopPropagation(); e.target.value = ""; sessQuery = ""; if (sessions) renderSessions(); } };
 

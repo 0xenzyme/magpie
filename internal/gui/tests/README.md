@@ -950,6 +950,16 @@ Trash lists what went and Restore posts its key; an agent whose sessions
 magpie can't delete (OpenCode) shows no delete. No left-border accent, every
 string in Chinese. Chromium and WebKit, English and Chinese, API faked.
 
+`sessions-usage-open.test.cjs` keeps one list of sessions (#752): each
+Sessions page row shows the tokens, cost and models Usage → Sessions showed,
+its details what each model spent and where magpie routed it, and its filter
+finds a model. Usage's latest sessions keep their numbers but no Resume; a
+row there opens the session on the Sessions page (its agent, its folder
+unfolded, the row opened and brought into sight by that click, with no
+scroll refused), another agent's switches the page to it, and All sessions
+opens the page. At 420px a row still fits with its title readable. English
+and Chinese, WebKit (Chromium too where it launches), API faked.
+
 `sessions-purge.test.cjs` erases sessions in magpie's trash for good (#487):
 a trashed row's Delete forever and the Trash's Empty trash each ask in
 magpie's own dialog (a browser `confirm()` fails the test), Cancel sends
