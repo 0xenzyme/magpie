@@ -278,6 +278,10 @@ func Run(version string, showMain bool, link string) error {
 	// After an update off the Mac, the old process starts this one and then
 	// quits; let it go before looking for the gateway.
 	update.AwaitPredecessor()
+	// the Mac's second launch hands over to the magpie already running
+	if runningAlready(showMain || OpenPanel, link) {
+		return nil
+	}
 	go func() {
 		if err := registerScheme(); err != nil {
 			log.Println("magpie:// links:", err)
