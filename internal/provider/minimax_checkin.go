@@ -3,15 +3,19 @@ package provider
 // MiniMax Code's daily check-in (签到, #811: a week of daily credits, more
 // on days 4 and 7): MiniMax Code is served only by its community plugin,
 // @magpie-community/opencode-minimax-auth (provider "minimax-code", the
-// China site; no built-in, no mover). While the setting is on, whichever
-// magpie runs the gateway presses it for each of the plugin's accounts once
-// a Beijing day, as MiniMax Code's web page does: it asks the check-in's
-// panel on agent.minimax.cn, and claims while today's is claimable. Both go
+// China site, and "minimax-code-global", the international one; no
+// built-in, no mover). While the setting is on, whichever magpie runs the
+// gateway presses it for each of the plugin's accounts once a Beijing day,
+// as MiniMax Code's web page does: it asks the check-in's panel on the
+// account's site (agent.minimax.cn, agent.minimax.io), and claims while
+// today's is claimable. Both go
 // through the plugin's fetch, which sends them as the account (its access
 // token, renewed when near its end); the page's own signature
 // (x-timestamp, x-signature) goes with them, though MiniMax doesn't check
-// it now. The international site's check-in isn't known, so its accounts
-// aren't checked in.
+// it now. The international site has the same check-in (ARNO on Discord):
+// its page has the Daily check-in panel, and its /signin/status and /claim
+// answer as the China site's do, refusing a bad signature and then asking
+// for a sign-in.
 //
 // What came of it is kept in minimax-checkin.json by account id, as
 // WorkBuddy's and Trae CN's are (checkin.go).
@@ -36,12 +40,19 @@ import (
 	"github.com/yetone/magpie/internal/settings"
 )
 
-// MiniMaxCodeID is the MiniMax Code plugin's provider (the China site).
-const MiniMaxCodeID = "minimax-code"
+// MiniMaxCodeID is the MiniMax Code plugin's provider (the China site),
+// MiniMaxCodeGlobalID its international site's.
+const (
+	MiniMaxCodeID       = "minimax-code"
+	MiniMaxCodeGlobalID = "minimax-code-global"
+)
 
-// miniMaxCheckinURL is MiniMax Code's check-in: /status, then /claim, each
-// with the day's time zone.
-var miniMaxCheckinURL = "https://agent.minimax.cn/minimax-cloud/api/v1/signin"
+// miniMaxCheckinURLs are MiniMax Code's check-in on each site, by the
+// plugin's provider: /status, then /claim, each with the day's time zone.
+var miniMaxCheckinURLs = map[string]string{
+	MiniMaxCodeID:       "https://agent.minimax.cn/minimax-cloud/api/v1/signin",
+	MiniMaxCodeGlobalID: "https://agent.minimax.io/minimax-cloud/api/v1/signin",
+}
 
 // miniMaxSignSecret is what MiniMax Code's page signs its requests with:
 // x-signature is md5(seconds + it + the body).
@@ -84,14 +95,23 @@ type miniMaxClaim struct {
 	Base *miniMaxBase `json:"base_resp"`
 }
 
-// miniMaxAccount is a MiniMax Code account checked in: via sends a request
-// as it.
+// miniMaxAccount is a MiniMax Code account checked in: site is the
+// plugin's provider it is signed in to ("" the China site's), via sends a
+// request as it.
 type miniMaxAccount struct {
 	User string
 	On   bool
+	site string
 	uid  string
 	card string
 	via  func(*http.Request) (*http.Response, error)
+}
+
+func (a miniMaxAccount) siteID() string {
+	if a.site == "" {
+		return MiniMaxCodeID
+	}
+	return a.site
 }
 
 func miniMaxCheckinPath() string {
@@ -102,7 +122,7 @@ func miniMaxCheckinKey(a miniMaxAccount) string {
 	if a.uid == "" {
 		return ""
 	}
-	return MiniMaxCodeID + "|" + a.uid
+	return a.siteID() + "|" + a.uid
 }
 
 var miniMaxCheckinMu sync.Mutex
@@ -177,7 +197,7 @@ func miniMaxCall(ctx context.Context, a miniMaxAccount, method, path string, dst
 	if body != "" {
 		rd = strings.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, miniMaxCheckinURL+path+"?timezone_id=Asia%2FShanghai", rd)
+	req, err := http.NewRequestWithContext(ctx, method, miniMaxCheckinURLs[a.siteID()]+path+"?timezone_id=Asia%2FShanghai", rd)
 	if err != nil {
 		return err
 	}
@@ -199,7 +219,9 @@ func miniMaxCall(ctx context.Context, a miniMaxAccount, method, path string, dst
 	if err := json.Unmarshal(b, dst); err != nil || res.StatusCode < 200 || res.StatusCode >= 300 {
 		if err == nil {
 			// MiniMax's own answer, in an error status
-			var e struct{ Base *miniMaxBase `json:"base_resp"` }
+			var e struct {
+				Base *miniMaxBase `json:"base_resp"`
+			}
 			if json.Unmarshal(b, &e) == nil && e.Base != nil && e.Base.Code != 0 {
 				return fmt.Errorf("code %d: %s", e.Base.Code, e.Base.Msg)
 			}
@@ -233,7 +255,8 @@ func MiniMaxCheckins() []WorkBuddyCheckin {
 	return out
 }
 
-// HasMiniMax says whether a MiniMax Code (China) account is signed in.
+// HasMiniMax says whether a MiniMax Code account is signed in, on either
+// site.
 func HasMiniMax() bool { return len(miniMaxCheckinAccounts()) > 0 }
 
 // miniMaxCards are the usage cards of accts, for WithCheckins.
@@ -247,13 +270,20 @@ func miniMaxCards(accts []miniMaxAccount) []checkinCard {
 	return out
 }
 
-// miniMaxCheckinAccounts are the MiniMax Code plugin's accounts, each sent
-// through the plugin's fetch, which signs it in as the account.
+// miniMaxCheckinAccounts are the MiniMax Code plugin's accounts on both
+// sites, each sent through the plugin's fetch, which signs it in as the
+// account.
 func miniMaxCheckinAccounts() []miniMaxAccount {
-	pp, ok := PluginOf(MiniMaxCodeID)
-	if !ok {
-		return nil
+	var out []miniMaxAccount
+	for _, site := range []string{MiniMaxCodeID, MiniMaxCodeGlobalID} {
+		if pp, ok := PluginOf(site); ok {
+			out = append(out, miniMaxSiteAccounts(site, pp)...)
+		}
 	}
+	return out
+}
+
+func miniMaxSiteAccounts(site string, pp plugin.Provider) []miniMaxAccount {
 	auths := plugin.Auths(pp.ID)
 	card := PluginID(pp.ID)
 	var out []miniMaxAccount
@@ -263,7 +293,7 @@ func miniMaxCheckinAccounts() []miniMaxAccount {
 		if uid == "" {
 			uid = str(auths[key]["uid"])
 		}
-		out = append(out, miniMaxAccount{User: l.User, On: l.On, uid: uid, card: card,
+		out = append(out, miniMaxAccount{User: l.User, On: l.On, site: site, uid: uid, card: card,
 			via: func(req *http.Request) (*http.Response, error) {
 				h := map[string]string{}
 				for k, vs := range req.Header {

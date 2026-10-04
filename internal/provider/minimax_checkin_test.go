@@ -41,7 +41,10 @@ func (f *fakeMiniMaxCheckin) panel() string {
 	return `{"scene":2,"days":[` + strings.Join(days, ",") + `]}`
 }
 
-func (f *fakeMiniMaxCheckin) serve(t *testing.T) {
+func (f *fakeMiniMaxCheckin) serve(t *testing.T) { f.serveSite(t, MiniMaxCodeID) }
+
+// serveSite serves the check-in of the plugin's provider site.
+func (f *fakeMiniMaxCheckin) serveSite(t *testing.T, site string) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -80,9 +83,9 @@ func (f *fakeMiniMaxCheckin) serve(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	old := miniMaxCheckinURL
-	miniMaxCheckinURL = srv.URL + "/minimax-cloud/api/v1/signin"
-	t.Cleanup(func() { miniMaxCheckinURL = old })
+	old := miniMaxCheckinURLs[site]
+	miniMaxCheckinURLs[site] = srv.URL + "/minimax-cloud/api/v1/signin"
+	t.Cleanup(func() { miniMaxCheckinURLs[site] = old })
 }
 
 func (f *fakeMiniMaxCheckin) take() []string {
@@ -169,5 +172,49 @@ func TestMiniMaxClaimAlready(t *testing.T) {
 	}}
 	if r := miniMaxCheckin(t.Context(), a); r.Outcome != CheckinDone || r.Credit != 800 || r.Streak != 2 {
 		t.Fatalf("already: %+v", r)
+	}
+}
+
+// MiniMax Code's international site has the same check-in (ARNO on
+// Discord): an account signed in there is checked in at its own site, not
+// the China one, and kept apart from a China account of the same uid.
+func TestMiniMaxGlobalCheckin(t *testing.T) {
+	if !strings.HasPrefix(miniMaxCheckinURLs[MiniMaxCodeGlobalID], "https://agent.minimax.io/") {
+		t.Fatalf("the international site's check-in is %q", miniMaxCheckinURLs[MiniMaxCodeGlobalID])
+	}
+	cn := &fakeMiniMaxCheckin{today: mmDayClaimed}
+	cn.serve(t)
+	io := &fakeMiniMaxCheckin{today: mmDayClaimable}
+	io.serveSite(t, MiniMaxCodeGlobalID)
+	now := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	c := newMiniMaxCheckiner(func() []miniMaxAccount {
+		return []miniMaxAccount{
+			{User: "arno", On: true, site: MiniMaxCodeGlobalID, uid: "42", card: MiniMaxCodeGlobalID, via: http.DefaultClient.Do},
+			{User: "hu", On: true, site: MiniMaxCodeID, uid: "42", card: MiniMaxCodeID, via: http.DefaultClient.Do},
+		}
+	})
+	c.path = filepath.Join(t.TempDir(), "minimax-checkin.json")
+	c.now = func() time.Time { return now }
+
+	rs := c.checkinNow(t.Context(), false)
+	got := map[string]string{}
+	for _, r := range rs {
+		got[r.User] = r.Outcome
+	}
+	if len(rs) != 2 || got["arno"] != CheckinClaimed || got["hu"] != CheckinDone {
+		t.Fatalf("checked in: %+v", rs)
+	}
+	if a := strings.Join(io.take(), ", "); a != "GET /status, POST /claim" {
+		t.Fatalf("the international site was asked %s", a)
+	}
+	if a := strings.Join(cn.take(), ", "); a != "GET /status" {
+		t.Fatalf("the China site was asked %s", a)
+	}
+	if len(io.bad)+len(cn.bad) != 0 {
+		t.Fatalf("sent wrong: %v %v", io.bad, cn.bad)
+	}
+	k := miniMaxCheckinKey(miniMaxAccount{site: MiniMaxCodeGlobalID, uid: "42"})
+	if k == miniMaxCheckinKey(miniMaxAccount{uid: "42"}) || !strings.HasPrefix(k, MiniMaxCodeGlobalID+"|") {
+		t.Fatalf("key %q", k)
 	}
 }
