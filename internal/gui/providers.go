@@ -319,6 +319,10 @@ type providersJSON struct {
 	// Moved is the agents the change moved off models it stopped serving
 	// (agent.Reseat), for the page to say so.
 	Moved []agent.Move `json:"moved,omitempty"`
+	// Added and Had: of the keys pasted at once (keys/import), how many
+	// were new and how many the provider had already.
+	Added int `json:"added,omitempty"`
+	Had   int `json:"had,omitempty"`
 	// FileError is why providers.json can't be read (provider.FileError):
 	// the page says so over what is listed, which is then the signed-in
 	// accounts alone, never "add your first provider".
@@ -406,6 +410,15 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 	out.KeyList = p.KeyList()
 	if out.KeyList == nil {
 		out.KeyList = []provider.KeyInfo{}
+	}
+	// a key the gateway passes over after a failure says so on its row
+	for i, k := range out.KeyList {
+		if !k.On {
+			continue
+		}
+		if r, ok := keyRestOf(p.RestKey(k)); ok {
+			out.KeyList[i].Rest = &provider.KeyRest{Why: r.Why, Status: r.Status, Until: r.Until, Key: p.RestKey(k)}
+		}
 	}
 	if !out.Key.Set && p.Ready() {
 		out.Key.Optional = true
@@ -524,6 +537,9 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 	}
 	return out
 }
+
+// keyRestOf is gateway.RestOf, swapped in tests.
+var keyRestOf = gateway.RestOf
 
 func providersState() providersJSON {
 	// an account signed in since start-up is listed with its vendor's
@@ -1343,6 +1359,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			ID, Key, Name, Ref string
 			Protocol           provider.Protocol
 		}
+		var added, had int
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			fail(rw, err)
 			return
@@ -1352,6 +1369,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		switch r.PathValue("action") {
 		case "add":
 			err = provider.AddKey(in.ID, in.Name, in.Key, in.Protocol)
+		case "import":
+			// many keys pasted at once, one a line or comma separated
+			added, had, err = provider.AddKeys(in.ID, provider.SplitKeys(in.Key), in.Protocol)
 		case "protocol":
 			err = provider.SetKeyProtocol(in.ID, in.Ref, in.Protocol)
 		case "use":
@@ -1375,7 +1395,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		// models a key sees is known only from its own list, and an off
 		// key's isn't asked (#76), so until then a relay that hands out a
 		// key per group would send the key nothing, or everything
-		if a := r.PathValue("action"); a == "add" || a == "on" {
+		if a := r.PathValue("action"); a == "add" || a == "import" || a == "on" {
 			if p, err := provider.Find(in.ID); err == nil && p.Ready() && len(p.KeysOn()) > 1 {
 				ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 				p.Fetch(ctx)
@@ -1383,7 +1403,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			}
 		}
 		st := providersState()
-		st.Moved = moved
+		st.Moved, st.Added, st.Had = moved, added, had
 		writeJSON(rw, st)
 	})
 	// Adding a subscription: magpie opens the vendor's sign-in in the

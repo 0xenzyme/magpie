@@ -10040,6 +10040,12 @@ function renderKeyAccounts(p) {
     };
     row.append(dot, name);
     if (k.name) row.append(el("span", "plan mono", k.masked));
+    // one the gateway passes over after a failure: why, and until when
+    if (k.rest && new Date(k.rest.until) > Date.now()) {
+      const r = el("span", "key-rest", t("Resting · {why} · back at {time}", { why: (k.rest.status ? k.rest.status + " " : "") + t(KEY_FAIL[k.rest.why] || "failed"), time: new Date(k.rest.until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }));
+      r.title = t("The gateway passes this key over until then, and tries the next one");
+      row.append(r);
+    }
     const proto = protoPicker(p, k.protocol, (v) => accountAction("keys/protocol", { id: p.id, ref: k.id, protocol: v }));
     if (proto) row.append(proto);
     // its own models (#474), when there is another key to send the rest to
@@ -10060,13 +10066,70 @@ function renderKeyAccounts(p) {
     if (amBox) row.append(amBox), row.classList.add("with-am");
     list.append(row);
   }
-  if (addingKey?.id === p.id) {
+  if (addingKey?.id === p.id && addingKey.bulk) {
+    // many keys at once (361 on Discord): pasted one a line, or separated
+    // by commas or spaces; those the provider has are passed over
+    const box = el("div", "acc adding bulk");
+    const keys = el("textarea", "bulk-keys");
+    keys.value = addingKey.key || "";
+    keys.rows = 5;
+    keys.spellcheck = false;
+    keys.placeholder = t("Paste the keys, one a line or separated by commas");
+    const count = el("span", "hint bulk-count");
+    const add = el("button", "text primary", t("Add"));
+    const counted = () => {
+      const n = splitKeys(keys.value).length;
+      count.textContent = n ? t(n === 1 ? "1 key" : "{n} keys", { n }) : "";
+      add.disabled = !n;
+    };
+    keys.oninput = () => { addingKey.key = keys.value; counted(); };
+    counted();
+    const go = async () => {
+      if (!splitKeys(keys.value).length) return;
+      add.classList.add("busy");
+      try {
+        providers = await api("keys/import", { id: p.id, key: keys.value, protocol: addingKey.protocol || "" });
+      } catch (e) {
+        add.classList.remove("busy");
+        if (!editorError(e.message, "err")) status(e.message, "err");
+        return;
+      }
+      const { added = 0, had = 0 } = providers;
+      addingKey = null;
+      renderProviders();
+      state = await api("state").catch(() => state);
+      renderAgents();
+      saidMoved(had ? t("{n} keys added, {m} already there", { n: added, m: had }) : t("{n} keys added — each takes over when the ones before it run out", { n: added }));
+    };
+    add.onclick = go;
+    keys.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) go(); else if (e.key === "Escape") { addingKey = null; renderProviders(); } };
+    const one = el("button", "link", t("Add one key"));
+    one.onclick = () => { addingKey = { id: p.id, name: "", key: "", protocol: addingKey.protocol }; renderProviders(); };
+    const x = el("button", "text", t("Cancel"));
+    x.onclick = () => { addingKey = null; renderProviders(); };
+    const proto = protoPicker(p, addingKey.protocol || "", (v) => { addingKey.protocol = v; });
+    const bar = el("div", "kb");
+    bar.append(one);
+    if (proto) bar.append(proto);
+    bar.append(count, el("span", "grow"), x, add);
+    box.append(keys, bar);
+    list.append(box);
+    queueMicrotask(() => keys.focus({ preventScroll: true }));
+  } else if (addingKey?.id === p.id) {
     const box = el("div", "acc adding");
     // the key is what's needed; a name is only for telling keys apart
     const name = input(addingKey.name, t("Name (optional), e.g. Team"));
     name.oninput = () => { addingKey.name = name.value; };
     const key = input(addingKey.key, t("paste an API key"), "password");
     key.oninput = () => { addingKey.key = key.value; };
+    // several keys pasted into the one field: the box takes them all
+    key.onpaste = (e) => {
+      const text = e.clipboardData?.getData("text") || "";
+      if (splitKeys(text).length < 2) return;
+      e.preventDefault();
+      addingKey = { id: p.id, name: "", key: text, protocol: addingKey.protocol, bulk: true };
+      renderProviders();
+    };
     const add = el("button", "text primary", t("Add"));
     const go = async () => {
       add.classList.add("busy");
@@ -10084,6 +10147,10 @@ function renderKeyAccounts(p) {
     const proto = protoPicker(p, addingKey.protocol || "", (v) => { addingKey.protocol = v; });
     const bar = el("div", "kb");
     if (p.keysUrl) { const g = el("button", "link", t("Get a key ↗")); g.onclick = () => api("open", { url: p.keysUrl }); bar.append(g); }
+    const many = el("button", "link", t("Paste several"));
+    many.title = t("Add many keys at once, one a line or separated by commas");
+    many.onclick = () => { addingKey = { id: p.id, name: "", key: "", protocol: addingKey.protocol, bulk: true }; renderProviders(); };
+    bar.append(many);
     if (proto) bar.append(proto);
     bar.append(el("span", "grow"), x, add);
     box.append(fields, bar);
@@ -10100,6 +10167,19 @@ function renderKeyAccounts(p) {
   arrangeAccountRows(list, p);
   return list;
 }
+
+// splitKeys is the keys in text pasted at once, as provider.SplitKeys
+// reads them: one a line, or separated by commas, semicolons or spaces.
+function splitKeys(text) {
+  const out = [];
+  for (let f of String(text).split(/[,;，；\s\u3000]+/)) {
+    f = f.replace(/^["'`]+|["'`]+$/g, "");
+    if (f && !out.includes(f)) out.push(f);
+  }
+  return out;
+}
+// a key's rest, worded as the Routing page words a failure
+const KEY_FAIL = { rate: "rate limited", credit: "out of credit", quota: "quota used up", other: "failed", auth: "sign-in required", verify: "needs verification", refused: "refused (safety filter)", proxy: "proxy not reachable", slow: "slow to start" };
 
 // protoPicker: which protocol a key works with. Some relays hand out one
 // key for Anthropic and another for OpenAI; a key set to one is used on

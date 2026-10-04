@@ -260,6 +260,10 @@ func init() { provider.OnRenewed(renewed) }
 // staleAllowance is provider.StaleAllowance, swapped in tests.
 var staleAllowance = provider.StaleAllowance
 
+// RestOf is why what rests by key — a provider's id, or its id#key — is
+// passed over now, while it is.
+func RestOf(key string) (Rest, bool) { return restOf(key) }
+
 // Unrest lifts the rest of what rests by key — an account just verified
 // with its vendor, say — so the next request asks it again. False when it
 // wasn't resting.

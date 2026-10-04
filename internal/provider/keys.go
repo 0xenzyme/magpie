@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // KeyAccount is a saved key after the first. Off keeps it without using it.
@@ -34,6 +35,28 @@ type KeyInfo struct {
 	On     bool   `json:"on"`     // in use: the first, or next in line
 
 	Protocol Protocol `json:"protocol,omitempty"` // the only one it works with
+
+	// Rest is why the gateway passes it over now, after a failure, and
+	// until when; nil while it takes requests.
+	Rest *KeyRest `json:"rest,omitempty"`
+}
+
+// KeyRest is a key's rest as the gateway keeps it: failQuota, failRate…,
+// the status it answered, until when, and the key to lift it by.
+type KeyRest struct {
+	Why    string    `json:"why"`
+	Status int       `json:"status"`
+	Until  time.Time `json:"until"`
+	Key    string    `json:"key"`
+}
+
+// RestKey is what the gateway rests the key k of a provider by: the
+// provider's id while it has one key on, else the id and the key's.
+func (p Provider) RestKey(k KeyInfo) string {
+	if len(p.KeysOn()) > 1 {
+		return p.ID + "#" + k.ID
+	}
+	return p.ID
 }
 
 func keyID(key string) string {
@@ -99,6 +122,67 @@ func AddKey(id, name, key string, proto Protocol) error {
 		p.Keys = append(p.Keys, KeyAccount{Name: name, Key: key, Protocol: proto})
 	}
 	return Save(*p)
+}
+
+// SplitKeys is the keys in text pasted at once: one a line, or separated
+// by commas, semicolons or spaces, trimmed of quotes, each once.
+func SplitKeys(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, f := range strings.FieldsFunc(text, func(r rune) bool {
+		return r == ',' || r == ';' || r == '，' || r == '；' || r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\u3000'
+	}) {
+		f = strings.Trim(f, "\"'`")
+		if f != "" && !seen[f] {
+			seen[f] = true
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// AddKeys saves several keys at once, on, after the ones the provider has,
+// with the protocol given: those it has already are passed over. added is
+// how many were new, had how many it had.
+func AddKeys(id string, keys []string, proto Protocol) (added, had int, err error) {
+	if err := keyProtocolOK(proto); err != nil {
+		return 0, 0, err
+	}
+	p, err := Find(id)
+	if err != nil {
+		return 0, 0, err
+	}
+	if p.Account != nil {
+		return 0, 0, errors.New("a signed-in account has no keys")
+	}
+	seen := map[string]bool{}
+	for _, k := range p.KeyList() {
+		seen[k.ID] = true
+	}
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if seen[keyID(key)] {
+			had++
+			continue
+		}
+		seen[keyID(key)] = true
+		added++
+		if p.Key == "" {
+			p.Key, p.KeyName, p.KeyProtocol = key, "", proto
+		} else {
+			p.Keys = append(p.Keys, KeyAccount{Key: key, Protocol: proto})
+		}
+	}
+	if added == 0 {
+		if had > 0 {
+			return 0, had, fmt.Errorf("%s already has these keys", p.Name)
+		}
+		return 0, 0, errors.New("paste the keys to add")
+	}
+	return added, had, Save(*p)
 }
 
 // first is the first key as a KeyAccount, and setFirst makes k the first.
