@@ -68,7 +68,13 @@ type Record struct {
 	// none for a reply that wasn't streamed (#196)
 	TTFT      int64 `json:"ttft_ms,omitempty"`
 	FirstText int64 `json:"first_text_ms,omitempty"`
-	Status    int   `json:"status"`
+	// Sent: ms from the request to its answering try going out to the
+	// vendor, its body written, as TTFT is counted: magpie's own time and
+	// the tries that failed first are before it, and TTFT-Sent is how
+	// long the vendor took to its first content. 0 where it isn't known
+	// (a reply not streamed, or a vendor magpie doesn't reach over HTTP).
+	Sent   int64 `json:"sent_ms,omitempty"`
+	Status int   `json:"status"`
 	// Error is why a call failed, in the vendor's words and cut short;
 	// ErrType what its body called the error (rate_limit_error,
 	// usage_limit_reached); RequestID the id the vendor gave the call; and

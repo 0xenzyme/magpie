@@ -14,6 +14,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -1361,6 +1363,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	autoReset := false // a Codex or Claude reset looked at, once a request
 	// what the tries' held streams sent the agent ahead of a reply (#751)
 	kept := &keptAlive{proto: from}
+	var sentMs int64 // ms from the request to its answering try going to the vendor
+	streams := streamOf(body)
+	if from == provider.Gemini {
+		streams = strings.Contains(r.URL.Path, "streamGenerateContent")
+	}
 	for i := 0; i < len(cands); i++ {
 		c := cands[i]
 		last := i == len(cands)-1
@@ -1371,6 +1378,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		hw := newHoldWriter(w, !last || again < max(lastRetries, rateRetries) || other != nil || kept.sent)
 		hw.thinkingShown = !refusesAfterThinking(c.model)
 		hw.ctx, hw.alive = r.Context(), kept
+		if isGroup && g.FirstToken > 0 && !last && streams {
+			// slow to start, the next member is asked (Group.FirstToken)
+			hw.firstWait = time.Duration(g.FirstToken) * time.Second
+		}
 		call.Provider, call.To, call.Usage = c.p.ID, "", Usage{}
 		model = c.model
 		where = c.p.Where()
@@ -1381,6 +1392,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		providerAccount = accountOf(c.p)
 		began := time.Now()
 		hw.first.start = began
+		var wrote atomic.Int64
 		attemptBody := body
 		if from == provider.Responses {
 			// reasoning another sealed, which this one refused earlier in
@@ -1488,6 +1500,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// once (hw.stop), not read on until the vendor hangs up
 			ctx, stop := context.WithCancel(r.Context())
 			hw.stop = stop
+			// when the request last went out to the vendor, its body
+			// written: what came before is magpie's, what after the
+			// vendor's (Record.Sent)
+			ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{WroteRequest: func(httptrace.WroteRequestInfo) {
+				wrote.Store(time.Now().UnixNano())
+			}})
 			// a key or account with a MaxConcurrency is asked once one of
 			// its slots is free, in turn; the agent gone while it waits,
 			// nothing is sent (the 499 below)
@@ -1502,6 +1520,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 					// the slot is the vendor's until the reply is read to
 					// its end or the agent has gone: attempt returns then
 					defer release()
+					defer hw.watchFirst()()
 					call.Status, call.Error = s.attempt(hw, r.WithContext(ctx), from, c.p, c.model, attemptBody, &call)
 				}()
 			}
@@ -1536,6 +1555,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		// the request's, from when it came as its ms are: the time before
 		// this try, the ones that failed first, is in it
 		call.TTFT, call.FirstText = sinceStart(began.Sub(start), hw.first.first), sinceStart(began.Sub(start), hw.first.text)
+		sentMs = 0
+		if at := wrote.Load(); at > 0 && call.TTFT > 0 {
+			sentMs = min(max(time.Unix(0, at).Sub(start).Milliseconds(), 1), call.TTFT)
+		}
 		if r.Context().Err() != nil && !hw.ended {
 			// the agent went away: nobody failed, and nobody else is asked
 			call.Status, call.Error = 499, "the agent canceled the request"
@@ -1543,6 +1566,21 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			telemetry.attempt(call, try, c.p.ID, sent, hw, capture)
 			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
 			break
+		}
+		if hw.slow {
+			// no first content in the group's FirstToken, and nothing of
+			// it sent: the next member is asked, and this one doesn't
+			// rest, a long prompt being slow to start anywhere
+			call.Status, call.Error = http.StatusGatewayTimeout, fmt.Sprintf("%s: no first token in %ds", c.p.Name, g.FirstToken)
+			try.Status, try.Error, try.Fail = call.Status, call.Error, failSlow
+			call.TTFT, call.FirstText = 0, 0
+			telemetry.attempt(call, try, c.p.ID, sent, hw, capture)
+			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+			if other == nil {
+				other = &Try{Status: call.Status, Error: call.Error}
+			}
+			skipped = append(skipped, c.label()+": "+call.Error)
+			continue
 		}
 		telemetry.attempt(call, try, c.p.ID, sent, hw, capture)
 		if resealed < 2 && from == provider.Responses && !hw.passing && hw.code() >= 400 && foreignReasoning.Match(hw.errBody()) {
@@ -1881,7 +1919,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			Requested: call.Model, Served: call.Usage.Served,
 			Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
 			CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: call.Millis, Status: call.Status,
-			TTFT: call.TTFT, FirstText: call.FirstText, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind,
+			TTFT: call.TTFT, FirstText: call.FirstText, Sent: sentMs, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind,
 			RequestID: call.Usage.RequestID, ResponseID: call.Usage.ResponseID, Endpoint: endpointOf(r, from, call.To), Archive: call.archiveName()}
 		failedWith(&rec, call.Status, call.Error, call.Usage.ErrType)
 		withBodies(&rec, &call)

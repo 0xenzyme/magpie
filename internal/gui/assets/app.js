@@ -12175,6 +12175,12 @@ function ledDetail(r, cols) {
   // model the conversation never picked reads as what it is (#714)
   if (r.kind) add("Called for", window.kindName ? window.kindName(r.kind) : r.kind);
   if (r.ttft_ms) add("First token", ledTook(r.ttft_ms));
+  // of it, magpie's own time before the request went to the vendor, and the
+  // vendor's wait from then to its first token
+  if (r.ttft_ms && r.sent_ms) {
+    add("In magpie", ledTook(r.sent_ms));
+    add("Vendor's first token", ledTook(Math.max(0, r.ttft_ms - r.sent_ms)));
+  }
   if (r.reasoning) add("Reasoning tokens", ledNum(r.reasoning));
   if (r.session_provider) add("Recorded provider ID", r.session_provider);
   if (r.session_account) add("Session account", r.session_account);

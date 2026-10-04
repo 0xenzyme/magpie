@@ -116,6 +116,12 @@ type Group struct {
 	// together: one rate limited with quota left goes behind every other
 	// member's. Not for "rotate" or Manual.
 	Sink bool `json:"sink,omitempty"`
+	// FirstToken is how many seconds a member's streamed reply may take to
+	// its first content — text, reasoning or a tool call — before the next
+	// member is asked instead, nothing of it having reached the agent; 0
+	// waits as long as it takes. The last one left is always waited for,
+	// and the slow one doesn't rest.
+	FirstToken int `json:"firstToken,omitempty"`
 	// Off are the members switched off: kept where they are in the
 	// order, with their rules, but sent nothing until switched on again,
 	// so trying a group without one doesn't mean taking it out.
@@ -680,6 +686,7 @@ func SaveGroup(g Group) error {
 	if g.Name == "" {
 		g.Name = g.ID
 	}
+	g.FirstToken = max(g.FirstToken, 0)
 	// the members it names and its patterns, without what the patterns
 	// matched when it was read: those are found again below, and stored
 	// never

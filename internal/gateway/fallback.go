@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -875,7 +876,20 @@ type holdWriter struct {
 	// connection open after it — a 429 said as an event — kept the agent
 	// waiting with nothing sent, the next account never asked
 	stop func()
+
+	// mu keeps a try's writes apart from watchFirst, which ends a try
+	// that is slow to start from its own goroutine
+	mu sync.Mutex
+	// firstWait is how long a try may take to its first content before
+	// the next member is asked (Group.FirstToken), 0 for as long as it
+	// takes; slow says it took longer, and was let go with nothing sent
+	firstWait time.Duration
+	slow      bool
 }
+
+// errSlowStart is what a try's writes get once it was let go for taking
+// longer than its group waits for a first token.
+var errSlowStart = errors.New("let go: no first token in time")
 
 func newHoldWriter(w http.ResponseWriter, hold bool) *holdWriter {
 	return &holdWriter{w: w, hold: hold, header: http.Header{}, first: firstToken{start: time.Now()}}
@@ -884,7 +898,13 @@ func newHoldWriter(w http.ResponseWriter, hold bool) *holdWriter {
 func (h *holdWriter) Header() http.Header { return h.header }
 
 func (h *holdWriter) WriteHeader(code int) {
-	if h.status != 0 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.writeHeader(code)
+}
+
+func (h *holdWriter) writeHeader(code int) {
+	if h.status != 0 || h.slow {
 		return
 	}
 	h.status = code
@@ -920,8 +940,13 @@ func (h *holdWriter) pass() {
 }
 
 func (h *holdWriter) Write(b []byte) (int, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.slow {
+		return 0, errSlowStart
+	}
 	if h.status == 0 {
-		h.WriteHeader(http.StatusOK)
+		h.writeHeader(http.StatusOK)
 	}
 	h.see(b)
 	h.first.see(b)
@@ -1042,11 +1067,17 @@ func (h *holdWriter) scan() {
 	if h.thinking {
 		longest = max(longest, holdThinking)
 	}
+	// a group that asks the next member when one is slow to start holds
+	// the stream until then, for nothing of it to have reached the agent
+	waiting := h.firstWait > 0 && h.first.first == 0
+	if waiting {
+		longest = max(longest, h.firstWait+time.Second)
+	}
 	if h.held.Len() > holdMost || time.Since(h.since) > longest {
 		h.flow()
 		return
 	}
-	if (h.thinking || h.buffered) && time.Since(h.since) >= keepHeldAfter {
+	if (h.thinking || h.buffered || waiting) && time.Since(h.since) >= keepHeldAfter {
 		h.keepAlive()
 	}
 }
@@ -1100,10 +1131,16 @@ func (h *holdWriter) flow() {
 	h.pass()
 	h.w.Write(h.held.Bytes())
 	h.held.Reset()
-	h.Flush()
+	h.flush()
 }
 
 func (h *holdWriter) Flush() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.flush()
+}
+
+func (h *holdWriter) flush() {
 	if f, ok := h.w.(http.Flusher); ok && h.passing {
 		f.Flush()
 	}
@@ -1172,7 +1209,64 @@ func (h *holdWriter) release() {
 	}
 	h.pass()
 	h.w.Write(h.held.Bytes())
-	h.Flush()
+	h.flush()
+}
+
+// watchFirst lets the try go — stop, with slow said — once firstWait
+// passes with no first content and nothing of it sent to the agent: the
+// stream held, or no reply begun at all. Meanwhile the agent is kept alive
+// after keepHeldAfter, a vendor that says nothing at all running no scan.
+// The returned func ends the watch, and returns once it has.
+func (h *holdWriter) watchFirst() func() {
+	if h.firstWait <= 0 || h.stop == nil {
+		return func() {}
+	}
+	done, over := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(over)
+		deadline := time.NewTimer(h.firstWait)
+		defer deadline.Stop()
+		tick := time.NewTicker(time.Second)
+		defer tick.Stop()
+		began := time.Now()
+		for {
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+				h.mu.Lock()
+				if h.started() {
+					h.mu.Unlock()
+					return
+				}
+				if time.Since(began) >= keepHeldAfter {
+					h.keepAlive()
+				}
+				h.mu.Unlock()
+			case <-deadline.C:
+				h.mu.Lock()
+				if !h.started() {
+					h.slow = true
+				}
+				h.mu.Unlock()
+				if h.slow {
+					h.stop()
+				}
+				return
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-over
+	}
+}
+
+// started says whether the try has begun its reply, or ended, as far as
+// watchFirst need know: its first content, anything sent on to the agent,
+// a failure, or a reply that isn't streamed.
+func (h *holdWriter) started() bool {
+	return h.first.first != 0 || h.passing || h.ended || h.failure != 0 || h.whole || h.status >= 400
 }
 
 // eventEnd is where the first whole event in b ends, or -1.
