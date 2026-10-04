@@ -46,6 +46,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -433,6 +434,13 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 		"magpie": map[string]any{"command": exe, "args": []string{"claude-mcp-helper", callback, toolsPath}},
 	}})
 	args := claudeCLIArgs(model, string(mcpConfig), req.Effort, req.WebSearch)
+	if req.ThinkOff {
+		// the client turned thinking off, as Claude Code's auto mode
+		// classifier and its small asks do: a run at Claude Code's own
+		// default thought before its 64-token verdict, thousands of output
+		// tokens a check on the subscription (0xAncientTwo)
+		args = append(args, "--thinking", "disabled")
+	}
 	if len(req.Schema) > 0 {
 		args = append(args, "--json-schema", string(req.Schema))
 	}
@@ -1062,13 +1070,14 @@ func (r *subscriptionRun) park() {
 // to be found again: whom it runs as, the model, its settings and tools,
 // and the messages' words, tool calls and results. Whitespace, thinking and
 // how a reply is split into messages are left out, as clients keep those
-// differently. Its effort is not in it, only whether it asked for one: a
+// differently. Its effort is not in it, only whether it asked for one (or
+// turned thinking off, which its Claude Code was started with): a
 // run is told another level as its turn starts (setEffort), where one
 // started anew would write the whole conversation to the cache again (#502).
 func turnKey(owner string, req *Request, msgs []Message) string {
 	h := sha256.New()
 	tools, _ := json.Marshal(req.Tools)
-	fmt.Fprintf(h, "%s\x00%s\x00%t\x00%s\x00%s\x00%s\x00%t\x00%s", owner, req.Model, req.Effort != "", req.ToolChoice, req.System, tools, req.WebSearch, req.Schema)
+	fmt.Fprintf(h, "%s\x00%s\x00%t\x00%t\x00%s\x00%s\x00%s\x00%t\x00%s", owner, req.Model, req.Effort != "", req.ThinkOff, req.ToolChoice, req.System, tools, req.WebSearch, req.Schema)
 	hashMessages(h, msgs, nil)
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -1751,7 +1760,7 @@ func renderClaudePrompt(req *Request) ([]map[string]any, error) {
 	var text strings.Builder
 	if req.System != "" || req.ToolChoice == "required" || strings.HasPrefix(req.ToolChoice, "name:") {
 		text.WriteString("<external_system_instructions>\n")
-		text.WriteString(req.System)
+		text.WriteString(withoutBillingHeader(req.System))
 		switch {
 		case req.ToolChoice == "required":
 			text.WriteString("\nYou must call at least one available tool before answering.")
@@ -1780,6 +1789,22 @@ func renderClaudePrompt(req *Request) ([]map[string]any, error) {
 	}
 	return closeBlocks(blocks, &text), nil
 }
+
+// withoutBillingHeader is a system prompt without the billing line Claude
+// Code puts first in its own (x-anthropic-billing-header: cc_version=…),
+// whose last part is a hash of the request's first user message. Its auto
+// mode classifier sends its policy, about 35k tokens, with the transcript
+// so far as that message: kept, every check's instructions began with
+// another line, so none was read from the cache and each check wrote all of
+// it again at twice the input price, on the session's model (X, AncientTwo).
+// The run's Claude Code sends its own.
+func withoutBillingHeader(system string) string {
+	return billingHeader.ReplaceAllString(system, "")
+}
+
+// billingHeader is the line with its fields (cc_version=…; cc_entrypoint=…;
+// cch=…;), which the block after follows with no newline between.
+var billingHeader = regexp.MustCompile(`^x-anthropic-billing-header:(\s*[A-Za-z_]+=[^;\s]*;)*\s*`)
 
 // renderClaudeTurn is the user's messages in a conversation Claude Code
 // already has, as it would be told them itself.

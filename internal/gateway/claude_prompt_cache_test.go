@@ -35,3 +35,33 @@ func TestClaudeInstructionsCachedApart(t *testing.T) {
 		t.Fatalf("env: %q", env)
 	}
 }
+
+// Claude Code's system prompt begins with a billing line whose hash follows
+// the request's first user message. Its auto mode classifier sends the same
+// policy with another transcript each time: with the line kept, no check's
+// instructions were ever read from the cache (X, AncientTwo). Two checks
+// now share them.
+func TestClaudeInstructionsWithoutBillingHeader(t *testing.T) {
+	var first []any
+	for i, hash := range []string{"8c9", "4ff"} {
+		body := `{"model":"m","max_tokens":64,"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.289.` + hash + `; cc_entrypoint=cli; cch=00000;"},{"type":"text","text":"You are a security monitor.","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":"transcript ` + hash + `"}]}`
+		req, err := parseAnthropic([]byte(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		blocks, err := renderClaudePrompt(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if blocks[0]["text"] != "<external_system_instructions>\nYou are a security monitor.\n</external_system_instructions>\n\n" {
+			t.Fatalf("check %d: %q", i, blocks[0]["text"])
+		}
+		first = append(first, blocks[0]["text"])
+	}
+	if first[0] != first[1] {
+		t.Fatalf("instructions differ: %q", first)
+	}
+	if got := withoutBillingHeader("Rules mention x-anthropic-billing-header: here"); got != "Rules mention x-anthropic-billing-header: here" {
+		t.Fatalf("a mention later on: %q", got)
+	}
+}
