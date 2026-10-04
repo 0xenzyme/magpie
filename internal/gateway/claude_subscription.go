@@ -786,7 +786,102 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 		this.add(v)
 		return v.plus(before, true)
 	}
-	for s.Scan() {
+	// A stream Anthropic cut short (a dropped connection, a stall) Claude
+	// Code ends with a message_stop of its own and no message_delta, and
+	// asks again: streamed, then once more without a stream, whose answer
+	// it tells only in whole messages, a block each (#726). That
+	// message_stop ends nothing: the reply goes on in the attempt that
+	// answers. Taken for the reply's end, it told the client end_turn with
+	// the first attempt's usage (5 tokens out, the thinking so far, no
+	// answer) and ended the run, its next turn writing the whole
+	// conversation to the cache again.
+	stopped := false // this message's message_delta said why it stopped
+	cut := false     // an attempt was cut short, and Claude Code asks again
+	shown := false   // this message has shown the client words or a call
+	streamed := ""   // the message whose stream the events are
+	// a message told in whole messages: its id, its stop, and its blocks
+	// so far; it is whole when anything else comes, or nothing does for
+	// unstreamedQuiet, as when Claude Code goes on to call the client's
+	// tools and waits on them
+	unstreamed, unstreamedStop, blocks := "", "", 0
+	var pmu sync.Mutex // held for each line, and by quiet's settle
+	var quiet *time.Timer
+	// what each message's end does, once its stop is known
+	end := func(why string) {
+		if goesOn := why != "" && r.schema && !theirs || why == "tool_use" && len(own) > 0 && !theirs; goesOn {
+			inside = true // the answer is the next message's, or the result's
+		} else if why != "" {
+			r.emit(Event{Kind: KStop, Stop: stopFromAnthropic(why)})
+		}
+	}
+	settle := func() { // pmu held
+		if quiet != nil {
+			quiet.Stop()
+		}
+		if unstreamed == "" {
+			return
+		}
+		unstreamed = ""
+		end(unstreamedStop)
+		if !inside {
+			r.endSegment()
+		}
+	}
+	// toolStart says whether a tool_use block, index of this message, is a
+	// call of the client's, to be handed over as name: Claude Code's own
+	// calls (WebSearch, magpie's web search, a schema's StructuredOutput)
+	// are its own to answer
+	toolStart := func(index int, name string) (string, bool) {
+		if r.schema && name == "StructuredOutput" {
+			own[index] = true
+			return "", false
+		}
+		name, ok := strings.CutPrefix(name, "mcp__magpie__")
+		r.mu.Lock()
+		search := r.search != nil && name == r.searchName
+		r.mu.Unlock()
+		// magpie answers its own web search, as Claude Code does
+		// its WebSearch
+		if !ok || search {
+			own[index] = true
+			return "", false
+		}
+		theirs, shown = true, true
+		r.mu.Lock()
+		r.asked = append(r.asked, name)
+		r.mu.Unlock()
+		return name, true
+	}
+	text := func(s string) {
+		if s != "" && !r.schema {
+			shown = true
+			r.emit(Event{Kind: KText, Text: s})
+		}
+	}
+	// begin starts a message: the reply's first, or one it goes on in,
+	// after Claude Code's own call or an attempt cut short
+	begin := func(id, model string, u cliUsage) {
+		own, theirs, stopped, shown = map[int]bool{}, false, false, false
+		if inside || cut {
+			inside, cut = false, false
+			before, this = before.plus(this, false), Usage{}
+			r.emit(Event{Kind: KUsage, Usage: usage(u)})
+			return
+		}
+		before, this = Usage{}, Usage{}
+		r.mu.Lock()
+		r.asked = nil
+		r.mu.Unlock()
+		r.emit(Event{Kind: KStart, MsgID: id, Model: model, Usage: usage(u)})
+	}
+	// failed ends the reply with an error where it was cut short with
+	// nothing to go on in
+	failed := func(why string) {
+		cut = false
+		r.emit(Event{Kind: KError, Text: "Claude Code's stream from Anthropic was cut short " + why, Status: http.StatusBadGateway, RequestID: reqID})
+		r.endSegment()
+	}
+	line := func(b []byte) {
 		var envelope struct {
 			Type    string `json:"type"`
 			Subtype string `json:"subtype"`
@@ -807,7 +902,10 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			ToolUseResult json.RawMessage `json:"tool_use_result"`
 			// what the account has left, as Anthropic told Claude Code
 			RateLimitInfo json.RawMessage `json:"rate_limit_info"`
-			Event         struct {
+			// an assistant message, one of its blocks at a time; raw, as
+			// a user message's content may be a string
+			Message json.RawMessage `json:"message"`
+			Event   struct {
 				Type    string `json:"type"`
 				Index   int    `json:"index"`
 				Message struct {
@@ -832,8 +930,34 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 				Usage cliUsage `json:"usage"`
 			} `json:"event"`
 		}
-		if json.Unmarshal(s.Bytes(), &envelope) != nil {
-			continue
+		if json.Unmarshal(b, &envelope) != nil {
+			return
+		}
+		var whole struct {
+			ID         string   `json:"id"`
+			Model      string   `json:"model"`
+			StopReason string   `json:"stop_reason"`
+			Usage      cliUsage `json:"usage"`
+			Content    []struct {
+				Type      string          `json:"type"`
+				Text      string          `json:"text"`
+				Thinking  string          `json:"thinking"`
+				Signature string          `json:"signature"`
+				ID        string          `json:"id"`
+				Name      string          `json:"name"`
+				Input     json.RawMessage `json:"input"`
+			} `json:"content"`
+		}
+		if envelope.Type == "assistant" {
+			_ = json.Unmarshal(envelope.Message, &whole)
+		}
+		// a message not streamed is told by its id: a streamed one's
+		// whole messages come after its stream's events, under its id;
+		// Claude Code's own (an error it tells as a message) is
+		// <synthetic>
+		next := envelope.Type == "assistant" && whole.ID != "" && whole.ID != streamed && whole.Model != "<synthetic>"
+		if unstreamed != "" && !(next && whole.ID == unstreamed) {
+			settle()
 		}
 		if envelope.Type == "rate_limit_event" {
 			// a run in Claude Code's own home is on whatever account
@@ -842,7 +966,7 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			if user, own := ownerAccount(r.owner); user != "" && !(own && provider.ClaudeCodeMovedOff(user)) {
 				provider.NoteClaudeLimits(user, claudeLimits(envelope.RateLimitInfo))
 			}
-			continue
+			return
 		}
 		if envelope.Type == "result" {
 			// a turn that failed — out of quota, rate limited — ends with
@@ -852,6 +976,7 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			inside = false
 			switch {
 			case envelope.IsError:
+				cut = false
 				text := envelope.Result
 				if text == "" && waiting {
 					text = "Claude Code gave no answer fitting the schema (" + envelope.Subtype + ")"
@@ -869,6 +994,8 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 				}
 				r.emit(Event{Kind: KError, Text: text, Status: envelope.APIErrorStatus, Code: errKind, RequestID: reqID})
 				r.endSegment()
+			case cut:
+				failed("and Claude Code ended the turn without asking again")
 			case waiting && len(envelope.StructuredOutput) > 0 && string(envelope.StructuredOutput) != "null":
 				r.emit(Event{Kind: KText, Text: string(envelope.StructuredOutput)})
 				r.emit(Event{Kind: KStop, Stop: "stop"})
@@ -877,18 +1004,60 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 				r.emit(Event{Kind: KError, Text: "Claude Code ended the turn with no answer fitting the schema", RequestID: reqID})
 				r.endSegment()
 			}
-			continue
+			return
 		}
 		if envelope.Type == "assistant" {
-			// the whole message, whose id its stream's later events go
-			// out under; a failure says how it failed here, before its result
+			// a failure says how it failed here, before its result
 			if envelope.RequestID != "" {
 				reqID = envelope.RequestID
 			}
 			var kind string
 			_ = json.Unmarshal(envelope.ErrorKind, &kind)
 			errKind = kind
-			continue
+			if !next {
+				return
+			}
+			// asked again without a stream, after attempts cut short:
+			// the answer is told here only
+			if whole.ID != unstreamed {
+				begin(whole.ID, whole.Model, whole.Usage)
+				unstreamed, blocks = whole.ID, 0
+			}
+			unstreamedStop = whole.StopReason
+			for _, c := range whole.Content {
+				index := blocks
+				blocks++
+				switch c.Type {
+				case "thinking":
+					if c.Thinking != "" {
+						r.emit(Event{Kind: KThink, Text: c.Thinking})
+					}
+					if c.Signature != "" {
+						r.emit(Event{Kind: KSig, Text: c.Signature})
+					}
+				case "text":
+					text(c.Text)
+				case "tool_use":
+					name, theirs := toolStart(index, c.Name)
+					if !theirs {
+						continue
+					}
+					r.emit(Event{Kind: KToolStart, ID: c.ID, Name: name})
+					if len(c.Input) > 0 {
+						r.emit(Event{Kind: KToolArgs, Text: string(c.Input)})
+					}
+				}
+			}
+			r.emit(Event{Kind: KUsage, Usage: usage(whole.Usage), RequestID: reqID})
+			if quiet != nil {
+				quiet.Stop()
+			}
+			quiet = time.AfterFunc(unstreamedQuiet, func() {
+				pmu.Lock()
+				defer pmu.Unlock()
+				settle()
+			})
+			return
 		}
 		var searched struct {
 			Query   string            `json:"query"`
@@ -905,59 +1074,29 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 				}
 			}
 			r.emit(Event{Kind: KSearch, Text: searched.Query, Hits: hits})
-			continue
+			return
 		}
 		if envelope.Type != "stream_event" {
-			continue
+			return
 		}
 		e := envelope.Event
 		switch e.Type {
 		case "message_start":
-			own, theirs = map[int]bool{}, false
-			if inside {
-				inside = false
-				before, this = before.plus(this, false), Usage{}
-				r.emit(Event{Kind: KUsage, Usage: usage(e.Message.Usage)})
-				continue
-			}
-			before, this = Usage{}, Usage{}
-			r.mu.Lock()
-			r.asked = nil
-			r.mu.Unlock()
-			r.emit(Event{Kind: KStart, MsgID: e.Message.ID, Model: e.Message.Model, Usage: usage(e.Message.Usage)})
+			streamed = e.Message.ID
+			begin(e.Message.ID, e.Message.Model, e.Message.Usage)
 		case "content_block_start":
 			switch e.ContentBlock.Type {
 			case "tool_use":
-				if r.schema && e.ContentBlock.Name == "StructuredOutput" {
-					own[e.Index] = true
-					continue
+				if name, theirs := toolStart(e.Index, e.ContentBlock.Name); theirs {
+					r.emit(Event{Kind: KToolStart, ID: e.ContentBlock.ID, Name: name})
 				}
-				name, ok := strings.CutPrefix(e.ContentBlock.Name, "mcp__magpie__")
-				r.mu.Lock()
-				search := r.search != nil && name == r.searchName
-				r.mu.Unlock()
-				// magpie answers its own web search, as Claude Code does
-				// its WebSearch
-				if !ok || search {
-					own[e.Index] = true
-					continue
-				}
-				theirs = true
-				r.mu.Lock()
-				r.asked = append(r.asked, name)
-				r.mu.Unlock()
-				r.emit(Event{Kind: KToolStart, ID: e.ContentBlock.ID, Name: name})
 			case "text":
-				if e.ContentBlock.Text != "" && !r.schema {
-					r.emit(Event{Kind: KText, Text: e.ContentBlock.Text})
-				}
+				text(e.ContentBlock.Text)
 			}
 		case "content_block_delta":
 			switch e.Delta.Type {
 			case "text_delta":
-				if !r.schema {
-					r.emit(Event{Kind: KText, Text: e.Delta.Text})
-				}
+				text(e.Delta.Text)
 			case "thinking_delta":
 				r.emit(Event{Kind: KThink, Text: e.Delta.Thinking})
 			case "signature_delta":
@@ -969,23 +1108,44 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			}
 		case "message_delta":
 			r.emit(Event{Kind: KUsage, Usage: usage(e.Usage), RequestID: reqID})
-			if e.Delta.StopReason != "" && r.schema && !theirs {
-				inside = true // the answer is the result's
-			} else if e.Delta.StopReason == "tool_use" && len(own) > 0 && !theirs {
-				inside = true
-			} else if e.Delta.StopReason != "" {
-				r.emit(Event{Kind: KStop, Stop: stopFromAnthropic(e.Delta.StopReason)})
+			if e.Delta.StopReason != "" {
+				stopped = true
 			}
+			end(e.Delta.StopReason)
 		case "message_stop":
-			if !inside {
+			switch {
+			case inside:
+			case !stopped && shown:
+				// what the client was shown can't be taken back, nor
+				// the attempt's answer added to it: Claude Code's own
+				// request is the client's to make again
+				failed("after the reply had begun")
+			case !stopped:
+				cut = true
+			default:
 				r.endSegment()
 			}
 		}
 	}
+	for s.Scan() {
+		pmu.Lock()
+		line(s.Bytes())
+		pmu.Unlock()
+	}
+	pmu.Lock()
+	defer pmu.Unlock()
+	settle()
 	if err := s.Err(); err != nil {
 		r.emit(Event{Kind: KError, Text: err.Error()})
+	} else if cut {
+		failed("and Claude Code stopped")
 	}
 }
+
+// unstreamedQuiet is how long a message told in whole messages is taken
+// as whole once none of its blocks come: Claude Code writes them all at
+// once.
+var unstreamedQuiet = 300 * time.Millisecond
 
 type cliUsage struct {
 	Input         int `json:"input_tokens"`
