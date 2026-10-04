@@ -1384,9 +1384,13 @@
         return s;
       }, { cost: 0, tokens: 0, priced: 0, unpriced: 0, running: 0 });
       setText(x.arrow, g.key ? open ? "▾" : "▸" : "");
-      const name = g.rows.find((r) => r.sessionTitle)?.sessionTitle;
+      // A memory worker has its own ID and can process earlier chats. Label
+      // memory-only groups without renaming a chat that also made memory calls.
+      const memory = g.r.agent === "codex" && g.rows.every((r) => ["memory_consolidation", "memgen", "memory"].includes(r.kind));
+      const name = g.rows.find((r) => r.sessionTitle)?.sessionTitle || (memory ? t("Background memory task") : "");
       setText(x.name, g.key ? agentName(g.r.agent) + " · " + (name || groupSession(g.r)) : t("No session ID"));
-      x.name.title = g.key ? (name ? name + "\n" : "") + t("Session id") + ": " + groupSession(g.r) : t("These requests did not provide a session ID; they are not treated as one conversation.");
+      const purpose = memory ? t("Codex is organizing memories from earlier chats in the background. This can continue after a chat finishes.") + "\n" : "";
+      x.name.title = g.key ? (name ? name + "\n" : "") + purpose + t("Session id") + ": " + groupSession(g.r) : t("These requests did not provide a session ID; they are not treated as one conversation.");
       const bits = [t(g.rows.length === 1 ? "{n} request" : "{n} requests", { n: g.rows.length }), t("{n} tokens", { n: tokens(total.tokens) })];
       if (total.running) bits.push(t("{n} in progress", { n: total.running }));
       setText(x.meta, bits.join(" · "));

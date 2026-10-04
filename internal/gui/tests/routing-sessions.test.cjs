@@ -110,6 +110,73 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 }
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
+  for (const lang of ["en", "zh"]) {
+    test(`${engine} ${lang}: background memory groups explain their purpose and keep their own identity`, async (t) => {
+      const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+      const page = await browser.newPage({ viewport: { width: 1100, height: 800 }, reducedMotion: "reduce" });
+      page.setDefaultTimeout(5000);
+      const errors = [], feed = {};
+      const fixture = [
+        { ...req(1, "codex", "chat", 0.01), sessionTitle: "Chat title" },
+        { ...req(2, "codex", "chat", 0.02), kind: "memory_consolidation", sessionTitle: "Chat title" },
+        { ...req(3, "codex", "memory-a", 0.03), kind: "memory_consolidation" },
+        { ...req(4, "codex", "memory-a", 0.04), kind: "memgen" },
+        { ...req(5, "codex", "memory-b", 0.05), kind: "memory" },
+        { ...req(6, "codex", "named-memory", 0.06), kind: "memory_consolidation", sessionTitle: "Named memory" },
+        { ...req(7, "codex", "mixed", 0.07), kind: "memory_consolidation" },
+        req(8, "codex", "mixed", 0.08),
+        req(9, "codex", "unknown", 0.09),
+        { ...req(10, "codex", "", 0.1), kind: "memory_consolidation" },
+      ];
+      await page.route("**/*", serve(lang, feed, fixture));
+      page.on("pageerror", (e) => errors.push(e.message));
+      t.after(async () => { feed.next?.([]); await browser.close(); });
+      await page.goto("http://magpie.test/?view=routing");
+      await page.locator(".rt-group-by button").nth(1).click();
+      await page.locator(".rt-session").nth(6).waitFor();
+      const group = (id) => page.locator(`button.rt-session:has(.nm[title$="${id}"])`);
+      const memoryName = lang === "zh" ? "后台记忆整理" : "Background memory task";
+      assert.equal(await group("memory-a").locator(".nm").textContent(), `Codex · ${memoryName}`);
+      assert.equal(await group("memory-b").locator(".nm").textContent(), `Codex · ${memoryName}`);
+      assert.equal(await group("memory-a").locator(".cost").textContent(), "≈$0.070");
+      assert.match(await group("memory-a").locator(".summary").textContent(), lang === "zh" ? /2 个请求/ : /2 requests/);
+      assert.match(await group("memory-a").locator(".nm").getAttribute("title"), lang === "zh" ? /回答结束后.*继续/ : /continue after a chat finishes/);
+      assert.equal(await group("chat").locator(".nm").textContent(), "Codex · Chat title");
+      assert.equal(await group("named-memory").locator(".nm").textContent(), "Codex · Named memory");
+      assert.equal(await group("mixed").locator(".nm").textContent(), "Codex · mixed");
+      assert.equal(await group("unknown").locator(".nm").textContent(), "Codex · unknown");
+      assert.equal(await page.locator("div.rt-session .nm").textContent(), lang === "zh" ? "未提供会话标识" : "No session ID");
+      assert.equal(await page.locator(".rt-session").count(), 7, "separate memory IDs must not merge with each other or the chat");
+
+      const memory = group("memory-a"), handle = await memory.elementHandle();
+      await memory.click();
+      for (let i = 0; i < 50 && !feed.next; i++) await page.waitForTimeout(20);
+      assert(feed.next, "long poll started");
+      feed.next([{ ...req(11, "codex", "memory-a", 0.01), kind: "memory_consolidation" }]);
+      await page.waitForFunction(() => [...document.querySelectorAll("button.rt-session .cost")].some((e) => e.textContent === "≈$0.080"));
+      assert.equal(await memory.getAttribute("aria-expanded"), "false");
+      assert(await memory.evaluate((e, previous) => e === previous, handle), "labeling must preserve the heading through live updates");
+      assert.equal(await group("memory-b").getAttribute("aria-expanded"), "true");
+      await memory.click();
+      for (const width of [1100, 560]) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.waitForTimeout(100);
+        const fit = await page.locator(".rt-reqs").evaluate((e) => ({ client: e.clientWidth, scroll: e.scrollWidth }));
+        assert(fit.scroll <= fit.client + 1, `request list overflows at ${width}: ${JSON.stringify(fit)}`);
+      }
+      if (process.env.ARTIFACT_DIR) {
+        await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
+        await page.setViewportSize({ width: 1100, height: 1000 });
+        await page.locator(".rt-reqs").screenshot({ path: path.join(process.env.ARTIFACT_DIR, `${engine}-${lang}-background-memory.png`) });
+      }
+      await page.locator(".rt-group-by button").first().click();
+      assert.equal(await page.locator(".rt-req").count(), 11, "by-request view retains all requests");
+      assert.deepEqual(errors, []);
+    });
+  }
+}
+
+for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(`${engine}: title helpers belong to the named parent, including totals and title-first delivery`, async (t) => {
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
     const page = await browser.newPage();

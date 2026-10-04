@@ -71,6 +71,8 @@ the grouping choice across reloads; sessions are separated by agent and ID acros
 model changes, known and partial costs are summed, zero partial estimates
 retain their amount and +, single-request headings use the singular, zero prices stay known,
 title helpers merge only into their explicit parent (even arriving first),
+unnamed Codex memory-only groups explain their background purpose while keeping
+separate IDs, costs and folds; named and mixed chat groups keep their titles,
 late chat names and renames update while preserving folds and ID tooltips,
 missing IDs and old unpriced requests remain visible, folded sessions stay
 folded through live updates, costs follow the currency choice, and the original
