@@ -134,10 +134,11 @@
   // taken there keep the page's
   const SHOTS = {
     "add": [2016, 1600], "agents": [2080, 1078], "import": [1280, 1120], "panel": [880, 1000], "picker": [880, 1320],
-    "providers": [2080, 1004], "routing": [2080, 1666], "routing-zh": [2080, 1592], "usage": [2080, 1004],
-    "nested-routing": [2080, 1434], "nested-routing-zh": [2080, 1362], "intent-rules": [2012, 2150], "intent-rules-zh": [2012, 2088],
+    "providers": [2080, 1004], "routing": [2080, 1666], "routing-zh": [2080, 1592], "routing-ja": [2080, 1630], "agents-ja": [2080, 1344], "usage": [2080, 1004],
+    "nested-routing": [2080, 1434], "nested-routing-zh": [2080, 1362], "nested-routing-ja": [2080, 1470], "intent-rules": [2012, 2150], "intent-rules-zh": [2012, 2088], "intent-rules-ja": [2012, 2536],
     "intent-routing-hit": [2080, 1220], "intent-routing-hit-zh": [2080, 1112], "intent-trace": [2016, 964], "intent-trace-zh": [2016, 892],
   };
+  // shot in Chinese and in Japanese too (-zh, -ja)
   const ZH = new Set(["add", "agents", "import", "routing", "usage", "nested-routing", "intent-rules", "intent-routing-hit", "intent-trace"]);
   function shots() {
     if (!cur) return;
@@ -145,7 +146,7 @@
     const set = THEMES[cur.name] ? cur.name : GUESS[cur.mode];
     for (const img of document.querySelectorAll('img[src^="/img/"], img[data-om-src]')) {
       const was = img.dataset.omSrc || img.getAttribute("src");
-      const m = was.match(/^\/img\/([a-z]+(?:-[a-z]+)*?)(-zh)?-(dark|light)\.png$/);
+      const m = was.match(/^\/img\/([a-z]+(?:-[a-z]+)*?)(-zh|-ja)?-(dark|light)\.png$/);
       if (!m || !SHOTS[m[1]] || (m[2] && !ZH.has(m[1]))) continue;
       const src = `/img/omarchy/${set}/${m[1]}${m[2] || ""}.webp`;
       if (!img.dataset.omSrc) {
