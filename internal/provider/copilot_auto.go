@@ -201,10 +201,10 @@ func copilotAutoResolve(ctx context.Context, app copilotApp, fresh bool) (copilo
 	}
 	req.Header.Set("Authorization", "Bearer "+s.Token)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-GitHub-Api-Version", copilotAutoVersion)
 	for k, v := range s.headers() {
 		req.Header.Set(k, v)
 	}
+	req.Header.Set("X-GitHub-Api-Version", copilotAutoVersion)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return copilotAutoSession{}, errors.New("Copilot Auto: " + err.Error())
@@ -385,7 +385,7 @@ func copilotAutoSign(ctx context.Context, app copilotApp, req *http.Request, bod
 	model = bodyModel(body)
 	a, auto := ctx.Value(copilotAutoKey{}).(copilotAutoSession)
 	auto = auto && a.Model == model
-	if auto && !copilotRefuses(app.Token, model) {
+	if auto && !copilotRefuses(app.Token, model) && copilotAutoHeld(app.Token, &a) {
 		if a.Token != "" {
 			req.Header.Set("Copilot-Session-Token", a.Token)
 		}
@@ -415,6 +415,23 @@ func copilotAutoSign(ctx context.Context, app copilotApp, req *http.Request, bod
 	}
 	notePick(ctx, a, req)
 	return a.Model, nil
+}
+
+// copilotAutoHeld reports whether a's pick is still the account's Auto
+// session's, a then being that session (asked anew after a was let go): one
+// Copilot no longer took for its pick (copilotSessionGone) was let go, and
+// the request goes with a session asked anew.
+func copilotAutoHeld(token string, a *copilotAutoSession) bool {
+	if a.Token == "" {
+		return true
+	}
+	copilotAutoMu.Lock()
+	defer copilotAutoMu.Unlock()
+	cur, ok := copilotAutoSessions[token]
+	if ok && cur.Model == a.Model {
+		*a = cur
+	}
+	return ok && cur.Model == a.Model
 }
 
 // copilotSeen keeps the endpoints of every chat model Copilot's list

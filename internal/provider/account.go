@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -914,11 +915,24 @@ var CopilotTokenURL = "https://api.github.com/copilot_internal/v2/token"
 const copilotBase = "https://api.githubcopilot.com"
 
 var copilotHeaders = map[string]string{
-	"Editor-Version":         "vscode/1.104.0",
-	"Editor-Plugin-Version":  "copilot-chat/0.31.0",
+	"Editor-Version":         "vscode/1.140.0",
+	"Editor-Plugin-Version":  "copilot-chat/0.68.0",
 	"Copilot-Integration-Id": "vscode-chat",
-	"User-Agent":             "GitHubCopilotChat/0.31.0",
+	"User-Agent":             "GitHubCopilotChat/0.68.0",
 }
+
+// copilotAPIHeaders are what the editors' sign-in sends Copilot's API
+// (api.githubcopilot.com, not GitHub's): Copilot Chat's API version, which
+// it sends on every chat request (networking.ts). Without one Copilot
+// leaves Auto's Copilot-Session-Token unread and takes the request as a
+// model picked by hand, which a Student plan is refused for Auto's pick
+// (#256: gpt-5.6-luna, "The requested model is not supported.", served to
+// VS Code on the same account); with it the session is held to its pick.
+var copilotAPIHeaders = func() map[string]string {
+	h := maps.Clone(copilotHeaders)
+	h["X-GitHub-Api-Version"] = "2026-01-09"
+	return h
+}()
 
 type copilotSession struct {
 	Token     string `json:"token"`
@@ -934,7 +948,7 @@ func (s copilotSession) headers() map[string]string {
 	if s.direct {
 		return copilotCLIHeaders
 	}
-	return copilotHeaders
+	return copilotAPIHeaders
 }
 
 var (
