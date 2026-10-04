@@ -633,6 +633,11 @@ body.window .field.solo { grid-column: auto; }
 .wb-checkin { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .wb-checkin .ci-say { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .wb-checkin .ci-say > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a failed check-in's reason wraps under it rather than ending in "…" (#821) */
+.wb-checkin[data-state="bad"] { flex-wrap: wrap; align-items: flex-start; }
+.wb-checkin[data-state="bad"] .ci-say { flex: 1 1 180px; align-items: flex-start; }
+.wb-checkin[data-state="bad"] .ci-say > span { white-space: normal; overflow-wrap: anywhere; }
+.wb-checkin[data-state="bad"] .ci-dot { margin-top: 4px; }
 .wb-checkin .ci-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
 .wb-checkin .ci-dot.ok { background: var(--green); }
 .wb-checkin .ci-dot.bad { background: var(--red); }

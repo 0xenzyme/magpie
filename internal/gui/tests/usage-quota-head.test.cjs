@@ -17,7 +17,7 @@ const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
 const quotas = [
   { provider: "codex", name: "Codex", icon: "openai", plan: "Plus", windows: [{ name: "5 hours", used: 20 }] },
   { provider: "trae-cn", name: "Trae CN", plan: "Free", user: "hu", windows: [{ name: "Credits", used: 3 }],
-    checkins: true, checkinBy: "trae", checkin: { user: "hu", day: today, outcome: "failed", msg: "code 9074: 当前参与用户太多" } },
+    checkins: true, checkinBy: "trae", checkin: { user: "hu", day: today, outcome: "failed", msg: "code 9074: 当前参与用户太多，请稍后再试（今日签到人数较多，活动火爆，请耐心等待）" } },
 ];
 
 function serve(lang, gate) {
@@ -58,7 +58,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await head.waitFor();
       // the failed check-in's reason is in the row
       const say = (await page.locator(".wb-checkin .ci-say").innerText()).trim();
-      assert.equal(say, (lang === "en" ? "Check-in failed; magpie tries again later" : "签到失败，magpie 稍后重试") + " · code 9074: 当前参与用户太多");
+      assert.equal(say, (lang === "en" ? "Check-in failed; magpie tries again later" : "签到失败，magpie 稍后重试") + " · code 9074: 当前参与用户太多，请稍后再试（今日签到人数较多，活动火爆，请耐心等待）");
+      // and all of it is seen, not cut off with "…" (#821)
+      const clipped = await page.locator(".wb-checkin .ci-say > span").evaluate((s) => s.scrollWidth > s.clientWidth + 1 || s.getBoundingClientRect().right > s.closest(".subscription-card").getBoundingClientRect().right);
+      assert.equal(clipped, false, "the check-in's reason is cut off");
 
       // away and back, with the vendors and the log both slow to answer
       let free;
