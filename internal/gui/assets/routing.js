@@ -2581,6 +2581,24 @@
     // an existing group's id can change (an auto- one found by magpie too);
     // a new one's is made from its name
     if (g && d.id === undefined) d.id = g.id;
+    // an open group folds back into its row from its heading, as it opened
+    // from the row (ARNO on Discord) — only while nothing in it has
+    // changed, so a stray click never throws an edit away; Cancel does that
+    if (g) {
+      if (gEdit.was === undefined) gEdit.was = JSON.stringify(d);
+      h.classList.add("fold");
+      h.setAttribute("role", "button");
+      h.tabIndex = 0;
+      h.setAttribute("aria-expanded", "true");
+      h.title = t("Click to fold it");
+      const fold = () => {
+        if (JSON.stringify(d) !== gEdit.was) return status(t("Save or Cancel your changes first"), "warn");
+        gEdit = null;
+        renderGroups();
+      };
+      h.onclick = fold;
+      h.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fold(); } };
+    }
     const idIn = g ? keys(input(d.id, g.id)) : null;
     const idOf = () => {
       if (g) return slug(d.id) || g.id;
