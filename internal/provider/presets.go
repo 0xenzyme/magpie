@@ -447,7 +447,9 @@ var presets = []PresetDef{
 		Decide:  "https://ai-gateway.vercel.sh/typesafe",
 		Note:    "routes groups · picks model and effort",
 		Website: "https://vercel.com/ai-gateway/models/jev", KeysURL: "https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Fapi-keys"},
-	{ID: "cloudflare-jev", Name: "Jev · Cloudflare Workers AI", Icon: "cloudflare-color", Kind: KindRelay,
+	// Workers AI also serves Cloudflare's own decision models, Clef and
+	// Clef Flash, on the same key
+	{ID: "cloudflare-jev", Name: "Cloudflare Workers AI · Jev, Clef", Icon: "cloudflare-color", Kind: KindRelay,
 		Decide:  "https://api.cloudflare.com/client/v4",
 		Note:    "routes groups · picks model and effort",
 		Website: "https://developers.cloudflare.com/ai/models/typesafe/jev/", KeysURL: "https://dash.cloudflare.com/profile/api-tokens"},
