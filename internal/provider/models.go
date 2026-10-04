@@ -163,6 +163,12 @@ func (p Provider) Refetch(ctx context.Context) ([]catalog.Model, []string, error
 	}
 	before := liveIDs(p.ID)
 	ms, err := p.fetch(ctx)
+	if err == nil && p.listsDecisions() {
+		// OpenRouter's decision models, listed apart from its chat ones
+		if _, derr := p.fetchDecide(p.Via(ctx)); derr != nil {
+			log.Println(p.ID + ": " + derr.Error())
+		}
+	}
 	if err != nil || len(before) == 0 {
 		return ms, nil, err
 	}
@@ -366,11 +372,14 @@ func FetchNew(timeout time.Duration) {
 	newFetches.Lock()
 	defer newFetches.Unlock()
 	for _, p := range All() {
-		if p.Account == nil || !p.Ready() {
+		// a list of decision models fetched before magpie kept their
+		// windows and input, or not fetched yet (ARNO on Discord)
+		decide := p.decideListDue()
+		if !decide && (p.Account == nil || !p.Ready()) {
 			continue
 		}
 		// a plugin's accounts were listed with the plugin's providers
-		if _, ok := p.Listed(); ok {
+		if _, ok := p.Listed(); ok && !decide {
 			continue
 		}
 		if t, ok := newFetches.m[p.ID]; ok && time.Since(t) < newFetchRetry {
@@ -378,7 +387,13 @@ func FetchNew(timeout time.Duration) {
 		}
 		newFetches.m[p.ID] = time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		if _, err := p.Fetch(ctx); err != nil {
+		var err error
+		if decide && p.Account == nil {
+			_, err = p.fetchDecide(p.Via(ctx))
+		} else {
+			_, err = p.Fetch(ctx)
+		}
+		if err != nil {
 			log.Println(p.ID + ": " + err.Error())
 		}
 		cancel()

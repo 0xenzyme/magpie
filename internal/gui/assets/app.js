@@ -6457,7 +6457,9 @@ const PROTOS = [["chat", "OpenAI", "Chat Completions — most agents"], ["respon
 // apiLabel: the name an API (a protocol) goes by in the editor
 const apiLabel = (proto) => (PROTOS.find(([k]) => k === proto) || [])[1] || proto;
 const decideOnly = (p) => !!p?.decide && !(p.chat || p.responses || p.anthropic);
-const decidesModel = (p, id) => !!p.decide && (decideOnly(p) || id.split("/").some((s) => /^jev(?:-|$)/i.test(s)));
+// a provider that lists its decision models apart (OpenRouter) says which
+// they are: its Jev Router (typesafe/jev-router) is a chat model
+const decidesModel = (p, id) => !!p.decide && (decideOnly(p) || (p.deciders ? p.deciders.includes(id) : id.split("/").some((s) => /^jev(?:-|$)/i.test(s))));
 // modelAPIs: the APIs one of p's models can be asked on alone, those it has
 // a URL for when it has more than one — a custom provider's, a preset's or
 // a subscription's alike (01huadalang on Discord: 一个 api 里有很多模型但是不同协议;

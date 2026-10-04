@@ -72,7 +72,70 @@ func (p Provider) DecideOnly() bool {
 // DecidesModel distinguishes Jev from the conversation models a gateway
 // also serves. A dedicated decision API may use any model name.
 func (p Provider) DecidesModel(model string) bool {
-	return p.Decides() && (p.DecideOnly() || jevID(model) || p.DecideVia() == ViaCloudflare && CloudflareClef(model))
+	if !p.Decides() {
+		return false
+	}
+	if p.DecideOnly() {
+		return true
+	}
+	if p.listsDecisions() {
+		// OpenRouter's Jev Router (typesafe/jev-router) is a chat model
+		return slices.ContainsFunc(p.decideListed(), func(m catalog.Model) bool { return m.ID == model })
+	}
+	return jevID(model) || p.DecideVia() == ViaCloudflare && CloudflareClef(model)
+}
+
+// OpenRouter lists its decision models apart from its chat models (ARNO
+// on Discord): its /models has the chat ones alone, Jev Router among them
+// (typesafe/jev-router, a chat model that picks one), and
+// /models?output_modalities=decisions the ones that answer System One's
+// questions at /systemone (liquid/d1, cloudflare/clef, ~typesafe/jev-latest
+// …), each with its context_length and input_modalities.
+func openRouterDecisions(base string) string {
+	if HostOf(base) != "openrouter.ai" {
+		return ""
+	}
+	return strings.TrimRight(base, "/") + "/models?output_modalities=decisions"
+}
+
+// listsDecisions reports whether p's decision models are a list of their
+// own, OpenRouter's, rather than Jev's ids among its chat models.
+func (p Provider) listsDecisions() bool { return openRouterDecisions(p.Decide) != "" }
+
+// decisionsID is where a provider that serves conversations too keeps the
+// list of its decision models, beside its chat models' list.
+func decisionsID(id string) string { return id + ".decisions" }
+
+// DecisionModels are the decision models a provider that serves
+// conversations too lists apart from them (OpenRouter's), for its editor
+// to show beside its chat models; nil for any other provider.
+func (p Provider) DecisionModels() []catalog.Model {
+	if p.DecideOnly() || !p.listsDecisions() {
+		return nil
+	}
+	return p.decideModels()
+}
+
+// decideListDue reports whether p's list of decision models at OpenRouter
+// is still to be fetched, or was fetched before magpie kept each model's
+// window and input (they show on the Providers page and the Gateway list
+// only once it is fetched again).
+func (p Provider) decideListDue() bool {
+	if !p.On() || !p.Decides() {
+		return false
+	}
+	id := p.ID
+	if p.DecideOnly() {
+		if !p.listsDecisions() && HostOf(strings.TrimSpace(p.ModelsURL)) != "openrouter.ai" {
+			return false
+		}
+	} else if p.listsDecisions() {
+		id = decisionsID(p.ID)
+	} else {
+		return false
+	}
+	live, _, ok := catalog.Live(id)
+	return !ok || !slices.ContainsFunc(live, func(m catalog.Model) bool { return m.Context > 0 || m.ImageInput != nil })
 }
 
 // Cloudflare's own decision models on Workers AI (ARNO on Discord): Clef
@@ -80,6 +143,9 @@ func (p Provider) DecidesModel(model string) bool {
 // run at its own address (…/ai/run/@cf/cloudflare/clef) and takes the
 // request as it is, its model named "clef" or "clef-flash", where Jev is
 // a run of typesafe/jev with the questions as its input.
+// OpenRouterJev is Jev as OpenRouter names it, the latest one.
+const OpenRouterJev = "~typesafe/jev-latest"
+
 const (
 	CloudflareJev       = "typesafe/jev"
 	CloudflareClefModel = "@cf/cloudflare/clef"
@@ -139,6 +205,15 @@ func (p Provider) Jev() string {
 	}
 	if own := p.ownDecideModels(); len(own) > 0 {
 		return own[0].ID
+	}
+	// OpenRouter's Jev is ~typesafe/jev-latest, in its list of decision
+	// models; its Jev Router is a chat model
+	if p.listsDecisions() || p.DecideOnly() && HostOf(strings.TrimSpace(p.ModelsURL)) == "openrouter.ai" {
+		ms := p.decideListed()
+		if i := slices.IndexFunc(ms, func(m catalog.Model) bool { return jevID(m.ID) }); i >= 0 {
+			return ms[i].ID
+		}
+		return OpenRouterJev
 	}
 	// a gateway that serves conversations too names its Jev its own way
 	// (OpenCode Zen's jev-1.13): the one its list has, the free one where
@@ -217,6 +292,12 @@ func withDecideFacts(ms []catalog.Model) []catalog.Model {
 }
 
 func (p Provider) decideListed() []catalog.Model {
+	if p.listsDecisions() && !p.DecideOnly() {
+		if live, _, ok := catalog.Live(decisionsID(p.ID)); ok && len(live) > 0 {
+			return live
+		}
+		return []catalog.Model{{ID: OpenRouterJev, Name: "Jev"}}
+	}
 	if live, _, ok := catalog.Live(p.ID); ok && len(live) > 0 {
 		if p.DecideOnly() {
 			return live
@@ -374,7 +455,7 @@ func Deciders() []Entry {
 			continue
 		}
 		ms := p.Exposed()
-		if !p.DecideOnly() && len(p.Models) == 0 {
+		if !p.DecideOnly() && (len(p.Models) == 0 || p.listsDecisions()) {
 			ms = p.decideModels() // the conversation picker's limit does not hide Jev
 		}
 		for _, m := range ms {
@@ -580,6 +661,8 @@ func (p Provider) fetchDecide(ctx context.Context) ([]catalog.Model, error) {
 	list, all := p.Decide+"/models", false
 	if u := strings.TrimSpace(p.ModelsURL); u != "" && p.DecideOnly() {
 		list, all = u, true
+	} else if u := openRouterDecisions(p.Decide); u != "" {
+		list, all = u, true
 	} else if bailianDecides(p.Decide) {
 		// Bailian lists its chat models only: its decision model is asked
 		return p.decideAsked(ctx)
@@ -617,6 +700,9 @@ func (p Provider) fetchDecide(ctx context.Context) ([]catalog.Model, error) {
 		return nil, fmt.Errorf("%s lists no models", p.Name)
 	}
 	if !p.DecideOnly() {
+		if p.listsDecisions() {
+			return ms, catalog.SaveLive(decisionsID(p.ID), p.Decide, ms)
+		}
 		return ms, nil // do not replace a mixed provider's full model list
 	}
 	return ms, catalog.SaveLive(p.ID, p.Decide, ms)

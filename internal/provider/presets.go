@@ -339,6 +339,10 @@ var presets = []PresetDef{
 
 	{ID: "openrouter", Name: "OpenRouter", Icon: "openrouter", Kind: KindRelay, Catalog: "openrouter",
 		Chat: "https://openrouter.ai/api/v1", Anthropic: "https://openrouter.ai/api",
+		// its decision models (liquid/d1, cloudflare/clef, Jev …), listed
+		// apart from its chat models, answer System One at /systemone, so
+		// a routing group can be classified by one with the same key
+		Decide:  "https://openrouter.ai/api/v1",
 		Website: "https://openrouter.ai", KeysURL: "https://openrouter.ai/keys",
 		// app attribution, for OpenRouter's rankings and analytics
 		HeaderHints: []string{"HTTP-Referer", "X-OpenRouter-Title"}},

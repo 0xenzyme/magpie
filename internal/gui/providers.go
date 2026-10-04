@@ -99,6 +99,9 @@ type providerJSON struct {
 	// System One question (provider.AsksDecideModels): a mixed
 	// provider's Jev too, beside its conversation models
 	DecideTest bool `json:"decideTest,omitempty"`
+	// Deciders are its decision models when it lists them apart from its
+	// chat models (OpenRouter's): those, and no Jev-named chat model
+	Deciders []string `json:"deciders,omitempty"`
 
 	Key struct {
 		Set      bool   `json:"set"`
@@ -481,6 +484,15 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 	for _, m := range p.Available() {
 		seen[m.ID] = true
 		out.Models = append(out.Models, named(m, exposed[m.ID]))
+	}
+	// OpenRouter's decision models, listed apart from its chat models
+	// (ARNO on Discord), after them
+	for _, m := range p.DecisionModels() {
+		out.Deciders = append(out.Deciders, m.ID)
+		if !seen[m.ID] {
+			seen[m.ID] = true
+			out.Models = append(out.Models, named(m, exposed[m.ID]))
+		}
 	}
 	// picks the vendor list does not know go first, so they are visible
 	for _, m := range p.Exposed() {

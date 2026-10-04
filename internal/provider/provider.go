@@ -828,8 +828,9 @@ func normalize(p Provider) Provider {
 		p.Key = OpenCodeAnonymousKey
 	}
 	// a Zen provider saved before its preset had System One for Jev
-	// (01huadalang: its Jev was asked as a chat model, and failed)
-	if p.Preset == "opencode-zen" && p.Decide == "" && p.Chat != "" {
+	// (01huadalang: its Jev was asked as a chat model, and failed), an
+	// OpenRouter one before its decision models were listed (ARNO)
+	if (p.Preset == "opencode-zen" || p.Preset == "openrouter") && p.Decide == "" && p.Chat != "" {
 		if pr := Preset(p.Preset); pr != nil {
 			p.Decide = pr.Decide
 		}
