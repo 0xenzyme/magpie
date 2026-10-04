@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1195,6 +1196,19 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	}
 	if sealedTask {
 		cands, pl = sealedReaders(cands, pl)
+	}
+	if len(cands) == 0 && slices.ContainsFunc(pl.left, func(w Weighed) bool { return w.Capped > 0 }) &&
+		!slices.ContainsFunc(pl.left, func(w Weighed) bool { return !w.Barred && w.Capped == 0 }) {
+		// every account there is is held at its usage cap: used up, as far
+		// as routing goes, until a window renews
+		msg, back := cappedError(call.Model, pl.left, time.Now())
+		if d := time.Until(back); d > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(int(d.Seconds())+1))
+		}
+		call.Status, call.Error = 429, "every account at its usage cap"
+		writeError(w, from, 429, msg)
+		turnedAway()
+		return
 	}
 	if len(cands) == 0 && len(pl.left) > 0 && !slices.ContainsFunc(pl.left, func(w Weighed) bool { return !w.Barred }) {
 		// every account or key there is was set not to serve the model

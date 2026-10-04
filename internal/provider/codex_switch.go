@@ -166,8 +166,15 @@ func NextLogin(ctx context.Context, agent string) (from, to string, back, ok boo
 		return from, first.User, true, true
 	}
 	u := LoginUsage(ctx, agent)
+	now := time.Now()
+	// an account at its usage cap is spent as one at the share below
+	// (account_caps.go): it is moved off, and none is moved to or back to
+	// till the window it filled renews
+	capped := func(user string, q SubscriptionQuota) bool {
+		return capReached(q, AccountCapOf(agent, user), now)
+	}
 	if first != nil && first.On && first.Lapsed == "" {
-		if q, known := u[first.User]; known && q.Error == "" && !usedPast(q, backShare) {
+		if q, known := u[first.User]; known && q.Error == "" && !usedPast(q, backShare) && !capped(first.User, q) {
 			return from, first.User, true, true
 		}
 	}
@@ -175,18 +182,17 @@ func NextLogin(ctx context.Context, agent string) (from, to string, back, ok boo
 	if q.Provider == "claude" && q.AsOf != nil {
 		// An expired cached window cannot say whether this account is spent
 		// now. Keep other windows and the stored historical reading intact.
-		now := time.Now()
 		q.Windows = slices.DeleteFunc(slices.Clone(q.Windows), func(w QuotaWindow) bool {
 			return w.ResetsAt != nil && !w.ResetsAt.After(now)
 		})
 	}
 	// kept on the first, it stays there however little that has left; and
 	// it moves on at the share its routing counts the account spent at
-	if keep || !known || q.Error != "" || !usedPast(q, share) {
+	if keep || !known || q.Error != "" || !usedPast(q, share) && !capped(from, q) {
 		return "", "", false, false
 	}
 	for _, l := range spares {
-		if q, known := u[l.User]; known && q.Error == "" && !usedPast(q, share) {
+		if q, known := u[l.User]; known && q.Error == "" && !usedPast(q, share) && !capped(l.User, q) {
 			return from, l.User, false, true
 		}
 	}

@@ -521,11 +521,16 @@ func (s *Server) drawOnAccounts(ctx context.Context, p provider.Provider, model 
 	cs := s.candidates(q, model, provider.Chat)
 	// an account whose list lacks the image model is put aside for text
 	// when another's list is unknown; for drawing it is asked last
-	_, _, left, _ := perKeyBarred(q, model, provider.Chat)
+	_, _, left, barred := perKeyBarred(q, model, provider.Chat)
 	for _, c := range left {
 		if !slices.ContainsFunc(cs, func(o candidate) bool { return accountOf(o.p) == accountOf(c.p) }) {
 			cs = append(cs, c)
 		}
+	}
+	if len(cs) == 0 && slices.ContainsFunc(barred, func(c candidate) bool { return c.capped != nil }) {
+		// every account is held at its usage cap
+		msg, _ := cappedError(model, barredOf(barred, q, false, provider.Chat, nil), time.Now())
+		return p, drawn{}, http.StatusTooManyRequests, errors.New(msg)
 	}
 	if len(cs) == 0 {
 		cs = []candidate{{p: p, model: model, rest: p.ID}}

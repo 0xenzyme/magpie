@@ -1764,6 +1764,13 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .acc .amodels:focus-visible { opacity: 1; }
 .acc .amodels.set { color: var(--accent); background: var(--accent-soft); font-weight: 500; }
 .acc .amodels:hover, .acc .amodels.open { color: var(--fg); background: var(--pill-hover); }
+/* an account's usage cap: as the models pill, shown on hover till one is set */
+.acc .acap { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; font: inherit; font-size: 11px; color: var(--muted); border: 0; border-radius: 5px; background: none; box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; cursor: default; opacity: 0; transition: opacity .15s, background .12s, color .12s; }
+.acc:hover .acap, .acc .acap.open, .acc .acap:focus-visible, .acc .acap.set { opacity: 1; }
+.acc .acap.set { color: var(--accent); background: var(--accent-soft); box-shadow: none; font-weight: 500; }
+.acc .acap:hover, .acc .acap.open { color: var(--fg); background: var(--pill-hover); }
+.acc .acap-in { width: 64px; }
+.acc .acap-held { color: var(--fg); }
 .accts .acc.with-am { flex-wrap: wrap; row-gap: 3px; }
 .acc .acct-models { flex-basis: 100%; display: grid; gap: 7px; padding: 6px 0 2px 25px; cursor: auto; }
 .acc .acct-models .acm-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -1808,6 +1815,10 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .acc .aq-w { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .acc .aq-track { width: 54px; height: 4px; border-radius: 2px; background: var(--pill); overflow: hidden; }
 .acc .aq-track i { display: block; height: 100%; border-radius: inherit; background: var(--fg-2); }
+/* the account's usage cap: a tick across the meter where it stands */
+.acc .aq-track.capped { position: relative; overflow: visible; }
+.acc .aq-track.capped i { overflow: hidden; }
+.acc .aq-cap { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--accent); }
 .acc .aq-w b { color: var(--fg-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .acc .aq-w.full b, .acc .aq-w.full .aq-r { color: var(--fg); }
 .acc .aq-w.full .aq-track i { background: var(--fg); }

@@ -259,6 +259,11 @@ func codexAccounts(h http.Header, model string) (string, bool) {
 	p, _, ok := provider.Resolve(id)
 	// one account named is found among them however many are on
 	pinned := h.Get(AccountHeader) != ""
+	// an account with a usage cap goes through routing, which holds it
+	// there, even alone: relayed as it came, nothing would
+	if ok && p.Account != nil && p.Account.Agent == "codex" && p.AccountCap(p.Account.User) > 0 {
+		return id, true
+	}
 	if !ok || p.Account == nil || p.Account.Agent != "codex" || len(p.AlsoOn()) == 0 && !pinned {
 		return "", false
 	}

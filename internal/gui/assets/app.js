@@ -8889,6 +8889,11 @@ function renderAccounts(a, p) {
     // its own models (#474), when there is another account to send the rest to
     const [amPill, amBox] = ls.length > 1 || accountModelsOf(p, l.user).length ? accountModels(p, l.user, false, l.user) : [];
     if (amPill) row.append(amPill);
+    // its usage cap: the share of each window it is used to at most
+    const cap = accountCapOf(p, l.user);
+    if (p) row.append(accountCapPill(p, l.user, cap));
+    const held = capHeldOf(quota?.[l.user], cap);
+    if (held) row.append(capHeldNote(held, cap, several));
     row.append(el("span", "grow"));
     if (unusable(l)) {
       row.append(el("span", "using", t("Sign-in required")));
@@ -8939,7 +8944,7 @@ function renderAccounts(a, p) {
         row.append(forget, use);
       }
     }
-    row.append(accountQuota(l.lapsed ? { [l.user]: { error: t(l.lapsed) } } : quota, l.user));
+    row.append(accountQuota(l.lapsed ? { [l.user]: { error: t(l.lapsed) } } : quota, l.user, cap));
     row.classList.add("with-aq"); // not :has(.aq), which Safari 15.0 lacks (#220)
     if (amBox) row.append(amBox);
     list.append(row);
@@ -9240,7 +9245,7 @@ function balanceFix(p) {
 
 // accountQuota: an account's allowance as a line of small meters under its
 // name, the reset time on the ones nearly used up.
-function accountQuota(data, user) {
+function accountQuota(data, user, cap = 0) {
   const line = el("div", "aq");
   if (!data) {
     line.append(el("span", "skeleton sk-aq"), el("span", "skeleton sk-aq"));
@@ -9268,7 +9273,7 @@ function accountQuota(data, user) {
   const counted = q.windows.filter((w) => !w.unlimited);
   const ws = familyWindows(counted);
   if (!ws.length) { line.append(el("span", "aq-none", t("Unlimited"))); return line; }
-  if (ws.some((w) => w.members)) return poolLine(line, ws, q);
+  if (ws.some((w) => w.members)) return poolLine(line, ws, q, cap);
   line.title = ws.slice(2).map((w) => w.tiers ? tiersText(w) : t(w.name) + " " + quotaText(w)).join(ws !== counted ? "\n" : " · ");
   if (q.asOf) line.title = [line.title, asOfText(q)].filter(Boolean).join("\n");
   for (const w of ws.slice(0, 2)) {
@@ -9278,6 +9283,7 @@ function accountQuota(data, user) {
     const fill = el("i");
     fill.style.width = quotaFill(w) + "%";
     track.append(fill);
+    capMark(track, w, cap);
     m.append(el("span", "aq-n", t(w.name)), track, el("b", "", quotaText(w)));
     if (w.resetsAt) {
       const at = new Date(w.resetsAt);
@@ -9293,7 +9299,7 @@ function accountQuota(data, user) {
 // poolLine: an account row's pools, each its name then its 5-hour and
 // weekly meters (Gemini 5h ▬ 95% 7d ▬ 75%), two pools on the line and the
 // rest in its tooltip.
-function poolLine(line, ws, q) {
+function poolLine(line, ws, q, cap = 0) {
   const pools = [];
   for (const w of ws) {
     const k = w.members ? w.pool : "\0" + pools.length;
@@ -9310,6 +9316,7 @@ function poolLine(line, ws, q) {
       const fill = el("i");
       fill.style.width = quotaFill(w) + "%";
       track.append(fill);
+      capMark(track, w, cap);
       m.append(el("span", "aq-k", w.window ? shortWindow(w.window) : ""), track, el("b", "", quotaText(w)));
     }
     const w = p.ws[0];
@@ -9318,6 +9325,92 @@ function poolLine(line, ws, q) {
     line.append(m);
   }
   return line;
+}
+
+// An account's usage cap (provider.AccountCaps): the share of each of its
+// windows it is used to at most — a new account kept to 70% of its five
+// hours and its week. At it, routing takes the account for used up and
+// goes on to the others until the window renews. The pill on its row says
+// the cap and opens the app's menu of shares; a mark on each meter the cap
+// counts shows where it is, and a note says when it holds the account.
+const CAP_SHARES = [50, 60, 70, 80, 90];
+function accountCapOf(p, user) { return p?.accountCaps?.[String(user).toLowerCase()] || 0; }
+// capHeldOf: how the account is held at cap, as the gateway reads it —
+// a window the cap counts at or past it, not yet renewed — or null: the
+// fullest such window's share, and when the last of them renews (0 when
+// one doesn't say).
+function capHeldOf(q, cap) {
+  if (!cap || !q || q.error || !q.windows?.length) return null;
+  const now = Date.now();
+  let held = null, unknown = false;
+  for (const w of q.windows) {
+    if (!w.capped || w.used < cap) continue;
+    const r = w.resetsAt ? Date.parse(w.resetsAt) : 0;
+    if (r && r <= now) continue; // renewed since it was read
+    held = held || { used: 0, back: 0 };
+    held.used = Math.max(held.used, w.used);
+    if (!r) unknown = true; else held.back = Math.max(held.back, r);
+  }
+  if (held && unknown) held.back = 0;
+  return held;
+}
+function capHeldNote(held, cap, several) {
+  const n = el("span", "using acap-held", held.back ? t("At its cap · back {in}", { in: untilText(held.back) }) : t("At its cap"));
+  n.title = t("A usage window is at {n}%, past this account's {cap}% cap, so magpie counts it as used up and sends requests to the other accounts until that window renews", { n: Math.round(held.used), cap })
+    + (held.back ? " · " + resetText(new Date(held.back), new Date(held.back).toLocaleString()) : "")
+    + (several ? "" : "\n" + t("With no other account on, requests are refused with a usage-cap error until then"));
+  return n;
+}
+function capMark(track, w, cap) {
+  if (!cap || !w.capped) return;
+  const mk = el("span", "aq-cap");
+  mk.style.left = (quotaLeft ? 100 - cap : cap) + "%";
+  mk.title = t("Usage cap {n}%", { n: cap });
+  track.classList.add("capped");
+  track.append(mk);
+}
+function accountCapPill(p, user, cap) {
+  const pill = el("button", "acap" + (cap ? " set" : ""), cap ? t("Cap {n}%", { n: cap }) : t("No cap"));
+  pill.type = "button";
+  pill.title = cap ? t("Used to {n}% of each usage window at most; past it, magpie counts this account as used up until the window renews. Click to change", { n: cap })
+    : t("Used to 100% of its usage windows. Click to cap it at a share of each, so magpie goes on to the other accounts past it");
+  pill.setAttribute("aria-haspopup", "menu");
+  pill.setAttribute("aria-expanded", "false");
+  const set = (v) => accountAction("provider/accountcap", { id: p.id, account: user, cap: v },
+    v ? t("{who} is used to {n}% of each window at most", { who: user, n: v }) : t("{who} has no usage cap", { who: user }));
+  const other = () => {
+    // a share of the user's own, typed where the pill was
+    const i = input(cap ? String(cap) : "", "1–99", "text");
+    i.className = "rename-in acap-in";
+    i.inputMode = "numeric";
+    i.setAttribute("aria-label", t("Usage cap, in percent"));
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      const v = parseInt(i.value.replace("%", "").trim(), 10);
+      if (save && i.value.trim() && !(v >= 1 && v <= 99)) { status(t("A cap is a share from 1% to 99%"), "err"); renderProviders(); return; }
+      if (save && i.value.trim() && v !== cap) set(v);
+      else renderProviders();
+    };
+    i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") finish(true); else if (e.key === "Escape") finish(false); };
+    i.onblur = () => finish(true);
+    pill.replaceWith(i);
+    i.focus({ preventScroll: true });
+  };
+  pill.onclick = (e) => {
+    e.stopPropagation();
+    if (pill.classList.contains("open")) return closeProtoMenu();
+    const shares = CAP_SHARES.includes(cap) || !cap ? CAP_SHARES : [...CAP_SHARES, cap].sort((a, b) => a - b);
+    const opts = [{ v: 0, name: "No cap", note: "Use each window to 100%" }];
+    for (const n of shares) opts.push({ v: n, name: n + "%", note: "", literalName: true });
+    opts.push({ v: -1, name: "Other…", note: "A share of your own, 1–99%" });
+    openProtoMenu(pill, opts, cap, (v) => {
+      if (v === -1) return other();
+      if (v !== cap) set(v);
+    }, "Usage cap", "sess-menu");
+  };
+  return pill;
 }
 
 // A window reads as how much of it is used, or — as the vendors' own apps

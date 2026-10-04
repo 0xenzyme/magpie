@@ -187,6 +187,11 @@ type Weighed struct {
 	// Barred: left out as the user set it not to serve the model, its
 	// own list of models leaving it out (#474)
 	Barred bool `json:"barred,omitempty"`
+	// Capped: left out as held at the usage cap the user set on the
+	// account, this cap in percent; Used is then its fullest window's
+	// share, CapBack when the last window at or past it renews
+	Capped  int        `json:"capped,omitempty"`
+	CapBack *time.Time `json:"capBack,omitempty"`
 	// Rank: its place in its provider's own list of accounts or keys, the
 	// order the provider's page shows and a drag sets (#217); routing may
 	// weigh them in another

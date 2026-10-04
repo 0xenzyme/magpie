@@ -37,6 +37,9 @@ const providerUsage = `usage:
   magpie provider refresh <id>            fetch the vendor's model list again (as the app's Refresh)
   magpie provider account-models <id> [account|key [ids…|all]]
                                           the models one account or key alone serves; all: every model the provider has
+  magpie provider account-cap <id> [account [percent|off]]
+                                          use a subscription account up to a share of each usage window (e.g. 70):
+                                          at it, routing takes the account for used up until the window renews
   magpie provider listed <id> yes|no      no: its models serve only through routing groups, not in the list
   magpie provider off|on <id>             switch it off (kept, but no agent or request uses it), or on again
   magpie provider test <id> [model…]      send a tiny request through each endpoint, or to each model
@@ -412,6 +415,8 @@ func providerCmd(args []string) error {
 		return nil
 	case "account-models", "account-model":
 		return accountModelsCmd(rest)
+	case "account-cap", "account-caps":
+		return accountCapCmd(rest)
 	case "listed":
 		// no: the provider's models leave the list agents see and serve
 		// only through the routing groups they are in
@@ -1016,6 +1021,53 @@ func accountModelsCmd(rest []string) error {
 			fmt.Println(name, muted.Render("· every model "+p.Name+" serves"))
 		} else {
 			fmt.Println(name, "· only", strings.Join(ms, ", "))
+		}
+	}
+	return nil
+}
+
+// accountCapCmd shows, or sets with a share or off, the usage cap of a
+// subscription's accounts: the share of each window one is used to at most
+// (provider.AccountCaps).
+func accountCapCmd(rest []string) error {
+	if len(rest) < 1 {
+		return fmt.Errorf("magpie provider account-cap <id> [account [percent|off]]")
+	}
+	p, err := provider.Find(rest[0])
+	if err != nil {
+		return err
+	}
+	if p.Account == nil {
+		return fmt.Errorf("%s has keys, not subscription accounts with usage windows to cap", p.Name)
+	}
+	if len(rest) > 2 {
+		cap, err := provider.ParseCap(rest[2])
+		if err != nil {
+			return err
+		}
+		if err := provider.SetAccountCap(p.ID, rest[1], cap); err != nil {
+			return err
+		}
+		if p, err = provider.Find(p.ID); err != nil {
+			return err
+		}
+	}
+	refs := p.AccountRefs()
+	if len(rest) > 1 {
+		refs = slices.DeleteFunc(refs, func(r string) bool { return !strings.EqualFold(r, strings.TrimSpace(rest[1])) })
+		if len(refs) == 0 {
+			return fmt.Errorf("%s has no account %q", p.Name, rest[1])
+		}
+	}
+	if len(refs) == 0 {
+		fmt.Println(muted.Render(p.Name + " has no account"))
+		return nil
+	}
+	for _, r := range refs {
+		if c := p.AccountCap(r); c > 0 {
+			fmt.Printf("%s · capped at %d%% of each usage window\n", r, c)
+		} else {
+			fmt.Println(r, muted.Render("· no cap: used to 100%"))
 		}
 	}
 	return nil

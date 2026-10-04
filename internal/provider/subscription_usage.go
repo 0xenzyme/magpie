@@ -55,6 +55,9 @@ type QuotaWindow struct {
 	Span  time.Duration `json:"-"`
 	Model string        `json:"-"`
 	Aside bool          `json:"-"`
+	// Capped is set, for the GUI only (WithCapped), on a window an
+	// account's usage cap counts: neither Aside nor one model's.
+	Capped bool `json:"capped,omitempty"`
 	// matches further scopes pools whose membership isn't one model word.
 	matches func(string) bool
 	// partial is set on the windows of a reading that may leave some out:

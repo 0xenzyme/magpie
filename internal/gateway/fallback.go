@@ -43,6 +43,17 @@ type candidate struct {
 	// rank is its place in its provider's own list of accounts or keys,
 	// the order the provider's page shows and a drag sets (#217)
 	rank int
+	// capped is set on an account left out as held at its usage cap
+	capped *capHold
+}
+
+// capHold is how an account is held at its usage cap: the cap, the share
+// of the fullest window at or past it, and when the last such window
+// renews (zero when one doesn't say).
+type capHold struct {
+	cap  int
+	used float64
+	back time.Time
 }
 
 // label names a candidate in a call's record: the provider, and the key
@@ -158,6 +169,18 @@ func perKeyBarred(p provider.Provider, model string, from provider.Protocol) (ou
 			if p.AccountServes(c.p.Account.User, model) {
 				return false
 			}
+			barred = append(barred, c)
+			return true
+		})
+		// an account at its usage cap is used up for routing until the
+		// window it filled renews: never tried, so groups, fallbacks and
+		// the other accounts take the request (provider/account_caps.go)
+		all = slices.DeleteFunc(all, func(c candidate) bool {
+			h := capHeld(p, c.p, model, time.Now())
+			if h == nil {
+				return false
+			}
+			c.capped = h
 			barred = append(barred, c)
 			return true
 		})
@@ -448,13 +471,61 @@ func planLevel(g provider.Group, ms []provider.Member, depth int, from provider.
 	return out
 }
 
+// capHeld is how the account acct of p is held at its usage cap for
+// model at now, nil when it has no cap or is below it. Its windows are
+// those last read (allowances), as smart routing weighs them.
+func capHeld(p, acct provider.Provider, model string, now time.Time) *capHold {
+	if acct.Account == nil {
+		return nil
+	}
+	cap := p.AccountCap(acct.Account.User)
+	if cap <= 0 {
+		return nil
+	}
+	held, used, back := allowances(acct.Account.UsageAgent())[acct.Account.User].CapHeld(model, cap, now)
+	if !held {
+		return nil
+	}
+	return &capHold{cap: cap, used: used, back: back}
+}
+
+// cappedError says why a request for model went nowhere when every account
+// that could take it is held at its usage cap, as the vendor's own refusal
+// would when all are used up; the soonest one is back is the wait.
+func cappedError(model string, ws []Weighed, now time.Time) (string, time.Time) {
+	var held []string
+	var soonest time.Time
+	for _, w := range ws {
+		if w.Capped == 0 {
+			continue
+		}
+		s := fmt.Sprintf("%s (%s) is at %.0f%% of a usage window, past its %d%% cap", w.Name, w.Who, w.Used, w.Capped)
+		if w.CapBack != nil {
+			s += ", until " + w.CapBack.Local().Format("Jan 2 15:04")
+			if soonest.IsZero() || w.CapBack.Before(soonest) {
+				soonest = *w.CapBack
+			}
+		}
+		held = append(held, s)
+	}
+	return fmt.Sprintf("usage cap reached: every account that serves %q is held at the usage cap set on it in magpie — %s. magpie uses it again once that window renews; raise or lift the cap in magpie (Providers → the account's cap, or magpie provider account-cap)", model, strings.Join(held, "; ")), soonest
+}
+
 // barredOf is how the trace tells the accounts or keys the user set not
 // to serve the model: left out, as those not listing it are.
 func barredOf(cs []candidate, q provider.Provider, fallback bool, from provider.Protocol, via []string) []Weighed {
 	var out []Weighed
 	for _, c := range cs {
 		w := weighed(c, q, weighing{}, fallback, from)
-		w.Unlisted, w.Barred, w.Via = true, true, via
+		w.Unlisted, w.Via = true, via
+		if h := c.capped; h != nil {
+			w.Capped, w.Used = h.cap, h.used
+			if !h.back.IsZero() {
+				w.CapBack = &h.back
+			}
+		} else {
+			w.Barred = true
+		}
 		out = append(out, w)
 	}
 	return out
@@ -1600,6 +1671,10 @@ func pinTo(want string, cands []candidate, pl planned) ([]candidate, planned, in
 		return nil, pl, http.StatusTooManyRequests, AccountHeader + ": " + strings.Join(rests, "; ") + "; no other account is tried in its place"
 	}
 	for _, w := range pl.left {
+		if match(w) && w.Capped > 0 {
+			msg, _ := cappedError(w.Model, []Weighed{w}, time.Now())
+			return nil, pl, http.StatusTooManyRequests, AccountHeader + ": " + msg + "; no other account is tried in its place"
+		}
 		if match(w) {
 			return nil, pl, http.StatusBadRequest, fmt.Sprintf("%s: %s's plan doesn't list %s", AccountHeader, w.Who, w.Model)
 		}
