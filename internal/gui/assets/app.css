@@ -1781,6 +1781,8 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .acc .acap:hover, .acc .acap.open { color: var(--fg); background: var(--pill-hover); }
 .acc .acap-in { width: 64px; }
 .acc .acap-held { color: var(--fg); }
+/* held for magpie's requests, not the agent signed in to it: a warning */
+.acc .acap-held.acap-direct { color: var(--amber); }
 .accts .acc.with-am { flex-wrap: wrap; row-gap: 3px; }
 .acc .acct-models { flex-basis: 100%; display: grid; gap: 7px; padding: 6px 0 2px 25px; cursor: auto; }
 .acc .acct-models .acm-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

@@ -8999,9 +8999,14 @@ function renderAccounts(a, p) {
     if (amPill) row.append(amPill);
     // its usage cap: the share of each window it is used to at most
     const cap = accountCapOf(p, l.user);
-    if (p) row.append(accountCapPill(p, l.user, cap));
+    // Claude Code or Codex signed in to it asks its vendor itself, not
+    // through magpie: with no other account to sign it in to, the cap
+    // holds back only what goes through magpie (𝕏 on Discord: a 90% cap
+    // and the five hours run to 100%)
+    const direct = l.active && !several && (a.agent === "claude" || a.agent === "codex") ? a.agentName : "";
+    if (p) row.append(accountCapPill(p, l.user, cap, direct));
     const held = capHeldOf(quota?.[l.user], cap);
-    if (held) row.append(capHeldNote(held, cap, several));
+    if (held) row.append(capHeldNote(held, cap, several, direct));
     row.append(el("span", "grow"));
     if (unusable(l)) {
       row.append(el("span", "using", t("Sign-in required")));
@@ -9467,7 +9472,21 @@ function capHeldOf(q, cap) {
   const h = all.n ? all : some.n ? some : null;
   return h && { used: h.used, back: h.unknown ? 0 : h.back, all: h === all, some: some.names };
 }
-function capHeldNote(held, cap, several) {
+// directNote: why the cap can't stop agent, signed in to the account and
+// asking its vendor itself, with no other account on to move it to
+function directNote(agent) {
+  return t("{agent} is signed in to this account and asks its vendor itself, not through magpie, so with no other account on to move it to, {agent} goes on using it past the cap. Add another account, or pick {agent}'s models via magpie, for the cap to hold it", { agent });
+}
+function capHeldNote(held, cap, several, direct) {
+  if (direct) {
+    // the account is held for what goes through magpie, but the agent
+    // signed in to it isn't: the note doesn't say it is safe at its cap
+    const n = el("span", "using acap-held acap-direct", t("At its cap · {agent} still uses it", { agent: direct }));
+    n.title = t("A usage window is at {n}%, past this account's {cap}% cap: requests through magpie are refused with a usage-cap error until it renews", { n: Math.round(held.used), cap })
+      + (held.back ? " · " + resetText(new Date(held.back), new Date(held.back).toLocaleString()) : "")
+      + "\n" + directNote(direct);
+    return n;
+  }
   if (!held.all) {
     const names = held.some.join(", ");
     const n = el("span", "using acap-held", held.back ? t("{names} at its cap · back {in}", { names, in: untilText(held.back) }) : t("{names} at its cap", { names }));
@@ -9490,11 +9509,12 @@ function capMark(track, w, cap) {
   track.classList.add("capped");
   track.append(mk);
 }
-function accountCapPill(p, user, cap) {
+function accountCapPill(p, user, cap, direct) {
   const pill = el("button", "acap" + (cap ? " set" : ""), cap ? t("Cap {n}%", { n: cap }) : t("No cap"));
   pill.type = "button";
-  pill.title = cap ? t("Used to {n}% of each usage window at most; past it, magpie counts this account as used up until the window renews. Click to change", { n: cap })
-    : t("Used to 100% of its usage windows. Click to cap it at a share of each, so magpie goes on to the other accounts past it");
+  pill.title = (cap ? t("Used to {n}% of each usage window at most; past it, magpie counts this account as used up until the window renews. Click to change", { n: cap })
+    : t("Used to 100% of its usage windows. Click to cap it at a share of each, so magpie goes on to the other accounts past it"))
+    + (direct ? "\n\n" + directNote(direct) : "");
   pill.setAttribute("aria-haspopup", "menu");
   pill.setAttribute("aria-expanded", "false");
   const set = (v) => accountAction("provider/accountcap", { id: p.id, account: user, cap: v },
