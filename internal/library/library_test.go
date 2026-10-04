@@ -1170,3 +1170,42 @@ func TestEveryServerAgents(t *testing.T) {
 		t.Error("no agents named was taken")
 	}
 }
+
+// Fate on Discord: with the Default set empty, a set made and written and
+// Claude Code switched on left CLAUDE.md as it was, since the agents read
+// the empty Default. A set added, or one given text, while the set in use
+// is empty is the one the agents read; one in use with text stays so.
+func TestInstructionSetTakesAnEmptyOnesPlace(t *testing.T) {
+	h := sandbox(t)
+	md := filepath.Join(h, ".claude/CLAUDE.md")
+	write(t, md, "# Mine\n")
+	ok(t)(SaveInstructions(InstructionsChange{Create: &InstrSet{ID: "work", Name: "Work"}}))
+	work := "Company rules."
+	ok(t)(SaveInstructions(InstructionsChange{Texts: map[string]*string{"work": &work}}))
+	ok(t)(SaveInstructions(InstructionsChange{Agents: []string{"claude"}}))
+	if s := read(t, md); !strings.HasPrefix(s, "# Mine\n\n"+blockBegin+"\nCompany rules.\n"+blockEnd) {
+		t.Errorf("CLAUDE.md:\n%s", s)
+	}
+	// off: magpie's part out, the user's own as it was
+	ok(t)(SaveInstructions(InstructionsChange{Agents: []string{}}))
+	if s := read(t, md); s != "# Mine\n" {
+		t.Errorf("switched off:\n%q", s)
+	}
+	ok(t)(SaveInstructions(InstructionsChange{Agents: []string{"claude"}}))
+
+	// a set in use with text isn't left for a new one
+	ok(t)(SaveInstructions(InstructionsChange{Create: &InstrSet{ID: "home", Name: "Home"}}))
+	home := "Home rules."
+	ok(t)(SaveInstructions(InstructionsChange{Texts: map[string]*string{"home": &home}}))
+	if s := read(t, md); !strings.Contains(s, "Company rules.") || strings.Contains(s, "Home") {
+		t.Errorf("a set with text was left for another:\n%s", s)
+	}
+
+	// an existing set given text while the set in use is emptied
+	empty := ""
+	ok(t)(SaveInstructions(InstructionsChange{Texts: map[string]*string{"work": &empty}}))
+	ok(t)(SaveInstructions(InstructionsChange{Texts: map[string]*string{"home": &home}}))
+	if s := read(t, md); !strings.Contains(s, "Home rules.") {
+		t.Errorf("the set given text wasn't read:\n%s", s)
+	}
+}

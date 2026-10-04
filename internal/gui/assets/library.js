@@ -994,7 +994,13 @@
     body.append(card);
 
     const rh = el("div", "row-head");
-    rh.append(el("span", "label", t("Agents")), el("span", "grow"), el("span", "note", t("magpie writes its part between two marker lines — the rest of each file stays yours")));
+    // which set the agents switched on read, said where they're switched
+    // on (Fate: a set made and written was read by none, the Default being
+    // the one in use)
+    const inUse = (iv.sets || []).find((x) => x.active) || (iv.sets || [])[0];
+    rh.append(el("span", "label", t("Agents")));
+    if (inUse) rh.append(el("span", "note lib-reads", t("They read {name}", { name: setName(inUse) }) + ((inUse.text || "").trim() ? "" : " · " + t("Empty"))));
+    rh.append(el("span", "grow"), el("span", "note", t("magpie writes its part between two marker lines — the rest of each file stays yours")));
     body.append(rh);
     const list = el("div", "list lib-list");
     // a hidden agent still reading them is listed, to switch it off (#475)
@@ -1056,8 +1062,9 @@
     ta.onkeydown = (e) => { e.stopPropagation(); if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveInstructions(); } };
     autosize(ta, 150);
     det.append(nm, ta);
+    const acts = el("div", "lib-acts");
+    if (!x.active) acts.append(button(t("Switch the agents to this set"), "action lib-use", () => pick.onclick({ stopPropagation() {} })));
     if (x.id !== "default") {
-      const acts = el("div", "lib-acts");
       // its text goes with it, so a second click says so and does it
       const sure = removingSet === x.id;
       const rm = button(sure ? t("Remove {name} and its text", { name: setName(x) }) : t("Remove"), sure ? "primary danger-fill" : "action danger", () => {
@@ -1070,8 +1077,8 @@
       if (x.active) { rm.disabled = true; rm.title = t("Switch the agents to another set before removing this one"); }
       acts.append(rm);
       if (sure) acts.append(button(t("Cancel"), "", () => { removingSet = null; render(); }));
-      det.append(acts);
     }
+    if (acts.childElementCount) det.append(acts);
     det.onclick = (e) => e.stopPropagation();
     return [row, det];
   }
@@ -1085,7 +1092,11 @@
       const name = nm.value.trim();
       if (!name) return;
       const id = "s" + Date.now().toString(36);
-      if (await change("instructions/save", { create: { id, name } }, t("{name} added — switch the agents to it when it's ready", { name }))) {
+      // the set in use empty, the new one is read from then on (as the
+      // library does it)
+      const inUse = (iv().sets || []).find((x) => x.active);
+      const said = !inUse || (inUse.text || "").trim() ? t("{name} added — switch the agents to it when it's ready", { name }) : t("{name} added — the agents read it", { name });
+      if (await change("instructions/save", { create: { id, name } }, said)) {
         addingSet = false;
         openSet = id;
         render();
@@ -1119,7 +1130,12 @@
       const agents = lib.instructions.agents.filter((x) => (x.agent === a.agent ? on : x.on)).map((x) => x.agent);
       let done = t("Taken out of {agent}'s file", { agent: a.name });
       if (on && dirty()) done = t("{agent} is on — save to write the new text into its file", { agent: a.name });
-      else if (on && !iv().shared.trim() && !(a.extra || "").trim()) done = t("{agent} is on — it gets the shared instructions once there are some", { agent: a.name });
+      else if (on && !iv().shared.trim() && !(a.extra || "").trim()) {
+        const sets = iv().sets || [], inUse = sets.find((x) => x.active) || sets[0];
+        done = inUse && sets.some((x) => (x.text || "").trim())
+          ? t("{agent} is on, but it reads {name}, which is empty — switch the agents to the set they should read", { agent: a.name, name: setName(inUse) })
+          : t("{agent} is on — it gets the shared instructions once there are some", { agent: a.name });
+      }
       else if (on) done = t("{agent} reads the shared instructions now", { agent: a.name });
       change("instructions/save", { agents }, done);
     }), chev);
