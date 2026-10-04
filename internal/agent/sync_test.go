@@ -149,10 +149,10 @@ func TestMaxTokensWithinContextWindow(t *testing.T) {
 		qoder, _ := json.Marshal(qoderProvider("qoder", ""))
 		hanako, _ := json.Marshal(hanakoProvider())
 		opencode, _ := json.Marshal(magpieProviderJSON("opencode"))
-		zc, _ := json.Marshal(zcodeProviderJSON(filepath.Join(home, "none.json")))
+		zc, _ := json.Marshal(zcodeProviderJSON(filepath.Join(home, "none.json"), true))
 		crush, _ := json.Marshal(magpieProviderJSON("crush"))
 		rules, wb := filepath.Join(t.TempDir(), "provider_config.json"), filepath.Join(t.TempDir(), "models.json")
-		if err := zcodeRules(rules, true); err != nil {
+		if err := zcodeRules(rules, true, true); err != nil {
 			t.Fatal(err)
 		}
 		if err := workbuddyWrite(wb, true); err != nil {
