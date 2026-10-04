@@ -18,6 +18,15 @@ package gateway
 // prompt it has cached is read again. A new run would start from the whole
 // history in one message, which shares nothing with what was cached but
 // Claude Code's own prompt.
+//
+// A turn the client gives up on mid-reply (a 499: the user stopped it) is
+// taken back in the same Claude Code, not ended with it (#780): Claude
+// Code is told to rewind its conversation to before that turn's message,
+// stopping the reply, and the run waits again as it did before the turn.
+// The client's resend — the same conversation, its last message reworded
+// — goes on from there, and the prefix it sends Anthropic is the one
+// already cached. Ended, the run's conversation was told to a new one in
+// one message, written to the cache again whole.
 
 import (
 	"bufio"
@@ -40,6 +49,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/yetone/magpie/internal/netproxy"
@@ -127,6 +137,16 @@ type subscriptionRun struct {
 	idleKey string
 	idleAt  time.Time
 	convKey string
+
+	// turnUUID is the id the turn it was resumed for gave its user message,
+	// and backKey the conversation it was waiting at before (turnKey):
+	// a turn the client gives up on is rewound to that message, and the
+	// run waits at backKey again (letGo). rewinding is open while it is
+	// told to; controls are its control requests waiting on an answer.
+	turnUUID  string
+	backKey   string
+	rewinding chan struct{}
+	controls  map[string]chan controlReply
 
 	// effort is the level its Claude Code thinks at, as it started (its
 	// --effort) or was told since (setEffort); "" is Claude Code's own
@@ -490,7 +510,18 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 	if run == nil {
 		return nil, nil
 	}
-	line, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": renderClaudeTurn(since)}})
+	// a run still taking back the turn the client gave up on (letGo) is
+	// waited for: it goes on from before that turn, or ended
+	run.mu.Lock()
+	rewinding := run.rewinding
+	run.mu.Unlock()
+	if rewinding != nil {
+		<-rewinding
+	}
+	// the message's id is the turn's, to rewind to if the client gives up
+	// on it
+	turn := newUUID()
+	line, _ := json.Marshal(map[string]any{"type": "user", "uuid": turn, "message": map[string]any{"role": "user", "content": renderClaudeTurn(since)}})
 	run.mu.Lock()
 	if run.closed {
 		run.mu.Unlock()
@@ -498,6 +529,7 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 	}
 	ch := make(chan Event, 64)
 	run.segment = ch
+	run.turnUUID, run.backKey = turn, key
 	run.mu.Unlock()
 	run.timer.Reset(30 * time.Minute)
 	// a turn the router picked another effort for (#502) goes on in the
@@ -556,6 +588,11 @@ func (b *subscriptionBridge) retire(owner string, msgs []Message) {
 // asked for nothing more waits for the conversation's next turn; one that
 // failed, was cut short or went unheard is let go, as is a one-off ask.
 func (r *subscriptionRun) ended(req *Request, said, stop string, ok bool) {
+	// the turn's reply is over: nothing after it (its tool calls' answers
+	// going on) is taken back to before it (letGo)
+	r.mu.Lock()
+	r.turnUUID, r.backKey = "", ""
+	r.mu.Unlock()
 	switch {
 	case !ok:
 		// the caller has no whole reply, so no tool calls to answer
@@ -580,16 +617,27 @@ func (r *subscriptionRun) ended(req *Request, said, stop string, ok bool) {
 	}
 	reply := Message{Role: "assistant", Parts: []Part{{Kind: Text, Text: said}}}
 	key := turnKey(r.owner, req, append(req.Messages[:len(req.Messages):len(req.Messages)], reply))
-	b := r.bridge
+	conv := ""
+	if keys := conversationKeys(r.owner, append(req.Messages[:len(req.Messages):len(req.Messages)], reply)); len(keys) > 0 {
+		conv = keys[len(keys)-1]
+	}
+	r.bridge.keepIdle(r, key, conv)
+	r.timer.Reset(idleLongest)
+}
+
+// keepIdle leaves run waiting for the turn after the conversation key
+// names, the longest waiting let go past idleMost; conv, when set, is that
+// conversation whatever the model (convKey).
+func (b *subscriptionBridge) keepIdle(r *subscriptionRun, key, conv string) {
 	var drop []*subscriptionRun
 	b.mu.Lock()
-	if old := b.idle[key]; old != nil {
+	if old := b.idle[key]; old != nil && old != r {
 		drop = append(drop, old)
 	}
 	b.idle[key] = r
 	r.idleKey, r.idleAt = key, time.Now()
-	if keys := conversationKeys(r.owner, append(req.Messages[:len(req.Messages):len(req.Messages)], reply)); len(keys) > 0 {
-		r.convKey = keys[len(keys)-1]
+	if conv != "" {
+		r.convKey = conv
 	}
 	for len(b.idle) > idleMost {
 		var oldest *subscriptionRun
@@ -603,9 +651,127 @@ func (r *subscriptionRun) ended(req *Request, said, stop string, ok bool) {
 		drop = append(drop, oldest)
 	}
 	b.mu.Unlock()
-	r.timer.Reset(idleLongest)
 	for _, run := range drop {
 		run.abort()
+	}
+}
+
+// rewindLongest is how long Claude Code may take to answer a rewind
+// before its run is let go.
+var rewindLongest = 10 * time.Second
+
+// controlReply is Claude Code's control_response to a control request.
+type controlReply struct {
+	Subtype   string `json:"subtype"`
+	RequestID string `json:"request_id"`
+	Error     string `json:"error"`
+	Response  struct {
+		Rewound bool `json:"rewound"`
+	} `json:"response"`
+}
+
+// letGo is told the client went away mid-reply (#780). A turn resumed in
+// a run kept for it is taken back: Claude Code is told to rewind to the
+// turn's message, which stops the reply and leaves its conversation as it
+// was before the turn, and the run waits there again, for the client's
+// resend to go on from the prefix it cached. Any other run — one started
+// for the turn, one with a tool call in the client's hands, one whose
+// Claude Code refuses or doesn't answer — is ended, as before.
+func (r *subscriptionRun) letGo() {
+	r.mu.Lock()
+	turn, back := r.turnUUID, r.backKey
+	can := !r.closed && r.stdin != nil && r.bridge != nil && r.timer != nil &&
+		turn != "" && back != "" && len(r.pending) == 0 && r.rewinding == nil
+	done := make(chan struct{})
+	if can {
+		r.rewinding = done
+		r.turnUUID, r.backKey = "", "" // once a turn
+	}
+	r.mu.Unlock()
+	if !can {
+		r.abort()
+		return
+	}
+	defer func() {
+		r.mu.Lock()
+		r.rewinding = nil
+		r.mu.Unlock()
+		close(done)
+	}()
+	// the reply goes to no one from here: what Claude Code says as it
+	// stops (an interrupted result) is read past
+	r.endSegment()
+	// found at once by a resend, which waits for the rewind (resume)
+	r.bridge.keepIdle(r, back, "")
+	if err := r.rewind(turn); err != nil {
+		log.Printf("claude: a turn the client gave up on could not be taken back, its run let go: %v", err)
+		r.abort()
+		return
+	}
+	r.mu.Lock()
+	r.asked, r.shown, r.parkedAt = nil, nil, time.Time{}
+	clear(r.early)
+	r.mu.Unlock()
+	r.timer.Reset(idleLongest)
+	log.Printf("claude: the turn the client gave up on was taken back; its run waits for the conversation's next turn")
+}
+
+// rewind tells the run's Claude Code to take its conversation back to
+// before the user message turn, stopping a reply under way, as its SDK's
+// rewindConversation does.
+func (r *subscriptionRun) rewind(turn string) error {
+	id := "rewind-" + randomToken()[:12]
+	ch := make(chan controlReply, 1)
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return errors.New("the run ended")
+	}
+	if r.controls == nil {
+		r.controls = map[string]chan controlReply{}
+	}
+	r.controls[id] = ch
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		delete(r.controls, id)
+		r.mu.Unlock()
+	}()
+	line, _ := json.Marshal(map[string]any{"type": "control_request", "request_id": id,
+		"request": map[string]any{"subtype": "rewind_conversation", "target_message_uuid": turn, "interrupt_if_running": true}})
+	if _, err := r.stdin.Write(append(line, '\n')); err != nil {
+		return err
+	}
+	t := time.NewTimer(rewindLongest)
+	defer t.Stop()
+	select {
+	case reply, ok := <-ch:
+		switch {
+		case !ok:
+			return errors.New("the run ended")
+		case reply.Subtype != "success":
+			return fmt.Errorf("Claude Code refused it: %s", reply.Error)
+		case !reply.Response.Rewound:
+			return errors.New("Claude Code did not rewind")
+		}
+		return nil
+	case <-t.C:
+		return errors.New("Claude Code did not answer in " + rewindLongest.String())
+	}
+}
+
+// answered hands a control_response to the request waiting on it.
+func (r *subscriptionRun) answered(raw json.RawMessage) {
+	var reply controlReply
+	if json.Unmarshal(raw, &reply) != nil {
+		return
+	}
+	r.mu.Lock()
+	ch := r.controls[reply.RequestID]
+	delete(r.controls, reply.RequestID)
+	r.mu.Unlock()
+	if ch != nil {
+		ch <- reply
 	}
 }
 
@@ -1029,6 +1195,8 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			ToolUseResult json.RawMessage `json:"tool_use_result"`
 			// what the account has left, as Anthropic told Claude Code
 			RateLimitInfo json.RawMessage `json:"rate_limit_info"`
+			// Claude Code's answer to a control request (rewind)
+			Response json.RawMessage `json:"response"`
 			// an assistant message, one of its blocks at a time; raw, as
 			// a user message's content may be a string
 			Message json.RawMessage `json:"message"`
@@ -1085,6 +1253,10 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 		next := envelope.Type == "assistant" && whole.ID != "" && whole.ID != streamed && whole.Model != "<synthetic>"
 		if unstreamed != "" && !(next && whole.ID == unstreamed) {
 			settle()
+		}
+		if envelope.Type == "control_response" {
+			r.answered(envelope.Response)
+			return
 		}
 		if envelope.Type == "rate_limit_event" {
 			// a run in Claude Code's own home is on whatever account
@@ -1865,10 +2037,15 @@ func (r *subscriptionRun) finish() {
 	}
 	pending := r.pending
 	r.pending = map[string]chan mcpToolResult{}
+	controls := r.controls
+	r.controls = nil
 	ch := r.segment
 	r.segment = nil
 	r.mu.Unlock()
 	for _, waiter := range pending {
+		close(waiter)
+	}
+	for _, waiter := range controls {
 		close(waiter)
 	}
 	if ch != nil {
@@ -2060,14 +2237,26 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 	// is stopped at once, not left to answer no one and wait on tool calls
 	// it never handed over
 	began := time.Now()
+	// A turn resumed in a run kept for it is taken back instead, the run
+	// left waiting where it was before it (letGo, #780); the reply's end,
+	// which comes of that, leaves the run to it.
+	var letting atomic.Bool
 	gone := context.AfterFunc(r.Context(), func() {
+		letting.Store(true)
 		// said in the log, as the routing trace says it with a 499 (#751)
 		log.Printf("%s run on %s stopped: the client went away %s into the reply", name, model, time.Since(began).Round(time.Millisecond))
-		run.abort()
+		run.letGo()
 	})
 	defer gone()
-	return relay(w, r, from, name, req, events, usage, run.abort, func(said, stop string, ok bool) {
-		gone()
+	abort := func() {
+		if !letting.Load() {
+			run.abort()
+		}
+	}
+	return relay(w, r, from, name, req, events, usage, abort, func(said, stop string, ok bool) {
+		if !gone() {
+			return // the client went first: letGo has the run
+		}
 		run.ended(req, said, stop, ok)
 	})
 }
