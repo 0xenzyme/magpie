@@ -244,6 +244,18 @@ func sweepBridgeProjects(claudeDir, tempDir string) {
 	}
 }
 
+// claudeRunDir is the folder every bridge run works in, the same one each
+// time: Claude Code writes its working directory into the system prompt,
+// so a folder of each run's own made every new turn's prompt a new one and
+// Anthropic's prompt cache was written again for the whole conversation and
+// never read — a long Claude Code conversation through magpie waited for
+// all of it each turn. A run's own files (tools.json) stay in its own
+// folder, which isn't in the prompt.
+func claudeRunDir() (string, error) {
+	dir := filepath.Join(os.TempDir(), "magpie-claude")
+	return dir, os.MkdirAll(dir, 0o700)
+}
+
 func evalSymlinks(path string) string {
 	if p, err := filepath.EvalSymlinks(path); err == nil {
 		return p
@@ -321,8 +333,13 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 	if len(req.Schema) > 0 {
 		args = append(args, "--json-schema", string(req.Schema))
 	}
+	cwd, err := claudeRunDir()
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
 	cmd := proc.CommandContext(context.Background(), binary, args...)
-	cmd.Dir = tmp
+	cmd.Dir = cwd
 	cmd.Env = netproxy.EnvWith(claudeProxy(ctx), cleanClaudeEnv(os.Environ()))
 	cmd.Env = inClaudeDir(cmd.Env, configDir)
 	stdin, err := cmd.StdinPipe()
