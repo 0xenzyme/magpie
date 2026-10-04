@@ -63,8 +63,10 @@ type subscriptionBridge struct {
 	runs    map[string]*subscriptionRun // callback token → run
 	calls   map[string]*subscriptionRun // tool_use id → run
 	idle    map[string]*subscriptionRun // conversation so far (turnKey) → run
+	shelf   map[string]*savedSession    // conversation so far (turnKey) → its saved session
 	baseURL string
 	sweep   sync.Once
+	swept   sync.Map // Claude Code's project folders sweepSessions went through
 }
 
 // A run left for its conversation's next turn waits idleLongest at most,
@@ -147,6 +149,16 @@ type subscriptionRun struct {
 	backKey   string
 	rewinding chan struct{}
 	controls  map[string]chan controlReply
+
+	// sessionID is its Claude Code's session, saved in sessions (Claude
+	// Code's project folder for claudeWorkDir) when it is kept on disk
+	// (claudeSessions), "" otherwise; shelved says it is on the bridge's
+	// shelf, to be resumed, so its file outlives it, and rewound that its
+	// conversation was taken back (letGo), which the file may not say
+	sessionID string
+	sessions  []string
+	shelved   bool
+	rewound   bool
 
 	// effort is the level its Claude Code thinks at, as it started (its
 	// --effort) or was told since (setEffort); "" is Claude Code's own
@@ -307,7 +319,7 @@ func evalSymlinks(path string) string {
 }
 
 func newSubscriptionBridge() *subscriptionBridge {
-	return &subscriptionBridge{runs: map[string]*subscriptionRun{}, calls: map[string]*subscriptionRun{}, idle: map[string]*subscriptionRun{}}
+	return &subscriptionBridge{runs: map[string]*subscriptionRun{}, calls: map[string]*subscriptionRun{}, idle: map[string]*subscriptionRun{}, shelf: map[string]*savedSession{}}
 }
 
 func randomToken() string {
@@ -388,7 +400,10 @@ func callbackBaseURL() string {
 	return "http://" + host + ":" + port
 }
 
-func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, configDir, owner string) (*subscriptionRun, <-chan Event, error) {
+// from, when set, is the conversation's session a run let go past idleMost
+// saved (unshelve): Claude Code goes on with it, told only the messages
+// since.
+func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, configDir, owner string, from *savedSession) (*subscriptionRun, <-chan Event, error) {
 	binary, err := claudeBinary()
 	if err != nil {
 		return nil, nil, err
@@ -422,11 +437,28 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 		args = append(args, "--json-schema", string(req.Schema))
 	}
 	work, err := claudeWorkDir()
-	if err != nil {
+	var sessions []string
+	switch {
+	case err != nil:
 		// a run of its own folder answers all the same, its prompt only
 		// read from the cache as far as Claude Code's own part
 		log.Printf("claude: working in a folder of the run's own: %v", err)
 		work = tmp
+	case binary.wsl == nil:
+		// its session is kept on disk, for a turn after it is let go to
+		// go on with it (claudeSessions)
+		sessions = claudeSessions(configDir, work)
+		args = slices.DeleteFunc(args, func(a string) bool { return a == "--no-session-persistence" })
+		b.sweepSessions(sessions)
+	}
+	if from != nil {
+		defer from.discard() // unless the run took it
+		if sessions == nil || !slices.Equal(from.sessions, sessions) || !from.saved() {
+			from = nil
+		}
+	}
+	if from != nil {
+		args = append(args, "--resume", from.session)
 	}
 	cmd := binary.command(context.Background(), args...)
 	cmd.Dir = work
@@ -447,7 +479,7 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 		return nil, nil, err
 	}
 
-	run := &subscriptionRun{bridge: b, token: token, model: model, cmd: cmd, tmp: tmp, schema: len(req.Schema) > 0, pending: map[string]chan mcpToolResult{}, stdin: stdin, owner: owner, effort: req.Effort}
+	run := &subscriptionRun{bridge: b, token: token, model: model, cmd: cmd, tmp: tmp, schema: len(req.Schema) > 0, pending: map[string]chan mcpToolResult{}, stdin: stdin, owner: owner, effort: req.Effort, sessions: sessions}
 	if user, _ := ownerAccount(owner); user != "" {
 		run.loginVersion = provider.ClaudeLoginVersion(user)
 	}
@@ -468,8 +500,16 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 	}()
 	go run.readOutput(stdout)
 
-	prompt, err := renderClaudePrompt(req)
-	if err != nil {
+	var prompt []map[string]any
+	if from != nil {
+		// the session is the run's now: its file goes when the run does,
+		// unless the run is shelved in turn
+		from.taken()
+		run.mu.Lock()
+		run.sessionID = from.session
+		run.mu.Unlock()
+		prompt = renderClaudeTurn(req.Messages[len(req.Messages)-len(from.since):])
+	} else if prompt, err = renderClaudePrompt(req); err != nil {
 		run.abort()
 		return nil, nil, err
 	}
@@ -484,22 +524,10 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 // resume hands a conversation's next turn to the run that had its last
 // one, when one is waiting: the user's messages since, and nothing else.
 func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRun, <-chan Event) {
-	j := len(req.Messages) - 1
-	for j >= 0 && req.Messages[j].Role != "assistant" {
-		j--
-	}
-	if j < 0 || j == len(req.Messages)-1 {
+	key, since := nextTurn(req, owner)
+	if key == "" {
 		return nil, nil
 	}
-	since := req.Messages[j+1:]
-	for _, m := range since {
-		for _, p := range m.Parts {
-			if p.Kind == ToolResult {
-				return nil, nil
-			}
-		}
-	}
-	key := turnKey(owner, req, req.Messages[:j+1])
 	b.mu.Lock()
 	run := b.idle[key]
 	if run != nil {
@@ -550,6 +578,28 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 	return run, ch
 }
 
+// nextTurn is the conversation a request goes on from, after its last
+// reply (turnKey), and the user's messages since; "" when it isn't a new
+// turn after a reply: a first one, or tool results.
+func nextTurn(req *Request, owner string) (string, []Message) {
+	j := len(req.Messages) - 1
+	for j >= 0 && req.Messages[j].Role != "assistant" {
+		j--
+	}
+	if j < 0 || j == len(req.Messages)-1 {
+		return "", nil
+	}
+	since := req.Messages[j+1:]
+	for _, m := range since {
+		for _, p := range m.Parts {
+			if p.Kind == ToolResult {
+				return "", nil
+			}
+		}
+	}
+	return turnKey(owner, req, req.Messages[:j+1]), since
+}
+
 // setEffort tells the run's Claude Code to think at effort from its next
 // turn, as its SDK's applyFlagSettings does: a control request, answered
 // with a control_response its output is read past.
@@ -578,7 +628,17 @@ func (b *subscriptionBridge) retire(owner string, msgs []Message) {
 			drop = append(drop, run)
 		}
 	}
+	var gone []*savedSession
+	for key, s := range b.shelf {
+		if s.owner == owner && s.conv != "" && slices.Contains(keys, s.conv) {
+			delete(b.shelf, key)
+			gone = append(gone, s)
+		}
+	}
 	b.mu.Unlock()
+	for _, s := range gone {
+		s.discard()
+	}
 	for _, run := range drop {
 		run.abort()
 	}
@@ -646,6 +706,7 @@ func (b *subscriptionBridge) keepIdle(r *subscriptionRun, key, conv string) {
 				oldest = run
 			}
 		}
+		b.shelve(oldest)
 		delete(b.idle, oldest.idleKey)
 		oldest.idleKey = ""
 		drop = append(drop, oldest)
@@ -653,6 +714,177 @@ func (b *subscriptionBridge) keepIdle(r *subscriptionRun, key, conv string) {
 	b.mu.Unlock()
 	for _, run := range drop {
 		run.abort()
+	}
+}
+
+// shelfMost is how many saved sessions the shelf keeps, the longest
+// waiting let go first: each is a file of its conversation.
+const shelfMost = 64
+
+// savedSession is the saved Claude Code session of a run let go past idleMost,
+// kept for its conversation's next turn as long as the run would have
+// waited. That turn starts Claude Code with --resume on it, told only the
+// messages since, so Anthropic is asked the conversation as the run would
+// have asked it, a prefix it has cached; a run started anew is told the
+// whole conversation in one message, and writes all of it to the cache
+// again (X, AncientTwo: a Claude subscription's limits went much faster
+// through magpie than in Claude Code — with more than idleMost
+// conversations going, each turn of each wrote its whole conversation).
+type savedSession struct {
+	session  string
+	sessions []string // Claude Code's project folders it is saved in
+	owner    string
+	conv     string    // its conversation whatever the model (convKey)
+	at       time.Time // since when it waits
+	timer    *time.Timer
+	since    []Message // the turn's messages, once unshelved
+
+	mu   sync.Mutex
+	gone bool // taken by a run, or discarded
+}
+
+// shelve keeps run's session, when it has one, for its conversation's
+// next turn (b.mu held). The file is the shelf's from here: the run, let
+// go, leaves it.
+func (b *subscriptionBridge) shelve(run *subscriptionRun) {
+	run.mu.Lock()
+	sid, sessions, rewound := run.sessionID, run.sessions, run.rewound
+	run.mu.Unlock()
+	if sid == "" || len(sessions) == 0 || rewound || run.idleKey == "" {
+		return
+	}
+	s := &savedSession{session: sid, sessions: sessions, owner: run.owner, conv: run.convKey, at: run.idleAt}
+	key := run.idleKey
+	if old := b.shelf[key]; old != nil {
+		go old.discard()
+	}
+	b.shelf[key] = s
+	run.mu.Lock()
+	run.shelved = true
+	run.mu.Unlock()
+	s.timer = time.AfterFunc(idleLongest-time.Since(s.at), func() {
+		b.mu.Lock()
+		if b.shelf[key] == s {
+			delete(b.shelf, key)
+		}
+		b.mu.Unlock()
+		s.discard()
+	})
+	for len(b.shelf) > shelfMost {
+		var oldKey string
+		var oldest *savedSession
+		for k, e := range b.shelf {
+			if oldest == nil || e.at.Before(oldest.at) {
+				oldKey, oldest = k, e
+			}
+		}
+		delete(b.shelf, oldKey)
+		go oldest.discard()
+	}
+}
+
+// unshelve takes the saved session a request's conversation goes on
+// from, if there is one: its next turn, asked of the account, model and
+// settings it had.
+func (b *subscriptionBridge) unshelve(req *Request, owner string) *savedSession {
+	key, since := nextTurn(req, owner)
+	if key == "" {
+		return nil
+	}
+	b.mu.Lock()
+	s := b.shelf[key]
+	delete(b.shelf, key)
+	b.mu.Unlock()
+	if s == nil {
+		return nil
+	}
+	s.timer.Stop()
+	s.since = since
+	return s
+}
+
+// saved says its session's file is still there.
+func (s *savedSession) saved() bool {
+	for _, dir := range s.sessions {
+		if _, err := os.Stat(filepath.Join(dir, s.session+".jsonl")); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// taken hands the session to the run that goes on with it.
+func (s *savedSession) taken() {
+	s.mu.Lock()
+	s.gone = true
+	s.mu.Unlock()
+}
+
+// discard removes the session's files, unless a run took it.
+func (s *savedSession) discard() {
+	s.mu.Lock()
+	gone := s.gone
+	s.gone = true
+	s.mu.Unlock()
+	if s.timer != nil {
+		s.timer.Stop()
+	}
+	if !gone {
+		removeSession(s.sessions, s.session)
+	}
+}
+
+// claudeSessions is the project folders Claude Code saves a session of a
+// run in work under: work's own name and, where it is a link (macOS's
+// /var), the real path's, in configDir ("" for Claude Code's own).
+func claudeSessions(configDir, work string) []string {
+	if configDir == "" {
+		configDir = claudeConfigDir()
+	}
+	var dirs []string
+	for _, w := range []string{work, evalSymlinks(work)} {
+		d := filepath.Join(configDir, "projects", claudeProjectName(w))
+		if !slices.Contains(dirs, d) {
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
+}
+
+// removeSession removes a session's file, and the folder of its own
+// Claude Code may keep beside it.
+func removeSession(dirs []string, sid string) {
+	if sid == "" || strings.ContainsAny(sid, `/\`) || strings.Contains(sid, "..") {
+		return
+	}
+	for _, dir := range dirs {
+		_ = os.Remove(filepath.Join(dir, sid+".jsonl"))
+		_ = os.RemoveAll(filepath.Join(dir, sid))
+	}
+}
+
+// sweepSessions removes, once a gateway for each of Claude Code's
+// folders, the sessions a gateway that stopped or crashed left there:
+// those untouched for longer than one would be kept. Another gateway on
+// the same account (a dev build) works in the same folder; its sessions
+// are newer.
+func (b *subscriptionBridge) sweepSessions(dirs []string) {
+	for _, dir := range dirs {
+		if _, done := b.swept.LoadOrStore(dir, true); done {
+			continue
+		}
+		go func() {
+			entries, _ := os.ReadDir(dir)
+			for _, e := range entries {
+				sid, ok := strings.CutSuffix(e.Name(), ".jsonl")
+				if !ok || e.IsDir() {
+					continue
+				}
+				if fi, err := e.Info(); err == nil && time.Since(fi.ModTime()) > idleLongest+time.Minute {
+					removeSession([]string{dir}, sid)
+				}
+			}
+		}()
 	}
 }
 
@@ -686,6 +918,7 @@ func (r *subscriptionRun) letGo() {
 	if can {
 		r.rewinding = done
 		r.turnUUID, r.backKey = "", "" // once a turn
+		r.rewound = true
 	}
 	r.mu.Unlock()
 	if !can {
@@ -947,8 +1180,9 @@ func claudeCLIArgs(model, mcpConfig, effort string, web bool) []string {
 		"--include-partial-messages", "--verbose", "--model", model,
 		"--tools", own, "--strict-mcp-config", "--mcp-config", mcpConfig,
 		"--setting-sources", "", "--dangerously-skip-permissions",
-		// the run's history lives in the process; on disk it would only list a
-		// throwaway folder among the user's projects
+		// the run's history lives in the process; start keeps it on disk
+		// where a turn after the run is let go can go on with it
+		// (savedSession), in the folder all runs share
 		"--no-session-persistence",
 	}
 	if effort != "" {
@@ -1179,7 +1413,9 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 			Type    string `json:"type"`
 			Subtype string `json:"subtype"`
 			IsError bool   `json:"is_error"`
-			Result  string `json:"result"`
+			// Claude Code's session, on its init message
+			SessionID string `json:"session_id"`
+			Result    string `json:"result"`
 			// the answer fitting the schema, with --json-schema, and what
 			// went wrong in a turn that ended without one
 			StructuredOutput json.RawMessage `json:"structured_output"`
@@ -1256,6 +1492,12 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 		}
 		if envelope.Type == "control_response" {
 			r.answered(envelope.Response)
+			return
+		}
+		if envelope.Type == "system" && envelope.Subtype == "init" && envelope.SessionID != "" {
+			r.mu.Lock()
+			r.sessionID = envelope.SessionID
+			r.mu.Unlock()
 			return
 		}
 		if envelope.Type == "rate_limit_event" {
@@ -2109,6 +2351,12 @@ func (b *subscriptionBridge) removeRun(run *subscriptionRun) {
 	}
 	b.mu.Unlock()
 	_ = os.RemoveAll(run.tmp)
+	run.mu.Lock()
+	sid, sessions, shelved := run.sessionID, run.sessions, run.shelved
+	run.mu.Unlock()
+	if !shelved {
+		removeSession(sessions, sid)
+	}
 }
 
 // ownHome marks a run's owner as Claude Code's own sign-in, run in its
@@ -2141,6 +2389,8 @@ func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request,
 		if run, events := s.subscription.resume(req, owner); run != nil {
 			return run, events, nil
 		}
+		// a run let go past idleMost left its session for this turn
+		from := s.subscription.unshelve(req, owner)
 		s.subscription.retire(owner, req.Messages)
 		if req.Effort == "" && autoModeClassifier(req) {
 			// Claude Code's auto mode classifier asks a verdict of a few
@@ -2150,9 +2400,12 @@ func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request,
 		}
 		dir, _, err := p.Account.Token(ctx)
 		if err != nil {
+			if from != nil {
+				from.discard()
+			}
 			return nil, nil, err
 		}
-		return s.subscription.start(ctx, req, model, dir, owner)
+		return s.subscription.start(ctx, req, model, dir, owner, from)
 	}
 	return s.serveSubscription(w, r, from, "Claude Code", model, body, usage, start)
 }
