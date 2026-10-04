@@ -121,13 +121,15 @@ type providerJSON struct {
 	// how many requests each of its keys or accounts has out at once, the
 	// rest queued: the user's (null: not set), and what its plugin says
 	// when the user set none (provider.Concurrency)
-	MaxConcurrency    *int        `json:"maxConcurrency"`
-	PluginConcurrency int         `json:"pluginConcurrency,omitempty"`
-	Models            []modelJSON `json:"models"`            // everything the vendor lists, exposed ones flagged
-	Exposed           int         `json:"exposed"`           // how many reach the agents
-	Draws             int         `json:"draws,omitempty"`   // how many of its models draw images (gateway.Drawers)
-	DrawIDs           []string    `json:"drawIds,omitempty"` // those models' ids, listed apart in its editor
-	Unlisted          bool        `json:"unlisted"`          // its models serve only through routing groups
+	MaxConcurrency    *int `json:"maxConcurrency"`
+	PluginConcurrency int  `json:"pluginConcurrency,omitempty"`
+	// what it charges against the official price, 0 for that (#819)
+	PriceRate float64     `json:"priceRate,omitempty"`
+	Models    []modelJSON `json:"models"`            // everything the vendor lists, exposed ones flagged
+	Exposed   int         `json:"exposed"`           // how many reach the agents
+	Draws     int         `json:"draws,omitempty"`   // how many of its models draw images (gateway.Drawers)
+	DrawIDs   []string    `json:"drawIds,omitempty"` // those models' ids, listed apart in its editor
+	Unlisted  bool        `json:"unlisted"`          // its models serve only through routing groups
 	// Groups are the routing groups ("group/<id>") each of its models is
 	// in, by model id: what an unlisted one is still used through, and the
 	// editor names those in none
@@ -365,7 +367,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, AccountCaps: p.AccountCaps, Headers: p.Headers, Searches: p.Searches, BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, ModelsURL: p.ModelsURL,
 		Ready: p.Ready(), Chosen: p.Models, Models: []modelJSON{}, Agents: []providerAgent{},
 		Fallback: p.Fallback, Routing: p.Routing, Sink: p.Sink, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
-		MaxConcurrency: p.MaxConcurrency, PluginConcurrency: p.PluginConcurrency(),
+		MaxConcurrency: p.MaxConcurrency, PluginConcurrency: p.PluginConcurrency(), PriceRate: p.PriceRate,
 		Outputs: provider.OutputsOf(p.ID),
 	}
 	if out.Fallback == nil {
@@ -707,7 +709,10 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// accounts has out at once: a number (0 none), null for what
 			// its plugin says or none; a save that leaves it out keeps it
 			MaxConcurrency json.RawMessage `json:"maxConcurrency"`
-			AccountOrder   []string        `json:"accountOrder"`
+			// PriceRate is what it charges against the official price
+			// (#819): a number, null or 0 for none; left out, it is kept
+			PriceRate    json.RawMessage `json:"priceRate"`
+			AccountOrder []string        `json:"accountOrder"`
 			// New is set by the editor's Add: the provider is one more, never
 			// one replacing the provider that has its id or name
 			New bool `json:"new"`
@@ -864,6 +869,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				return
 			}
 			in.MaxConcurrency = cc
+			rate, keepRate, err := priceRateOf(req.PriceRate)
+			if err != nil {
+				fail(rw, err)
+				return
+			}
+			in.PriceRate = rate
 			var old *provider.Provider
 			if req.New {
 				// a second one of a preset, or a name already in use, is
@@ -900,6 +911,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				}
 				if keepCC && old != nil {
 					in.MaxConcurrency = old.MaxConcurrency
+				}
+				if keepRate && old != nil {
+					in.PriceRate = old.PriceRate
 				}
 				// each account's own proxy likewise: {} clears them
 				if in.AccountProxies == nil && old != nil {
@@ -1513,6 +1527,25 @@ func typed(p, in provider.Provider, proxy *string) provider.Provider {
 		p.Proxy = *proxy
 	}
 	return p
+}
+
+// priceRateOf is a save's priceRate: keep when the save left it out, 0
+// for null, else the rate.
+func priceRateOf(raw json.RawMessage) (r float64, keep bool, err error) {
+	if len(raw) == 0 {
+		return 0, true, nil
+	}
+	var n *float64
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return 0, false, fmt.Errorf("a price rate is a number, like 0.8, not %s", raw)
+	}
+	if n == nil {
+		return 0, false, nil
+	}
+	if bad := provider.PriceRateOK(*n); bad != "" {
+		return 0, false, fmt.Errorf("%s, not %v", bad, *n)
+	}
+	return *n, false, nil
 }
 
 // concurrencyOf is a save's maxConcurrency: keep when the save left it

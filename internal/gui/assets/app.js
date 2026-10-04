@@ -5901,8 +5901,35 @@ function concurrencyField(p) {
   box.oninput = () => { draft.concurrency = box.value; };
   return field(t("Concurrency"), box, plugin ? t("Over it, requests queue and go out in order; empty takes the plugin's {n}, 0 is no limit", { n: plugin }) : t("Over it, requests queue and go out in order; 0 or empty is no limit"));
 }
+// priceRateField: what the provider charges against the official price
+// (ITea312, #819), as a relay bills 0.8× or 1.5× of it: the Usage page's
+// costs are its list price, else its maker's, times this. Empty is the
+// price as listed; steps of 0.001.
+function priceRateField() {
+  const box = input(draft.priceRate ?? "", t("1, the official price"), "number");
+  box.classList.add("price-rate");
+  box.min = "0";
+  box.max = "1000";
+  box.step = "0.001";
+  box.inputMode = "decimal";
+  box.oninput = () => { draft.priceRate = box.value; };
+  return field(t("Price rate"), box, t("Costs are counted at the official price times this, as a relay bills, like 0.8 or 1.5; a price you set for a model stays as set"));
+}
+// priceRateOfDraft is the draft's rate as it is saved — null for none,
+// else the number — or undefined when what is typed isn't one.
+function priceRateOfDraft() {
+  const v = String(draft.priceRate ?? "").trim();
+  if (!v) return null;
+  const n = Number(v);
+  if (!/^\d*\.?\d+$|^\d+\.$/.test(v) || !(n >= 0 && n <= 1000) || Math.abs(n * 1000 - Math.round(n * 1000)) > 1e-6) return undefined;
+  return n;
+}
+function priceRateError(ed) {
+  ed.querySelector("input.price-rate")?.focus({ preventScroll: true });
+  return editorError(t("Price rate: a number from 0 to 1000, at most three decimals"), "warn");
+}
 function concurrencyDraft(p) {
-  return { concurrency: p?.maxConcurrency == null ? "" : String(p.maxConcurrency) };
+  return { concurrency: p?.maxConcurrency == null ? "" : String(p.maxConcurrency), priceRate: p?.priceRate ? String(p.priceRate) : "" };
 }
 // concurrencyOfDraft is the draft's limit as it is saved — null for none
 // set, else the number — or undefined when what is typed isn't one.
@@ -6655,6 +6682,7 @@ function drawEditor(p, presetID) {
     if (perAccount) proxies.append(perAccount);
     ed.append(...field(t("Proxy"), proxies));
     ed.append(...concurrencyField(p));
+    ed.append(...priceRateField());
     // a plugin's provider is reached inside magpie: its plugin:// URLs go
     // nowhere to show or test
     const urls = [p.chat, p.responses, p.anthropic].filter(Boolean);
@@ -6683,7 +6711,9 @@ function drawEditor(p, presetID) {
       }
       const maxConcurrency = concurrencyOfDraft();
       if (maxConcurrency === undefined) return concurrencyError(ed);
-      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, outputs: ox.map, proxy, accountProxies: own.map, maxConcurrency, modelPrefs: modelPrefsOfDraft(), ...routingOfDraft(p) }, t("{name} saved", { name: p.name })); };
+      const priceRate = priceRateOfDraft();
+      if (priceRate === undefined) return priceRateError(ed);
+      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, outputs: ox.map, proxy, accountProxies: own.map, maxConcurrency, priceRate, modelPrefs: modelPrefsOfDraft(), ...routingOfDraft(p) }, t("{name} saved", { name: p.name })); };
     bar.append(cancel, saveBtn);
     ed.append(bar);
     return ed;
@@ -6748,6 +6778,7 @@ function drawEditor(p, presetID) {
   }
   ed.append(...field(t("Proxy"), proxyPicker()));
   ed.append(...concurrencyField(p));
+  ed.append(...priceRateField());
 
   // a relay in front of Anthropic's or OpenAI's API searches the web as
   // they do, which magpie can't tell from its host (#359): a client's web
@@ -7013,6 +7044,8 @@ function drawEditor(p, presetID) {
     if (body.proxy === null) { ed.querySelector(".proxy-url")?.focus(); return editorError(t("Proxy: type its address, like http://127.0.0.1:7890"), "warn"); }
     body.maxConcurrency = concurrencyOfDraft();
     if (body.maxConcurrency === undefined) return concurrencyError(ed);
+    body.priceRate = priceRateOfDraft();
+    if (body.priceRate === undefined) return priceRateError(ed);
     if (draft.balanceToken) body.balanceToken = draft.balanceToken;
     else if (draft.clearBalanceToken) body.clearBalanceToken = true;
     if (team) {
@@ -12327,6 +12360,7 @@ function renderLedgerLoading() {
   const wrap = $("#ledWrap");
   wrap.classList.remove("none");
   wrap.replaceChildren();
+  $("#ledHScroll").hidden = true;
   for (let i = 0; i < 5; i++) {
     const r = el("div", "led-sk");
     r.append(el("span", "skeleton sk-line"));
@@ -12376,6 +12410,20 @@ function ledDetail(r, cols) {
     add("Status", r.status ? String(r.status) : "—", "bad");
     add("Error type", r.err_type, "bad");
     add(r.source === "log" ? "Error" : "Upstream said", r.err, "said");
+  } else {
+    // how it went, here as well as in the row's last column, which a narrow
+    // window leaves out of sight (#799)
+    add("Status", r.status ? String(r.status) : r.source === "log" ? t("Succeeded") : "");
+  }
+  if (Number.isFinite(r.ms) && r.ms > 0) add("Duration", (r.source === "log" ? "≈" : "") + ledTook(r.ms));
+  // the way it was routed: the row's time links there too, which reads as
+  // a time rather than a link (#799)
+  if (r.route_id) {
+    const go = el("button", "text led-route-link", t("View routing"));
+    go.onclick = (e) => { e.stopPropagation(); window.openRoute(r.route_id, r.t).catch((err) => status(err.message, "err")); };
+    const dd = el("dd");
+    dd.append(go);
+    dl.append(el("dt", "", t("Routing")), dd);
   }
   if (r.computerName) add("Computer", r.computerName);
   add("Request ID", r.rid);
@@ -12869,8 +12917,20 @@ function drawLedTrend() {
     loadLedger().catch((e) => status(e.message, "err"));
   }, false);
 }
+// the table's scrollbar, kept in view at the window's foot (#799): as wide
+// as the table can go sideways, and moving it as the table moves it
+function ledHScroll() {
+  const wrap = $("#ledWrap"), bar = $("#ledHScroll");
+  const over = !!wrap.querySelector("table") && wrap.scrollWidth > wrap.clientWidth + 1;
+  bar.hidden = !over;
+  if (!over) return;
+  bar.firstElementChild.style.width = wrap.scrollWidth - wrap.clientWidth + bar.clientWidth + "px";
+  bar.scrollLeft = wrap.scrollLeft;
+}
+$("#ledWrap").addEventListener("scroll", () => { const bar = $("#ledHScroll"); if (bar.scrollLeft !== $("#ledWrap").scrollLeft) bar.scrollLeft = $("#ledWrap").scrollLeft; }, { passive: true });
+$("#ledHScroll").addEventListener("scroll", () => { const wrap = $("#ledWrap"); if (wrap.scrollLeft !== $("#ledHScroll").scrollLeft) wrap.scrollLeft = $("#ledHScroll").scrollLeft; }, { passive: true });
 // a window that changes size redraws the chart at its new width
-new ResizeObserver(() => $("#ledWrap").style.setProperty("--ledw", $("#ledWrap").clientWidth + "px")).observe($("#ledWrap"));
+new ResizeObserver(() => { $("#ledWrap").style.setProperty("--ledw", $("#ledWrap").clientWidth + "px"); ledHScroll(); }).observe($("#ledWrap"));
 new ResizeObserver(() => {
   if (!ledger || usageTab !== "requests" || view !== "usage" || $("#ledDash").hidden) return;
   drawLedColumns($("#ledChart"), ledger, ledSplit, ledMetric, false);
@@ -12972,6 +13032,7 @@ function renderLedger() {
     const filtered = ledPurpose || ledDay || ledRoute || ledAgent || ledProvider || ledAccount || ledComputer || ledCallerKey || ledModel || ledFailed || ledQuery.trim();
     const none = { today: "No calls today.", "7d": "No calls in the last 7 days.", "30d": "No calls in the last 30 days.", all: "No calls yet." }[period];
     wrap.replaceChildren(el("div", "led-none", filtered ? t("No requests match these filters.") : t(none)));
+    ledHScroll();
     pager.hidden = true;
     $("#ledNote").textContent = "";
     return;
@@ -13078,6 +13139,7 @@ function renderLedger() {
   }
   wrap.replaceChildren(table);
   wrap.style.setProperty("--ledw", wrap.clientWidth + "px");
+  ledHScroll();
 
   // a page at a time: the newest first
   pager.hidden = l.total <= LED_PAGE;

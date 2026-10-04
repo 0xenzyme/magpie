@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"regexp"
 	"slices"
 	"sort"
@@ -864,7 +865,7 @@ func MakerPrice(model string) (catalog.Price, bool) {
 // EffectivePrice is what a call to a provider's model costs the user: the
 // price they set for that model, or for every model of that provider, or for
 // that model from any provider (settings' ModelPrices), else the provider's own list price, else its
-// maker's. The second return is false only when no price is known at all,
+// maker's, either at the provider's price rate (PriceRate). The second return is false only when no price is known at all,
 // which is not the same as a price of zero: that one is set, deliberately.
 //
 // A price here is the provider's tariff, not the model's: the same model
@@ -899,12 +900,30 @@ func EffectivePriceIn(s settings.Settings, providerID, model string) (catalog.Pr
 			}
 		}
 	}
-	if known {
-		if pr, ok := p.ListPrice(model); ok {
-			return pr, true
-		}
+	if !known {
+		return MakerPrice(model)
 	}
-	return MakerPrice(model)
+	pr, ok := p.ListPrice(model)
+	if !ok {
+		pr, ok = MakerPrice(model)
+	}
+	// what the provider bills against it (#819)
+	if ok && p.PriceRate > 0 {
+		pr = pr.Times(p.PriceRate)
+	}
+	return pr, ok
+}
+
+// PriceRateOK says what is wrong with a provider's price rate, "" when
+// nothing: from 0 (none) to 1000, in steps of 0.001.
+func PriceRateOK(r float64) string {
+	if math.IsNaN(r) || r < 0 || r > 1000 {
+		return "a price rate is from 0 to 1000"
+	}
+	if math.Abs(r*1000-math.Round(r*1000)) > 1e-6 {
+		return "a price rate has at most three decimals, like 0.125"
+	}
+	return ""
 }
 
 // byIDOrWas is the provider with that id, else the one it was renamed from.

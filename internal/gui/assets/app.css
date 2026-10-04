@@ -819,6 +819,17 @@ body.window .field.solo { grid-column: auto; }
 /* the table scrolls sideways in its own box, never the page */
 .led-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
 .led-wrap.none { overflow: visible; }
+/* its own scrollbar is at the table's foot, fifty rows down and out of
+   sight (#799): this one stands in for it, held at the bottom of the window
+   while the table is in it, and drawn always, the Mac's overlay one too */
+.led-wrap::-webkit-scrollbar { height: 0; }
+.led-hscroll { position: sticky; bottom: 0; z-index: 2; overflow-x: auto; overflow-y: hidden; height: 12px; margin-top: 2px; background: var(--bg); }
+.led-hscroll[hidden] { display: none; }
+.led-hscroll > div { height: 1px; }
+.led-hscroll::-webkit-scrollbar { height: 10px; background: transparent; }
+.led-hscroll::-webkit-scrollbar-thumb { background: var(--faint); border: 2px solid transparent; border-radius: 10px; background-clip: padding-box; }
+.led-hscroll::-webkit-scrollbar-thumb:hover { background-color: var(--muted); }
+.led-hscroll::-webkit-scrollbar-button, .led-hscroll::-webkit-scrollbar-corner { display: none; }
 .led-none { padding: 18px 16px; color: var(--muted); text-align: center; line-height: 1.5; }
 .led-sk { padding: 11px 14px; }
 .led-sk + .led-sk { border-top: 1px solid var(--line-2); }
@@ -875,6 +886,7 @@ body.window .field.solo { grid-column: auto; }
 .led-dl dd.bad { color: var(--red); font-weight: 600; }
 .led-dl dd.said { color: var(--fg); white-space: pre-wrap; }
 .led-dl dd.muted { color: var(--muted); }
+.led-dl .led-route-link { padding: 0; font: inherit; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
 /* what was said in a request, in its details */
 .led-cx { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line-2); }
 .cx-sec + .cx-sec { margin-top: 10px; }
