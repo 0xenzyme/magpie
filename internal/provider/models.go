@@ -1103,18 +1103,7 @@ func buildEntries() []Entry {
 // with what the user set taken over the vendor's list and models.dev.
 func entryFor(p Provider, m catalog.Model, s settings.Settings) Entry {
 	ctx := p.WindowOf(m)
-	output := m.Output
-	if output == 0 {
-		output = catalog.OutputOf(m.ID)
-	}
-	if n := outputOf(s, p.ID, m.ID); n > 0 {
-		output = n
-	}
-	// an agent asks for the reply limit it is told, and Command Code
-	// refuses one above its own
-	if p.ID == CommandCodePlanID && output > CommandCodeMaxOutput {
-		output = CommandCodeMaxOutput
-	}
+	output := p.replyLimit(m, s)
 	images := m.Images || catalog.SeesImages(m.ID)
 	if m.ImageInput != nil {
 		images = *m.ImageInput
@@ -1309,6 +1298,29 @@ func (p Provider) ContextOf(model string) int {
 // model's own, else the one given for every model of its provider, else 0 for
 // the vendor's own list and models.dev to answer. It mirrors ContextOf, which
 // the user sets on the provider itself.
+// ReplyLimit is the most a reply of the provider's model may hold, in
+// tokens, as agents are told it and the Gateway's model list shows it:
+// the user's Max output, else the vendor's list's, else models.dev's.
+func (p Provider) ReplyLimit(m catalog.Model) int {
+	return p.replyLimit(m, settings.Load())
+}
+
+func (p Provider) replyLimit(m catalog.Model, s settings.Settings) int {
+	output := m.Output
+	if output == 0 {
+		output = catalog.OutputOf(m.ID)
+	}
+	if n := outputOf(s, p.ID, m.ID); n > 0 {
+		output = n
+	}
+	// an agent asks for the reply limit it is told, and Command Code
+	// refuses one above its own
+	if p.ID == CommandCodePlanID && output > CommandCodeMaxOutput {
+		output = CommandCodeMaxOutput
+	}
+	return output
+}
+
 func outputOf(s settings.Settings, providerID, model string) int {
 	if n := s.ModelOutputs[providerID+"/"+model]; n > 0 {
 		return n

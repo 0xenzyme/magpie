@@ -35,6 +35,7 @@ type modelJSON struct {
 	Own      bool     `json:"ownImages,omitempty"` // its vendor's answer, which a staged Restore default shows
 	On       bool     `json:"on"`                  // exposed to agents
 	Context  int      `json:"context,omitempty"`   // the window agents are told: the user's, else Listed
+	Output   int      `json:"output,omitempty"`    // the reply limit agents are told (provider.ReplyLimit)
 	Listed   int      `json:"listed,omitempty"`    // its window before the user's: its vendor's list's, else models.dev's
 	Max      int      `json:"max,omitempty"`       // the most its context may be set to, above Listed
 	Free     bool     `json:"free,omitempty"`      // costs the subscription nothing
@@ -451,7 +452,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		own := images
 		images, _ = provider.ApplyImage(p.ID, m.ID, images, m.ImageInput)
 		_, imageSet := provider.ImageOverride(p.ID, m.ID)
-		j := modelJSON{ID: m.ID, Name: m.Name, Efforts: provider.EffortsOf(m), On: on, Context: p.WindowOf(m), Listed: provider.ListedWindow(m), Max: m.MaxContext, Free: m.Free, Rate: m.Rate, RateWas: m.RateWas, Images: images, ImageSet: imageSet, Own: own}
+		j := modelJSON{ID: m.ID, Name: m.Name, Efforts: provider.EffortsOf(m), On: on, Context: p.WindowOf(m), Output: p.ReplyLimit(m), Listed: provider.ListedWindow(m), Max: m.MaxContext, Free: m.Free, Rate: m.Rate, RateWas: m.RateWas, Images: images, ImageSet: imageSet, Own: own}
 		if i := slices.IndexFunc(most, func(c catalog.Model) bool { return c.ID == m.ID }); j.Max == 0 && i >= 0 {
 			j.Max = most[i].MaxContext
 		}
