@@ -260,8 +260,29 @@ func TestTitleJSON(t *testing.T) {
 		"":             "",
 		`{"name":"x"}`: "",
 	} {
-		if got := titleJSON(in); got != want {
+		if got := titleJSON(in, titleShape{}); got != want {
 			t.Errorf("titleJSON(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// #743: a Codex whose title schema requires a description beside the
+// title, no other field allowed, is given both, each in its bounds; the
+// model's own description when its JSON has one.
+func TestTitleJSONFillsTheSchema(t *testing.T) {
+	body := `{"text":{"format":{"type":"json_schema","strict":true,"schema":{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":36},"description":{"type":"string","minLength":1}},"required":["title","description"],"additionalProperties":false}}}}`
+	shape := titleShapeOf([]byte(body))
+	for in, want := range map[string]string{
+		"Fix login bug": `{"description":"Fix login bug","title":"Fix login bug"}`,
+		`{"title":"Fix login","description":"The login form rejects valid passwords"}`: `{"description":"The login form rejects valid passwords","title":"Fix login"}`,
+		"Fix the login bug that rejects every valid password on mobile": `{"description":"Fix the login bug that rejects every valid password on mobile","title":"Fix the login bug that rejects every"}`,
+		"": "",
+	} {
+		if got := titleJSON(in, shape); got != want {
+			t.Errorf("titleJSON(%q) = %s, want %s", in, got, want)
+		}
+	}
+	if got := titleJSON("Fix login", titleShapeOf([]byte(`{}`))); got != `{"title":"Fix login"}` {
+		t.Errorf("no schema: %s", got)
 	}
 }

@@ -62,10 +62,11 @@ func (s *Server) codexTitle(w http.ResponseWriter, r *http.Request, body []byte,
 		s.codexTitleOff(w, r, body)
 		return
 	}
+	shape := titleShapeOf(body)
 	body, _ = codexInput(body, true)
 	rec := &recorder{header: http.Header{}, status: 200}
 	check := func(reply string) string {
-		if res, err := compactReply([]byte(reply)); err == nil && titleJSON(messageText(res)) == "" {
+		if res, err := compactReply([]byte(reply)); err == nil && titleJSON(messageText(res), shape) == "" {
 			return noTitle(messageText(res))
 		}
 		return ""
@@ -89,7 +90,7 @@ func (s *Server) codexTitle(w http.ResponseWriter, r *http.Request, body []byte,
 		id = fmt.Sprintf("resp_magpie_%d", time.Now().UnixNano())
 	}
 	var out []any
-	if t := titleJSON(messageText(res)); t != "" {
+	if t := titleJSON(messageText(res), shape); t != "" {
 		out = append(out, map[string]any{"type": "message", "id": "msg_" + strings.TrimPrefix(id, "resp_"), "role": "assistant", "status": "completed",
 			"content": []any{map[string]any{"type": "output_text", "text": t, "annotations": []any{}}}})
 	}
@@ -181,11 +182,39 @@ func writeTitleReply(w http.ResponseWriter, id string, out []any, used json.RawM
 	}
 }
 
+// titleShape is the object a title request's text.format asks for: its
+// string properties' bounds and which are required. Codex 0.160's TUI asks
+// for {"title"} alone; another of its builds for a description beside the
+// title, both required and nothing else allowed (#743: magpie gave it the
+// title alone, so it kept the first message as the thread's name).
+type titleShape struct {
+	Properties map[string]struct {
+		Type      string `json:"type"`
+		MaxLength int    `json:"maxLength"`
+	} `json:"properties"`
+	Required []string `json:"required"`
+}
+
+// titleShapeOf is the shape a Responses request's text.format.schema asks
+// for, the zero shape (a title) when it names none.
+func titleShapeOf(body []byte) titleShape {
+	var q struct {
+		Text struct {
+			Format struct {
+				Schema titleShape `json:"schema"`
+			} `json:"format"`
+		} `json:"text"`
+	}
+	json.Unmarshal(body, &q)
+	return q.Text.Format.Schema
+}
+
 // titleJSON is a model's answer to a title request as Codex reads one:
-// {"title": "…"}. Codex asks for that shape in the request's text.format,
-// which a model behind another API never sees, and so may answer with the
-// title alone, in quotes, or in a code fence. "" when it gave none.
-func titleJSON(said string) string {
+// {"title": "…"}, with each other string its shape requires. Codex asks
+// for that shape in the request's text.format, which a model behind
+// another API never sees, and so may answer with the title alone, in
+// quotes, or in a code fence. "" when it gave none.
+func titleJSON(said string, shape titleShape) string {
 	t := strings.TrimSpace(said)
 	// a reasoning model's thoughts, where its API leaves them in the text
 	if rest, ok := strings.CutPrefix(t, "<think>"); ok {
@@ -200,12 +229,12 @@ func titleJSON(said string) string {
 		}
 		t = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(t), "```"))
 	}
+	fields := map[string]any{}
 	if strings.HasPrefix(t, "{") {
-		var v struct {
-			Title *string `json:"title"`
-		}
-		if json.NewDecoder(bytes.NewReader([]byte(t))).Decode(&v) == nil && v.Title != nil {
-			t = *v.Title
+		if json.NewDecoder(bytes.NewReader([]byte(t))).Decode(&fields) == nil {
+			if v, ok := fields["title"].(string); ok {
+				t = v
+			}
 		}
 	}
 	// its first line, as a title is one
@@ -222,6 +251,31 @@ func titleJSON(said string) string {
 	if t == "" || strings.HasPrefix(t, "{") {
 		return ""
 	}
-	b, _ := json.Marshal(map[string]string{"title": t})
+	// each other string the schema requires, a description among them:
+	// the model's own when its JSON gave one, else the title, every one
+	// cut to the schema's length
+	clip := func(name, v string) string {
+		if n := shape.Properties[name].MaxLength; n > 0 {
+			if r := []rune(v); len(r) > n {
+				v = strings.TrimSpace(string(r[:n]))
+			}
+		}
+		return v
+	}
+	out := map[string]string{"title": clip("title", t)}
+	for _, name := range shape.Required {
+		if _, done := out[name]; done {
+			continue
+		}
+		if ty := shape.Properties[name].Type; ty != "" && ty != "string" {
+			continue
+		}
+		v, _ := fields[name].(string)
+		if v = strings.TrimSpace(v); v == "" {
+			v = t
+		}
+		out[name] = clip(name, v)
+	}
+	b, _ := json.Marshal(out)
 	return string(b)
 }
