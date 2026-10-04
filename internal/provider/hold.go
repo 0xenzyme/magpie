@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/filememo"
 	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/settings"
 )
@@ -56,6 +57,7 @@ func Hold() (release func()) {
 // Changed drops what is held: a provider, an account, a plugin or a
 // setting was written.
 func Changed() {
+	filememo.Forget()
 	held.Lock()
 	held.gen++
 	held.built = nil
@@ -102,3 +104,7 @@ func heldPlugins() []plugin.Provider {
 // catalog: a look at the agents asks them for every model of every agent.
 // Only for reading — what it gives is shared by the request's look-ups.
 func heldSettings() settings.Settings { return heldOf("settings", settings.Load) }
+
+// HeldSettings is the settings as heldSettings reads them, for a look
+// outside the package made many times in one request.
+func HeldSettings() settings.Settings { return heldSettings() }

@@ -225,7 +225,7 @@ func Groups() []Group {
 }
 
 func groupsIn(entries []Entry) []Group {
-	f := load()
+	f := heldOf("file", load)
 	var out []Group
 	hidden := map[string]bool{}
 	for _, g := range f.Groups {
@@ -238,7 +238,7 @@ func groupsIn(entries []Entry) []Group {
 	if f.NoAutoGroups {
 		return orderedGroups(out, f.GroupOrder)
 	}
-	for _, g := range autoGroups(entries, settings.Load().ModelSameAs) {
+	for _, g := range autoGroups(entries, heldSettings().ModelSameAs) {
 		if slices.ContainsFunc(out, func(o Group) bool { return o.ID == g.ID }) {
 			continue // the user changed it: theirs now
 		}

@@ -631,6 +631,7 @@ func CheckProxy(p string) error {
 func Save(s Settings) error {
 	fileMu.Lock()
 	defer fileMu.Unlock()
+	defer filememo.Forget() // read again, where a request holds it
 	s = s.normal()
 	if !slices.Contains(Themes, s.Theme) {
 		return fmt.Errorf("theme must be one of %v, not %q", Themes, s.Theme)

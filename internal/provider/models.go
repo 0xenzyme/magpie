@@ -132,7 +132,13 @@ func (p Provider) live() ([]catalog.Model, time.Time, bool) {
 	if p.IsPlugin() {
 		return nil, time.Time{}, false
 	}
-	return catalog.Live(p.ID)
+	type live struct {
+		ms []catalog.Model
+		at time.Time
+		ok bool
+	}
+	l := heldOf("fetched:"+p.ID, func() live { ms, at, ok := catalog.Live(p.ID); return live{ms, at, ok} })
+	return l.ms, l.at, l.ok
 }
 
 // Fetch asks the vendor which models it serves and remembers the answer.

@@ -192,10 +192,14 @@ func run(args []string) error {
 	}
 	makeDirs()
 	settings.Migrate()
+	// the providers and settings read once for every agent's fields, which
+	// the moves below look at (a write among them reads them again)
+	release := provider.Hold()
 	agent.RenameLegacy()
 	agent.MoveCursorEfforts()
 	agent.MoveAntigravityEfforts()
 	agent.MoveOffAccountIDs()
+	release()
 	// a provider added, edited or removed, or a list fetched anew, reaches
 	// the model lists agents keep in files of their own
 	catalog.Changed = agent.SyncCatalog

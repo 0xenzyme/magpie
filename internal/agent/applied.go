@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/usage"
@@ -182,7 +183,7 @@ func (a *Agent) theInstalled() bool {
 	if !elsewhere() || a.Path == "" {
 		return false
 	}
-	b, err := os.ReadFile(a.Path)
+	b, err := edit.Read(a.Path)
 	if err != nil {
 		return false
 	}
