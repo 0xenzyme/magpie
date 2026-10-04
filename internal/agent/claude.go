@@ -563,24 +563,22 @@ func claudeIn(at place) *Agent {
 	var writeTiers func(main string, tiers map[string]string) error
 	set := func(v string) error {
 		if v == "" {
-			// Claude Code as installed: Anthropic's own endpoint and model
+			// Claude Code's own model, on the endpoint the user had before
+			// magpie: magpie steps out, putting back their endpoint and
+			// token, which stay theirs (__jingling on X: magpie claude
+			// model default took their ANTHROPIC_BASE_URL and token away
+			// for good)
+			if _, err := unroute(); err != nil {
+				return err
+			}
 			keys := []string{"model"}
-			for _, k := range claudeEnv {
-				keys = append(keys, "env."+k)
+			if env("ANTHROPIC_AUTH_TOKEN") == gateway.Token {
+				// magpie's, left at a gateway address since changed
+				for _, k := range claudeEnv {
+					keys = append(keys, "env."+k)
+				}
 			}
 			forget(at.key("claude.model"), at.key("claude.base_url"), at.key("claude.auth_token"), mainKey)
-			if err := dropWindow(); err != nil {
-				return err
-			}
-			if err := dropCompact(); err != nil {
-				return err
-			}
-			if err := dropCaps(); err != nil {
-				return err
-			}
-			if err := dropPicker(); err != nil {
-				return err
-			}
 			return edit.DelJSON(path, keys...)
 		}
 		if isMagpie(v) {
