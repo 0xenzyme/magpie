@@ -1832,16 +1832,19 @@
     return groups;
   }
 
-  // A big group's parts: by the folder its skills sit in — in the
-  // repository, or on this computer — when they sit in more than one;
-  // else by the start their names share ("gh-review", "gh-triage" → gh),
-  // a start three or more share being a part and the rest one more.
+  // A big group's parts. A repository's: by the folder its skills sit in
+  // there when they sit in more than one, else by the start their names
+  // share ("gh-review", "gh-triage" → gh), a start three or more share
+  // being a part and the rest one more. On this computer the start comes
+  // first (#791, mintonight: lark-* among skills in two folders, or a few
+  // lark-* among many, had no part of their own), since the folder there
+  // is only where an installer put a skill, and the rest go by folder.
   // Nothing is fetched: it's all in where each skill came from.
   function partsOf(g) {
     if (g.skills.length <= SPLIT) return null;
-    const split = (keyOf) => {
+    const split = (skills, keyOf) => {
       const m = new Map();
-      for (const s of g.skills) {
+      for (const s of skills) {
         const k = keyOf(s);
         if (!m.has(k)) m.set(k, []);
         m.get(k).push(s);
@@ -1857,9 +1860,7 @@
       if (s.kind === "folder") return tilde((s.source || "").replace(/[\\/][^\\/]+[\\/]?$/, ""));
       return "";
     };
-    let m = split(folderIn), mono = true;
-    if (!m) {
-      mono = false;
+    const byStart = () => {
       const segs = (s) => s.name.toLowerCase().split(/[-_:.\s]+/).filter(Boolean);
       // a start every name has says nothing: the part after it does
       const all = g.skills.map(segs);
@@ -1867,13 +1868,24 @@
       while (all.every((x) => x.length > skip + 1 && x[skip] === all[0][skip])) skip++;
       const lead = new Map();
       for (const x of all) if (x.length > skip + 1) lead.set(x[skip], (lead.get(x[skip]) || 0) + 1);
-      m = split((s) => { const x = segs(s); const k = x.length > skip + 1 ? x[skip] : ""; return lead.get(k) >= 3 ? k : ""; });
-      if (m && m.size === 2 && m.has("") && m.get("").length > g.skills.length * 0.8) m = null; // one small part and the rest
+      return split(g.skills, (s) => { const x = segs(s); const k = x.length > skip + 1 ? x[skip] : ""; return lead.get(k) >= 3 ? k : ""; });
+    };
+    const label = (key, mono) => key || (mono ? (g.repo ? t("At the top of the repository") : t("Kept in the library")) : t("Others"));
+    const order = (a, b) => (!a.key) - (!b.key) || a.mono - b.mono || a.key.localeCompare(b.key);
+    if (g.repo) {
+      let m = split(g.skills, folderIn), mono = true;
+      if (!m) { mono = false; m = byStart(); }
+      if (!m) return null;
+      return [...m].map(([key, skills]) => ({ key, skills, mono, label: label(key, mono) })).sort(order);
     }
-    if (!m) return null;
-    return [...m].map(([key, skills]) => ({ key, skills, mono,
-      label: key || (mono ? (g.repo ? t("At the top of the repository") : t("Kept in the library")) : t("Others")) }))
-      .sort((a, b) => (!a.key) - (!b.key) || a.key.localeCompare(b.key));
+    const starts = byStart();
+    const named = starts ? [...starts].filter(([k]) => k) : [];
+    const rest = starts ? starts.get("") || [] : g.skills;
+    const folders = split(rest, folderIn);
+    const parts = named.map(([key, skills]) => ({ key, skills, mono: false, label: key }));
+    if (folders) for (const [key, skills] of folders) parts.push({ key: "dir:" + key, skills, mono: true, label: label(key, true) });
+    else if (rest.length) parts.push({ key: "", skills: rest, mono: false, label: label("", false) });
+    return parts.length > 1 ? parts.sort(order) : null;
   }
 
   function skillFilter(box, all) {
