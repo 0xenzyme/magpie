@@ -355,7 +355,35 @@ func piModelJSON(m catalog.Model, gw string, native bool) map[string]any {
 	if m.Output > 0 {
 		e["maxTokens"] = maxTokens(m)
 	}
+	// Pi shows a call's cost by it, and weighs warming a model's cache by
+	// it and promptCache (#781): without either it warms nothing
+	if m.Price != nil {
+		e["cost"] = map[string]any{"input": m.Price.Input, "output": m.Price.Output, "cacheRead": m.Price.CacheRead, "cacheWrite": m.Price.CacheWrite}
+	}
+	if c := piPromptCache(e["api"], m.ID); c != nil {
+		e["promptCache"] = c
+	}
 	return e
+}
+
+// piPromptCache is how long, in seconds, the vendor keeps a model's prompt
+// cache for each of Pi's retention tiers, at the short end of what it
+// publishes; nil where magpie doesn't relay Pi's request as it is, or the
+// vendor's lifetime isn't known. Claude on Anthropic's Messages API keeps
+// one 5 minutes, or an hour asked with a 1h cache_control (Pi's long); GPT
+// on OpenAI's Responses API keeps one in memory 5 to 10 minutes, and only
+// some models offer the 24h retention, so long is left out. A Claude
+// subscription runs through Claude Code, which caches on its own: no api is
+// set for it, and none is declared.
+func piPromptCache(api any, id string) map[string]any {
+	name := strings.ToLower(id[strings.LastIndex(id, "/")+1:])
+	switch {
+	case api == "anthropic-messages" && strings.HasPrefix(name, "claude"):
+		return map[string]any{"short": 300, "long": 3600}
+	case api == "openai-responses" && strings.HasPrefix(name, "gpt"):
+		return map[string]any{"short": 300}
+	}
+	return nil
 }
 
 // openCodeVariants are the reasoning levels OpenCode offers for a model of
