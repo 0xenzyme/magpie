@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
@@ -311,8 +312,19 @@ func store(f file) error {
 
 // All lists the configured providers in the order they were added, then
 // the signed-in agents. An entry in the file with no URL is only the
-// model picks for one of those accounts.
+// model picks for one of those accounts. A request that holds the catalog
+// (Hold) builds it once: each build reads every agent's sign-in, a keychain
+// item or a CLI's among them, and Codex's /models asked for it seven times
+// over, past the 5 s Codex waits for the list (#746).
 func All() []Provider {
+	return slices.Clone(heldOf("all", allProviders)) // callers change theirs
+}
+
+// AllBuilt counts the times All built the list anew, for tests.
+var AllBuilt atomic.Int64
+
+func allProviders() []Provider {
+	AllBuilt.Add(1)
 	f := load()
 	stored := f.Providers
 	picks := map[string]Provider{}

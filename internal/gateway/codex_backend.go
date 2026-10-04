@@ -712,6 +712,11 @@ func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// what follows reads the providers seven times over (the catalog, the
+	// codex provider's picks and windows, the list's tag): held, they are
+	// built once, where each build read every agent's sign-in, keychain
+	// items among them, and together held the answer past Codex's 5 s (#746)
+	defer provider.Hold()()
 	cached := own == nil
 	if cached {
 		for _, e := range codexcat.CacheEntries() {

@@ -1135,9 +1135,9 @@ func resolveIn(entries []Entry, id string) (Provider, string, bool) {
 		}
 	}
 	if pid, model, ok := strings.Cut(id, "/"); ok {
-		// the providers a request holds: an agent's value of a model not
-		// listed lands here, and All is read anew each time
-		if p, err := findIn(heldOf("all", All), pid); err == nil && p.On() {
+		// the providers a request holds (All): an agent's value of a
+		// model not listed lands here
+		if p, err := findIn(All(), pid); err == nil && p.On() {
 			return *p, model, true
 		}
 	}
