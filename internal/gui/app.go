@@ -269,6 +269,7 @@ const panelStart = 520
 // link is a magpie:// link the app was started with, to confirm and import.
 func Run(version string, showMain bool, link string) error {
 	Version = version
+	webkitDefaults()
 	// `make dev` runs the backend on its own, so a Go change restarts only
 	// that, behind windows that stay up.
 	if devRole() == "backend" {
