@@ -10,6 +10,7 @@ package provider
 // decision models are excluded from agents' lists and group members.
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -164,8 +165,58 @@ func (p Provider) Jev() string {
 }
 
 // decideModels are the models a decision provider offers: the vendor's
-// list when fetched, else Jev's aliases (a gateway's one Jev).
+// list when fetched, else Jev's aliases (a gateway's one Jev), each with
+// its window and whether it takes images where its vendor's docs say.
 func (p Provider) decideModels() []catalog.Model {
+	return withDecideFacts(p.decideListed())
+}
+
+// A decision model's window and whether it reads images, as its vendor's
+// docs give them where its list doesn't (ARNO on Discord: decision models
+// showed neither on the Gateway list): Jev holds 32k tokens of state and
+// reads text alone (TypeSafe's docs; OpenRouter's and Vercel's lists say
+// 32000 too), Cloudflare's Clef and Clef Flash 65,536 and up to 4 images,
+// Bailian's decision model 65,536 and text alone.
+type decideFact struct {
+	context int
+	images  bool
+}
+
+func decideFactOf(id string) (decideFact, bool) {
+	last := strings.ToLower(id[strings.LastIndex(id, "/")+1:])
+	last = strings.TrimPrefix(last, "~")
+	switch {
+	case jevID(id):
+		return decideFact{context: 32_000}, true
+	case last == "clef" || last == "clef-flash":
+		return decideFact{context: 65_536, images: true}, true
+	case last == BailianDecision:
+		return decideFact{context: 65_536}, true
+	}
+	return decideFact{}, false
+}
+
+// withDecideFacts fills in the window and images of the decision models
+// it knows that a list left unsaid; what a list said is kept.
+func withDecideFacts(ms []catalog.Model) []catalog.Model {
+	ms = slices.Clone(ms)
+	for i, m := range ms {
+		f, ok := decideFactOf(m.ID)
+		if !ok {
+			continue
+		}
+		if m.Context == 0 {
+			ms[i].Context = f.context
+		}
+		if m.ImageInput == nil {
+			in := f.images
+			ms[i].ImageInput, ms[i].Images = &in, in
+		}
+	}
+	return ms
+}
+
+func (p Provider) decideListed() []catalog.Model {
 	if live, _, ok := catalog.Live(p.ID); ok && len(live) > 0 {
 		if p.DecideOnly() {
 			return live
@@ -637,11 +688,9 @@ func listedDecide(b []byte, all bool) ([]catalog.Model, error) {
 	var out struct {
 		Models []struct {
 			Name string `json:"name"`
-			ID   string `json:"id"`
+			listedFacts
 		} `json:"models"`
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
+		Data []listedFacts `json:"data"`
 	}
 	if err := json.Unmarshal(b, &out); err != nil {
 		return nil, fmt.Errorf("not a model list")
@@ -649,27 +698,52 @@ func listedDecide(b []byte, all bool) ([]catalog.Model, error) {
 	var ms []catalog.Model
 	for _, m := range out.Models {
 		if m.Name != "" {
-			ms = append(ms, catalog.Model{ID: m.Name, Name: m.Name})
+			ms = append(ms, m.model(m.Name))
 		}
 	}
 	if len(ms) > 0 {
 		return ms, nil
 	}
 	seen := map[string]bool{}
-	take := func(id string) {
-		if id == "" || seen[id] || !all && !jevID(id) {
+	take := func(m listedFacts) {
+		if m.ID == "" || seen[m.ID] || !all && !jevID(m.ID) {
 			return
 		}
-		seen[id] = true
-		ms = append(ms, catalog.Model{ID: id, Name: id})
+		seen[m.ID] = true
+		ms = append(ms, m.model(m.ID))
 	}
 	for _, m := range out.Data {
-		take(m.ID)
+		take(m)
 	}
 	for _, m := range out.Models {
-		take(m.ID)
+		take(m.listedFacts)
 	}
 	return ms, nil
+}
+
+// listedFacts is a decision model as an OpenAI-shaped list gives it, with
+// its window and input as OpenRouter's (context_length,
+// architecture.input_modalities) or Vercel's (context_window,
+// modalities.input) say them, where they do.
+type listedFacts struct {
+	ID            string `json:"id"`
+	ContextLength int    `json:"context_length"`
+	ContextWindow int    `json:"context_window"`
+	Architecture  struct {
+		InputModalities []string `json:"input_modalities"`
+	} `json:"architecture"`
+	Modalities struct {
+		Input []string `json:"input"`
+	} `json:"modalities"`
+}
+
+func (f listedFacts) model(name string) catalog.Model {
+	m := catalog.Model{ID: name, Name: name, Context: cmp.Or(f.ContextLength, f.ContextWindow)}
+	if in := cmp.Or(len(f.Architecture.InputModalities), len(f.Modalities.Input)); in > 0 {
+		images := slices.Contains(f.Architecture.InputModalities, "image") || slices.Contains(f.Modalities.Input, "image")
+		m.ImageInput, m.Images = &images, images
+	}
+	return m
 }
 
 // jevID reports whether id names Jev: a path segment that is "jev" or

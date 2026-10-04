@@ -5041,7 +5041,9 @@ function modelInfo(m) {
   const box = el("span", "minfo");
   const lines = [];
   const levels = m.efforts || [];
-  if (levels.length) {
+  // a decision model answers a routing group's questions, it doesn't reason
+  if (decideEntry(m)) lines.push(t("Decision model: routing groups ask it, agents never see it"));
+  else if (levels.length) {
     box.append(el("span", "badge mi-effort", effortSpan(levels)));
     lines.push(t("Reasoning: {levels}", { levels: levels.map((l) => t(l)).join(", ") }));
   } else lines.push(t("Reasoning levels: none known"));

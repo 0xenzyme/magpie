@@ -29,6 +29,20 @@ func (p Provider) Available() []catalog.Model {
 	if p.DecideOnly() {
 		return p.decideModels()
 	}
+	ms := p.available()
+	if p.Decides() {
+		// a gateway's Jev among its chat models, with its window and input
+		ms = slices.Clone(ms)
+		for i, m := range ms {
+			if p.DecidesModel(m.ID) {
+				ms[i] = withDecideFacts([]catalog.Model{m})[0]
+			}
+		}
+	}
+	return ms
+}
+
+func (p Provider) available() []catalog.Model {
 	signedIn := p.Account != nil && p.Account.models != nil
 	var known []catalog.Model
 	if signedIn {
