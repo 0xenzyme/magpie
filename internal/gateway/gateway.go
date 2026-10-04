@@ -1402,6 +1402,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	where := ""      // the last try's provider.Where, for the usage
 	again := 0       // times the last one left has been tried again
 	resealed := 0    // what of the conversation another account sealed was taken out: its reasoning, then its compaction
+	repicked := 0    // times Copilot's Auto was asked again for a model the account is served
 	floored := false // the reply's length raised to what the provider takes
 	plainFor := ""   // the account and model asked again without effort updates (#617)
 	// the key or subscription account the last try went to (#557)
@@ -1422,7 +1423,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		// for its allowance running out to be told as that one's error
 		// and once the agent has the stream's headers from an earlier try's
 		// keepalives, for a failure to be told as the stream's error
-		hw := newHoldWriter(w, !last || again < max(lastRetries, rateRetries) || other != nil || kept.sent)
+		hw := newHoldWriter(w, !last || again < max(lastRetries, rateRetries) || other != nil || kept.sent || autoPicks(c) && repicked < 2)
 		hw.thinkingShown = !refusesAfterThinking(c.model)
 		hw.ctx, hw.alive = r.Context(), kept
 		if isGroup && g.FirstToken > 0 && !last && streams {
@@ -1637,6 +1638,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			continue
 		}
 		telemetry.attempt(call, try, c.p.ID, sent, hw, capture)
+		if autoPicks(c) && repicked < 2 && !hw.passing && hw.code() == http.StatusBadRequest &&
+			(provider.CopilotRefusal(hw.errBody()) || wrongEndpoint(hw.code(), hw.errBody())) {
+			// Copilot refused the model its Auto picked, and Auto has
+			// picked another, which is asked for on the APIs it is
+			// served on (#256)
+			repicked++
+			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+			i--
+			continue
+		}
 		if resealed < 2 && from == provider.Responses && !hw.passing && hw.code() >= 400 && foreignReasoning.Match(hw.errBody()) {
 			// the conversation moved here from another account or vendor,
 			// whose sealed reasoning this one can't read: asked again
@@ -2062,6 +2073,9 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	// Copilot's Auto (all a Student plan may pick) is asked which model it
 	// picks, as Copilot's clients do, and the request goes to that model on
 	// the APIs it is served on, with the session's token
+	if model == provider.CopilotAuto && p.Account != nil && p.Account.Agent == "copilot" {
+		r = r.WithContext(provider.WithAutoPrompt(r.Context(), lastUserText(from, body)))
+	}
 	if ctx, m, err := p.ResolveAuto(r.Context(), model); err != nil {
 		msg := p.Name + ": " + err.Error()
 		return writeError(w, from, 502, msg), msg
@@ -2107,6 +2121,39 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	return s.translate(w, r, p, from, to[0], model, body, &call.Usage)
 }
 
+// autoPicks is whether c is Copilot's Auto, which picks the model itself.
+func autoPicks(c candidate) bool {
+	return c.model == provider.CopilotAuto && c.p.Account != nil && c.p.Account.Agent == "copilot"
+}
+
+// lastUserText is the text of the request's last user turn, which
+// Copilot's Auto picks a model for.
+func lastUserText(from provider.Protocol, body []byte) string {
+	req, err := parse(from, body)
+	if err != nil {
+		return ""
+	}
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		m := req.Messages[i]
+		if m.Role != "user" {
+			continue
+		}
+		var b strings.Builder
+		for _, p := range m.Parts {
+			if p.Kind == Text {
+				if b.Len() > 0 {
+					b.WriteString("\n")
+				}
+				b.WriteString(p.Text)
+			}
+		}
+		if b.Len() > 0 {
+			return b.String()
+		}
+	}
+	return ""
+}
+
 // markOpenRouterSharedPool keeps an upstream routing fact in the held attempt,
 // rather than exposing it as a response header.
 func markOpenRouterSharedPool(w http.ResponseWriter) {
@@ -2131,6 +2178,13 @@ func (s *Server) forward(ctx context.Context, p provider.Provider, to provider.P
 			res.Body.Close()
 			res.Body = io.NopCloser(bytes.NewReader(b))
 			if !p.Retry(ctx, body, res.StatusCode, b) {
+				break
+			}
+			if m := p.AutoNext(ctx); m != "" && !slices.Contains(s.usable(p, m), to) {
+				// Auto's next pick isn't served on this API (gpt-4.1 on
+				// chat alone, after gpt-5.3-codex on /responses, #256): the
+				// refusal is passed on, and the request made again for it
+				// on its own API (the candidates' loop)
 				break
 			}
 			if res, err = s.forwardOnce(ctx, p, to, path, body, in); err != nil || res.StatusCode != http.StatusForbidden && res.StatusCode != http.StatusBadRequest {
@@ -2830,7 +2884,7 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 			r.Effort, req = "none", &r
 			continue
 		}
-		if req.CacheKey != "" && badRequest(res.StatusCode) && !wrongEndpoint(res.StatusCode, b) {
+		if req.CacheKey != "" && badRequest(res.StatusCode) && !wrongEndpoint(res.StatusCode, b) && !provider.CopilotRefusal(b) {
 			// a vendor that turns away fields it doesn't know is asked again
 			// without the cache key, and not sent it again once that works —
 			// at once when its error names the key; not every error does

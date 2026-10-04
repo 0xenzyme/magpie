@@ -16,6 +16,18 @@ package provider
 // requests otherwise leave out: without it Copilot answers 404 (#256). Its
 // answer has no selected_model: the client takes the first of
 // available_models it knows.
+//
+// Copilot Chat 0.69 (now in microsoft/vscode, extensions/copilot:
+// automodeService.ts, autoV2Fetcher.ts) asks neither: POST {api}/auto with
+// the turn's prompt, {"prompt": …}, at X-GitHub-Api-Version 2026-08-01
+// (another, or none, is 404 "invalid apiVersion"), which answers a
+// session_token, the selected_model (its id, supported_endpoints and
+// capabilities) and expires_at, a day on. Its pick is made among the
+// models the account is served, where /models/session still names the
+// same few for every plan (gpt-5.3-codex, gpt-5.4, gpt-5.4-mini,
+// claude-haiku-4.5): a Student plan was refused each of those (#256), and
+// an Individual one is picked gpt-6-luna. magpie asks /auto first, and
+// /models/session when /auto has nothing it can use.
 
 import (
 	"bytes"
@@ -39,6 +51,15 @@ const CopilotAuto = "auto"
 // Auto session with; the Copilot CLI's headers name their own.
 const copilotAutoVersion = "2025-10-01"
 
+// copilotAutoV2Version is the one POST /auto takes, as Copilot Chat 0.69
+// (@vscode/copilot-api 0.5) sends it.
+const copilotAutoV2Version = "2026-08-01"
+
+// copilotAutoReuse is how long an Auto session is used for: /auto's lasts a
+// day, which Copilot Chat keeps for one conversation; magpie, one for the
+// account, has Copilot pick again within the hour.
+const copilotAutoReuse = time.Hour
+
 // copilotAutoModel is Auto as magpie lists it.
 var copilotAutoModel = catalog.Model{ID: CopilotAuto, Name: "Auto"}
 
@@ -55,6 +76,14 @@ var (
 
 type copilotAutoKey struct{}
 
+type copilotAutoPromptKey struct{}
+
+// WithAutoPrompt carries the prompt of the request Copilot's Auto picks a
+// model for: POST /auto picks for a prompt.
+func WithAutoPrompt(ctx context.Context, prompt string) context.Context {
+	return context.WithValue(ctx, copilotAutoPromptKey{}, prompt)
+}
+
 // copilotAutoResolve is the account's Auto session, asked again a couple of
 // minutes before it expires, when fresh is set or once the account was
 // refused its model.
@@ -69,6 +98,10 @@ func copilotAutoResolve(ctx context.Context, app copilotApp, fresh bool) (copilo
 		return copilotAutoSession{}, err
 	}
 	base := s.apiBase(app.Host)
+	if a, ok := copilotAutoRoute(ctx, app, s, base); ok {
+		copilotAutoSessions[app.Token] = a
+		return a, nil
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/models/session", strings.NewReader(`{"auto_mode":{"model_hints":["auto"]}}`))
 	if err != nil {
 		return copilotAutoSession{}, err
@@ -139,6 +172,57 @@ func copilotAutoResolve(ctx context.Context, app copilotApp, fresh bool) (copilo
 	return a, nil
 }
 
+// copilotAutoRoute asks POST /auto for the model, as Copilot Chat does: not
+// ok when Copilot doesn't answer it (an older API, Auto v2 not offered the
+// account) or picks one the account was refused.
+func copilotAutoRoute(ctx context.Context, app copilotApp, s copilotSession, base string) (copilotAutoSession, bool) {
+	prompt, _ := ctx.Value(copilotAutoPromptKey{}).(string)
+	if strings.TrimSpace(prompt) == "" {
+		prompt = "hi" // a model test, or a turn of tool results alone
+	}
+	body, _ := json.Marshal(map[string]string{"prompt": prompt})
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/auto", bytes.NewReader(body))
+	if err != nil {
+		return copilotAutoSession{}, false
+	}
+	req.Header.Set("Authorization", "Bearer "+s.Token)
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range s.headers() {
+		req.Header.Set(k, v)
+	}
+	req.Header.Set("X-GitHub-Api-Version", copilotAutoV2Version)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return copilotAutoSession{}, false
+	}
+	defer res.Body.Close()
+	var v struct {
+		Token    string `json:"session_token"`
+		Selected struct {
+			ID        string   `json:"id"`
+			Endpoints []string `json:"supported_endpoints"`
+		} `json:"selected_model"`
+		ExpiresAt int64 `json:"expires_at"`
+	}
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if res.StatusCode/100 != 2 || json.Unmarshal(b, &v) != nil || v.Token == "" || v.Selected.ID == "" || copilotRefuses(app.Token, v.Selected.ID) {
+		return copilotAutoSession{}, false
+	}
+	// the pick's endpoints, which the account's list may not give
+	copilotSeenMu.Lock()
+	if _, ok := copilotSeen[v.Selected.ID]; !ok || len(v.Selected.Endpoints) > 0 {
+		copilotSeen[v.Selected.ID] = copilotAPIs(v.Selected.Endpoints)
+	}
+	copilotSeenMu.Unlock()
+	exp := time.Now().Add(copilotAutoReuse).Unix()
+	if v.ExpiresAt > 0 && v.ExpiresAt < exp {
+		exp = v.ExpiresAt
+	}
+	return copilotAutoSession{Token: v.Token, Model: v.Selected.ID, ExpiresAt: exp}, true
+}
+
 // copilotAutoFallback stands in for an Auto session Copilot has none of for
 // the account (404): the model it may pick by hand likeliest served (see
 // copilotModels) and not refused it, sent without a session, for a while;
@@ -175,6 +259,24 @@ func (p Provider) ResolveAuto(ctx context.Context, model string) (context.Contex
 	}
 	return context.WithValue(ctx, copilotAutoKey{}, a), a.Model, nil
 }
+
+// AutoNext is the model Copilot's Auto picks now for a request ctx resolved
+// for it (ResolveAuto), "" for any other: once Retry has said a refused
+// pick is worth sending again, the one it goes as.
+func (p Provider) AutoNext(ctx context.Context) string {
+	if _, ok := ctx.Value(copilotAutoKey{}).(copilotAutoSession); !ok || p.Account == nil || p.Account.auto == nil {
+		return ""
+	}
+	a, err := p.Account.auto(p.Via(ctx))
+	if err != nil {
+		return ""
+	}
+	return a.Model
+}
+
+// CopilotRefusal is Copilot saying the account may not call the model it
+// was asked for, which Auto, having picked it, picks another for.
+func CopilotRefusal(body []byte) bool { return copilotNotServed.Match(body) }
 
 // copilotAutoSign puts the Auto session on a request: the one ctx carries
 // when the body names its model, or, for a body asking for "auto" itself
