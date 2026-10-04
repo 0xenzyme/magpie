@@ -6014,6 +6014,27 @@ const dot = (x, y) => `M${x - 1.4} ${y}a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0 -2.8 0
 const FAN = [dot(2.9, 8), dot(13.1, 3.4), dot(13.1, 8), dot(13.1, 12.6),
   "M4.3 8h7.4", "M4.3 8c2.6 0 3.2-4.6 5.8-4.6h1.6", "M4.3 8c2.6 0 3.2 4.6 5.8 4.6h1.6"].join(" ");
 
+// Icons no preset uses, there to be picked for a provider of one's own
+// (Tom on X: Built-in icons 太少了): vendors' and platforms' marks from
+// lobehub/icons, as the presets' are.
+const MORE_ICONS = [
+  "ai21", "ai360-color", "alibaba-color", "alibabacloud-color", "anyscale-color", "aws",
+  "azureai-color", "baichuan-color", "baidu-color", "bailian-color", "baseten", "burncloud-color",
+  "bytedance-color", "cerebras", "chatglm-color", "chutes", "codebuddy-color", "cohere-color",
+  "cometapi-color", "copilot-color", "coze", "deepinfra-color", "deepmind-color", "doubao-color",
+  "featherless-color", "friendli", "gemma-color", "giteeai", "github", "glama", "gmicloud",
+  "google-color", "grok", "huawei-color", "huggingface-color", "hunyuan-color", "hyperbolic-color",
+  "iflytekcloud-color", "inference", "infinigence-color", "internlm-color", "jina", "kilocode",
+  "kling-color", "lambda", "leptonai-color", "liquid", "llmapi", "longcat", "metaai-color",
+  "microsoft-color", "monica-color", "morph-color", "nebius", "newapi-color", "nousresearch",
+  "nova-color", "novita-color", "openwebui", "parasail", "perplexity-color", "phala-color", "poe",
+  "ppio-color", "qiniu-color", "reka", "replicate", "roocode", "sambanova-color",
+  "sensenova-color", "snowflake-color", "sophnet-color", "spark-color", "straico-color",
+  "submodel-color", "targon-color", "tencent-color", "tiangong-color", "upstage-color",
+  "venice-color", "vertexai-color", "vllm-color", "voyage-color", "wenxin-color", "windsurf",
+  "workersai-color", "xiaomimimo", "xinference-color", "yi", "yuanbao-color", "zenmux", "zeroone"
+];
+
 function iconPicker(ed) {
   const box = el("div", "icon-pick");
   const draw = () => {
@@ -6073,7 +6094,16 @@ function iconPicker(ed) {
     }
     if (open) {
       const grid = el("div", "icon-grid");
-      const names = [...new Set((providers.presets || []).map((p) => p.icon).filter((n) => n && n !== "generic"))].sort();
+      const names = [...new Set([...(providers.presets || []).map((p) => p.icon), ...MORE_ICONS].filter((n) => n && n !== "generic"))]
+        .sort((a, b) => a.replace(/-color$/, "").localeCompare(b.replace(/-color$/, "")));
+      // well over a hundred of them: a vendor is found by its name
+      const find = input(seek, t("Find an icon…"));
+      find.onkeydown = (e) => e.stopPropagation();
+      find.oninput = () => {
+        seek = find.value;
+        const f = seek.trim().toLowerCase();
+        for (const b of grid.querySelectorAll("button")) b.hidden = !!f && !b.title.includes(f);
+      };
       for (const n of names) {
         const b = el("button", n === draft.icon ? "on" : "");
         b.title = n.replace(/-color$/, "");
@@ -6081,10 +6111,11 @@ function iconPicker(ed) {
         b.onclick = () => { draft.icon = n; open = false; draw(); syncHead(); };
         grid.append(b);
       }
-      box.append(grid);
+      box.append(find, grid);
+      find.oninput();
     }
   };
-  let open = false;
+  let open = false, seek = "";
   // the dialog's title shows the icon too
   const syncHead = () => {
     const old = ed.querySelector(".ehead .ic");
@@ -7866,11 +7897,18 @@ function renderModels(p) {
   }
   box.append(chips, names);
   const foot = el("div", "mfoot");
+  // a model the vendor's list leaves out is added by its id (Tom on X asked
+  // for this, not seeing the box alone was for it): typed, then Enter or Add
   const add = input(draft.typed || "", t("add a model id…"));
-  add.oninput = () => { draft.typed = add.value; };
+  const addOne = el("button", "text action", t("Add model"));
+  addOne.title = t("Add a model the list doesn't have, by its id (several: comma separated)");
+  addOne.disabled = !add.value.trim();
+  const take = () => { if (!add.value.trim()) return; draft.chosen = chosenIds(); draft.typed = add.value = ""; addOne.disabled = true; draw(); };
+  addOne.onclick = take;
+  add.oninput = () => { draft.typed = add.value; addOne.disabled = !add.value.trim(); };
   add.onkeydown = (e) => {
     e.stopPropagation();
-    if (e.key === "Enter" && add.value.trim()) { draft.chosen = chosenIds(); draft.typed = add.value = ""; draw(); }
+    if (e.key === "Enter") take();
     else if (e.key === "Escape") cancelEdit();
   };
   const refresh = el("button", "text action", t("Refresh"));
@@ -7929,7 +7967,7 @@ function renderModels(p) {
   const rename = el("button", "text action" + (naming === p.id ? " on" : ""), t("Names & levels"));
   rename.title = t("Rename the models agents see, or offer fewer of their reasoning levels");
   rename.onclick = () => { naming = naming === p.id ? null : p.id; rename.classList.toggle("on", naming === p.id); drawNames(); };
-  foot.append(add, refresh);
+  foot.append(add, addOne, refresh);
   if (noTest) { testAll.disabled = true; testAll.title = noTest; }
   foot.append(testAll);
   foot.append(rename);
