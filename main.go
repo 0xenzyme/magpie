@@ -208,6 +208,9 @@ func run(args []string) error {
 	// something else writing the file fails every session there until
 	// magpie writes its own list again
 	gateway.WhileServing = append(gateway.WhileServing, agent.KeepDshWired)
+	// and Cursor Private Inference's variables, which the Mac's launchd
+	// forgets at a restart, for the gateway's address now
+	gateway.WhileServing = append(gateway.WhileServing, agent.KeepCursorLocalEnv)
 	// and the request archive, when it is on, goes to the bucket sync is to
 	gateway.ArchiveBucket = func() (gateway.Putter, bool) {
 		if b, ok := davsync.S3Bucket(); ok {
