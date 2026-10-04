@@ -85,7 +85,7 @@ func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 		// still on Codex's own model, through its sign-in, when it says
 		// nothing of them
 		if rest == "/responses" {
-			if to := codexTitlesTo(r.Header, body); to != "" {
+			if to := codexTitlesTo(r.Header, body, false); to != "" {
 				s.codexTitle(w, r, body, to)
 				return
 			}

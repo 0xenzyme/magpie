@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,24 +14,49 @@ import (
 	"github.com/yetone/magpie/internal/usage"
 )
 
-// codexTitlesTo is where settings.CodexTitles sends a request Codex makes
-// for a thread's title (#705): a hidden turn of its own (thread_title,
+// codexTitlesTo is where a request Codex makes for a thread's title goes
+// (#705): a hidden turn of its own (thread_title,
 // thread_title_reconsideration), which Codex sends on its own model —
-// gpt-5.6-luna when signed in to ChatGPT — and so through its ChatGPT
-// sign-in even while the conversation is on one of magpie's models. ""
-// for a request that isn't one, or when the setting leaves them as Codex
-// sends them; "off", or the model that writes the title.
-func codexTitlesTo(h http.Header, body []byte) string {
+// gpt-5.6-luna when signed in to ChatGPT, the conversation's model when
+// magpie is its provider. "" for a request that isn't one, or one left to
+// go as Codex sent it; "off", or the model that writes the title:
+// settings.CodexTitles, else the model Codex asked for when it is one of
+// magpie's (ours: the request came to magpie's own API, where every model
+// is). Codex reads a title only as the {"title": …} its text.format asks
+// for, which a model behind the Chat or Anthropic API is never shown, so
+// a title on one of magpie's models goes through codexTitle whoever picked
+// it (#743: Codex as magpie's provider had none at all, the model's plain
+// answer turned down).
+func codexTitlesTo(h http.Header, body []byte, ours bool) string {
 	if !isTitleKind(requestCallKind(h, requestSessionMetadata(h, body))) {
 		return ""
 	}
-	return settings.Load().CodexTitles
+	if to := settings.Load().CodexTitles; to != "" {
+		return to
+	}
+	if m := modelOf(body); m != "" && (ours || strings.Contains(m, "/")) {
+		return m
+	}
+	return ""
 }
 
-// codexTitle answers a request for a thread's title as settings.CodexTitles
+// titleCheckKey holds, in a request's context, what serve asks of the
+// reply it relayed before it records the call: the reason it fails its
+// caller although the vendor answered, or "".
+type titleCheckKey struct{}
+
+// replyCheck is the check a request's context holds for serve, if any.
+func replyCheck(ctx context.Context) func(reply string) string {
+	f, _ := ctx.Value(titleCheckKey{}).(func(string) string)
+	return f
+}
+
+// codexTitle answers a request for a thread's title as codexTitlesTo
 // says: "off" here, with no title; a model's id by that model, its answer
 // handed back as the {"title": …} Codex asked for. Either way the call is
-// in the Usage and Routing views as the title request it is.
+// in the Usage and Routing views as the title request it is, and an answer
+// with no title in it as the failure it is to Codex, which drops it
+// without a word.
 func (s *Server) codexTitle(w http.ResponseWriter, r *http.Request, body []byte, to string) {
 	if to == "off" {
 		s.codexTitleOff(w, r, body)
@@ -38,7 +64,13 @@ func (s *Server) codexTitle(w http.ResponseWriter, r *http.Request, body []byte,
 	}
 	body, _ = codexInput(body, true)
 	rec := &recorder{header: http.Header{}, status: 200}
-	s.serve(rec, r, provider.Responses, withModel(body, to))
+	check := func(reply string) string {
+		if res, err := compactReply([]byte(reply)); err == nil && titleJSON(messageText(res)) == "" {
+			return noTitle(messageText(res))
+		}
+		return ""
+	}
+	s.serve(rec, r.WithContext(context.WithValue(r.Context(), titleCheckKey{}, check)), provider.Responses, withModel(body, to))
 	if rec.status >= 400 {
 		for k, vs := range rec.header {
 			w.Header()[k] = vs
@@ -52,6 +84,20 @@ func (s *Server) codexTitle(w http.ResponseWriter, r *http.Request, body []byte,
 		writeError(w, provider.Responses, 502, "title: "+err.Error())
 		return
 	}
+	id := res.ID
+	if id == "" {
+		id = fmt.Sprintf("resp_magpie_%d", time.Now().UnixNano())
+	}
+	var out []any
+	if t := titleJSON(messageText(res)); t != "" {
+		out = append(out, map[string]any{"type": "message", "id": "msg_" + strings.TrimPrefix(id, "resp_"), "role": "assistant", "status": "completed",
+			"content": []any{map[string]any{"type": "output_text", "text": t, "annotations": []any{}}}})
+	}
+	writeTitleReply(w, id, out, res.Usage)
+}
+
+// messageText is the text of a reply's messages, its reasoning left out.
+func messageText(res compactResult) string {
 	var said strings.Builder
 	for _, o := range res.Output {
 		if o.Type != "message" {
@@ -61,16 +107,21 @@ func (s *Server) codexTitle(w http.ResponseWriter, r *http.Request, body []byte,
 			said.WriteString(c.Text)
 		}
 	}
-	id := res.ID
-	if id == "" {
-		id = fmt.Sprintf("resp_magpie_%d", time.Now().UnixNano())
+	return said.String()
+}
+
+// noTitle is why an answer to a title request gave Codex no title: what
+// the Routing and Usage views say of it, with the start of what the model
+// said.
+func noTitle(said string) string {
+	said = strings.Join(strings.Fields(said), " ")
+	if said == "" {
+		return "title: the model answered with no text, so Codex got no title"
 	}
-	var out []any
-	if t := titleJSON(said.String()); t != "" {
-		out = append(out, map[string]any{"type": "message", "id": "msg_" + strings.TrimPrefix(id, "resp_"), "role": "assistant", "status": "completed",
-			"content": []any{map[string]any{"type": "output_text", "text": t, "annotations": []any{}}}})
+	if r := []rune(said); len(r) > 80 {
+		said = string(r[:80]) + "…"
 	}
-	writeTitleReply(w, id, out, res.Usage)
+	return "title: no title in the model's answer, so Codex got none: " + said
 }
 
 // codexTitleOff answers a title request with no title, sending it nowhere:
@@ -136,6 +187,12 @@ func writeTitleReply(w http.ResponseWriter, id string, out []any, used json.RawM
 // title alone, in quotes, or in a code fence. "" when it gave none.
 func titleJSON(said string) string {
 	t := strings.TrimSpace(said)
+	// a reasoning model's thoughts, where its API leaves them in the text
+	if rest, ok := strings.CutPrefix(t, "<think>"); ok {
+		if _, after, ok := strings.Cut(rest, "</think>"); ok {
+			t = strings.TrimSpace(after)
+		}
+	}
 	if strings.HasPrefix(t, "```") {
 		t = strings.TrimPrefix(t, "```")
 		if i := strings.IndexByte(t, '\n'); i >= 0 && !strings.Contains(t[:i], "{") {

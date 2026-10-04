@@ -863,6 +863,14 @@ func (s *Server) handle(from provider.Protocol) http.HandlerFunc {
 		if from == provider.Chat {
 			body = thinkingEffort(body)
 		}
+		// Codex with magpie as its provider asks for a thread's title
+		// here (#743)
+		if from == provider.Responses {
+			if to := codexTitlesTo(r.Header, body, true); to != "" {
+				s.codexTitle(w, r, body, to)
+				return
+			}
+		}
 		s.serve(w, r, from, body)
 	}
 }
@@ -1819,6 +1827,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	call.Millis = time.Since(start).Milliseconds()
 	call.Usage.ResponseID = clientResponseID
 	finishCapture()
+	// a reply the vendor gave that is no use to its caller all the same —
+	// a title request answered with no title (#743) — is in the Routing
+	// and Usage views with why
+	if check := replyCheck(r.Context()); check != nil && call.Status < 400 && call.Error == "" && !call.ResponseTruncated {
+		call.Error = check(call.ResponseBody)
+	}
 	s.trace.update(tr, func(t *Route) {
 		t.Done, t.Status, t.Error, t.Millis = true, call.Status, call.Error, call.Millis
 		if call.To != "" {
