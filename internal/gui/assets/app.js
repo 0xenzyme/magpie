@@ -2101,8 +2101,6 @@ async function openAgentModels(a, anchor, ev) {
   const reset = el("button", "am-reset", t("Show all"));
   hideAll.type = reset.type = "button";
   foot.append(el("span", "", t("New models are shown")), el("span", "sp"), hideAll, el("span", "am-dot", "·"), reset);
-  box.append(head, tools, list, foot);
-
   // groups as the catalog has them, routing groups first; a long one
   // starts folded, unless the agent is set to a model in it
   const groups = [];
@@ -2113,6 +2111,41 @@ async function openAgentModels(a, anchor, ev) {
   }
   groups.sort((x, y) => (y.name === ROUTING_GROUPS) - (x.name === ROUTING_GROUPS));
   const shut = new Set(groups.filter((g) => groups.length > 1 && g.models.length > 8 && !g.models.some((m) => m.inUse)).map((g) => g.name));
+  // with a few providers, a rail of them down the left: one picked shows
+  // its models alone, so a long list is one click away rather than a
+  // scroll down past the others (蓝猫 on Discord); a search looks in all
+  const railed = groups.length > 2 && innerWidth >= 600;
+  let pick = "";
+  const rail = el("div", "am-rail");
+  if (railed) {
+    const body = el("div", "am-body");
+    body.append(rail, list);
+    box.classList.add("railed");
+    box.append(head, tools, body, foot);
+  } else box.append(head, tools, list, foot);
+  const drawRail = () => {
+    if (!railed) return;
+    const top = rail.scrollTop;
+    rail.replaceChildren();
+    const item = (name, label, lead, on, n) => {
+      const b = el("button", "am-ri" + (pick === name ? " on" : ""));
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(pick === name));
+      b.append(lead, el("span", "rn", label), el("span", "c", `${on}/${n}`));
+      b.title = label;
+      b.onclick = () => { pick = name; q.value = ""; list.scrollTop = 0; draw(); };
+      rail.append(b);
+    };
+    const all = el("span", "ic");
+    all.append(svg("M3 4.5h10M3 8h10M3 11.5h10", 14, 1.5));
+    item("", t("All providers"), all, models.filter((m) => !m.hidden).length, models.length);
+    for (const g of groups) {
+      const route = g.name === ROUTING_GROUPS;
+      item(g.name, route ? t(g.name) : g.name, route ? svg(FAN, 14, 1.5) : icon(g.icon || "generic"),
+        g.models.filter((m) => !m.hidden).length, g.models.length);
+    }
+    rail.scrollTop = top;
+  };
   // under "Shown", one just turned off stays until the view changes
   let onlyShown = false, kept = new Set();
 
@@ -2147,12 +2180,14 @@ async function openAgentModels(a, anchor, ev) {
     const top = list.scrollTop;
     list.replaceChildren();
     const words = q.value.trim().toLowerCase();
+    drawRail();
     for (const g of groups) {
+      if (pick && !words && g.name !== pick) continue;
       const rows = g.models.filter((m) => (!onlyShown || !m.hidden || kept.has(m.id)) &&
         (!words || [m.name, m.id, g.name].some((s) => s.toLowerCase().includes(words))));
       if (!rows.length) continue;
       const on = g.models.filter((m) => !m.hidden).length;
-      const folded = !words && shut.has(g.name);
+      const folded = !words && !pick && shut.has(g.name);
       const sec = el("section", "am-g" + (folded ? " shut" : "") + (g.name === ROUTING_GROUPS ? " routes" : ""));
       const gh = el("div", "am-gh");
       const fold = el("button", "am-fold");
@@ -2246,7 +2281,7 @@ async function openAgentModels(a, anchor, ev) {
   document.body.append(box);
   // under the line, or over it where there's no room; the list scrolls
   const r = anchor.getBoundingClientRect(), pad = 8;
-  const w = Math.min(380, innerWidth - pad * 2);
+  const w = Math.min(railed ? 580 : 380, innerWidth - pad * 2);
   box.style.width = w + "px";
   const x = Math.max(pad, Math.min(r.left - 10, innerWidth - w - pad));
   box.style.left = x + "px";

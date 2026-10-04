@@ -2663,6 +2663,18 @@ body.window .row.agent .who.with-models { flex-wrap: wrap; row-gap: 0; }
 .am-seg button { height: 24px; padding: 0 9px; border: 0; border-radius: 6px; background: none; color: var(--ctl-fg); font: inherit; font-size: 12px; cursor: pointer; transition: background-color .15s, color .15s; }
 .am-seg button.on { background: var(--seg-thumb); color: var(--fg); box-shadow: var(--seg-edge); }
 .am-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 2px; }
+/* the providers down the left (蓝猫 on Discord), the models of the one
+   picked beside them, each scrolling on its own */
+.am-body { flex: 1 1 auto; min-height: 0; display: flex; gap: 6px; }
+.am-body .am-list { min-width: 0; }
+.am-rail { flex: none; width: 176px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 6px 2px 2px; border-right: 1px solid var(--line-2); }
+.am-ri { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 8px; border: 0; border-radius: 8px; background: none; color: var(--fg-2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; transition: background-color .12s; }
+.am-ri:hover { background: var(--pill); }
+.am-ri.on { background: var(--accent-soft); color: var(--fg); }
+.am-ri > .ic, .am-ri > svg { width: 14px; height: 14px; flex: none; color: var(--muted); }
+.am-ri .rn { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am-ri .c { flex: none; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.am-ri:focus-visible { outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
 .am-gh { display: flex; align-items: center; margin: 6px 2px 0; }
 .am-fold { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .am-fold > .ic, .am-fold > svg { width: 14px; height: 14px; flex: none; }
