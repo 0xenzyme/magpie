@@ -135,9 +135,12 @@ func (a *Agent) Drift() *Drift {
 		}
 	}
 	rec := appliedOf(a.ID)
+	// still joined, a model off magpie is one picked in the agent, beside
+	// magpie's in its list (dsh's /model), not a change from outside
+	joined := a.Joined != nil && a.Joined()
 	for _, f := range a.Fields {
 		want, ok := rec.Fields[f.Key]
-		if !ok || vals[f.Key] == want || !magpieValue(a, f, want, vals) || magpieValue(a, f, vals[f.Key], vals) || sameGroup(want, vals[f.Key]) {
+		if !ok || joined || vals[f.Key] == want || !magpieValue(a, f, want, vals) || magpieValue(a, f, vals[f.Key], vals) || sameGroup(want, vals[f.Key]) {
 			continue
 		}
 		return &Drift{Kind: "replaced", Field: f.Key, Now: vals[f.Key], Want: want,
