@@ -40,6 +40,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 )
@@ -49,7 +50,7 @@ import (
 const t3Instance = "providerInstances." + magpieID
 
 func t3code(home string) *Agent {
-	base := os.Getenv("T3CODE_HOME")
+	base := appdir.Getenv("T3CODE_HOME")
 	if base == "" {
 		base = filepath.Join(home, ".t3")
 	} else if rest, ok := strings.CutPrefix(base, "~"); ok {

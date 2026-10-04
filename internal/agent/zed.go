@@ -3,11 +3,11 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/edit"
 )
 
@@ -23,7 +23,7 @@ func zed(home, cfg string) *Agent {
 	case "darwin":
 		cfg = filepath.Join(home, ".config")
 	case "windows":
-		cfg = os.Getenv("APPDATA")
+		cfg = appdir.Getenv("APPDATA")
 		if cfg == "" {
 			cfg = filepath.Join(home, "AppData", "Roaming")
 		}

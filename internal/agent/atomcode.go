@@ -18,12 +18,12 @@ package agent
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 )
@@ -52,7 +52,7 @@ func atomcodeTable(key string) string { return "models." + strconv.Quote(key) }
 
 func atomcode(home string) *Agent {
 	dir := filepath.Join(home, ".atomcode")
-	if h := os.Getenv("ATOMCODE_HOME"); filepath.IsAbs(h) {
+	if h := appdir.Getenv("ATOMCODE_HOME"); filepath.IsAbs(h) {
 		dir = filepath.Clean(h)
 	}
 	path := filepath.Join(dir, "config.toml")

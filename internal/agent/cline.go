@@ -45,6 +45,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 )
@@ -53,11 +54,11 @@ import (
 const clineSlot = "openai-compatible"
 
 func cline(home string) *Agent {
-	dir := os.Getenv("CLINE_DIR")
+	dir := appdir.Getenv("CLINE_DIR")
 	if dir == "" {
 		dir = filepath.Join(home, ".cline")
 	}
-	data := os.Getenv("CLINE_DATA_DIR")
+	data := appdir.Getenv("CLINE_DATA_DIR")
 	if data == "" {
 		data = filepath.Join(dir, "data")
 	}

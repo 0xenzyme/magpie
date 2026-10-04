@@ -39,6 +39,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/proc"
@@ -68,7 +69,7 @@ var kiroCLIDB = func() string {
 	home, _ := os.UserHomeDir()
 	switch runtime.GOOS {
 	case "windows":
-		dir := os.Getenv("APPDATA")
+		dir := appdir.Getenv("APPDATA")
 		if dir == "" {
 			dir = filepath.Join(home, "AppData", "Roaming")
 		}

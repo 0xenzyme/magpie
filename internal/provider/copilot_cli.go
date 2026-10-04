@@ -23,6 +23,7 @@ import (
 
 	"github.com/tidwall/jsonc"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/proc"
 )
 
@@ -45,7 +46,7 @@ type copilotCLIUser struct {
 
 // copilotCLIHome is where the CLI keeps its settings.
 func copilotCLIHome() string {
-	if h := os.Getenv("COPILOT_HOME"); h != "" {
+	if h := appdir.Getenv("COPILOT_HOME"); h != "" {
 		return h
 	}
 	home, _ := os.UserHomeDir()

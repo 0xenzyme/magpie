@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
@@ -95,7 +96,7 @@ var ompProfileName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 // agent there. omp takes that variable as given, without expanding "~".
 func ompDir(home string) string {
 	root := filepath.Join(home, ".omp")
-	if d := os.Getenv("PI_CONFIG_DIR"); d != "" {
+	if d := appdir.Getenv("PI_CONFIG_DIR"); d != "" {
 		root = filepath.Join(home, d)
 	}
 	p, set := os.LookupEnv("OMP_PROFILE")
@@ -105,7 +106,7 @@ func ompDir(home string) string {
 	if p = strings.TrimSpace(p); p != "" && p != "default" && ompProfileName.MatchString(p) && !strings.HasSuffix(p, ".") {
 		return filepath.Join(root, "profiles", p, "agent")
 	}
-	if d := os.Getenv("PI_CODING_AGENT_DIR"); filepath.IsAbs(d) {
+	if d := appdir.Getenv("PI_CODING_AGENT_DIR"); filepath.IsAbs(d) {
 		return filepath.Clean(d)
 	}
 	return filepath.Join(root, "agent")

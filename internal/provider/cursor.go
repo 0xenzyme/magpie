@@ -32,6 +32,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/proc"
 )
@@ -286,7 +287,7 @@ func CursorClientVersion() string {
 		home, _ := os.UserHomeDir()
 		dirs := []string{filepath.Join(home, ".local", "share", "cursor-agent", "versions")}
 		if runtime.GOOS == "windows" {
-			dirs = append(dirs, filepath.Join(os.Getenv("LOCALAPPDATA"), "cursor-agent", "versions"))
+			dirs = append(dirs, filepath.Join(appdir.Getenv("LOCALAPPDATA"), "cursor-agent", "versions"))
 		}
 		for _, dir := range dirs {
 			es, _ := os.ReadDir(dir)
@@ -308,7 +309,7 @@ func cursorAuthFile() string {
 	home, _ := os.UserHomeDir()
 	switch runtime.GOOS {
 	case "windows":
-		dir := os.Getenv("APPDATA")
+		dir := appdir.Getenv("APPDATA")
 		if dir == "" {
 			dir = filepath.Join(home, "AppData", "Roaming")
 		}
@@ -316,7 +317,7 @@ func cursorAuthFile() string {
 	case "darwin":
 		return filepath.Join(home, ".cursor", "auth.json")
 	}
-	dir := os.Getenv("XDG_CONFIG_HOME")
+	dir := appdir.Getenv("XDG_CONFIG_HOME")
 	if dir == "" {
 		dir = filepath.Join(home, ".config")
 	}

@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/filememo"
 	"github.com/yetone/magpie/internal/plugin"
@@ -325,7 +326,7 @@ func codexAuthPath() string {
 // claudeProfilePath is Claude Code's global state file, which holds the
 // signed-in account's identity next to much else.
 func claudeProfilePath() string {
-	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+	if dir := appdir.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
 		return filepath.Join(dir, ".claude.json")
 	}
 	home, _ := os.UserHomeDir()
@@ -839,7 +840,7 @@ func putClaudeLogin(l savedLogin) error {
 	_, loc, found := readClaudeCredential()
 	if !found {
 		// signed out: put it where Claude Code keeps it on this system
-		dir := os.Getenv("CLAUDE_CONFIG_DIR")
+		dir := appdir.Getenv("CLAUDE_CONFIG_DIR")
 		if dir == "" {
 			home, _ := os.UserHomeDir()
 			dir = filepath.Join(home, ".claude")

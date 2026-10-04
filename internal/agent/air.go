@@ -38,6 +38,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 )
@@ -52,7 +53,7 @@ func airDir(home, cfg string) string {
 	case "darwin":
 		return filepath.Join(home, "Library", "Application Support", "JetBrains", "Air")
 	case "windows":
-		d := os.Getenv("APPDATA")
+		d := appdir.Getenv("APPDATA")
 		if d == "" {
 			d = filepath.Join(home, "AppData", "Roaming")
 		}

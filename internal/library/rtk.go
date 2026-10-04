@@ -18,6 +18,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/yetone/magpie/internal/agent"
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/proc"
 	"gopkg.in/yaml.v3"
@@ -523,9 +524,9 @@ func rtkPath() string {
 	}
 	name, dirs := "rtk", []string{filepath.Join(home(), ".local", "bin"), filepath.Join(home(), ".cargo", "bin")}
 	if runtime.GOOS == "windows" {
-		winget := filepath.Join(os.Getenv("LOCALAPPDATA"), "Microsoft", "WinGet")
+		winget := filepath.Join(appdir.Getenv("LOCALAPPDATA"), "Microsoft", "WinGet")
 		name, dirs = "rtk.exe", []string{filepath.Join(winget, "Links"), filepath.Join(home(), ".cargo", "bin")}
-		if os.Getenv("LOCALAPPDATA") != "" {
+		if appdir.Getenv("LOCALAPPDATA") != "" {
 			pkgs, _ := filepath.Glob(filepath.Join(winget, "Packages", "rtk-ai.rtk_*"))
 			dirs = append(dirs, pkgs...)
 		}

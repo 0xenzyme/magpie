@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
@@ -315,7 +316,7 @@ type file struct {
 
 // ClaudeDir is Claude Code's folder: $CLAUDE_CONFIG_DIR, else ~/.claude.
 func ClaudeDir() string {
-	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+	if d := appdir.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
 		return d
 	}
 	home, _ := os.UserHomeDir()
@@ -324,7 +325,7 @@ func ClaudeDir() string {
 
 // CodexDir is Codex's folder: $CODEX_HOME, else ~/.codex.
 func CodexDir() string {
-	if d := os.Getenv("CODEX_HOME"); d != "" {
+	if d := appdir.Getenv("CODEX_HOME"); d != "" {
 		return d
 	}
 	home, _ := os.UserHomeDir()

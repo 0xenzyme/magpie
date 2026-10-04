@@ -17,12 +17,12 @@ package agent
 // Chat's model picker, a model is kept in VS Code's storage, not here.
 
 import (
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/tidwall/gjson"
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 )
@@ -46,7 +46,7 @@ func vscode(home, cfg string) *Agent {
 	case "darwin":
 		cfg = filepath.Join(home, "Library", "Application Support")
 	case "windows":
-		cfg = os.Getenv("APPDATA")
+		cfg = appdir.Getenv("APPDATA")
 		if cfg == "" {
 			cfg = filepath.Join(home, "AppData", "Roaming")
 		}

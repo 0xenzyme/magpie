@@ -39,6 +39,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
@@ -1185,7 +1186,7 @@ func dshWriteError(err error) string {
 
 // dshHome is where dsh keeps its profiles: $DSH_HOME, or ~/.dsh.
 func dshHome() string {
-	if dir := os.Getenv("DSH_HOME"); dir != "" {
+	if dir := appdir.Getenv("DSH_HOME"); dir != "" {
 		return dir
 	}
 	home, err := os.UserHomeDir()
