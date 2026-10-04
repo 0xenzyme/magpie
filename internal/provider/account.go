@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/user"
 	"path/filepath"
 	"regexp"
@@ -497,19 +496,9 @@ func saveClaudeCredential(loc claudeCredentialLocation, c claudeCredentials) err
 	return nil
 }
 
-// claudeExecutable finds the claude CLI; a var so tests can fake it.
-var claudeExecutable = func() string {
-	if p, err := exec.LookPath("claude"); err == nil {
-		return p
-	}
-	home, _ := os.UserHomeDir()
-	for _, p := range []string{filepath.Join(home, ".local", "bin", "claude"), "/usr/local/bin/claude", "/opt/homebrew/bin/claude"} {
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p
-		}
-	}
-	return ""
-}
+// claudeExecutable finds the claude CLI (proc.FindTool: claude.exe in
+// ~/.local/bin on Windows too, #839); a var so tests can fake it.
+var claudeExecutable = func() string { return proc.FindTool("claude") }
 
 // claudeIdentity asks Claude Code itself which account is active. Its credential
 // blob intentionally contains tokens and plan metadata but no display identity;

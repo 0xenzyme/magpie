@@ -349,14 +349,8 @@ type claudeCLI struct {
 }
 
 func claudeBinary() (claudeCLI, error) {
-	if p, err := exec.LookPath("claude"); err == nil {
+	if p := proc.FindTool("claude"); p != "" {
 		return claudeCLI{path: p}, nil
-	}
-	home, _ := os.UserHomeDir()
-	for _, p := range []string{filepath.Join(home, ".local", "bin", "claude"), "/usr/local/bin/claude", "/opt/homebrew/bin/claude"} {
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return claudeCLI{path: p}, nil
-		}
 	}
 	if t, ok := wslrun.Find("claude"); ok {
 		return claudeCLI{wsl: &t}, nil
