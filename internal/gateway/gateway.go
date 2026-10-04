@@ -1343,13 +1343,18 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	providerKeyID, providerKeyName, providerAccount := "", "", ""
 	var other *Try     // the first failure that wasn't an allowance run out
 	autoReset := false // a Codex or Claude reset looked at, once a request
+	// what the tries' held streams sent the agent ahead of a reply (#751)
+	kept := &keptAlive{proto: from}
 	for i := 0; i < len(cands); i++ {
 		c := cands[i]
 		last := i == len(cands)-1
 		// the last one's failure is held too when an earlier one failed,
 		// for its allowance running out to be told as that one's error
-		hw := newHoldWriter(w, !last || again < max(lastRetries, rateRetries) || other != nil)
+		// and once the agent has the stream's headers from an earlier try's
+		// keepalives, for a failure to be told as the stream's error
+		hw := newHoldWriter(w, !last || again < max(lastRetries, rateRetries) || other != nil || kept.sent)
 		hw.thinkingShown = !refusesAfterThinking(c.model)
+		hw.ctx, hw.alive = r.Context(), kept
 		call.Provider, call.To, call.Usage = c.p.ID, "", Usage{}
 		model = c.model
 		where = c.p.Where()
@@ -1381,7 +1386,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 					}
 					see, _ := seeing()
 					call.Status = 502
-					writeError(w, from, 502, fmt.Sprintf("model %q can't see images, and %s couldn't describe the image for it: %v", c.p.ID+"/"+c.model, see, err))
+					failTo(w, kept, from, 502, fmt.Sprintf("model %q can't see images, and %s couldn't describe the image for it: %v", c.p.ID+"/"+c.model, see, err))
 					break
 				}
 				attemptBody = b
@@ -1623,7 +1628,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 					continue
 				}
 				call.Status, call.Error = http.StatusBadRequest, effortError(c, sent, takes, call.Error)
-				writeError(w, from, call.Status, call.Error)
+				failTo(w, kept, from, call.Status, call.Error)
 				break
 			}
 		}
@@ -1756,7 +1761,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// nobody is left: the agent is told it was refused, as a
 			// request it shouldn't send again as it is, not handed an empty
 			// reply it would ask again for, paying for each
-			writeError(w, from, refusedStatus, call.Error)
+			failTo(w, kept, from, refusedStatus, call.Error)
 		} else if f := failure(call.Status, []byte(call.Error)); other != nil && !hw.passing && call.Status >= 400 && (f == failQuota || f == failCredit) {
 			// the last one left is out of its allowance, but one before it
 			// failed otherwise: the agent is told that one's error, not
@@ -1766,14 +1771,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			try.Fail = f
 			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
 			call.Status, call.Error = other.Status, other.Error
-			writeError(w, from, call.Status, call.Error)
+			failTo(w, kept, from, call.Status, call.Error)
 			break
 		} else if outgrew {
 			// in the agent's own words for it, for it to compact
-			writeError(w, from, call.Status, hw.failMsg)
+			failTo(w, kept, from, call.Status, hw.failMsg)
 		} else if !hw.passing && hw.code() == http.StatusRequestEntityTooLarge {
 			// No member left took the body; only now add the byte-limit hint.
-			writeError(w, from, call.Status, call.Error)
+			failTo(w, kept, from, call.Status, call.Error)
 		} else {
 			hw.release()
 			if hw.passing {
@@ -3799,6 +3804,29 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false) // a vendor's <, > and & as it wrote them (#260)
 	enc.Encode(v)
+}
+
+// failTo answers the agent with an error: as writeError does, or as its
+// stream's error once a held stream sent it the stream's headers to keep
+// it alive (keepAlive), where a status can no longer be said.
+func failTo(w http.ResponseWriter, a *keptAlive, proto provider.Protocol, status int, msg string) int {
+	if a == nil || !a.sent {
+		return writeError(w, proto, status, msg)
+	}
+	streamError(w, proto, status, msg)
+	return status
+}
+
+// streamError writes an error as an event of the client's stream, its
+// headers already sent.
+func streamError(w http.ResponseWriter, proto provider.Protocol, status int, msg string) {
+	sw := newSSEWriter(w)
+	sw.begun = true
+	ev := Event{Kind: KError, Text: msg, Status: status}
+	if tooLong(status, msg) {
+		ev.Code = "context_length_exceeded"
+	}
+	makeEncoder(proto, sw, &Request{}).event(ev)
 }
 
 // writeError answers in the client's own error shape.

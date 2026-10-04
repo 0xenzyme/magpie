@@ -1775,7 +1775,12 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 	// a caller gone before the reply is whole won't carry it on: its agent
 	// is stopped at once, not left to answer no one and wait on tool calls
 	// it never handed over
-	gone := context.AfterFunc(r.Context(), run.abort)
+	began := time.Now()
+	gone := context.AfterFunc(r.Context(), func() {
+		// said in the log, as the routing trace says it with a 499 (#751)
+		log.Printf("%s run on %s stopped: the client went away %s into the reply", name, model, time.Since(began).Round(time.Millisecond))
+		run.abort()
+	})
 	defer gone()
 	return relay(w, r, from, name, req, events, usage, run.abort, func(said, stop string, ok bool) {
 		gone()

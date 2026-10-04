@@ -15,8 +15,10 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"slices"
@@ -857,6 +859,14 @@ type holdWriter struct {
 
 	ended bool   // the stream's last event was written: the reply is whole
 	tail  []byte // the end of the last write, for a marker split across two
+	// ctx is the agent's request: a stream's last event written once it
+	// has gone reached nobody, and doesn't make the reply whole (#751)
+	ctx context.Context
+
+	// alive is the request's, shared by its tries: a stream held for its
+	// reasoning keeps the agent from its idle timeout with SSE comments
+	// meanwhile (#751)
+	alive *keptAlive
 
 	first firstToken // when its first content and text came (#196)
 
@@ -894,6 +904,11 @@ func (h *holdWriter) WriteHeader(code int) {
 }
 
 func (h *holdWriter) pass() {
+	if h.alive != nil && h.alive.sent {
+		// the agent has the stream's headers already, from keepAlive
+		h.passing = true
+		return
+	}
 	dst := h.w.Header()
 	for k, v := range h.header {
 		if k != resetsHeader && k != refusedHeader { // magpie's own notes, for restAfter and settle
@@ -931,7 +946,7 @@ var streamEnds = [][]byte{
 // see notes a stream's last event going by. An agent may hang up as soon as
 // it has that — Codex does — and a reply it had whole is not canceled.
 func (h *holdWriter) see(b []byte) {
-	if h.ended {
+	if h.ended || h.ctx != nil && h.ctx.Err() != nil {
 		return
 	}
 	buf := append(h.tail, b...)
@@ -1029,6 +1044,54 @@ func (h *holdWriter) scan() {
 	}
 	if h.held.Len() > holdMost || time.Since(h.since) > longest {
 		h.flow()
+		return
+	}
+	if (h.thinking || h.buffered) && time.Since(h.since) >= keepHeldAfter {
+		h.keepAlive()
+	}
+}
+
+// keepHeldAfter is how long a stream held for its reasoning waits before
+// its agent is first kept alive, as long as a stream with nothing in it
+// is held (holdLongest); a refusal after it still goes to another account,
+// whose stream follows the comments in the same response.
+var keepHeldAfter = holdLongest
+
+// keptAlive is what a request's held streams have sent its agent ahead of
+// a reply: the stream's headers and SSE comments, nothing of the reply.
+type keptAlive struct {
+	proto provider.Protocol
+	sent  bool      // the stream's 200 and headers went out
+	at    time.Time // the last comment
+}
+
+// keepAlive tells the agent of a stream held past keepHeldAfter for its
+// reasoning that it goes on, every keepaliveEvery: held for up to
+// holdThinking (4 minutes), the agent heard nothing at all, and Alma's
+// idle timeout for a reasoning model, 240s, ended the turn first (#751). A
+// comment is no event in any protocol, so another account may still answer
+// after it, its stream going on in the same response (pass).
+func (h *holdWriter) keepAlive() {
+	a := h.alive
+	if a == nil || time.Since(a.at) < keepaliveEvery {
+		return
+	}
+	if !a.sent {
+		dst := h.w.Header()
+		for k, v := range h.header {
+			if k != resetsHeader && k != refusedHeader && k != "Content-Length" {
+				dst[k] = v
+			}
+		}
+		dst.Set("Content-Type", "text/event-stream; charset=utf-8")
+		h.w.WriteHeader(http.StatusOK)
+		a.sent = true
+	}
+	// no blank line after it, as sseWriter.comment
+	_, _ = io.WriteString(h.w, ": keepalive\n")
+	a.at = time.Now()
+	if f, ok := h.w.(http.Flusher); ok {
+		f.Flush()
 	}
 }
 
@@ -1099,6 +1162,12 @@ func (h *holdWriter) failed() bool {
 // release sends a held reply after all: nobody else is left to try.
 func (h *holdWriter) release() {
 	if h.passing || h.status == 0 {
+		return
+	}
+	if h.alive != nil && h.alive.sent && !h.stream {
+		// an error status, once the agent has a stream: told as its error
+		h.passing = true
+		streamError(h.w, h.alive.proto, h.status, provider.APIError(h.held.Bytes(), http.StatusText(h.status)))
 		return
 	}
 	h.pass()
