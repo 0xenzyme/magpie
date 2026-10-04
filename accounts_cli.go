@@ -460,12 +460,14 @@ func refreshAccounts(asJSON bool) error {
 
 // checkinWorkBuddy: `magpie accounts checkin` — WorkBuddy's daily check-in
 // (签到) for each WorkBuddy (China) account not in yet today, and Trae CN's
-// (每日签到) for each Trae CN account, now, and how each stands. The
+// (每日签到) for each Trae CN account, and MiniMax Code's for each MiniMax
+// Code (China) account, now, and how each stands. The
 // settings do it on their own once a day.
 func checkinWorkBuddy(asJSON bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	rs := append(provider.CheckInWorkBuddy(ctx), provider.CheckInTrae(ctx)...)
+	rs = append(rs, provider.CheckInMiniMax(ctx)...)
 	if rs == nil {
 		rs = []provider.WorkBuddyCheckin{}
 	}
@@ -481,8 +483,11 @@ func checkinWorkBuddy(asJSON bool) error {
 		if asJSON {
 			continue
 		}
-		if r.By == "trae" {
+		switch r.By {
+		case "trae":
 			r.User = "Trae CN " + r.User
+		case "minimax":
+			r.User = "MiniMax Code " + r.User
 		}
 		switch r.Outcome {
 		case provider.CheckinClaimed, provider.CheckinDone:
@@ -506,7 +511,7 @@ func checkinWorkBuddy(asJSON bool) error {
 		}
 	}
 	if !asJSON && len(rs) == 0 {
-		fmt.Println(muted.Render("no WorkBuddy (China) or Trae CN account is signed in"))
+		fmt.Println(muted.Render("no WorkBuddy (China), Trae CN or MiniMax Code account is signed in"))
 	}
 	if failed > 0 {
 		return fmt.Errorf("%d of %d accounts couldn't check in", failed, len(rs))

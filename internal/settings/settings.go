@@ -123,6 +123,10 @@ type Settings struct {
 	// signed-in Trae CN account (its plugin's) once a Beijing day, claiming
 	// the credits it gives.
 	TraeCheckin bool `json:"traeCheckin,omitempty"`
+	// MiniMaxCheckin presses MiniMax Code's daily check-in (签到) for each
+	// signed-in MiniMax Code (China) account (its plugin's) once a Beijing
+	// day, claiming the credits it gives (#811).
+	MiniMaxCheckin bool `json:"minimaxCheckin,omitempty"`
 	// MemberModel has a reply's model name the routing group's member
 	// that answered, as magpie's provider/model id (workbuddy/glm-5.3-flash),
 	// rather than the vendor's own name for it, for agents that count
