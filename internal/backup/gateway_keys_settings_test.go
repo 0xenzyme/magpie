@@ -12,24 +12,6 @@ import (
 	"github.com/yetone/magpie/internal/settings"
 )
 
-// The serialized field lets these regressions run against the older Bundle
-// too: ignoring the new settings-only credential scope must fail at restore.
-func withSettingsKeys(t *testing.T, b Bundle, keys bool) Bundle {
-	t.Helper()
-	plain, err := json.Marshal(struct {
-		Bundle
-		SettingsKeys bool `json:"settingsKeys,omitempty"`
-	}{b, keys})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var out Bundle
-	if err := json.Unmarshal(plain, &out); err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
 func TestCollectSettingsKeysCompatibility(t *testing.T) {
 	home(t)
 	appdir.UseExecutable("")
@@ -49,8 +31,13 @@ func TestCollectSettingsKeysCompatibility(t *testing.T) {
 		if err := json.Unmarshal(plain, &fields); err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := fields["settingsKeys"]; ok || b.Keys != keys {
-			t.Error("a whole backup changed its existing credential policy or added a settings-only marker")
+		for _, field := range []string{"providersKeys", "settingsKeys", "libraryKeys"} {
+			if _, ok := fields[field]; ok {
+				t.Errorf("a whole backup added a sync-only %s marker", field)
+			}
+		}
+		if b.Keys != keys {
+			t.Error("a whole backup changed its existing credential policy")
 		}
 		if !keys && (b.GatewayKeys != nil || b.Settings.LANKey != "" || b.Settings.LANKeyID != "") {
 			t.Error("a keyless backup included settings credentials")
@@ -96,10 +83,14 @@ func TestRestoreSettingsKeysScope(t *testing.T) {
 				OTel: settings.OTel{Endpoint: "https://remote.example.com", Headers: map[string]string{"Authorization": "fixture-remote-otel"}}}
 			keys := []access.Key{{ID: incoming.LANKeyID, Name: "Remote", LAN: true, Secret: incoming.LANKey},
 				{ID: "client", Name: "Client", Secret: "fixture-remote-client"}}
-			b := withSettingsKeys(t, Bundle{Version: 1, Settings: &incoming, GatewayKeys: &keys,
+			version := 1
+			if tc.keys {
+				version = BundleVersion // a sync bundle from a keyed uploader carries the markers
+			}
+			b := Bundle{Version: version, SettingsKeys: Flag(tc.keys), Settings: &incoming, GatewayKeys: &keys,
 				Providers: []provider.Provider{{ID: "acme", Name: "Remote", Chat: "https://remote.example.com/v1"}},
 				Library: &library.Bundle{MCP: []*library.Server{{Name: "github", Transport: "stdio", Command: "remote-mcp",
-					Env: map[string]string{"GITHUB_TOKEN": "", "MODE": "remote"}, Agents: []string{}}}}}, tc.keys)
+					Env: map[string]string{"GITHUB_TOKEN": "", "MODE": "remote"}, Agents: []string{}}}}}
 			r, err := Restore(b, tc.parts)
 			if err != nil || r.Settings != tc.parts.Settings || r.Library != tc.parts.Library {
 				t.Fatal("restore did not honor the selected parts", r, err)
@@ -158,7 +149,7 @@ func TestRestoreSettingsKeysStore(t *testing.T) {
 			case "legacy":
 				b.Settings = &settings.Settings{Theme: "light", LAN: true, LANKey: "fixture-older-lan", LANKeyID: "old-marker", GitHubToken: "fixture-older-github"}
 			}
-			b = withSettingsKeys(t, b, true)
+			b.SettingsKeys = Flag(true)
 			if _, err := Restore(b, Parts{Settings: true}); err != nil {
 				t.Fatal(err)
 			}
@@ -191,7 +182,7 @@ func TestRestoreSettingsKeysStore(t *testing.T) {
 func TestRestoreSettingsKeysLegacyLAN(t *testing.T) {
 	home(t)
 	appdir.UseExecutable("")
-	b := withSettingsKeys(t, Bundle{Version: 1, Settings: &settings.Settings{LAN: true, LANKey: "fixture-legacy-lan", LANKeyID: "incomplete-marker"}}, true)
+	b := Bundle{Version: BundleVersion, SettingsKeys: Flag(true), Settings: &settings.Settings{LAN: true, LANKey: "fixture-legacy-lan", LANKeyID: "incomplete-marker"}}
 	if _, err := Restore(b, Parts{Settings: true}); err != nil {
 		t.Fatal(err)
 	}

@@ -68,7 +68,7 @@ func TestGatewayKeysTakeSettings(t *testing.T) {
 			if want == nil {
 				want = old // a missing field gives no instruction to replace it
 			}
-			if to.Settings != from.Settings || !reflect.DeepEqual(to.GatewayKeys, want) || to.Keys || !to.SettingsKeys {
+			if to.Settings != from.Settings || !reflect.DeepEqual(to.GatewayKeys, want) || to.Keys || to.SettingsKeys == nil || !*to.SettingsKeys {
 				t.Error("settings did not retain the gateway store and credential flag")
 			}
 		})
