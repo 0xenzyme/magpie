@@ -1578,6 +1578,20 @@ async function loadInstalls() {
   paintInstalls();
 }
 
+// installNote: what the commands want. With no Node.js on this machine the
+// server gives each npm command Node's install first (node: nvm, nvm-mac
+// or winget), and the note says so, and what may still be asked for.
+function installNote(items) {
+  const node = items.flatMap((x) => x.commands).find((c) => c.node)?.node;
+  const after = t("Run a command in a terminal, then come back: magpie lists the agent here once it is installed.");
+  if (node === "winget") return t("No Node.js was found here, so the npm commands install it with winget first; run them in PowerShell. If npm isn't found after Node.js is installed, open a new terminal and run the npm install again.") + " " + after;
+  if (node) {
+    const s = t("No Node.js was found here, so the npm commands install it with nvm first.") + " " + after;
+    return node === "nvm-mac" ? s + " " + t("On a Mac, nvm needs Xcode's Command Line Tools: if it asks for them, run xcode-select --install, then the command again.") : s;
+  }
+  return t("Run a command in a terminal, then come back: magpie lists the agent here once it is installed. The npm commands need Node.js (nodejs.org).");
+}
+
 function paintInstalls() {
   const list = $("#agents");
   if (mode === "panel" || !list) return;
@@ -1606,7 +1620,7 @@ function paintInstalls() {
   };
   const parts = [head];
   if (open) {
-    parts.push(el("p", "ag-install-note", t("Run a command in a terminal, then come back: magpie lists the agent here once it is installed. The npm commands need Node.js (nodejs.org).")));
+    parts.push(el("p", "ag-install-note", installNote(items)));
     for (const x of items) {
       const r = el("div", "ag-install-row");
       r.dataset.id = x.id;
@@ -1615,7 +1629,7 @@ function paintInstalls() {
       const cmds = el("div", "ag-install-cmds");
       for (const c of x.commands) {
         const line = el("div", "ag-install-cmd");
-        line.append(el("span", "ag-install-via", t(VIA[c.via] || c.via)), el("code", "", c.command), copyBtn(c.command, t("{agent}'s install command", { agent: x.name })));
+        line.append(el("span", "ag-install-via", c.node ? t("Node.js + npm") : t(VIA[c.via] || c.via)), el("code", "", c.command), copyBtn(c.command, t("{agent}'s install command", { agent: x.name })));
         cmds.append(line);
       }
       r.append(who, cmds);

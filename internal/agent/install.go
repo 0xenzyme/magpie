@@ -7,9 +7,20 @@ package agent
 // commands to copy and run in a terminal; it doesn't run them itself, as an
 // install needs what a new machine may not have yet (Node.js for npm,
 // Homebrew), and a global npm prefix that may want sudo.
+//
+// Where no Node.js is found, each npm command installs it first (#727,
+// Sun1090: "curl xxx && npm xxxx"): nvm's installer and its LTS Node on a
+// Mac or Linux, as nodejs.org's download page gives, winget's Node.js LTS
+// on Windows; the npm install follows in the same line.
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
+	"slices"
+
+	"github.com/yetone/magpie/internal/proc"
 )
 
 // InstallCmd is one way to install an agent's CLI.
@@ -18,6 +29,10 @@ type InstallCmd struct {
 	// powershell (the vendor's installer, on Windows), brew or npm
 	Via     string `json:"via"`
 	Command string `json:"command"`
+	// Node is how the command installs Node.js before npm, where none is
+	// here: nvm (Linux), nvm-mac (a Mac, where nvm's installer wants the
+	// Xcode Command Line Tools) or winget (Windows); "" when it doesn't
+	Node string `json:"node,omitempty"`
 }
 
 // Install is an agent not on this machine, and how to install it.
@@ -66,31 +81,99 @@ var vendorInstall = map[string]func(goos string) []InstallCmd{
 
 // installCommands is how to install the agent with the given id on goos:
 // the vendor's installer first, then npm's package, the one cliSpecs
-// updates; nil for one magpie knows no command for.
-func installCommands(id, goos string) []InstallCmd {
+// updates, after Node.js's own install when node is false; nil for one
+// magpie knows no command for.
+func installCommands(id, goos string, node bool) []InstallCmd {
 	var out []InstallCmd
 	if f := vendorInstall[id]; f != nil {
 		out = append(out, f(goos)...)
 	}
 	if spec, ok := cliSpecs[id]; ok && len(spec.npm) > 0 {
-		out = append(out, InstallCmd{Via: "npm", Command: "npm install -g " + spec.npm[0]})
+		out = append(out, npmInstall(spec.npm[0], goos, node))
 	}
 	return out
+}
+
+// nvmVersion is the nvm release whose installer the commands fetch
+// (github.com/nvm-sh/nvm/releases/latest).
+const nvmVersion = "v0.40.8"
+
+// npmInstall is the command installing pkg with npm on goos, with Node.js
+// installed first when node is false.
+//
+// On a Mac or Linux: nvm's installer, then nvm.sh read into the shell the
+// command runs in (the installer adds it to the profile, which only the
+// terminals opened after read), its LTS Node, then npm. NVM_DIR is set
+// and its folder made, as the installer would go by $XDG_CONFIG_HOME/nvm
+// where that is set, and nvm.sh couldn't be found then. nvm's Node is the
+// user's own, so the global install wants no sudo.
+//
+// On Windows, in PowerShell: winget's Node.js LTS, then PATH read again
+// from the registry (the installer adds Node's folder there, not to this
+// terminal), then npm.cmd — npm alone is npm.ps1 there, which PowerShell's
+// default execution policy refuses to run. Each step is parted by ";", as
+// Windows PowerShell 5.1 has no "&&".
+func npmInstall(pkg, goos string, node bool) InstallCmd {
+	plain := "npm install -g " + pkg
+	switch {
+	case node:
+		return InstallCmd{Via: "npm", Command: plain}
+	case goos == "windows":
+		return InstallCmd{Via: "npm", Node: "winget", Command: "winget install -e --id OpenJS.NodeJS.LTS; " +
+			"$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User'); " +
+			"npm.cmd install -g " + pkg}
+	}
+	how := "nvm"
+	if goos == "darwin" {
+		how = "nvm-mac"
+	}
+	return InstallCmd{Via: "npm", Node: how, Command: `export NVM_DIR="$HOME/.nvm" && mkdir -p "$NVM_DIR" && ` +
+		"curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/" + nvmVersion + "/install.sh | bash && " +
+		`. "$NVM_DIR/nvm.sh" && nvm install --lts && ` + plain}
+}
+
+// nodeHere says whether this machine has Node.js's npm: on PATH, in one
+// of the folders a user's tools go in (nvm's, fnm's, mise's, volta's,
+// Homebrew's, …) or, on Windows, in the PATH a terminal opened now has
+// and in Node.js's installer's own folder.
+func nodeHere() bool {
+	if _, err := exec.LookPath("npm"); err == nil {
+		return true
+	}
+	dirs := proc.UserBinDirs()
+	if runtime.GOOS == "windows" {
+		dirs = append(dirs, proc.LoginPath()...)
+		if pf := os.Getenv("ProgramFiles"); pf != "" {
+			dirs = append(dirs, filepath.Join(pf, "nodejs"))
+		}
+	}
+	return npmIn(dirs, runtime.GOOS)
+}
+
+// npmIn says whether one of dirs has npm in it.
+func npmIn(dirs []string, goos string) bool {
+	name := "npm"
+	if goos == "windows" {
+		name = "npm.cmd"
+	}
+	return slices.ContainsFunc(dirs, func(d string) bool {
+		return d != "" && isFile(filepath.Join(d, name))
+	})
 }
 
 // Installs is every agent magpie knows a command for that isn't on this
 // machine, in the Agents page's order.
 func Installs() []Install {
-	return installsOf(All(), runtime.GOOS)
+	return installsOf(All(), runtime.GOOS, nodeHere())
 }
 
-func installsOf(all []*Agent, goos string) []Install {
+func installsOf(all []*Agent, goos string, node bool) []Install {
 	out := []Install{}
 	for _, a := range all {
 		if a.WSL != "" || a.Detected() {
 			continue
 		}
-		cmds := installCommands(a.ID, goos)
+		cmds := installCommands(a.ID, goos, node)
 		if len(cmds) == 0 {
 			continue
 		}

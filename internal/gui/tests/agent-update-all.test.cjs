@@ -46,7 +46,7 @@ function server(lang, opts) {
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return route.fulfill({ json: { agents, profiles: [], settings: { lang, theme: "light" } } });
     if (url.pathname === "/api/agents/cli" && req.method() === "GET") return route.fulfill({ json: { agents: clis, pending: false } });
-    if (url.pathname === "/api/agents/install") return route.fulfill({ json: INSTALLS });
+    if (url.pathname === "/api/agents/install") return route.fulfill({ json: opts.installs || INSTALLS });
     if (url.pathname === "/api/copy") { log.copies.push(JSON.parse(req.postData()).text); return route.fulfill({ json: {} }); }
     if (url.pathname.startsWith("/api/agents/cli/") && req.method() === "POST") {
       const id = url.pathname.split("/").pop();
@@ -204,6 +204,49 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const page = await open("en", { agents: [], clis: {} }, '#agentsInstall .ag-install-row[data-id="claude"]');
       assert.equal(await page.locator("#agentsInstall .ag-install-head").getAttribute("aria-expanded"), "true");
       assert.equal(await page.locator("#agentsInstall .ag-install-row").count(), 3);
+    });
+
+    // no Node.js on the machine (#727, Sun1090: "curl xxx && npm xxxx"): the
+    // server gives each npm command Node's install first; the row says
+    // Node.js + npm, copies the whole line, and the note says what it does
+    const NVM = 'export NVM_DIR="$HOME/.nvm" && mkdir -p "$NVM_DIR" && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh | bash && . "$NVM_DIR/nvm.sh" && nvm install --lts && npm install -g ';
+    const WINGET = "winget install -e --id OpenJS.NodeJS.LTS; $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User'); npm.cmd install -g ";
+    const noNode = (node, pre) => [
+      { id: "claude", name: "Claude Code", icon: "claudecode-color", commands: [{ via: "script", command: "curl -fsSL https://claude.ai/install.sh | bash" }, { via: "npm", node, command: pre + "@anthropic-ai/claude-code" }] },
+      { id: "pi", name: "Pi", icon: "pi", commands: [{ via: "npm", node, command: pre + "@earendil-works/pi-coding-agent" }] },
+    ];
+
+    await t.test("no Node.js here: the npm commands install it first", async () => {
+      const log = {};
+      const page = await open("en", { agents: [], clis: {}, log, installs: noNode("nvm-mac", NVM) }, '#agentsInstall .ag-install-row[data-id="pi"]');
+      const box = page.locator("#agentsInstall");
+      const note = await box.locator(".ag-install-note").textContent();
+      assert.match(note, /^No Node\.js was found here, so the npm commands install it with nvm first\. Run a command in a terminal/);
+      assert.match(note, /xcode-select --install/);
+      assert.doesNotMatch(note, /nodejs\.org/);
+      const claude = box.locator('.ag-install-row[data-id="claude"]');
+      assert.deepEqual(await claude.locator(".ag-install-via").allTextContents(), ["Installer", "Node.js + npm"]);
+      const pi = box.locator('.ag-install-row[data-id="pi"]');
+      assert.equal(await pi.locator("code").textContent(), NVM + "@earendil-works/pi-coding-agent");
+      // the label stays on one line, and the long command scrolls inside its code
+      const via = await pi.locator(".ag-install-via").evaluate((v) => v.getBoundingClientRect().height);
+      assert(via < 20, "the label wrapped: " + via);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "the page scrolls sideways");
+      await wheelTo(page, '#agentsInstall .ag-install-row[data-id="pi"] button.copy');
+      await pi.locator("button.copy").click();
+      await page.waitForTimeout(200);
+      assert.deepEqual(log.copies, [NVM + "@earendil-works/pi-coding-agent"]);
+      // on Linux: no word of Xcode
+      const linux = await open("en", { agents: [], clis: {}, installs: noNode("nvm", NVM) }, '#agentsInstall .ag-install-row[data-id="pi"]');
+      assert.doesNotMatch(await linux.locator("#agentsInstall .ag-install-note").textContent(), /xcode/i);
+      // on Windows, in Chinese: winget, PowerShell, a new terminal
+      const win = await open("zh", { agents: [], clis: {}, installs: noNode("winget", WINGET) }, '#agentsInstall .ag-install-row[data-id="pi"]');
+      const wnote = await win.locator("#agentsInstall .ag-install-note").textContent();
+      assert.match(wnote, /^本机没有找到 Node\.js，所以 npm 命令会先用 winget 装好 Node\.js/);
+      assert.match(wnote, /PowerShell/);
+      assert.match(wnote, /新终端/);
+      assert.equal(await win.locator('#agentsInstall .ag-install-row[data-id="pi"] .ag-install-via').textContent(), "Node.js + npm");
+      assert.equal(await win.locator('#agentsInstall .ag-install-row[data-id="pi"] code').textContent(), WINGET + "@earendil-works/pi-coding-agent");
     });
 
     await t.test("in Chinese", async () => {
