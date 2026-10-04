@@ -193,7 +193,7 @@ func accountsCmd(args []string) error {
 		} else if r.Error != "" {
 			line += "  " + muted.Render(r.Error)
 		}
-		line += quotaReadingCell(r.AsOf, r.Windows)
+		line += quotaReadingCell(r.AsOf, r.ReadAt, r.Windows)
 		fmt.Println(line)
 	}
 	fmt.Println(faint.Render("  ● signed in · ○ takes over when it runs out · add one: magpie accounts add <agent> · switch: magpie accounts switch <agent> <email>"))
@@ -211,6 +211,7 @@ type accountRow struct {
 	Error   string      `json:"error,omitempty"`
 	Lapsed  string      `json:"lapsed,omitempty"` // its sign-in has to be made again
 	AsOf    *time.Time  `json:"asOf,omitempty"`   // last reading when it couldn't be read now
+	ReadAt  *time.Time  `json:"readAt,omitempty"` // when what is shown was read, when known
 	// Resets are a Codex account's rate-limit resets, when it holds any.
 	Resets *provider.ResetCredits `json:"resets,omitempty"`
 }
@@ -252,7 +253,7 @@ func accountRows(ls []provider.Login, now time.Time) []accountRow {
 			if r.Plan == "" {
 				r.Plan = q.Plan
 			}
-			r.Error, r.Resets, r.AsOf = q.Error, q.Resets, q.AsOf
+			r.Error, r.Resets, r.AsOf, r.ReadAt = q.Error, q.Resets, q.AsOf, q.ReadAt
 			// a pool's own windows stand in for the models' drawing on it,
 			// as the usage page shows them
 			for _, w := range provider.PooledWindows(q.Windows) {
@@ -286,8 +287,15 @@ func quotaCell(w quotaSpan) string {
 	return cell
 }
 
-func quotaReadingCell(at *time.Time, ws []quotaSpan) string {
+// quotaReadingCell says when a line was read: "as of … (cached)" for a
+// reading kept in place of one that failed, "read 12m ago" for one a
+// cache handed back (a Claude account's waits for Claude Code to tell it
+// again), nothing for one just read.
+func quotaReadingCell(at, readAt *time.Time, ws []quotaSpan) string {
 	if at == nil {
+		if readAt != nil && time.Since(*readAt) >= 2*time.Minute {
+			return "  " + muted.Render("read "+ago(*readAt))
+		}
 		return ""
 	}
 	cell := "  " + muted.Render("as of "+at.Local().Format("Jan 2 15:04")+" (cached)")

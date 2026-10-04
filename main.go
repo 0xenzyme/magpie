@@ -101,6 +101,8 @@ const usage = `magpie — one place to pick every agent's model
   magpie quota [<provider>] [--json]  what is left of every subscription, plan and key balance
   magpie quota wait <provider|account> [--timeout <d>] [--quiet]
                                   block until that subscription (any of its accounts) or account has allowance again
+  magpie quota history [<provider|account>] [--days N] [--json]
+                                  each window's readings over time, kept 45 days
   magpie sync                     refresh the model catalog and vendor model lists
   magpie agents                   list every supported agent
   magpie update [check] [--proxy <url>] [--mirror <prefix>]

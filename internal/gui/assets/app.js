@@ -10646,8 +10646,9 @@ function renderQuotas() {
       if (!brief && sub.daily && !sub.error) card.append(creditDays(sub));
       // what is left besides the windows, under them
       if (sub.balance && sub.windows?.length && !sub.error) card.append(balanceRow(sub, "What is left on the account besides its windows", false));
-      // windows standing in for ones that couldn't be read just now say
-      // when they were read (a balance alone says it in its row)
+      // when the windows were read: "Updated 3 min ago", or the time of
+      // ones standing in for a reading that failed just now (#802; a
+      // balance alone says it in its row)
       const read = !brief && sub.windows?.length && !sub.error && readWhen(sub);
       if (read) card.append(read);
       if (!brief && sub.resets?.count) {
@@ -11011,7 +11012,8 @@ function quotaCurve(sub) {
     sw.style.background = `var(--c${(i % 7) + 1})`;
     const last = l.points[l.points.length - 1];
     k.append(sw, el("span", "", l.label), el("b", "", Math.round(last.left) + "%"));
-    k.title = t("{name}: {n} left, read {when}", { name: l.label, n: Math.round(last.left) + "%", when: quotaTimeText(last.at, Date.now()) });
+    k.title = [t("{name}: {n} left, read {when}", { name: l.label, n: Math.round(last.left) + "%", when: quotaTimeText(last.at, Date.now()) }),
+      "", t("Latest readings:"), ...quotaReadings(l, Date.now())].join("\n");
     legend.append(k);
   });
   box.draw = () => {
@@ -11026,6 +11028,14 @@ function quotaCurve(sub) {
   box.append(head, g, axis, legend);
   box.draw();
   return box;
+}
+// quotaReadings: a line's last eight readings, newest first, each what was
+// left and when it was read (#802), a line each, ↻ where the window
+// started again; for its legend key's title, the card keeping no control
+// of its own
+function quotaReadings(l, now) {
+  const pts = l.points.slice(-8);
+  return pts.map((p, i) => (i > 0 && quotaCycleBreak(pts[i - 1], p) ? "↻ " : "") + Math.round(p.left) + "% · " + quotaTimeText(p.at, now)).reverse();
 }
 function setQuotaRange(id) {
   if (id === quotaRange) return;
