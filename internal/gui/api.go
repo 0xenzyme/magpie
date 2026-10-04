@@ -317,6 +317,9 @@ type settingsJSON struct {
 	SearchAuto    string             `json:"searchAuto,omitempty"`
 	SearchUnused  string             `json:"searchUnused,omitempty"`
 	SearchRelays  []string           `json:"searchRelays,omitempty"`
+	// the providers on that aren't offered, as they can't search the web
+	// by themselves (#825)
+	SearchLeftOut []string `json:"searchLeftOut,omitempty"`
 	// the GitHub token the library asks GitHub with, masked, and where it
 	// is from ("settings", GITHUB_TOKEN or GH_TOKEN); never the token
 	GitHubTokenMask string `json:"githubTokenMask,omitempty"`
@@ -406,6 +409,11 @@ func searchState(s *settingsJSON) {
 	}
 	for _, p := range gateway.RelaysSaidToSearch() {
 		s.SearchRelays = append(s.SearchRelays, p.Name)
+	}
+	for _, p := range provider.All() {
+		if p.On() && !slices.ContainsFunc(s.SearchChoices, func(c searchChoiceJSON) bool { return c.ID == p.ID }) && !slices.Contains(s.SearchRelays, p.Name) {
+			s.SearchLeftOut = append(s.SearchLeftOut, p.Name)
+		}
 	}
 }
 

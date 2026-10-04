@@ -132,14 +132,18 @@ func TestCrushInstructionsWhereCrushReadsThem(t *testing.T) {
 	}
 }
 
-// Alma is wired through its API for models only: the library has no place
-// in it, and says so rather than recording it as given anything.
+// Alma takes skills, in ~/.config/alma/skills (#824), but has no
+// user-wide place for instructions or MCP servers, and the library says so
+// rather than recording it as given any.
 func TestTakesRefusesAlma(t *testing.T) {
 	sandbox(t)
-	for _, kind := range []string{"instructions", "mcp", "skills"} {
+	for _, kind := range []string{"instructions", "mcp"} {
 		if id, err := Takes("alma", kind); err == nil || !strings.Contains(err.Error(), "Alma has no user-wide place") {
 			t.Errorf("%s: %q %v", kind, id, err)
 		}
+	}
+	if id, err := Takes("alma", "skills"); err != nil || id != "alma" {
+		t.Errorf("skills: %q %v", id, err)
 	}
 }
 

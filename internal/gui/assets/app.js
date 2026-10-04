@@ -15717,6 +15717,12 @@ function renderSearcher(s, keep, box) {
     t("{names} search for their own models first, with Gemini's Google Search", { names: googles.join(", ") })));
   if (s.searchRelays?.length) sub.append(" · ", el("span", "searcher-relays",
     t("Relays said to search ({names}) are never picked automatically: they would spend the relay's quota on other models' searches; if one refuses magpie's own request, magpie falls back", { names: s.searchRelays.join(", ") })));
+  // only a provider that searches by itself can search for another
+  // model; the rest are left out of the picker, and the row says so (#825)
+  if (s.searchLeftOut?.length) sub.append(" · ", el("span", "searcher-left-out",
+    t("Only providers that search the web by themselves are offered (Claude, Codex and Grok accounts; the APIs of Anthropic, OpenAI, DeepSeek, xAI, Zhipu and OpenRouter; Gemini on a Google sign-in; a Kimi Code plan). {names} can't, so for their models the search APIs below search", { names: s.searchLeftOut.length > 6
+      ? t("{names} and {n} more", { names: s.searchLeftOut.slice(0, 5).join(", "), n: s.searchLeftOut.length - 5 })
+      : s.searchLeftOut.join(", ") })));
   who.append(el("div", "name", t("Searches for other models")), sub);
   const b = el("button", "rt-cond on searcher-pick");
   b.type = "button";
