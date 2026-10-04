@@ -26,8 +26,11 @@ package provider
 // models the account is served, where /models/session still names the
 // same few for every plan (gpt-5.3-codex, gpt-5.4, gpt-5.4-mini,
 // claude-haiku-4.5): a Student plan was refused each of those (#256), and
-// an Individual one is picked gpt-6-luna. magpie asks /auto first, and
-// /models/session when /auto has nothing it can use.
+// an Individual one is picked gpt-6-luna. magpie asks /auto first, at
+// Copilot Chat's default tier ("balance"), and /models/session only when
+// /auto doesn't answer: a pick of /auto's the account was refused has the
+// model it may pick by hand stand in. Each pick a request is sent with is
+// noted on its try in the route (AutoPick).
 
 import (
 	"bytes"
@@ -35,6 +38,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -67,6 +71,78 @@ type copilotAutoSession struct {
 	Token     string
 	Model     string // the model Copilot picked
 	ExpiresAt int64
+	// Via: where the pick came from, "/auto", "/models/session" or
+	// AutoFallback; Skipped: why /auto's wasn't taken, when it isn't
+	Via, Skipped string
+}
+
+// AutoFallback is an Auto pick that is the model the account may pick by
+// hand, Copilot having no Auto session to give it (copilotAutoFallback).
+const AutoFallback = "fallback"
+
+// AutoPick is a model Copilot's Auto picked for a try of a request: where
+// the pick came from, why not from /auto when it didn't, and Copilot's
+// refusal of it, which the route shows (#256: a Student plan's picks were
+// refused, the tries logged as "auto").
+type AutoPick struct {
+	Model   string `json:"model"`
+	Via     string `json:"via"`
+	Skipped string `json:"skipped,omitempty"`
+	Refused string `json:"refused,omitempty"`
+}
+
+type autoPicks struct {
+	mu   sync.Mutex
+	list []AutoPick
+}
+
+type autoPicksKey struct{}
+
+// WithAutoPicks has the Auto picks a request is sent with noted: the func
+// returns them.
+func WithAutoPicks(ctx context.Context) (context.Context, func() []AutoPick) {
+	p := &autoPicks{}
+	return context.WithValue(ctx, autoPicksKey{}, p), func() []AutoPick {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return slices.Clone(p.list)
+	}
+}
+
+// notePick notes the request is sent with a: once, while it isn't refused.
+func notePick(ctx context.Context, a copilotAutoSession) {
+	p, ok := ctx.Value(autoPicksKey{}).(*autoPicks)
+	if !ok || a.Model == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if n := len(p.list); n > 0 && p.list[n-1].Model == a.Model && p.list[n-1].Via == a.Via && p.list[n-1].Refused == "" {
+		return
+	}
+	p.list = append(p.list, AutoPick{Model: a.Model, Via: a.Via, Skipped: a.Skipped})
+	if a.Skipped != "" {
+		log.Printf("copilot auto: %s picked %s (/auto: %s)", a.Via, a.Model, a.Skipped)
+	}
+}
+
+// pickRefused notes Copilot refused the pick of model, saying said.
+func pickRefused(ctx context.Context, model, said string) {
+	p, ok := ctx.Value(autoPicksKey{}).(*autoPicks)
+	if !ok {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := len(p.list) - 1; i >= 0; i-- {
+		if p.list[i].Model == model {
+			if p.list[i].Refused == "" {
+				p.list[i].Refused = said
+				log.Printf("copilot auto: %s (%s) refused: %s", model, p.list[i].Via, said)
+			}
+			return
+		}
+	}
 }
 
 var (
@@ -98,9 +174,16 @@ func copilotAutoResolve(ctx context.Context, app copilotApp, fresh bool) (copilo
 		return copilotAutoSession{}, err
 	}
 	base := s.apiBase(app.Host)
-	if a, ok := copilotAutoRoute(ctx, app, s, base); ok {
+	a, why, answered := copilotAutoRoute(ctx, app, s, base)
+	if why == "" {
 		copilotAutoSessions[app.Token] = a
 		return a, nil
+	}
+	if answered {
+		// /auto answered with a model the account was refused: Copilot
+		// Chat asks nothing else, and /models/session names the same few
+		// models for every plan, which a Student one is refused (#256)
+		return copilotAutoFallback(ctx, app, "/auto "+why)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/models/session", strings.NewReader(`{"auto_mode":{"model_hints":["auto"]}}`))
 	if err != nil {
@@ -125,7 +208,7 @@ func copilotAutoResolve(ctx context.Context, app copilotApp, fresh bool) (copilo
 		ExpiresAt int64           `json:"expires_at"`
 	}
 	if res.StatusCode == http.StatusNotFound {
-		return copilotAutoFallback(ctx, app, APIError(b, res.Status))
+		return copilotAutoFallback(ctx, app, "/auto "+why+"; /models/session: "+APIError(b, res.Status))
 	}
 	if res.StatusCode/100 != 2 || json.Unmarshal(b, &v) != nil || v.Token == "" {
 		return copilotAutoSession{}, errors.New("Copilot Auto: " + APIError(b, res.Status))
@@ -162,30 +245,31 @@ func copilotAutoResolve(ctx context.Context, app copilotApp, fresh bool) (copilo
 	if model == "" && len(v.Available) > 0 {
 		// every model Auto offers the account was refused it: the one it
 		// may pick by hand, as when it has no Auto
-		return copilotAutoFallback(ctx, app, "every model Copilot Auto offers was refused")
+		return copilotAutoFallback(ctx, app, "/auto "+why+"; every model /models/session offers was refused")
 	}
 	if model == "" {
 		return copilotAutoSession{}, errors.New("Copilot Auto picked no model")
 	}
-	a := copilotAutoSession{Token: v.Token, Model: model, ExpiresAt: v.ExpiresAt}
+	a = copilotAutoSession{Token: v.Token, Model: model, ExpiresAt: v.ExpiresAt, Via: "/models/session", Skipped: why}
 	copilotAutoSessions[app.Token] = a
 	return a, nil
 }
 
-// copilotAutoRoute asks POST /auto for the model, as Copilot Chat does: not
-// ok when Copilot doesn't answer it (an older API, Auto v2 not offered the
-// account) or picks one the account was refused.
-func copilotAutoRoute(ctx context.Context, app copilotApp, s copilotSession, base string) (copilotAutoSession, bool) {
+// copilotAutoRoute asks POST /auto for the model, as Copilot Chat does, at
+// its default tier: why says what went wrong when Copilot doesn't answer it
+// (an older API, Auto v2 not offered the account), answered being set when
+// it did with a pick the account was refused.
+func copilotAutoRoute(ctx context.Context, app copilotApp, s copilotSession, base string) (a copilotAutoSession, why string, answered bool) {
 	prompt, _ := ctx.Value(copilotAutoPromptKey{}).(string)
 	if strings.TrimSpace(prompt) == "" {
 		prompt = "hi" // a model test, or a turn of tool results alone
 	}
-	body, _ := json.Marshal(map[string]string{"prompt": prompt})
+	body, _ := json.Marshal(map[string]string{"prompt": prompt, "tier": "balance"})
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/auto", bytes.NewReader(body))
 	if err != nil {
-		return copilotAutoSession{}, false
+		return copilotAutoSession{}, err.Error(), false
 	}
 	req.Header.Set("Authorization", "Bearer "+s.Token)
 	req.Header.Set("Content-Type", "application/json")
@@ -195,7 +279,7 @@ func copilotAutoRoute(ctx context.Context, app copilotApp, s copilotSession, bas
 	req.Header.Set("X-GitHub-Api-Version", copilotAutoV2Version)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return copilotAutoSession{}, false
+		return copilotAutoSession{}, err.Error(), false
 	}
 	defer res.Body.Close()
 	var v struct {
@@ -207,8 +291,13 @@ func copilotAutoRoute(ctx context.Context, app copilotApp, s copilotSession, bas
 		ExpiresAt int64 `json:"expires_at"`
 	}
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if res.StatusCode/100 != 2 || json.Unmarshal(b, &v) != nil || v.Token == "" || v.Selected.ID == "" || copilotRefuses(app.Token, v.Selected.ID) {
-		return copilotAutoSession{}, false
+	switch {
+	case res.StatusCode/100 != 2:
+		return copilotAutoSession{}, APIError(b, res.Status), false
+	case json.Unmarshal(b, &v) != nil || v.Token == "" || v.Selected.ID == "":
+		return copilotAutoSession{}, "picked no model: " + clipLine(string(b)), false
+	case copilotRefuses(app.Token, v.Selected.ID):
+		return copilotAutoSession{}, "picked " + v.Selected.ID + ", which the account was refused", true
 	}
 	// the pick's endpoints, which the account's list may not give
 	copilotSeenMu.Lock()
@@ -220,7 +309,7 @@ func copilotAutoRoute(ctx context.Context, app copilotApp, s copilotSession, bas
 	if v.ExpiresAt > 0 && v.ExpiresAt < exp {
 		exp = v.ExpiresAt
 	}
-	return copilotAutoSession{Token: v.Token, Model: v.Selected.ID, ExpiresAt: exp}, true
+	return copilotAutoSession{Token: v.Token, Model: v.Selected.ID, ExpiresAt: exp, Via: "/auto"}, "", true
 }
 
 // copilotAutoFallback stands in for an Auto session Copilot has none of for
@@ -241,7 +330,7 @@ func copilotAutoFallback(ctx context.Context, app copilotApp, why string) (copil
 	if len(picks) == 0 {
 		return copilotAutoSession{}, errors.New("Copilot doesn't offer Auto to this account (" + why + "), and lists no model it may pick by hand that it serves; check the plan at github.com/settings/copilot")
 	}
-	a := copilotAutoSession{Model: picks[0], ExpiresAt: time.Now().Add(10 * time.Minute).Unix()}
+	a := copilotAutoSession{Model: picks[0], ExpiresAt: time.Now().Add(10 * time.Minute).Unix(), Via: AutoFallback, Skipped: why}
 	copilotAutoSessions[app.Token] = a
 	return a, nil
 }
@@ -290,6 +379,7 @@ func copilotAutoSign(ctx context.Context, app copilotApp, req *http.Request, bod
 		if a.Token != "" {
 			req.Header.Set("Copilot-Session-Token", a.Token)
 		}
+		notePick(ctx, a)
 		return model, nil
 	}
 	// Auto's pick sent again once the account was refused it
@@ -313,6 +403,7 @@ func copilotAutoSign(ctx context.Context, app copilotApp, req *http.Request, bod
 	if a.Token != "" {
 		req.Header.Set("Copilot-Session-Token", a.Token)
 	}
+	notePick(ctx, a)
 	return a.Model, nil
 }
 

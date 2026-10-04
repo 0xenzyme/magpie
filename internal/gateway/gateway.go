@@ -1544,6 +1544,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		})
 		held := false    // answered as its vendor did a moment ago, without asking
 		var queued int64 // ms it waited for a slot of its key's or account's
+		// the models Copilot's Auto picked for it, where from, and which
+		// were refused (#256)
+		autoPicked := func() []provider.AutoPick { return nil }
 		if said, ok := verifyHeld(c.restKey()); ok && last {
 			// the account must be verified first (#152): the agent's
 			// reconnects are told so again, not sent on to a vendor that
@@ -1555,6 +1558,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// once (hw.stop), not read on until the vendor hangs up
 			ctx, stop := context.WithCancel(r.Context())
 			hw.stop = stop
+			if autoPicks(c) {
+				ctx, autoPicked = provider.WithAutoPicks(ctx)
+			}
 			// when the request last went out to the vendor, its body
 			// written: what came before is magpie's, what after the
 			// vendor's (Record.Sent)
@@ -1603,7 +1609,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			call.Error = refusedError(c.p, c.model, hw.failMsg)
 		}
 		try := Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: fixed, Fast: fast, Start: began, Done: true, Status: call.Status, Millis: time.Since(began).Milliseconds(), Error: call.Error, Queued: queued,
-			Served: call.Usage.Served}
+			Served: call.Usage.Served, Auto: autoPicked()}
 		asName := provider.SentNameOnIn(wiresOf(r.Context()), c.p.ID, accountAgent(c.p), c.model, sent)
 		try.Swapped, try.Routed = swapped(asName, call.Usage.Served), usage.GroupRouted(asName, call.Usage.Served)
 		try.TTFT, try.FirstText = hw.first.ms()

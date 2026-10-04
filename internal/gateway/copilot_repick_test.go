@@ -139,3 +139,73 @@ func TestCopilotAutoAsksAuto(t *testing.T) {
 		t.Fatalf("Copilot was asked %q", asked)
 	}
 }
+
+// #256 again (infinitr0us, v0.1.916, a Student account): the first tries
+// of copilot/auto were refused, then gpt-4.1 answered, and the route
+// logged each refused try as "auto": which model was refused, and whether
+// /auto or /models/session picked it, wasn't told. Each try now names the
+// models Auto picked for it, where from and Copilot's refusal; /auto is
+// asked at Copilot Chat's tier, and once it has answered with a model the
+// account was refused, the model it may pick by hand stands in, not
+// /models/session's, which names the same few for every plan.
+func TestCopilotAutoPicksInRoute(t *testing.T) {
+	var mu sync.Mutex
+	var asked, tiers []string
+	copilotFake(t, "gho_student256picks", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/models":
+			io.WriteString(w, copilotStudentModels)
+		case "/auto":
+			var q struct {
+				Tier string `json:"tier"`
+			}
+			json.Unmarshal(b, &q)
+			tiers = append(tiers, q.Tier)
+			io.WriteString(w, `{"session_token":"v2-tok","selected_model":{"id":"gpt-5.3-codex","supported_endpoints":["/responses"]},"expires_at":`+
+				mustString(time.Now().Add(24*time.Hour).Unix())+`}`)
+		case "/models/session":
+			asked = append(asked, "/models/session")
+			io.WriteString(w, `{"session_token":"s-tok","selected_model":"gpt-5.4-mini","available_models":["gpt-5.4-mini"],"expires_at":`+
+				mustString(time.Now().Add(time.Hour).Unix())+`}`)
+		default:
+			m := modelOf(b)
+			asked = append(asked, r.URL.Path+" "+m)
+			if m != "gpt-4.1" {
+				w.WriteHeader(400)
+				io.WriteString(w, copilotNotSupported)
+				return
+			}
+			io.WriteString(w, `{"id":"c1","model":"gpt-4.1","choices":[{"index":0,"message":{"role":"assistant","content":"hello from gpt-4.1"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":3}}`)
+		}
+	})
+	s := New()
+	code, body := postAs(t, s, "", `{"model":"copilot/auto","messages":[{"role":"user","content":"Reply with the single word: ok"}]}`)
+	if code != 200 || !strings.Contains(body, "hello from gpt-4.1") {
+		t.Fatalf("copilot/auto: %d %s", code, body)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Join(asked, "|") != "/responses gpt-5.3-codex|/chat/completions gpt-4.1" {
+		t.Errorf("Copilot was asked %q", asked)
+	}
+	if len(tiers) == 0 || tiers[0] != "balance" {
+		t.Errorf("/auto was asked at the tiers %q", tiers)
+	}
+	var picks []string
+	for _, tr := range lastRoute(s).Tries {
+		for _, p := range tr.Auto {
+			picks = append(picks, p.Model+" "+p.Via+" "+map[bool]string{true: "refused", false: "ok"}[p.Refused != ""])
+		}
+	}
+	if strings.Join(picks, "|") != "gpt-5.3-codex /auto refused|gpt-4.1 fallback ok" {
+		t.Fatalf("the route told the picks %q", picks)
+	}
+	tries := lastRoute(s).Tries
+	last := tries[len(tries)-1].Auto
+	if !strings.Contains(tries[0].Auto[0].Refused, "requested model is not supported") || !strings.Contains(last[len(last)-1].Skipped, "picked gpt-5.3-codex, which the account was refused") {
+		t.Fatalf("the picks said %+v", tries)
+	}
+}
