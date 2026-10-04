@@ -34,16 +34,16 @@ type modelJSON struct {
 	ImageSet bool     `json:"imageSet,omitempty"`  // the user said so, rather than its vendor
 	Own      bool     `json:"ownImages,omitempty"` // its vendor's answer, which a staged Restore default shows
 	On       bool     `json:"on"`                  // exposed to agents
-	Context  int      `json:"context,omitempty"` // the window agents are told: the user's, else Listed
-	Listed   int      `json:"listed,omitempty"`  // its window before the user's: its vendor's list's, else models.dev's
-	Max      int      `json:"max,omitempty"`     // the most its context may be set to, above Listed
-	Free     bool     `json:"free,omitempty"`    // costs the subscription nothing
-	Rate     float64  `json:"rate,omitempty"`    // the credits a request costs the subscription, as a multiple
-	RateWas  float64  `json:"rateWas,omitempty"` // the rate before a discount running now
-	API      string   `json:"api,omitempty"`     // the one API the user said it is asked on
-	Auto     []string `json:"auto,omitempty"`    // the APIs its vendor's list says it is served on, what Auto asks it on
-	Same     string   `json:"same,omitempty"`    // the model the user said it is the same as, for the groups magpie finds (#583)
-	Merge    string   `json:"merge,omitempty"`   // what those groups merge it by when the user says nothing
+	Context  int      `json:"context,omitempty"`   // the window agents are told: the user's, else Listed
+	Listed   int      `json:"listed,omitempty"`    // its window before the user's: its vendor's list's, else models.dev's
+	Max      int      `json:"max,omitempty"`       // the most its context may be set to, above Listed
+	Free     bool     `json:"free,omitempty"`      // costs the subscription nothing
+	Rate     float64  `json:"rate,omitempty"`      // the credits a request costs the subscription, as a multiple
+	RateWas  float64  `json:"rateWas,omitempty"`   // the rate before a discount running now
+	API      string   `json:"api,omitempty"`       // the one API the user said it is asked on
+	Auto     []string `json:"auto,omitempty"`      // the APIs its vendor's list says it is served on, what Auto asks it on
+	Same     string   `json:"same,omitempty"`      // the model the user said it is the same as, for the groups magpie finds (#583)
+	Merge    string   `json:"merge,omitempty"`     // what those groups merge it by when the user says nothing
 }
 
 type providerJSON struct {
@@ -168,6 +168,8 @@ type accountJSON struct {
 	// Builtin is a plugin's provider id, for a plugin beside a built-in
 	// subscription (cursor-plugin's cursor): its plan named as the built-in's
 	Builtin string `json:"builtin,omitempty"`
+	// WSL is the distro Claude Code runs in, for a Windows with none of its own
+	WSL string `json:"wsl,omitempty"`
 }
 
 // accountLabel is the name and logo an account is shown with: its agent's,
@@ -408,6 +410,9 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		out.Account = &accountJSON{Account: *a, Agent: a.Agent}
 		out.Account.Name, out.Account.Icon = accountLabel(p)
 		out.Account.Logins = provider.Logins(a.Agent)
+		if a.Agent == "claude" {
+			out.Account.WSL = provider.ClaudeInWSL()
+		}
 		if pp, ok := provider.PluginOf(p.ID); ok && p.IsPlugin() {
 			// a plugin's sign-in: the page follows it by the provider's id
 			out.Account.Agent, out.Account.Builtin = p.ID, pp.ID

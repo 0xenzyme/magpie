@@ -738,6 +738,7 @@ const I18N = {
     "The gateway uses this account first": "网关优先使用这个账号",
     "Routing": "路由",
     "Tick every key to use; Routing says how requests spread over them.": "勾选的密钥会同时启用；请求怎么分给它们，由下面的「路由」决定。",
+    "Runs through WSL · {distro}: Claude Code there signs in and answers; Windows has none of its own.": "经 WSL · {distro} 运行：Windows 上没有 Claude Code，登录和请求都由那里的 Claude Code 完成。",
     "Tick every account to use; Routing says how requests spread over them.": "勾选的账号会同时启用；请求怎么分给它们，由下面的「路由」决定。",
     "Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is 98% used, and back to the first once that has room again.": "经过 magpie 的请求由路由挑选账号；{agent} 自己直连时用的是它登录的账号——这个账号用到 98% 时，magpie 会把 {agent} 登录到下一个已勾选且还有余量的账号，等首选账号额度恢复后再切回去。",
     "Routing picks the account for each request through magpie; {agent} on its own uses the one it is signed in to, which magpie moves to the next ticked account with room once it is used up, and back to the first once that has room again.": "经过 magpie 的请求由路由挑选账号；{agent} 自己直连时用的是它登录的账号——这个账号额度用完时，magpie 会把 {agent} 登录到下一个已勾选且还有余量的账号，等首选账号额度恢复后再切回去。",
