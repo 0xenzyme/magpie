@@ -272,7 +272,7 @@ func (s *Server) images(edit bool) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), drawTimeout)
 		defer cancel()
 		// the account that drew, or refused last, is the one recorded
-		drew, out, code, err := s.drawOnAccounts(ctx, p, model, d)
+		drew, out, code, capBack, err := s.drawOnAccounts(ctx, p, model, d)
 		p = drew
 		call.Millis = time.Since(start).Milliseconds()
 		call.Status, call.Usage.Input, call.Usage.Output = code, out.Input, out.Output
@@ -289,6 +289,9 @@ func (s *Server) images(edit bool) http.HandlerFunc {
 		if err != nil {
 			call.Error = err.Error()
 			s.record(call)
+			if d := time.Until(capBack); d > 0 {
+				w.Header().Set("Retry-After", strconv.Itoa(int(d.Seconds())+1))
+			}
 			writeError(w, provider.Chat, code, err.Error())
 			return
 		}
@@ -523,10 +526,10 @@ func viaFor(p provider.Provider, model string) drawVia {
 // what the pinned one may not (#545). The refusal is of images alone, so
 // no account rests for text over it. It answers with the account that
 // drew, or the last one's error when every one refused.
-func (s *Server) drawOnAccounts(ctx context.Context, p provider.Provider, model string, d drawing) (provider.Provider, drawn, int, error) {
+func (s *Server) drawOnAccounts(ctx context.Context, p provider.Provider, model string, d drawing) (provider.Provider, drawn, int, time.Time, error) {
 	if p.Account == nil {
 		out, code, err := s.draw(ctx, p, model, d)
-		return p, out, code, err
+		return p, out, code, time.Time{}, err
 	}
 	q := p
 	q.Fallback = nil
@@ -541,8 +544,8 @@ func (s *Server) drawOnAccounts(ctx context.Context, p provider.Provider, model 
 	}
 	if len(cs) == 0 && slices.ContainsFunc(barred, func(c candidate) bool { return c.capped != nil }) {
 		// every account is held at its usage cap
-		msg, _ := cappedError(model, barredOf(barred, q, false, provider.Chat, nil), time.Now())
-		return p, drawn{}, http.StatusTooManyRequests, errors.New(msg)
+		msg, back := cappedError(model, barredOf(barred, q, false, provider.Chat, nil), time.Now())
+		return p, drawn{}, http.StatusTooManyRequests, back, errors.New(msg)
 	}
 	if len(cs) == 0 {
 		cs = []candidate{{p: p, model: model, rest: p.ID}}
@@ -557,7 +560,7 @@ func (s *Server) drawOnAccounts(ctx context.Context, p provider.Provider, model 
 			break
 		}
 	}
-	return p, out, code, err
+	return p, out, code, time.Time{}, err
 }
 
 // accountRefusedDrawing says a failure to draw was the account's — its
