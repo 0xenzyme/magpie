@@ -117,10 +117,12 @@ func omp(home string) *Agent {
 
 // ompIn is omp in a WSL distro (see wsl.go): ~/.omp/agent, as the
 // distro's variables that move it aren't read. The omp there isn't the one
-// on Windows' PATH, so its version isn't known, and its models offer xhigh
-// rather than a max an older omp would refuse.
+// on Windows' PATH: its version is the one the distro's probe asked it
+// (whqtian on Discord: a WSL omp's max became xhigh while its version wasn't
+// known), and without one its models offer xhigh rather than a max an older
+// omp would refuse.
 func ompIn(at place) *Agent {
-	return ompAt(at, filepath.Join(at.home, ".omp", "agent"), func() ompProviderEntry { return ompProviderAt(at.gw(), "") })
+	return ompAt(at, filepath.Join(at.home, ".omp", "agent"), func() ompProviderEntry { return ompProviderAt(at.gw(), at.version) })
 }
 
 // ompAt is omp with its agent folder at dir, magpie's entry in its
