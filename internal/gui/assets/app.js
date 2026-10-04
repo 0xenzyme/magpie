@@ -7767,6 +7767,11 @@ function chosenIds() {
   return [...draft.chosen, ...typed.filter((id) => !draft.chosen.includes(id))].filter((id, i, all) => all.indexOf(id) === i);
 }
 
+// modelsOpen: a provider editor's models let out to their full height
+// (#833), kept for the next editor opened. MCHIPS_MAX: the most the box is
+// tall held, as app.css's .mchips max-height: min(132px, 28vh) says
+let modelsOpen = false;
+const MCHIPS_MAX = 132;
 function renderModels(p) {
   // a chip's dot: how its model answered, when it has been asked
   const tested = (c, id) => {
@@ -7841,6 +7846,31 @@ function renderModels(p) {
   names.dataset.provider = p.id;
   const q = p.models.length > 24 ? input("", t("filter {n} models…", { n: p.models.length })) : null;
   let showAll = false;
+  // the chips are held to a few lines, scrolled within; a long list can be
+  // let out to its full height and folded back (#833: 模型区域像 Agent 页面
+  // 一样支持展开 / 收起), as the Agents page's Show more is. Offered only
+  // while the list is taller than those lines; kept open from one editor to
+  // the next till folded
+  const fold = el("button", "agent-more mchips-fold");
+  fold.dataset.unrolls = ""; // it goes down with the models it lets out
+  const foldLabel = el("span", "", "");
+  const foldChev = el("span", "chev");
+  foldChev.append(svg(CHEV, 10, 1.8));
+  fold.append(foldLabel, foldChev);
+  fold.onclick = (e) => { e.preventDefault(); modelsOpen = !modelsOpen; drawFold(); };
+  const drawFold = () => {
+    chips.classList.toggle("open", modelsOpen);
+    fold.setAttribute("aria-expanded", modelsOpen);
+    foldLabel.textContent = t(modelsOpen ? "Collapse the list" : "Expand the list");
+    fold.title = t(modelsOpen ? "Hold the models to a few lines again" : "Show every model at once, not in a small box to scroll");
+    // laid out first: the editor is put on the page after it is drawn.
+    // Held, the box is MCHIPS_LINES tall (app.css .mchips); open, it is as
+    // tall as its chips, which must be more than that to fold
+    requestAnimationFrame(() => {
+      const most = Math.min(MCHIPS_MAX, innerHeight * 0.28);
+      fold.hidden = !(chips.scrollHeight > (modelsOpen ? most : chips.clientHeight) + 1);
+    });
+  };
   const draw = () => {
     if (agentMenu && chips.contains(agentMenu.anchor)) closeAgentMenu();
     chips.replaceChildren();
@@ -7901,6 +7931,7 @@ function renderModels(p) {
     // models are left out of it, and an image model is set in Settings
     else if (f && !chips.children.length) chips.append(el("span", "hint", t("No model here matches “{q}”. Image, embedding and speech models aren't listed, as agents can't chat with them: pick an image model in Settings → Images.", { q: q.value.trim() })));
     drawNames();
+    drawFold();
     why.textContent = decideOnly(p) ? t("Agents never see them: a routing group picks one as its classifier.")
       : draft.unlisted ? t("Agents don't see them: only the routing groups they are in use them.")
       : t(draft.chosen.length ? "Agents see the models picked." : "None picked: agents see the vendor's list, up to {n} (dashed). Click a model to pick just it. To show them none, tick Only through routing groups, or switch the provider off.", { n: 24 });
@@ -8097,7 +8128,7 @@ function renderModels(p) {
     if (q) { q.oninput = draw; bulk.prepend(q); }
     box.append(bulk);
   }
-  box.append(chips, names);
+  box.append(chips, fold, names);
   const foot = el("div", "mfoot");
   // a model the vendor's list leaves out is added by its id (Tom on X asked
   // for this, not seeing the box alone was for it): typed, then Enter or Add
