@@ -23,7 +23,8 @@ import (
 // v4: a Codex call's input no longer holds what it wrote to the cache (#589).
 // v5: an OpenCode call keeps the effort its prompt asked for (#680).
 // v6: Codex response records and compact disk-only parser state.
-const callCacheVersion = "calls-v6"
+// v7: reconcile recent Claude message revisions.
+const callCacheVersion = "calls-v7"
 const maxKeptCalls = 131072
 const maxKeptFiles = 64
 
@@ -78,6 +79,16 @@ func pruneCalls(files []file) {
 			delete(callCounts, path)
 		}
 	}
+	order = callContinuationOrder[:0]
+	for _, path := range callContinuationOrder {
+		if on[path] {
+			order = append(order, path)
+		} else {
+			delete(callContinuations, path)
+		}
+	}
+	callContinuationOrder = order
+
 	trimCallRevisions(time.Now())
 	callsMu.Unlock()
 	if moved {
@@ -199,6 +210,12 @@ func readCalls(f file) *callFile {
 		st.ContentHash = prefixHash(f.path, f.size)
 		writeCalls(st, start, continued)
 	}
+	// Do not turn a one-time historical scan into an indefinitely retained
+	// window. Previously retained windows may survive idle time in spare slots.
+	if st.Claude != nil && (old == nil || old.Claude == nil) && !workingRevision(f.mod.UnixNano(), time.Now()) {
+		st = st.withoutRevisions()
+	}
+
 	st.dirty = nil
 	callsMu.Lock()
 	if generation == callGeneration {

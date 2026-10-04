@@ -98,6 +98,7 @@ const Limit = 200
 // state is what one file's parse has come to, enough to read on from Off.
 type state struct {
 	Codex       *codexUsageState  `json:"-"`
+	Claude      *claudeUsageState `json:"-"`
 	DBRevision  string            `json:"db_revision,omitempty"`
 	Head        string            `json:"head,omitempty"`
 	HeadSize    int               `json:"head_size,omitempty"`
@@ -256,6 +257,7 @@ func (s *state) saw(t time.Time, main bool) {
 func (s *state) clone() *state {
 	c := *s
 	c.Codex = s.Codex.clone()
+	c.Claude = s.Claude.clone()
 	c.Models = make(map[string]Tokens, len(s.Models))
 	for k, v := range s.Models {
 		c.Models[k] = v
@@ -496,7 +498,8 @@ func CachePath() string { return filepath.Join(filepath.Dir(catalog.CachePath())
 // 10: Pi's and omp's prompts, replies, tool calls and skills.
 // 11: Codex's input without what it wrote to the cache (#589).
 // 16: count Codex response records and compaction usage.
-const cacheVersion = 16
+// 17: reconcile recent Claude message revisions.
+const cacheVersion = 17
 
 type cacheFile struct {
 	Version int               `json:"version"`
@@ -619,7 +622,6 @@ func writeCache(c *save) {
 // (all of them), read by List or by Stats.
 func refresh(want, all []file) {
 	defer func() { trimSummaryRevisions(time.Now()) }()
-	trimSummaryRevisions(time.Now())
 	var todo []file
 	for _, f := range want {
 		if f.cold {
@@ -642,12 +644,17 @@ func refresh(want, all []file) {
 			}
 		}
 	}
+	trimSummaryRevisions(time.Now())
 	if len(todo) == 0 {
 		if gone {
 			saveCache()
 		}
 		return
 	}
+	// Limit cold-scan workers to the windows that can survive publication.
+	// Otherwise a batch of historical files could retain every window until
+	// the whole scan finishes.
+	windows := summaryRevisionWindows(todo, time.Now())
 	// the biggest first, so no long file is left to run on alone at the
 	// end; and twice the cores, as the reading waits on the disk
 	sort.Slice(todo, func(i, j int) bool { return todo[i].size-offOf(todo[i]) > todo[j].size-offOf(todo[j]) })
@@ -678,7 +685,7 @@ func refresh(want, all []file) {
 			for i := range ch {
 				j := &jobs[i]
 				j.parsed = parse(j.f, j.old)
-				if !recentRevision(j.parsed.Mod, j.parsed.revisionWeight(), time.Now()) {
+				if (j.parsed.Claude != nil && !windows[j.f.path]) || (j.parsed.Claude == nil && !recentRevision(j.parsed.Mod, j.parsed.revisionWeight(), time.Now())) {
 					j.parsed = j.parsed.withoutRevisions()
 				}
 				progress.files.Add(1)
@@ -939,6 +946,43 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 	return s, true
 }
 
+// parserFor is the source of truth for both parsing and window admission.
+// A default line reader is Claude-compatible, including both Qoder variants.
+type sessionParser struct {
+	whole  func(file) *state
+	line   func(*state, []byte, bool)
+	claude bool
+}
+
+func parserFor(agent string) sessionParser {
+	switch agent {
+	case "hermes":
+		return sessionParser{whole: parseHermes}
+	case "alma":
+		return sessionParser{whole: parseAlma}
+	case "opencode", "zcode":
+		return sessionParser{whole: parseOpenCode}
+	case "dsh":
+		return sessionParser{whole: parseDsh}
+	case "cline":
+		return sessionParser{whole: parseCline}
+	case "grok":
+		return sessionParser{whole: parseGrok}
+	case "droid":
+		return sessionParser{whole: parseDroid}
+	case "cursor":
+		return sessionParser{whole: parseCursor}
+	case "codex":
+		return sessionParser{line: codexBody}
+	case "pi", "omp":
+		return sessionParser{line: piParse}
+	case "workbuddy":
+		return sessionParser{line: workbuddyLine}
+	default:
+		return sessionParser{line: claudeLine, claude: true}
+	}
+}
+
 // parse reads a file on from where old left it, or from the start.
 func parse(f file, old *state) *state {
 	// Summary caches contain aggregates only. After a restart, a changed
@@ -946,25 +990,15 @@ func parse(f file, old *state) *state {
 	if f.agent == "codex" && old != nil && old.Codex == nil {
 		old = nil
 	}
-
-	switch f.agent {
-	case "hermes":
-		return parseHermes(f)
-	case "alma":
-		return parseAlma(f)
-	case "opencode", "zcode":
-		return parseOpenCode(f)
-	case "dsh":
-		return parseDsh(f)
-	case "cline":
-		return parseCline(f)
-	case "grok":
-		return parseGrok(f)
-	case "droid":
-		return parseDroid(f)
-	case "cursor":
-		return parseCursor(f)
+	parser := parserFor(f.agent)
+	if parser.whole != nil {
+		return parser.whole(f)
 	}
+	// Every source using claudeLine must rebuild a missing transient window.
+	if parser.claude && old != nil && old.Claude == nil {
+		old = nil
+	}
+
 	headBytes := headOf(f.path)
 	var s *state
 	if old != nil && !packed(f.path) && f.size >= old.Size && old.Off <= f.size && sameHead(headBytes, old.Head, old.HeadSize) && old.ContentHash != "" && prefixHash(f.path, old.Size) == old.ContentHash {
@@ -975,24 +1009,12 @@ func parse(f file, old *state) *state {
 	s.Size, s.Mod = f.size, f.mod.UnixNano()
 	s.Head, s.HeadSize = hashHead(headBytes), len(headBytes)
 	s.ContentHash = prefixHash(f.path, f.size)
-	line := claudeLine
-	switch f.agent {
-	case "codex":
-		line = codexLine
-	case "pi", "omp":
-		line = piParse
-	case "workbuddy":
-		line = workbuddyLine
-	}
 	var head func([]byte) bool
-	if f.agent == "codex" {
-		line = codexBody
-	}
 	if f.agent == "codex" {
 		head = func(b []byte) bool { return codexHead(s, b, f.main) }
 	}
 	off, err := scanAt(f.path, s.Off, head, func(b []byte, _, _ int64) bool {
-		line(s, b, f.main)
+		parser.line(s, b, f.main)
 		return true
 	})
 	if err == nil {
