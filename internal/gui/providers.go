@@ -94,6 +94,10 @@ type providerJSON struct {
 	// when they can (provider.ModelTest): the editor says so on a chip's
 	// right-click rather than offer no menu
 	ModelTest string `json:"modelTest,omitempty"`
+	// DecideTest is set when its decision models can each be sent a
+	// System One question (provider.AsksDecideModels): a mixed
+	// provider's Jev too, beside its conversation models
+	DecideTest bool `json:"decideTest,omitempty"`
 
 	Key struct {
 		Set      bool   `json:"set"`
@@ -355,7 +359,7 @@ func agentUses(agents []*agent.Agent, findGroup func(string) (provider.Group, []
 func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 	out := providerJSON{
 		ID: p.ID, Name: p.Name, Icon: p.Icon, Preset: p.Preset, Host: p.Host(),
-		Chat: p.Chat, Responses: p.Responses, Anthropic: p.Anthropic, Decide: p.Decide, ModelTest: p.ModelTest(),
+		Chat: p.Chat, Responses: p.Responses, Anthropic: p.Anthropic, Decide: p.Decide, ModelTest: p.ModelTest(), DecideTest: p.AsksDecideModels(),
 		Catalog: p.Catalog, Website: p.Website, KeysURL: p.KeysURL,
 		Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, AccountCaps: p.AccountCaps, Headers: p.Headers, Searches: p.Searches, BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, ModelsURL: p.ModelsURL,
 		Ready: p.Ready(), Chosen: p.Models, Models: []modelJSON{}, Agents: []providerAgent{},

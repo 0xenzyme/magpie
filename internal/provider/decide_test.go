@@ -313,21 +313,21 @@ func TestFetchDecideOpenAIJevIDs(t *testing.T) {
 		t.Fatalf("test %+v", r)
 	}
 
-	names, err := listedDecide([]byte(`{"models":[{"name":"jev-latest"},{"name":"other-model"}],"data":[{"id":"gemini-3"}]}`))
+	names, err := listedDecide([]byte(`{"models":[{"name":"jev-latest"},{"name":"other-model"}],"data":[{"id":"gemini-3"}]}`), false)
 	if err != nil || len(names) != 2 || names[0].ID != "jev-latest" || names[1].ID != "other-model" {
 		t.Fatalf("names %+v %v", names, err)
 	}
-	byID, err := listedDecide([]byte(`{"models":[{"id":"jev-preview"},{"id":"gemini-3"}]}`))
+	byID, err := listedDecide([]byte(`{"models":[{"id":"jev-preview"},{"id":"gemini-3"}]}`), false)
 	if err != nil || len(byID) != 1 || byID[0].ID != "jev-preview" {
 		t.Fatalf("id %+v %v", byID, err)
 	}
-	if ms, err := listedDecide([]byte(`{"data":[{"id":"gemini-3.8-flash"}]}`)); err != nil || len(ms) != 0 {
+	if ms, err := listedDecide([]byte(`{"data":[{"id":"gemini-3.8-flash"}]}`), false); err != nil || len(ms) != 0 {
 		t.Fatalf("unrelated %+v %v", ms, err)
 	}
-	if _, err := listedDecide([]byte(`<html>`)); err == nil || err.Error() != "not a model list" {
+	if _, err := listedDecide([]byte(`<html>`), false); err == nil || err.Error() != "not a model list" {
 		t.Fatal(err)
 	}
-	if ms, err := listedDecide([]byte(`{"data":[{"id":"jevons"},{"id":"foo/jevx"}]}`)); err != nil || len(ms) != 0 {
+	if ms, err := listedDecide([]byte(`{"data":[{"id":"jevons"},{"id":"foo/jevx"}]}`), false); err != nil || len(ms) != 0 {
 		t.Fatalf("jevons %+v %v", ms, err)
 	}
 }

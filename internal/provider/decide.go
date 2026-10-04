@@ -486,11 +486,18 @@ func (p Provider) fetchDecide(ctx context.Context) ([]catalog.Model, error) {
 		}
 		return p.decideModels(), nil
 	}
-	// Bailian lists its chat models only: its decision model is asked
-	if bailianDecides(p.Decide) {
+	// the list where the user said its models are, asked as given, query
+	// and all (ARNO on Discord: OpenRouter's decision models are at
+	// …/models?output_modalities=decisions; its /models lists chat models
+	// only, and only Jev's of those were kept): every model in it is one
+	list, all := p.Decide+"/models", false
+	if u := strings.TrimSpace(p.ModelsURL); u != "" && p.DecideOnly() {
+		list, all = u, true
+	} else if bailianDecides(p.Decide) {
+		// Bailian lists its chat models only: its decision model is asked
 		return p.decideAsked(ctx)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.Decide+"/models", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, list, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -512,7 +519,7 @@ func (p Provider) fetchDecide(ctx context.Context) ([]catalog.Model, error) {
 		}
 		return nil, fmt.Errorf("%s: %s", p.Name, APIError(b, res.Status))
 	}
-	ms, err := listedDecide(b)
+	ms, err := listedDecide(b, all)
 	if (err != nil || len(ms) == 0) && own {
 		return p.decideAsked(ctx)
 	}
@@ -585,8 +592,9 @@ func (p Provider) AskSystemOne(ctx context.Context, model string) error {
 // {"models":[{"name":…}]}. A gateway in front of Jev often answers
 // OpenAI's instead, {"data":[{"id":…}]}, and that list is every model
 // it serves, so an id counts only when it is Jev's: "jev…" or "…/jev…".
-// Names, when the list has any, are kept as they are.
-func listedDecide(b []byte) ([]catalog.Model, error) {
+// Names, when the list has any, are kept as they are. With all, every id
+// counts: a list the user pointed at is of decision models already.
+func listedDecide(b []byte, all bool) ([]catalog.Model, error) {
 	var out struct {
 		Models []struct {
 			Name string `json:"name"`
@@ -610,7 +618,7 @@ func listedDecide(b []byte) ([]catalog.Model, error) {
 	}
 	seen := map[string]bool{}
 	take := func(id string) {
-		if id == "" || seen[id] || !jevID(id) {
+		if id == "" || seen[id] || !all && !jevID(id) {
 			return
 		}
 		seen[id] = true
