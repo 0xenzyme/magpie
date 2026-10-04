@@ -224,14 +224,18 @@ func targetOf(a *agent.Agent) *Target {
 		t.Skills = filepath.Join(a.Dir, "skills")
 	case "grok":
 		// Grok Build reads [mcp_servers.<name>] from its config.toml, as
-		// `grok mcp add` writes them
+		// `grok mcp add` writes them; its user-wide instructions are
+		// $GROK_HOME/AGENTS.md, loaded before a project's own
 		t.MCP = &mcpFile{Path: a.Path, Format: fmtGrok}
+		t.Instructions = filepath.Join(a.Dir, "AGENTS.md")
 		t.Skills = filepath.Join(a.Dir, "skills")
 	case "droid":
 		// Droid's user-wide servers are ~/.factory/mcp.json's mcpServers,
 		// type stdio, http or sse as Claude Code's (docs.factory.ai/cli/
-		// configuration/mcp)
+		// configuration/mcp); its personal instructions are ~/.factory/
+		// AGENTS.md, which project files override (cli/configuration/agents-md)
 		t.MCP = &mcpFile{Path: filepath.Join(a.Dir, "mcp.json"), Format: fmtClaude}
+		t.Instructions = filepath.Join(a.Dir, "AGENTS.md")
 		t.Skills = filepath.Join(a.Dir, "skills")
 	case "qoder", "qoder-cn":
 		// Qoder's user-wide servers are its settings.json's mcpServers
