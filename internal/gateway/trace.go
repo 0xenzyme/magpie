@@ -30,6 +30,8 @@ type Route struct {
 	Agent         string       `json:"agent"`
 	ParentSession string       `json:"parentSession,omitempty"` // title helper's explicit originating chat; does not affect routing
 	Session       string       `json:"session,omitempty"`       // the client's session id, never inferred from its model or account
+	TitleLink     *TitleLink   `json:"titleLink,omitempty"`     // digests only; display evidence, never account affinity
+	ParentMatched bool         `json:"parentMatched,omitempty"` // parent inferred for this view, not supplied by Codex
 	Usage         []RouteUsage `json:"usage,omitempty"`         // token tiers of billable tries; priced when read
 	Kind          string       `json:"kind,omitempty"`          // what the call is for, as Call's
 	For           *CallFor     `json:"for,omitempty"`           // the request it was made for, as Call's

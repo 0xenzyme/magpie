@@ -44,6 +44,14 @@ func codexTitlesTo(h http.Header, body []byte, ours bool) string {
 // reply it relayed before it records the call: the reason it fails its
 // caller although the vendor answered, or "".
 type titleCheckKey struct{}
+type titleShapeKey struct{}
+
+// replyTitleShape is the exact schema used by the title wrapper, or nil for a
+// native reply. Inference must fingerprint the title the caller actually gets.
+func replyTitleShape(ctx context.Context) *titleShape {
+	shape, _ := ctx.Value(titleShapeKey{}).(*titleShape)
+	return shape
+}
 
 // replyCheck is the check a request's context holds for serve, if any.
 func replyCheck(ctx context.Context) func(reply string) string {
@@ -71,7 +79,9 @@ func (s *Server) codexTitle(w http.ResponseWriter, r *http.Request, body []byte,
 		}
 		return ""
 	}
-	s.serve(rec, r.WithContext(context.WithValue(r.Context(), titleCheckKey{}, check)), provider.Responses, withModel(body, to))
+	ctx := context.WithValue(r.Context(), titleCheckKey{}, check)
+	ctx = context.WithValue(ctx, titleShapeKey{}, &shape)
+	s.serve(rec, r.WithContext(ctx), provider.Responses, withModel(body, to))
 	if rec.status >= 400 {
 		for k, vs := range rec.header {
 			w.Header()[k] = vs

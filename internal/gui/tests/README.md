@@ -1643,3 +1643,13 @@ compare the same completed API state rather than a loading-order difference.
 ```sh
 node --test internal/gui/tests/mobile-web.test.cjs internal/gui/tests/old-webkit.test.cjs
 ```
+
+## Automatic Codex title grouping
+
+`routing-sessions.test.cjs` checks automatic grouping after a Codex title write,
+conflict revocation, costs and folds, plus name refresh on large history days.
+It uses isolated API fixtures in English and Chinese on Chromium and WebKit.
+
+```sh
+node --test internal/gui/tests/routing-sessions.test.cjs
+```

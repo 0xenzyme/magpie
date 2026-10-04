@@ -2299,6 +2299,7 @@ const I18N = {
     "Background memory task": "后台记忆整理",
     "Codex is organizing memories from earlier chats in the background. This can continue after a chat finishes.": "Codex 正在后台整理历史聊天中的记忆，回答结束后也可能继续运行。",
     "Title": "标题",
+    "Title requests were automatically matched using the prompt and the applied chat title.": "标题请求根据提问内容和实际应用的聊天标题自动关联。",
     "Subagent": "子代理",
     "This subagent task is encrypted. Only ChatGPT accounts can read it; other providers (such as Claude) are excluded regardless of quota.": "子代理任务已加密，只能使用 ChatGPT 账号；其他供应商（如 Claude）不参与选择，无论剩余多少额度。",
     "This subagent task is encrypted. Only ChatGPT accounts can read it.": "子代理任务已加密，只能使用 ChatGPT 账号。",

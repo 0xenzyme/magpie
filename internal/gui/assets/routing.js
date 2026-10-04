@@ -1332,17 +1332,39 @@
   let namesBusy = false;
   async function refreshSessionNames() {
     if (namesBusy || !shown()) return;
-    const rs = listed(), ids = [...new Set(rs.filter((r) => r.agent === "codex").map(groupSession).filter(Boolean))];
-    if (!ids.length) return;
+    const rs = listed().filter((r) => r.agent === "codex"), sourceDay = day, routeIDs = new Set(rs.map((r) => r.id));
+    if (!rs.some(groupSession)) return;
     namesBusy = true;
     try {
-      const res = await fetch("/api/gateway/session-titles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
-      if (!res.ok) return;
-      const names = await res.json();
+      const result = { names: {}, parents: {}, matched: {}, resetInferred: false };
+      // A full history day plus an individually opened older request can exceed
+      // the API's 2,000-row limit. Only Codex rows need names or associations.
+      for (let i = 0; i < rs.length; i += 2000) {
+        const batch = rs.slice(i, i + 2000), ids = [...new Set(batch.map(groupSession).filter(Boolean))];
+        const res = await fetch("/api/gateway/session-titles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids, groups: true, routeIds: batch.map((r) => r.id), day: sourceDay }) });
+        if (!res.ok) return;
+        const part = await res.json();
+        if (day !== sourceDay) return;
+        Object.assign(result.names, part.names || part);
+        Object.assign(result.parents, part.parents);
+        Object.assign(result.matched, part.matched);
+        result.resetInferred ||= !!part.resetInferred;
+      }
+      const names = result.names;
+      if (day !== sourceDay) return;
       let changed = false;
       for (const r of listed()) {
+        if (r.agent !== "codex" || !routeIDs.has(r.id)) continue;
+        if (result.resetInferred && r.parentMatched) {
+          r.parentSession = ""; r.parentMatched = false; changed = true;
+        }
+        if (result.parents && Object.hasOwn(result.parents, r.id)) {
+          const parent = result.parents[r.id] || "", matched = !!result.matched?.[r.id];
+          if ((r.parentSession || "") !== parent || !!r.parentMatched !== matched) {
+            r.parentSession = parent; r.parentMatched = matched; changed = true;
+          }
+        }
         const id = groupSession(r);
-        if (r.agent !== "codex" || !ids.includes(id)) continue;
         const name = typeof names[id] === "string" ? names[id] : "";
         if ((r.sessionTitle || "") !== name) { r.sessionTitle = name; changed = true; }
       }
@@ -1391,7 +1413,8 @@
       const memory = g.r.agent === "codex" && g.rows.every((r) => ["memory_consolidation", "memgen", "memory"].includes(r.kind));
       const name = g.rows.find((r) => r.sessionTitle)?.sessionTitle || (memory ? t("Background memory task") : "");
       setText(x.name, g.key ? agentName(g.r.agent) + " · " + (name || groupSession(g.r)) : t("No session ID"));
-      const purpose = memory ? t("Codex is organizing memories from earlier chats in the background. This can continue after a chat finishes.") + "\n" : "";
+      const purpose = memory ? t("Codex is organizing memories from earlier chats in the background. This can continue after a chat finishes.") + "\n"
+        : g.rows.some((r) => r.parentMatched) ? t("Title requests were automatically matched using the prompt and the applied chat title.") + "\n" : "";
       x.name.title = g.key ? (name ? name + "\n" : "") + purpose + t("Session id") + ": " + groupSession(g.r) : t("These requests did not provide a session ID; they are not treated as one conversation.");
       const bits = [t(g.rows.length === 1 ? "{n} request" : "{n} requests", { n: g.rows.length }), t("{n} tokens", { n: tokens(total.tokens) })];
       if (total.running) bits.push(t("{n} in progress", { n: total.running }));
