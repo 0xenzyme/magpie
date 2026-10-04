@@ -1898,7 +1898,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// filter refused) rests, so the retry goes to another member. A
 			// reply the agent stopped itself is booked as before
 			try.Fail = failureOf(c, call.Status, []byte(call.Error))
-			unanswered(stuck, c)
+			// a compaction a rule sent to a model of its own isn't a turn of
+			// the conversation: it leaves the stick where it was when it
+			// answers (below), and breaking off mid-reply forgets nothing
+			// either (#776's follow-up)
+			if hit == nil || !hit.Compact {
+				unanswered(stuck, c)
+			}
 			if lateRests(call.Error) {
 				rest := s.restAfter(c, call.Status, hw.header, []byte(call.Error))
 				try.Fail, try.Rest = rest.Why, &rest
