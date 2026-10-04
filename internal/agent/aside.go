@@ -61,7 +61,7 @@ func asideIn(at place) *Agent {
 		return nil
 	}
 	a := &Agent{
-		ID: "aside", Name: "Aside", Icon: "aside", Bin: "aside", Path: path,
+		ID: "aside", Name: "Aside", Icon: "aside", Bin: "aside", Path: path, Spelled: prefixed,
 		// ~/.aside, the folder the installer makes, and not the account's:
 		// ~/.aside/u/0 only appears once someone has signed in, so an Aside
 		// that is installed and not yet used is not detected by it, and the

@@ -218,7 +218,7 @@ func magpieValue(a *Agent, f Field, v string, vals map[string]string) bool {
 		return false
 	}
 	v, _, one := a.split(v)
-	if !one || a.Prefixed != "" && !strings.HasPrefix(v, a.Prefixed) {
+	if !one || a.Spelled != nil && !a.Spelled(v) {
 		return false
 	}
 	if isMagpie(v) {

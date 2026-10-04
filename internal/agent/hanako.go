@@ -93,7 +93,7 @@ func hanako(home string) *Agent {
 		Dir: dir, Path: path,
 		// its own providers' models are provider/id as magpie's are: one
 		// is magpie's only on magpie's provider
-		Prefixed: magpieID + "/",
+		Spelled: prefixed,
 		Sync: func() error {
 			cur, ok := hanakoCurrent(dir)
 			if !ok || hanakoSame(cur, hanakoProvider()) {
