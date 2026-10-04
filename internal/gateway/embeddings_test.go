@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -159,5 +160,58 @@ func TestRetrievalRedacts(t *testing.T) {
 	}
 	if sent := l.got("/v1/rerank"); len(sent) != 1 || strings.Contains(sent[0], secret) {
 		t.Fatalf("vendor was sent %v", sent)
+	}
+}
+
+// #773: a routing group's members are tried in turn for embeddings and
+// rerank as for a chat: one out of quota (429) or one without the API
+// (404) passes the request to the next, and when all fail the last one's
+// refusal comes back with those tried first.
+func TestRetrievalGroupFailsOver(t *testing.T) {
+	s, l := shelved(t)
+	var asked []string
+	var mu sync.Mutex
+	broke := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		asked = append(asked, r.URL.Path)
+		mu.Unlock()
+		if r.URL.Path == "/v1/rerank" {
+			w.WriteHeader(404) // a chat vendor: no rerank
+			io.WriteString(w, `<!DOCTYPE html>`)
+			return
+		}
+		w.WriteHeader(429)
+		io.WriteString(w, `{"error":{"message":"free-models-per-day"}}`)
+	}))
+	t.Cleanup(broke.Close)
+	if err := provider.Save(provider.Provider{ID: "free", Name: "Free", Chat: broke.URL + "/v1", Key: "k", Models: []string{"embed-1:free", "rerank-1:free"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range []provider.Group{
+		{ID: "emb", Name: "emb", Members: []string{"free/embed-1:free", "lib/embed-1"}, Routing: "order"},
+		{ID: "rr", Name: "rr", Members: []string{"free/rerank-1:free", "lib/rerank-1"}, Routing: "order"},
+		{ID: "dead", Name: "dead", Members: []string{"free/embed-1:free"}, Routing: "order"},
+	} {
+		if err := provider.SaveGroup(g); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code, raw := postRetrieval(t, s, "/v1/embeddings", `{"model":"group/emb","input":"hi"}`); code != 200 || !strings.Contains(raw, `"embedding":[0.1,-0.2]`) {
+		t.Fatalf("embeddings: %d %s", code, raw)
+	}
+	if sent := l.got("/v1/embeddings"); len(sent) != 1 || !strings.Contains(sent[0], `"model":"embed-1"`) {
+		t.Fatalf("lib was sent %v", sent)
+	}
+	if code, raw := postRetrieval(t, s, "/v1/rerank", `{"model":"group/rr","query":"q","documents":["a","b"]}`); code != 200 || !strings.Contains(raw, `"relevance_score":0.9`) {
+		t.Fatalf("rerank: %d %s", code, raw)
+	}
+	mu.Lock()
+	got := slices.Clone(asked)
+	mu.Unlock()
+	if !slices.Equal(got, []string{"/v1/embeddings", "/v1/rerank"}) {
+		t.Fatalf("the failing member was asked %v", got)
+	}
+	if code, raw := postRetrieval(t, s, "/v1/embeddings", `{"model":"group/dead","input":"hi"}`); code != 429 || !strings.Contains(raw, "free-models-per-day") {
+		t.Fatalf("all failing: %d %s", code, raw)
 	}
 }
