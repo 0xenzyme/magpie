@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/yetone/magpie/internal/settings"
 )
 
 // A request that only reads builds the catalog once for all its look-ups
@@ -37,6 +39,31 @@ func TestHoldBuildsOnce(t *testing.T) {
 	}
 	if held.holds != 0 {
 		t.Fatalf("holds left: %d", held.holds)
+	}
+}
+
+// The settings are read once while a request holds the catalog (a look at
+// the agents read settings.json for every model of every agent), and a
+// setting saved meanwhile is seen at once.
+func TestHoldReadsSettingsOnce(t *testing.T) {
+	defer Hold()()
+	if _, ok := VisibleTo("held-agent"); ok {
+		t.Fatal("a visibility before any was set")
+	}
+	// written by something else: the held read stands
+	path := settings.Path()
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	os.WriteFile(path, []byte(`{"visible":{"held-agent":["a"]}}`), 0o600)
+	if _, ok := VisibleTo("held-agent"); ok {
+		t.Fatal("settings.json read again while held")
+	}
+	s := settings.Load()
+	s.Visible = map[string][]string{"held-agent": {"b"}}
+	if err := settings.Save(s); err != nil {
+		t.Fatal(err)
+	}
+	if names, ok := VisibleTo("held-agent"); !ok || len(names) != 1 || names[0] != "b" {
+		t.Fatalf("a setting saved while held: %v %v", names, ok)
 	}
 }
 

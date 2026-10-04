@@ -25,6 +25,7 @@ import (
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/edit"
+	"github.com/yetone/magpie/internal/filememo"
 	"github.com/yetone/magpie/internal/redact"
 	"github.com/yetone/magpie/internal/steady"
 )
@@ -591,7 +592,10 @@ func Load() Settings {
 	fileMu.RLock()
 	defer fileMu.RUnlock()
 	var s Settings
-	if b, err := steady.ReadFile(Path()); err == nil {
+	// read again only once the file changed: a look at the agents asks for
+	// the settings for every model of every agent (hundreds of reads, a
+	// fifth of the Agents page's wait)
+	if b, err := filememo.Read("settings", Path(), func(b []byte) ([]byte, error) { return b, nil }); err == nil {
 		_ = json.Unmarshal(bytes.TrimPrefix(b, []byte("\xef\xbb\xbf")), &s)
 	}
 	return s.normal()
@@ -740,7 +744,14 @@ func Save(s Settings) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return edit.WriteAtomic(Path(), append(b, '\n'))
+	if err := edit.WriteAtomic(Path(), append(b, '\n')); err != nil {
+		return err
+	}
+	// a request holding the catalog holds the settings too: it sees these
+	if catalog.Forget != nil {
+		catalog.Forget()
+	}
+	return nil
 }
 
 func (s Settings) normal() Settings {
