@@ -124,6 +124,9 @@ func (s *usageSniffer) parse(b []byte) {
 			s.u.ErrType = provider.ErrorType(body)
 		}
 	}
+	if up := upstreamOf(b); up != "" {
+		s.u.Upstream = up
+	}
 	switch s.proto {
 	case provider.Gemini:
 		// Factory's generateContent chunks, the same usageMetadata Code

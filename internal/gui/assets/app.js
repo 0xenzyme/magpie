@@ -12924,6 +12924,8 @@ function ledDetail(r, cols) {
   if (ledRowSpeed(r)) add("Speed", t("{n} tok/s", { n: ledNum(Math.round(ledRowSpeed(r))) }));
   add("Request ID", r.rid);
   add("Endpoint", r.ep);
+  // the provider an aggregator (OpenRouter …) said answered behind it
+  add("Upstream provider", r.upstream);
   add("Session ID", r.session);
   // a call that isn't a turn of the conversation says what it was for, as
   // the agent named it: a subagent's, a title, an approval check… — a

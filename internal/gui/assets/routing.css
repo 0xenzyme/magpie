@@ -197,6 +197,9 @@
 .rt-req .to .swap { flex: none; max-width: 70%; }
 .rt-req .to .routed, .pr-to .routed { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; line-height: 16px; color: var(--muted); white-space: nowrap; }
 .rt-steps li.swap::before { background: var(--amber); }
+/* short of room, where it went gives way down to the provider's name, then this does */
+.rt-req .to:has(.upstream) .said { min-width: min(10em, 45%); }
+.rt-req .to .upstream, .pr-to .upstream { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; line-height: 16px; color: var(--muted); white-space: nowrap; }
 .rt-req .meta { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
 .rt-req .meta .cost { display: inline-block; margin-left: 10px; color: var(--fg-2); }
 .rt-session { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; padding: 9px 8px; margin-top: 4px; font: inherit; font-size: 12px; text-align: left; color: var(--fg-2); background: var(--card-2); border: 1px solid var(--line); border-radius: 8px; }

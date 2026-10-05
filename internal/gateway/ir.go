@@ -200,6 +200,9 @@ type Usage struct {
 	// Served: the model the vendor's reply says answered, when it named
 	// one — which may not be the one it was asked for
 	Served string `json:"served,omitempty"`
+	// Upstream: the provider an aggregator says answered behind it
+	// (OpenRouter's "provider": DeepInfra, Novita …), when it says one
+	Upstream string `json:"upstream,omitempty"`
 	// RequestID: the id the vendor gave the request, from its reply's
 	// headers (Claude Code's own for a subscription); ErrType: what a
 	// failed request's error body called the error
@@ -234,6 +237,9 @@ func (u *Usage) add(v Usage) {
 	}
 	if v.Served != "" {
 		u.Served = v.Served
+	}
+	if v.Upstream != "" {
+		u.Upstream = v.Upstream
 	}
 	if v.RequestID != "" {
 		u.RequestID = v.RequestID

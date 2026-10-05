@@ -51,8 +51,11 @@ type Record struct {
 	// routing group, provider/model…), and Served the model the vendor's
 	// reply says answered, when it named one: a ledger to set beside the
 	// vendor's own bill. Neither is in a record written before they were.
-	Requested  string `json:"req,omitempty"`
-	Served     string `json:"served,omitempty"`
+	Requested string `json:"req,omitempty"`
+	Served    string `json:"served,omitempty"`
+	// Upstream: the provider an aggregator (OpenRouter …) said answered
+	// behind it — DeepInfra, Novita — when its reply named one
+	Upstream   string `json:"upstream,omitempty"`
 	Input      int    `json:"in"`
 	Output     int    `json:"out"`
 	CacheRead  int    `json:"cache_read,omitempty"`

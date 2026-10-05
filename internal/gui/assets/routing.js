@@ -1187,6 +1187,7 @@
       if (tr.done && tryOk(tr) && tr.swapped) items.push([swapWhy(tr), "swap", tr]);
       // another magpie's routing group named the member it routed to
       else if (tr.done && tryOk(tr) && tr.routed) items.push([routedWhy(tr), "aside", tr]);
+      if (tr.done && tryOk(tr) && tr.upstream) items.push([upstreamWhy(tr), "aside upstream-said", tr]);
     });
     if (r.done && !r.tries.length) items.push([t("Nothing was tried: {error}", { error: r.error || r.status }), "bad"]);
     const key = JSON.stringify([r.kind, items.map(([s, c, tr]) => [s, c, tr?.model, tr?.served]), r.order.map(logoOf)]);
@@ -1289,6 +1290,14 @@
   }
   const routedWhy = (tr) => t("{sent} is a routing group of the remote magpie, and it routed the request to {served}: the group picking one of its models, not the vendor swapping the model.", { sent: tr.model, served: tr.served });
   window.routedWhy = routedWhy;
+  // the provider an aggregator (OpenRouter …) said answered behind it:
+  // DeepInfra, Novita… (leslie_luo on Discord)
+  function upstreamTag(tr) {
+    const k = el("span", "upstream", t("Upstream: {upstream}", { upstream: tr.upstream }));
+    k.title = upstreamWhy(tr);
+    return k;
+  }
+  const upstreamWhy = (tr) => t("The aggregator passed the request on to {upstream}, as its reply says: the provider that actually answered it.", { upstream: tr.upstream });
   function kindWhy(r) {
     const agent = agentName(r.agent);
     if (KIND[r.kind] === "Subagent") return r.group
@@ -1562,7 +1571,7 @@
       // all the row says, and its titles
       const title = reqTitle(r, how, tr);
       const sig = JSON.stringify([lang, said, how, title, r.time, r.agent, agentName(r.agent), ag?.icon, r.model, r.provider, r.kind, r.effort,
-        tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tryOk(tr) ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tryOk(tr) ? tr.served : 0, meta, routeCost(r)]);
+        tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tryOk(tr) ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tryOk(tr) ? tr.served : 0, tr?.done && tryOk(tr) ? tr.upstream : 0, meta, routeCost(r)]);
       ids.add(r.id);
       let x = reqRows.get(r.id);
       if (!x || x.sig !== sig) {
@@ -1623,6 +1632,7 @@
     }
     if (tr?.swapped && tr.done && tryOk(tr)) to.append(swapTag(tr, true)); // beside the model asked for
     else if (tr?.routed && tr.done && tryOk(tr)) to.append(routedTag(tr));
+    if (tr?.upstream && tr.done && tryOk(tr)) to.append(upstreamTag(tr));
     const info = el("span", "meta");
     info.append(el("span", "", meta.join(" · ")), el("span", "cost", routeCost(r)));
     info.lastChild.title = r.priced ? costNote() : t("No known price or token counts for this request");
@@ -3652,6 +3662,7 @@
       if (model) to.append(el("span", "pr-m", model));
       if (tr?.swapped && tr.done) to.append(swapTag(tr, true));
       else if (tr?.routed && tr.done) to.append(routedTag(tr));
+      if (tr?.upstream && tr.done) to.append(upstreamTag(tr));
     }
     const meta = [];
     if (r.tries.length > 1) meta.push(t("{n} tries", { n: r.tries.length }));

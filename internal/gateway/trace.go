@@ -67,6 +67,8 @@ type Route struct {
 	Served  string `json:"served,omitempty"`
 	Swapped bool   `json:"swapped,omitempty"`
 	Routed  bool   `json:"routed,omitempty"`
+	// Upstream: the provider an aggregator said answered behind it
+	Upstream string `json:"upstream,omitempty"`
 }
 
 // RouteUsage is one billable attempt's pricing inputs, kept in routing history.
@@ -235,10 +237,13 @@ type Try struct {
 	Served  string `json:"served,omitempty"`
 	Swapped bool   `json:"swapped,omitempty"`
 	Routed  bool   `json:"routed,omitempty"`
-	Fail    string `json:"fail,omitempty"` // why it failed, as rest tells it
-	Error   string `json:"error,omitempty"`
-	Rest    *Rest  `json:"rest,omitempty"`  // how long it now sits out; none when it was the last to try
-	Again   int64  `json:"again,omitempty"` // ms waited before it was tried again, the last one left
+	// Upstream: the provider an aggregator said answered behind it
+	// (OpenRouter's DeepInfra, Novita …)
+	Upstream string `json:"upstream,omitempty"`
+	Fail     string `json:"fail,omitempty"` // why it failed, as rest tells it
+	Error    string `json:"error,omitempty"`
+	Rest     *Rest  `json:"rest,omitempty"`  // how long it now sits out; none when it was the last to try
+	Again    int64  `json:"again,omitempty"` // ms waited before it was tried again, the last one left
 	// Queued: ms it waited for one of its key's or account's slots, the
 	// provider's MaxConcurrency out already (concurrency.go)
 	Queued int64 `json:"queued,omitempty"`
