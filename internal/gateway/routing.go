@@ -332,6 +332,10 @@ func (s *Server) restAfterMarked(c candidate, status int, header http.Header, bo
 	now := time.Now()
 	d := fallbackCooldown
 	why := failureOf(c, status, body)
+	// read before the allowance is asked again below: out of a pool that
+	// counts some models only, the account's others are still in theirs
+	// (Cursor's Auto with Other Models used up)
+	pooled := why == failQuota && c.pooled(now)
 	r := Rest{Why: why, Status: status, By: "cooldown"}
 	if why == failProxy {
 		// the account is as good as it was; the proxy is the user's to start
@@ -400,6 +404,9 @@ func (s *Server) restAfterMarked(c candidate, status int, header http.Header, bo
 	// OpenRouter identifies a provider's shared pool separately from its
 	// account-wide free-tier limit. Only the former leaves sibling models ready.
 	if why == failRate && c.isOpenRouterFree() && sharedPool {
+		id = c.restID()
+	}
+	if pooled {
 		id = c.restID()
 	}
 	r.Key = id
