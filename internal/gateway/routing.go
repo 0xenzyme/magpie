@@ -151,6 +151,10 @@ const (
 	// failShape: the vendor couldn't read the request's shape (#350) — the
 	// next one is asked, and nobody rests
 	failShape = "shape"
+	// failPrompt: the vendor turns away the agent's system prompt, as
+	// WorkBuddy's "unapproved channel" does Claude Code's — the next one is
+	// asked, its own mates last, and nobody rests
+	failPrompt = "prompt"
 	// failEffort: the account's plan doesn't take the reasoning level
 	// asked for (#520) — another account is asked, and nobody rests
 	failEffort = "effort"

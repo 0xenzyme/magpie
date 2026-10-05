@@ -639,6 +639,12 @@ var unservedWords = regexp.MustCompile(`(?i)model.{0,80}(not (supported|accessib
 // refusal of the provider, not of the request, another member may serve.
 var refusedWords = regexp.MustCompile(`(?i)unapproved channel|illegal api invocation`)
 
+// promptRefused says a vendor answered with that refusal: the agent's
+// prompt, not the account, is at fault.
+func promptRefused(status int, body []byte) bool {
+	return status >= 400 && refusedWords.Match(body)
+}
+
 // shapeWords are how a vendor says it can't read the request's shape — an
 // item, field or parameter it doesn't know, which another vendor's API may
 // take: xAI's 422 "Failed to deserialize the JSON body …: unknown item type"

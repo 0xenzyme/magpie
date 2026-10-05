@@ -191,7 +191,7 @@
   // (WorkBuddy's credits, #659): "355 / 500 credits · 71% used"
   const quota = (w, used, left, vars) => (w.limit > 0 ? quotaCount(w) + " · " : "") + t(quotaLeft ? left : used, { n: pct(share(w)), ...vars });
   const fill = (w) => Math.max(0, Math.min(100, share(w))) + "%";
-  const FAIL = { rate: "rate limited", credit: "out of credit", quota: "quota used up", other: "failed", auth: "sign-in required", canceled: "canceled", foreign: "another account's reasoning", floor: "reply too short", verify: "needs verification", refused: "refused (safety filter)", shape: "request not understood", proxy: "proxy not reachable", effort: "reasoning effort not in its plan", overflow: "too long for its model", slow: "slow to start" };
+  const FAIL = { rate: "rate limited", credit: "out of credit", quota: "quota used up", other: "failed", auth: "sign-in required", canceled: "canceled", foreign: "another account's reasoning", floor: "reply too short", verify: "needs verification", refused: "refused (safety filter)", shape: "request not understood", proxy: "proxy not reachable", effort: "reasoning effort not in its plan", overflow: "too long for its model", slow: "slow to start", prompt: "agent's prompt turned away" };
   const failWord = (why) => t(FAIL[why] || "failed");
   // a try that answered: one whose reply broke off after it began (its 200
   // sent, then the vendor's error, #733) didn't, and has a fail
@@ -550,7 +550,8 @@
   // a try in words, and how its reasoning came to differ from the agent's
   function tryWhy(r, i) {
     const tr = r.tries[i], said = trySaid(r, i);
-    if (!tr.effort || !r.effort || r.effort === tr.effort) return said;
+    // a prompt turned away is turned away at every level: the level is no part of it
+    if (!tr.effort || !r.effort || r.effort === tr.effort || tr.fail === "prompt") return said;
     const agent = agentName(r.agent);
     return said + (/[。！？]$/.test(said) ? "" : " ") + (tr.fixed
       ? t("The group fixes this model at {fixed} reasoning, in place of the {asked} {agent} asked for.", { fixed: tr.fixed, asked: r.effort, agent })
@@ -575,7 +576,7 @@
     let name = w ? `${who(w)} (${w.model})` : tr.id;
     // Copilot's Auto: the model it picked last, which this try went as
     if (w && tr.auto?.length) name = `${who(w)} (${w.model} → ${tr.auto[tr.auto.length - 1].model})`;
-    if (tr.effort) name += " " + t("at {level} reasoning", { level: tr.effort });
+    if (tr.effort && tr.fail !== "prompt") name += " " + t("at {level} reasoning", { level: tr.effort });
     if (!tr.done) return t("{who} is answering…", { who: name });
     // a Codex reset spent by itself: with Codex's own sign-in the one try
     // it was spent for is the one that then answered
@@ -616,6 +617,10 @@
       return r.tries[i + 1]
         ? t("{who}'s safety filter refused the request before saying anything, so it goes on to the next before any of the reply reaches {agent}. Nothing is wrong with {who}, so it doesn't rest.", { who: name, agent })
         : t("{who}'s safety filter refused the request before saying anything, and nobody is left to try, so {agent} gets an error saying so, not an empty reply to ask again for.", { who: name, agent });
+    if (tr.fail === "prompt")
+      return r.tries[i + 1]
+        ? t("{who} answered {status}: the vendor turns away {agent}'s system prompt whichever account it goes to, so it goes on to the next before any of the reply reaches {agent}. Nothing is wrong with {who}, so it doesn't rest.", { who: name, status: tr.status, agent })
+        : t("{who} answered {status}: the vendor turns away {agent}'s system prompt whichever account it goes to, and nobody else is left to try, so {agent} gets the error. Nothing is wrong with {who}, so it doesn't rest.", { who: name, status: tr.status, agent });
     if (tr.fail === "shape")
       return t("{who} answered {status}: its API couldn't read something in the request that another's may, so it goes on to the next before any of the reply reaches {agent}. Nothing is wrong with {who}, so it doesn't rest.", { who: name, status: tr.status, agent });
     if (tr.fail === "effort")
