@@ -96,7 +96,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
       // the Routing page's Requests: the member plain, the swap amber
       await page.goto("http://magpie.test/?view=routing");
-      await page.locator(".rt-day").nth(1).click();
+      // the date bar's day (the By request / By session buttons are rt-day too)
+      await page.locator(".rt-days .rt-day").nth(1).click();
       await page.locator(".rt-req").nth(routes.length - 1).waitFor();
       const marks = await page.locator(".rt-req").evaluateAll((rs) => rs.map((r) => [r.querySelector(".to .swap")?.textContent || "", r.querySelector(".to .routed")?.textContent || ""]));
       assert.deepEqual(marks, [["", want[lang].tag], [want[lang].swap, ""], ["", ""], ["", ""], ["", ""], ["", ""]]);
