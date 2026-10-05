@@ -17340,6 +17340,12 @@ function hold(h) {
     // button held, and room made for the button slid the chip up under the
     // tabs, out of sight
     if (want > max && h.top) want = max;
+    // room is only kept while some of the view stays in sight: a redraw can take
+    // away the whole of what the reader was looking at (a group's editor closed
+    // on its Save, the list it had in it), and scrolled to `want` not one row of
+    // the view would be in sight, only the room — a blank page. The browser's own
+    // clamp after the content shrank stands instead.
+    if (want > max && contentEnd(v) <= want) want = max;
     if (want > max) setRoom(v, want + v.clientHeight - contentEnd(v));
     v.scrollTop = want;
   }
