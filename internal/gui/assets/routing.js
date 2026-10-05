@@ -2592,8 +2592,10 @@
     const shown = words.length ? all.filter((g) => gEdit?.id === g.id || groupMatches(g, words)) : all;
     if (gSel) gSel = new Set([...gSel].filter((id) => shown.some((g) => g.id === id)));
     if (gSel && !all.length) gSel = null;
-    const newBtn = el("button", "text", t("New group"));
-    newBtn.onclick = () => { gSel = null; gEdit = { id: "", draft: { name: "", members: [], match: [], matched: [], fast: [], off: [], routing: "", affinity: "", rules: [] } }; renderGroups(); };
+    const newBtn = el("button", "text rt-gnew");
+    newBtn.type = "button";
+    newBtn.append(svg(PLUS, 11, 1.8), el("span", "", t("New group")));
+    newBtn.onclick = () => newGroup();
     const head = [el("span", "label", t("Routing groups")), el("span", "grow"), el("span", "note", t("models agents pick as one"))];
     const typing = document.activeElement === gQ, [a, b] = [gQ.selectionStart, gQ.selectionEnd];
     if (all.length > 1 || gQ.value) {
@@ -3648,6 +3650,23 @@
     const ed = gList.querySelector(".rt-gedit");
     if (ed && window.scrollOnPurpose?.(ev)) ed.scrollIntoView({ block: "center", behavior: "smooth" });
     ed?.querySelector("input")?.focus({ preventScroll: true });
+  };
+  // newGroup: an empty new group's editor. The groups sit below the
+  // requests, out of sight on a first look, so the page's head has a New
+  // group too (mintonight, #944), which brings the editor into view.
+  function newGroup(ev) {
+    gSel = null;
+    gEdit = { id: "", draft: { name: "", members: [], match: [], matched: [], fast: [], off: [], routing: "", affinity: "", rules: [] } };
+    renderGroups();
+    if (!ev) return;
+    const ed = gList.querySelector(".rt-gedit");
+    if (ed && window.scrollOnPurpose?.(ev)) ed.scrollIntoView({ block: "center", behavior: "smooth" });
+    ed?.querySelector("input")?.focus({ preventScroll: true });
+  }
+  const headNew = $("#rtNewGroup");
+  if (headNew) headNew.onclick = async (ev) => {
+    if (!groups) await loadGroups();
+    if (groups) newGroup(ev);
   };
   const askedGroup = document.body.classList.contains("window") && params.get("newgroup");
   if (askedGroup) loadGroups().then(() => window.newGroupWith(askedGroup, ""));

@@ -135,8 +135,12 @@
 #view-routing .row-head { margin: 14px 0 6px; padding: 0 2px; gap: 0; }
 #view-routing .row-head .note { font-size: 11px; color: var(--faint); margin-left: 8px; }
 #view-routing .row-head .rt-livedot + .note { margin-left: 8px; }
-.rt-mask { display: inline-flex; align-items: center; gap: 5px; }
-.rt-mask svg { width: 13px; height: 13px; flex: none; }
+.rt-mask, .rt-newgroup { display: inline-flex; align-items: center; gap: 5px; }
+.rt-mask svg, .rt-newgroup svg { width: 13px; height: 13px; flex: none; }
+/* the routing groups' New group, at the top too: the groups sit below the
+   requests, out of sight on a first look (#944) */
+.rt-newgroup { margin-right: 6px; }
+.rt-gnew { display: inline-flex; align-items: center; gap: 4px; }
 /* on, it says so in its struck eye and its words, a shade darker: a
    page tool, not a banner */
 .rt-mask[aria-pressed="true"] { color: var(--fg-2); }

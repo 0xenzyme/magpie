@@ -376,6 +376,14 @@ and the status line says which agent was moved to the model from one provider;
 clicked on, the found group is back. Neither click moves the page, the switch
 has no left-border accent, and every string has its Chinese.
 
+`group-new-head.test.cjs` checks that a routing group of any models can be
+made from the top of the Routing page, in Chromium and WebKit, English and
+Chinese (mintonight, #944: the groups' New group sat below the requests, so
+only found groups were used). The page's head has New group with a plus and a
+tooltip saying what a group is, in sight while the groups are below the fold;
+its click opens an empty group's editor, brings it into view and focuses its
+name. The groups' own New group has the plus too. No left-border accent.
+
 `name-suffix-where-named.test.cjs` checks the setting that says whether a
 provider's name or "· routing group" follows a name in the agents' lists (#868)
 where names are given, in Chromium and WebKit, English and Chinese. The
