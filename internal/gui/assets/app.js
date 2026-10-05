@@ -6185,6 +6185,18 @@ function cancelEdit(keep) {
   editing = null; draft = null; importing = null; importingApps = null; renderProviders();
 }
 
+// priceTypedError: a model with no list price given only part of its
+// price in Names & levels (its input and output both needed) holds the
+// Save, its empty box focused, rather than the part typed being dropped.
+function priceTypedError(ed) {
+  const id = Object.keys(draft?.priceTyped || {}).find((x) => !draft.chosen?.length || draft.chosen.includes(x));
+  if (id === undefined) return false;
+  const row = [...ed.querySelectorAll(".mname")].find((r) => r.querySelector("code")?.textContent === id);
+  [...(row?.querySelectorAll(".mprice input") || [])].find((i) => i.value.trim() === "" && !i.placeholder)?.focus({ preventScroll: true });
+  editorError(t("{id} has no list price: give its input and output prices", { id }), "warn");
+  return true;
+}
+
 // modelPrefsOfDraft: the names, levels and images staged in the editor's
 // Names & levels, for its Save, or nothing when none changed.
 function modelPrefsOfDraft() {
@@ -7070,6 +7082,7 @@ function drawEditor(p, presetID) {
       if (maxConcurrency === undefined) return concurrencyError(ed);
       const priceRate = priceRateOfDraft();
       if (priceRate === undefined) return priceRateError(ed);
+      if (priceTypedError(ed)) return;
       saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, outputs: ox.map, compacts: cpx.map, proxy, accountProxies: own.map, maxConcurrency, priceRate, modelPrefs: modelPrefsOfDraft(), pinUpstream: !!draft.pinUpstream, ...routingOfDraft(p) }, t("{name} saved", { name: p.name })); };
     bar.append(cancel, saveBtn);
     ed.append(bar);
@@ -7410,6 +7423,7 @@ function drawEditor(p, presetID) {
     if (body.maxConcurrency === undefined) return concurrencyError(ed);
     body.priceRate = priceRateOfDraft();
     if (body.priceRate === undefined) return priceRateError(ed);
+    if (p && priceTypedError(ed)) return;
     if (draft.balanceToken) body.balanceToken = draft.balanceToken;
     else if (draft.clearBalanceToken) body.clearBalanceToken = true;
     if (team) {
@@ -8436,7 +8450,8 @@ function renderModels(p) {
       priceBox.append(el("span", "", t("Price, $ / 1M tokens")));
       const cells = parts.map(([k, l]) => {
         const box = el("label", "mpart");
-        const i = input(priceNow() ? shown(priceNow()[k]) : "", m.list ? shown(m.list[k]) : "", "number");
+        const typed = draft.priceTyped?.[id];
+        const i = input(typed ? typed[parts.findIndex(([x]) => x === k)] : priceNow() ? shown(priceNow()[k]) : "", m.list ? shown(m.list[k]) : "", "number");
         i.inputMode = "decimal";
         i.min = "0";
         i.step = "any";
@@ -8453,6 +8468,7 @@ function renderModels(p) {
         const v = cells.map((c) => c.value.trim());
         const x = pref();
         delete x.price; delete x.ownPrice;
+        if (draft.priceTyped) delete draft.priceTyped[id];
         if (v.every((s) => s === "")) {
           if (m.price) x.ownPrice = true;
           drawReset();
@@ -8461,6 +8477,16 @@ function renderModels(p) {
         const price = {};
         for (const [i, [k]] of parts.entries()) {
           const n = v[i] === "" ? m.list?.[k] ?? (k.startsWith("cache") ? 0 : NaN) : Number(v[i]);
+          // a model with no list price is given its input and output one
+          // box at a time: what is typed stays, waiting for the other, and
+          // the Save asks for it (PAMI on Discord: each box typed was
+          // emptied again, so a price could never be set)
+          if (Number.isNaN(n) && v[i] === "" && v.every((s) => s === "" || (Number.isFinite(Number(s)) && Number(s) >= 0))) {
+            (draft.priceTyped = draft.priceTyped || {})[id] = v;
+            status(t("{id} has no list price: give its input and output prices", { id: m.id }), "warn");
+            drawReset();
+            return;
+          }
           if (!Number.isFinite(n) || n < 0) {
             status(Number.isNaN(n) && v[i] === "" ? t("{id} has no list price: give its input and output prices", { id: m.id }) : t("A price is a number of dollars, 0 or more"), "err");
             showPrice();
@@ -8531,6 +8557,7 @@ function renderModels(p) {
       reset.title = t("Its own name, every reasoning level it has, whether it sees images, the API it is asked on, the model it is the same as, and its list price");
       reset.onclick = () => {
         prefs[id] = {};
+        if (draft.priceTyped) delete draft.priceTyped[id];
         if (m.default) prefs[id].name = "";
         if (m.kept?.length) prefs[id].efforts = [];
         if (m.imageSet) prefs[id].ownImages = true;
@@ -8548,10 +8575,10 @@ function renderModels(p) {
       const drawReset = () => {
         const x = prefs[id];
         if (x && !Object.keys(x).length) delete prefs[id];
-        unsaved.hidden = !prefs[id];
+        unsaved.hidden = !prefs[id] && !draft.priceTyped?.[id];
         // staged back to its own already, there is nothing to restore
         const images = prefs[id]?.ownImages ? false : prefs[id]?.images !== undefined ? prefs[id].images !== !!m.ownImages : !!m.imageSet;
-        const custom = nameNow() !== "" || (prefs[id]?.efforts ? prefs[id].efforts.length > 0 : !!m.kept?.length) || images || apiNow() !== "" || sameNow() !== "" || priceNow() !== null;
+        const custom = nameNow() !== "" || (prefs[id]?.efforts ? prefs[id].efforts.length > 0 : !!m.kept?.length) || images || apiNow() !== "" || sameNow() !== "" || priceNow() !== null || !!draft.priceTyped?.[id];
         reset.hidden = !custom;
       };
       row.append(unsaved, reset);
