@@ -2777,11 +2777,22 @@
       idHint.textContent = t("Agents pick it as {id}", { id: "group/" + idOf() }) +
         (g && idOf() !== g.id ? " · " + t("an agent set to {id} needs setting again", { id: "group/" + g.id }) : "");
     };
-    name.oninput = () => { d.name = name.value; showId(); };
+    // what the agents' lists will call it, and the setting that says
+    // whether "· routing group" follows the name (#868: an agent's narrow
+    // menu cut it to "· rou…"); a group saved here is one the user made
+    const sfxSaid = el("span", "hint");
+    const sayLabel = (mode) => {
+      sfxSaid.textContent = t("Agents’ lists show “{label}”", { label: (d.name.trim() || t("New group")) + ((mode || suffixMode()) === "on" ? " · routing group" : "") });
+    };
+    name.oninput = () => { d.name = name.value; showId(); sayLabel(); };
     const nw = el("div");
     nw.append(name);
     if (!g) nw.append(idHint);
     ed.append(el("label", "", t("Name")), nw);
+    const sw = el("div", "gsuffix");
+    sw.append(suffixSegs(sayLabel), sfxSaid);
+    sayLabel();
+    ed.append(el("label", "", t("In agents’ lists")), sw);
     if (idIn) {
       idIn.oninput = () => { d.id = idIn.value; showId(); };
       idIn.onblur = () => { d.id = idIn.value = idOf(); showId(); };

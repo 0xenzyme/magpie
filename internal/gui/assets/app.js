@@ -8184,6 +8184,18 @@ function renderModels(p) {
     if (!ids.length) { names.append(el("span", "hint", t("Pick a model first."))); return; }
     const prefs = draft.modelPrefs = draft.modelPrefs || {};
     draft.onModelPrefs = drawNames;
+    // how the agents' lists will call them, and the setting that says so
+    // (#868), above the names given here
+    const sfx = el("div", "msuffix");
+    const sfxSaid = el("span", "hint");
+    const first = p.models.find((x) => x.id === ids[0]) || { id: ids[0], name: ids[0] };
+    const sayLabel = (mode) => {
+      const name = prefs[first.id]?.name ?? (first.default ? first.name : "");
+      sfxSaid.textContent = t("Agents’ lists show “{label}”", { label: suffixed(name || first.default || first.name || first.id, p.name || p.id, !!name, mode) });
+    };
+    sayLabel();
+    sfx.append(el("span", "", t("Provider in model names")), suffixSegs(sayLabel), sfxSaid);
+    names.append(sfx);
     // the APIs a model can be asked on alone: those of a key's provider
     // it has a URL for, when it has more than one (01huadalang on Discord:
     // 一个 api 里有很多模型但是不同协议)
@@ -15870,6 +15882,30 @@ const IN_USE = "|*";
 // renderTrayUsage: the subscriptions and plans whose windows show beside
 // the tray icon, side by side. The cards are the Usage page's, asked for
 // when the menu opens; any number are ticked in it.
+// suffixSegs: how the agents' lists name a model — with its provider's
+// (or "routing group") after it, all but the names the user gave models
+// and the groups they made (#92), or none (#335). Set on its own, so the
+// agents are told. Offered on Settings and where names are given, the
+// provider's Names & levels and a group's editor (#868: an agent's narrow
+// menu cut "· routing group" short, and the setting wasn't found);
+// drawn(mode) redraws the place it was picked in.
+function suffixMode(s = prefs || {}) { return s.plainNames ? "off" : s.plainOwnNames ? "own" : "on"; }
+function suffixSegs(drawn) {
+  const seg = segs([["off", t("Off")], ["own", t("Not on names I set")], ["on", t("On")]], suffixMode(), (v) =>
+    writingPrefs(api("settings/plain-names", { mode: v })).then((ns) => { prefs = ns; renderSettings(); drawn?.(v); })
+      .catch((e) => { status(t(e.message), "err"); renderSettings(); drawn?.(suffixMode()); }));
+  seg.classList.add("suffix-segs");
+  return seg;
+}
+// suffixed: what an agent's list calls a model named name, by its
+// provider's or group's name by, under mode; own when the user gave it
+// (Labels in internal/provider)
+function suffixed(name, by, own, mode = suffixMode()) {
+  if (mode === "off" || mode === "own" && own) return name;
+  if (own && name.toLowerCase().includes(by.toLowerCase())) return name;
+  return name + " · " + by;
+}
+
 function renderTrayUsage(s, keep) {
   $("#quotaLeftSegs").replaceChildren(segs([[false, t("Used")], [true, t("Left")]], !!s.quotaLeft,
     (on) => { if (on !== quotaLeft) setQuotaLeft(on); }));
@@ -15879,12 +15915,7 @@ function renderTrayUsage(s, keep) {
   $("#unitsSegs").replaceChildren(segs([[false, t("K / M / B")], [true, t("万 / 亿")]], !!s.chineseUnits,
     (v) => savePrefs({ ...keep, chineseUnits: v })));
   renderAlerts(s, keep);
-  // the agents' lists name a model with its provider's after it, all but
-  // the names the user gave (#92), or none (#335): set on its own, so the
-  // agents are told
-  const suffix = s.plainNames ? "off" : s.plainOwnNames ? "own" : "on";
-  $("#plainNamesSegs").replaceChildren(segs([["off", t("Off")], ["own", t("Not on names I set")], ["on", t("On")]], suffix, (v) =>
-    writingPrefs(api("settings/plain-names", { mode: v })).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
+  $("#plainNamesSegs").replaceChildren(suffixSegs());
   // Codex's OpenAI models in multi-agent V1, so their subagents can run on
   // magpie's other models (#141)
   $("#codexAgentsV1Segs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.codexAgentsV1 ? "on" : "off", (v) =>

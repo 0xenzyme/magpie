@@ -611,22 +611,25 @@ func (e Entry) Label() string {
 // name alone — but for two or more the list would call the same, as a
 // routing group found for a model is called with that model left in the
 // list, which keep their provider's after it to tell them apart. With
-// their own names plain (PlainOwnNames, #92), a name the user gave a model
-// is that name just as they wrote it, and the vendor's keep Label's.
+// their own names plain (PlainOwnNames, #92), a name the user gave — a
+// model's, or a routing group's they made (#868: "· routing group" was
+// what an agent's narrow menu cut off) — is that name just as they wrote
+// it, but for two the list would call the same, and the rest keep Label's.
 func Labels(es []Entry) []string {
 	out := make([]string, len(es))
 	s := heldSettings()
 	plain := s.PlainNames
 	own := !plain && s.PlainOwnNames
 	same := map[string]int{}
-	if plain {
+	if plain || own {
 		for _, e := range es {
 			same[strings.ToLower(e.Name)]++
 		}
 	}
 	for i, e := range es {
 		out[i] = e.Label()
-		if plain && e.Name != "" && same[strings.ToLower(e.Name)] == 1 || own && e.Default != "" && e.Name != "" {
+		mine := own && (e.Default != "" || e.Named)
+		if (plain || mine) && e.Name != "" && same[strings.ToLower(e.Name)] == 1 {
 			out[i] = e.Name
 		}
 	}

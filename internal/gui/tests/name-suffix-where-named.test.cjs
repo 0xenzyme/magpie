@@ -1,0 +1,132 @@
+// Run with Node's test runner and Playwright on the module path; see README.md.
+// #868 (模型名称太长了…路由组的名称也很长。会看不到后面代表什么): an agent's
+// narrow model menu cut "Long name · routing group" short, and the setting
+// that drops the suffix (Settings › Provider in model names, #335) wasn't
+// found. It is now offered where names are given too: the provider editor's
+// Names & levels and a routing group's editor each have the three choices,
+// say what the agents' lists will show ("My Sol · Relay", "Fast · routing
+// group"), and a pick posts settings/plain-names once, the line following
+// it and the page not scrolled by the click. English and Chinese.
+const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const path = require("node:path");
+const { test } = require("node:test");
+const { chromium, webkit } = require("playwright");
+
+const assets = path.resolve(__dirname, "../assets");
+const words = {
+  en: { names: "Names & levels", edit: "Edit", own: "Not on names I set", on: "On", off: "Off", label: "In agents’ lists",
+    shows: (l) => `Agents’ lists show “${l}”` },
+  zh: { names: "名称与推理档位", edit: "编辑", own: "自定义名称不带供应商", on: "开启", off: "关闭", label: "Agent 列表里的名称",
+    shows: (l) => `Agent 的模型列表里显示为「${l}」` },
+};
+
+function serve(lang, posts) {
+  let cur = { lang, theme: "light", plainNames: false, plainOwnNames: false };
+  const state = { agents: [{ id: "codex", name: "Codex", path: "/test/codex", fields: [] }], profiles: [], settings: { lang, theme: "light" } };
+  const models = [
+    { id: "sol-2026-preview-long", name: "My Sol", default: "sol-2026-preview-long", on: true, efforts: [], images: false },
+  ];
+  const provider = { id: "relay", name: "Relay", icon: "generic", chat: "https://relay.example/v1", responses: "", anthropic: "", models, agents: [], key: { set: true, masked: "sk-…1234" }, ready: true };
+  const groups = { models: [{ id: "relay/sol-2026-preview-long", name: "My Sol", providerName: "Relay", icon: "generic" }], pools: [],
+    groups: [{ id: "fast", name: "Fast", members: ["relay/sol-2026-preview-long"], routing: "order", ready: true, memberInfo: [{ id: "relay/sol-2026-preview-long", ready: true }] }] };
+  return async (r) => {
+    const req = r.request(), url = new URL(req.url());
+    const json = (data) => r.fulfill({ json: data });
+    if (url.pathname === "/boot.js") return r.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"light",web:true};` });
+    if (url.pathname === "/wails/runtime.js") return r.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
+    if (url.pathname === "/api/state") return json(state);
+    if (url.pathname === "/api/settings/plain-names") {
+      const body = req.postDataJSON();
+      posts.push(body);
+      cur = { ...cur, plainNames: body.mode === "off", plainOwnNames: body.mode === "own" };
+      return json(cur);
+    }
+    if (url.pathname === "/api/settings") return json(cur);
+    if (url.pathname === "/api/plugins") return json({ plugins: [] });
+    if (url.pathname === "/api/gateway/trace") {
+      if (url.searchParams.get("wait")) return new Promise(() => {});
+      return json({ mine: true, now: new Date().toISOString(), seq: 1, totals: { requests: 0, rerouted: 0, errors: 0 }, routes: [] });
+    }
+    if (url.pathname === "/api/gateway/history") return json({ cut: false, days: [], routes: [] });
+    if (url.pathname === "/api/groups") return json(groups);
+    if (url.pathname === "/api/providers") return json({ providers: [provider], presets: [], excluded: [], gateway: { running: true, window: true, url: "http://127.0.0.1:3999" } });
+    if (url.pathname.startsWith("/api/")) return json({});
+    const file = path.join(assets, url.pathname === "/" ? "index.html" : url.pathname);
+    const contentType = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" }[path.extname(file)];
+    await r.fulfill({ body: await fs.readFile(file), contentType });
+  };
+}
+
+async function launch(t, engine, lang, posts) {
+  const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || "chromium" }));
+  const page = await (await browser.newContext({ viewport: { width: 900, height: 1200 }, reducedMotion: "reduce" })).newPage();
+  t.after(async () => {
+    if (process.env.ARTIFACT_DIR) {
+      await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `${engine}-${lang}-${t.name.includes("group") ? "group" : "names"}-suffix.png`) });
+    }
+    await browser.close();
+  });
+  page.setDefaultTimeout(5000);
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.route("**/*", serve(lang, posts));
+  return { page, errors };
+}
+
+const scrolls = (page) => page.evaluate(() => [scrollY, ...[...document.querySelectorAll(".view")].map((v) => v.scrollTop)]);
+
+for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
+  for (const lang of ["en", "zh"]) {
+    const w = words[lang];
+    test(`${engine} ${lang}: Names & levels says what agents' lists show and drops the provider there`, async (t) => {
+      const posts = [];
+      const { page, errors } = await launch(t, engine, lang, posts);
+      await page.goto("http://magpie.test/?view=providers");
+      await page.locator(".row.provider").click();
+      if (!(await page.locator(".mnames:not([hidden])").count())) await page.getByRole("button", { name: w.names, exact: true }).click();
+      const sfx = page.locator(".mnames:not([hidden]) .msuffix");
+      await sfx.waitFor();
+      assert.deepEqual((await sfx.locator(".segs .opt").allTextContents()).map((s) => s.trim()), [w.off, w.own, w.on]);
+      assert.equal((await sfx.locator(".opt.on").textContent()).trim(), w.on);
+      assert.equal(await sfx.locator(".hint").textContent(), w.shows("My Sol · Relay"));
+      const before = await scrolls(page);
+      await sfx.locator(".opt", { hasText: w.own }).click();
+      await page.locator(".mnames:not([hidden]) .msuffix .opt.on", { hasText: w.own }).waitFor();
+      assert.deepEqual(posts, [{ mode: "own" }]);
+      assert.equal(await sfx.locator(".hint").textContent(), w.shows("My Sol"));
+      assert.deepEqual(await scrolls(page), before, "the click scrolled the page");
+      assert.deepEqual(errors, []);
+    });
+
+    test(`${engine} ${lang}: a group's editor says what agents' lists show and drops "· routing group" there`, async (t) => {
+      const posts = [];
+      const { page, errors } = await launch(t, engine, lang, posts);
+      await page.goto("http://magpie.test/?view=routing");
+      const card = page.locator(".rt-group", { hasText: "Fast" });
+      await card.waitFor();
+      await card.locator("button", { hasText: w.edit }).click();
+      const ed = page.locator(".rt-gedit");
+      const row = ed.locator("label", { hasText: new RegExp(`^${w.label}$`) }).locator("xpath=following-sibling::div[1]");
+      await row.waitFor();
+      assert.equal(await row.locator(".hint").textContent(), w.shows("Fast · routing group"));
+      // the name typed is the name shown
+      await ed.locator("input").first().fill("Fast lane");
+      assert.equal(await row.locator(".hint").textContent(), w.shows("Fast lane · routing group"));
+      const before = await scrolls(page);
+      await row.locator(".opt", { hasText: w.own }).click();
+      await row.locator(".opt.on", { hasText: w.own }).waitFor();
+      assert.deepEqual(posts, [{ mode: "own" }]);
+      assert.equal(await row.locator(".hint").textContent(), w.shows("Fast lane"));
+      assert.deepEqual(await scrolls(page), before, "the click scrolled the page");
+      // nothing native, no stripe down the side
+      assert.equal(await ed.locator("select").count(), 0);
+      assert.equal(await row.evaluate((e) => getComputedStyle(e).borderLeftWidth), "0px");
+      const missing = await page.evaluate(() => ["Agents’ lists show “{label}”", "In agents’ lists", "Not on names I set", "Provider in model names"]
+        .filter((k) => !I18N.zh[k] || !I18N.ja[k] || !I18N.de[k]));
+      assert.deepEqual(missing, [], "every string has its Chinese, Japanese and German");
+      assert.deepEqual(errors, []);
+    });
+  }
+}
