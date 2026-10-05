@@ -2967,6 +2967,12 @@ func (s *Server) usable(p provider.Provider, model string) []provider.Protocol {
 // served on this one, the request is built again for the next endpoint it
 // speaks, and the model is remembered there.
 func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to provider.Protocol, req *Request, model string, in http.Header) (*http.Response, provider.Protocol, error) {
+	if req.ThinkOff && req.Effort != "none" && slices.Contains(p.Efforts(model), "none") {
+		// the client turned reasoning off (Effort reads that as low), and
+		// the model can stop thinking: asked for none (#899)
+		r := *req
+		r.Effort, req = "none", &r
+	}
 	if req.Effort != "" {
 		if e := fitFor(p, model, req.Effort); e != req.Effort {
 			r := *req
