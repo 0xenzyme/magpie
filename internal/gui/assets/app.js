@@ -277,7 +277,7 @@ function renderAgents() {
     // an effort or ultracode the model has none of (Claude Code on Haiku
     // 4.5, ultracode short of xhigh) isn't drawn at all, nor are subagents
     // with no model to go on (Claude Code's, until it runs through magpie)
-    const none = (f) => (f.key === "effort" || f.key === "ultracode" || f.label === "subagents" || f.label === SUB_EFFORT) && !f.options.length && !f.value;
+    const none = (f) => (f.key === "effort" || f.key === "ultracode" || f.label === "subagents" || f.label === SUB_EFFORT || f.label === MEMORIES) && !f.options.length && !f.value;
     const shownFields = a.fields.filter((f) => !TIERS.includes(f.label) && !TIER_EFFORTS.includes(f.label) && !none(f));
     const tiers = tierMenu(a);
     if (tiers) shownFields.push(tiers);
@@ -2641,9 +2641,11 @@ const PICKS_ITSELF = ["pi", "omo"];
 // Code's tiers, omp's roles — is a small square after the pickers rather
 // than a third picker, which a row has no room for: it wrapped onto a line
 // of its own. So is Codex's sign-in, ChatGPT or magpie as its provider,
-// and the effort its subagents start at (#469).
+// and the effort its subagents start at (#469), and the model Codex writes
+// its memories with (Yc on Discord).
 const SUB_EFFORT = "subagent effort";
-const extra = (f) => f.key === "tiers" || FOLLOWS_MODEL.includes(f.label) || f.label === "sign-in" || f.key === "ultracode" || f.label === SUB_EFFORT;
+const MEMORIES = "memories";
+const extra = (f) => f.key === "tiers" || FOLLOWS_MODEL.includes(f.label) || f.label === "sign-in" || f.key === "ultracode" || f.label === SUB_EFFORT || f.label === MEMORIES;
 const EXTRA_GLYPH = {
   subagents: "M4.5 2.75v10.5M4.5 9.25c0-2.2 1.6-3.75 3.9-3.75h3.35M9.9 3.6l1.9 1.9-1.9 1.9",
   // a feather for omp's smol role, an hourglass for its slow one
@@ -2654,7 +2656,12 @@ const EXTRA_GLYPH = {
   ultracode: "M3 4.25h4M3 8h2.5M3 11.75h4M9.5 4.25l3.5 3.75-3.5 3.75",
   // the subagents' branch, with effort's rising bars after it
   [SUB_EFFORT]: "M3.25 2.75v10.5M3.25 9.25c0-2.2 1.6-3.75 3.9-3.75h.6M9.25 13.25v-2M11.5 13.25v-4M13.75 13.25v-6",
+  // a notebook: Codex's memories
+  [MEMORIES]: "M4.25 2.75h7.5v10.5h-7.5zM6.25 2.75v10.5M8.25 5.75h1.75M8.25 8h1.75",
 };
+// what Codex writes its memories with when none is set (codex-rs
+// model-provider: memory_consolidation_preferred_model, _extraction_)
+const MEMORIES_DEFAULT = "Codex's own: gpt-5.6-terra, threads summed up with gpt-5.6-luna";
 function extraField(a, f) {
   if (f.key === "ultracode") return ultracodeToggle(a, f);
   const set = !!(f.value || f.custom);
@@ -2662,7 +2669,7 @@ function extraField(a, f) {
   b.append(svg(EXTRA_GLYPH[f.label] || EXTRA_GLYPH.tiers, 13, 1.5));
   const opt = optionFor(f, f.value);
   b.title = f.label === SUB_EFFORT ? subEffortTitle(a, f, opt) : f.menu ? menuTitle(f)
-    : t("{label}: {value}", { label: t(f.label), value: t(opt?.label || f.value || "same as model") }) + (opt?.note && !FOLLOWS_MODEL.includes(f.label) ? "\n" + t(opt.note) : "");
+    : t("{label}: {value}", { label: t(f.label), value: t(opt?.label || f.value || (f.label === MEMORIES ? MEMORIES_DEFAULT : "same as model")) }) + (opt?.note && !FOLLOWS_MODEL.includes(f.label) ? "\n" + t(opt.note) : "");
   b.setAttribute("aria-label", b.title);
   b.dataset.key = f.key;
   b.onclick = (ev) => openPicker(a, f, b, ev);
@@ -3399,7 +3406,8 @@ function openPicker(agent, field, anchor, ev, only) {
     // provider signed in, in its own order, so Default is no fixed model
     // and a model picked in Pi's /model lasts the session only unless
     // saved there with Ctrl+S (#709)
-    const note = PICKS_ITSELF.includes(agent.id) && field.key === "model" ? "clears the default model; {agent} picks one on its own" : "what {agent} ships with";
+    const note = PICKS_ITSELF.includes(agent.id) && field.key === "model" ? "clears the default model; {agent} picks one on its own"
+      : field.label === MEMORIES ? MEMORIES_DEFAULT : "what {agent} ships with";
     options.unshift({ value: "", label: t("Default"), note: t(note, { agent: agent.name }), icon: agent.icon, reset: true });
   }
   // Default is the agent as installed; this is the agent as it was before
@@ -3408,7 +3416,7 @@ function openPicker(agent, field, anchor, ev, only) {
     const at = options.findIndex((o) => !o.reset);
     options.splice(at < 0 ? options.length : at, 0, { value: "\0disconnect", label: t("Disconnect from magpie"), note: t("put back what {agent} had before magpie", { agent: agent.name }), svg: UNPLUG, reset: true, run: () => askDisconnect(agent) });
   }
-  const modelPicker = ["model", "small", "large", ...FOLLOWS_MODEL].includes(field.label) && !only;
+  const modelPicker = ["model", "small", "large", MEMORIES, ...FOLLOWS_MODEL].includes(field.label) && !only;
   pick = { agent, field, options, anchor, cursor: 0, free: !only && !field.menu, modelPicker, effortPicker, groupFilter: "all" };
   anchor.classList.add("open");
   const pop = $("#pop");
