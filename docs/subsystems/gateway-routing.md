@@ -42,13 +42,14 @@ served by a plugin are in [Provider and plugin ownership](provider-plugins.md).
 - A fallback happens only while none of the reply has been sent. An agent never gets half a reply from one upstream and the rest from another.
 - A resting candidate is tried last, never dropped (`restLast`). A lone candidate is tried even while it rests, because there is no other.
 - Routing decides who goes first only when nobody has answered the conversation yet. Affinity keeps the answerer while its cache is worth it. Auto mode keeps it across turns while at least `cacheWorth` (1024) tokens were read from the cache and the cache isn't cold (`cacheCold`, 5 minutes).
+- In turn (`rotate`), a conversation nobody has answered yet goes to the key, account or model the fewest other conversations of the provider's model or the group answered in the last `heldFor` (30 minutes) are on (`leastHeld`, #946). Ties, resting ones and a group with a group in it keep routing's order. With session affinity, two sessions of one group so stay on different models.
 - Different failures are classified separately: out of credit, out of quota, rate limit and other errors rest for different lengths. A fix must not merge them into one bucket (see #873).
 - Group members are `provider/model[:effort]`. A member with a fixed effort is asked for that effort, bounded by the group's levels (#671).
 
 ## Verification
 
 ```sh
-go test -tags nogui ./internal/gateway -run 'TestRouting|TestSmartRouting|TestFallback|TestNoFallbackForOtherErrors|TestLastFallbackErrorReachesTheAgent|TestRateLimitedSinksToTheBack|TestGroupRateLimitedSinks|TestAffinity|TestSeveralKeysOnTakeOverFromEachOther|TestSubscriptionAccountsTakeOver|TestGroup|TestTrace'
+go test -tags nogui ./internal/gateway -run 'TestRotateSpreadsSessions|TestRouting|TestSmartRouting|TestFallback|TestNoFallbackForOtherErrors|TestLastFallbackErrorReachesTheAgent|TestRateLimitedSinksToTheBack|TestGroupRateLimitedSinks|TestAffinity|TestSeveralKeysOnTakeOverFromEachOther|TestSubscriptionAccountsTakeOver|TestGroup|TestTrace'
 go test -tags nogui ./internal/provider -run 'TestGroup'
 ```
 
