@@ -1553,6 +1553,10 @@ func fail(rw http.ResponseWriter, err error) {
 		out["code"] = "no_models"
 		out["agent"] = noModels.Agent
 	}
+	var signedIn *provider.SignedInError
+	if errors.As(err, &signedIn) {
+		out["code"], out["agent"], out["user"] = "signed_in", signedIn.Agent, signedIn.User
+	}
 	_ = json.NewEncoder(rw).Encode(out)
 }
 

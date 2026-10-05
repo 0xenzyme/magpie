@@ -889,7 +889,10 @@ func putClaudeLogin(l savedLogin) error {
 }
 
 // ForgetLogin drops a remembered account. The one an agent is signed in to
-// now can't be forgotten; it would only be remembered again.
+// now can't be forgotten while it has another to be signed in to; it would
+// only be remembered again (SignedInError). Codex's last one is signed out
+// instead, as `codex logout` does (mamba on Discord: a single Codex account
+// couldn't be removed at all).
 func ForgetLogin(agent, user string) error {
 	if pp, ok := pluginOfAgent(agent); ok {
 		return forgetPluginLogin(pp, user)
@@ -920,12 +923,29 @@ func ForgetLogin(agent, user string) error {
 	case "gemini", "antigravity":
 		return forgetGoogleLogin(agent, user)
 	}
+	signedOut, err := forgetLogin(agent, user)
+	if signedOut {
+		// gone from the agent too: nothing of it is served any more
+		ForgetAccounts()
+	}
+	return err
+}
+
+func forgetLogin(agent, user string) (signedOut bool, err error) {
 	loginsMu.Lock()
 	defer loginsMu.Unlock()
-	if live, ok := liveLogin(agent); ok && strings.EqualFold(live.User, user) {
-		return fmt.Errorf("%s is signed in to %s now; switch to another account first", agent, user)
-	}
 	ls := readLogins()
+	if live, ok := liveLogin(agent); ok && strings.EqualFold(live.User, user) {
+		other := slices.ContainsFunc(ls, func(l savedLogin) bool { return l.Agent == agent && !strings.EqualFold(l.User, user) })
+		if agent != "codex" || other {
+			return false, &SignedInError{Agent: agent, User: user}
+		}
+		// as `codex logout` does: the sign-in's file goes, all of it
+		if err := os.Remove(codexAuthPath()); err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+		signedOut = true
+	}
 	out := ls[:0]
 	found := false
 	for _, l := range ls {
@@ -936,12 +956,36 @@ func ForgetLogin(agent, user string) error {
 		out = append(out, l)
 	}
 	if !found {
-		return fmt.Errorf("no saved %s account %q", agent, user)
+		if signedOut {
+			return true, nil // signed in, not saved yet
+		}
+		return false, fmt.Errorf("no saved %s account %q", agent, user)
 	}
 	if agent == "claude" {
 		forgetClaudeDir(user)
 	}
-	return writeLogins(out)
+	return signedOut, writeLogins(out)
+}
+
+// SignedInError is ForgetLogin's refusal of the account an agent is
+// signed in to now while it has another: that one is signed in to first
+// (its Use), and this one removed then. The GUI says it in the reader's
+// language (code signed_in).
+type SignedInError struct{ Agent, User string }
+
+func (e *SignedInError) Error() string {
+	return fmt.Sprintf("%s is signed in to %s now: sign it in to another of its accounts first (Use on that account), then remove this one", loginAgentName(e.Agent), e.User)
+}
+
+// loginAgentName is a switchable agent's name as its accounts list says it.
+func loginAgentName(agent string) string {
+	switch agent {
+	case "codex":
+		return "Codex"
+	case "claude":
+		return "Claude Code"
+	}
+	return agent
 }
 
 // ForgetAccounts makes the next look at the accounts read them afresh, for

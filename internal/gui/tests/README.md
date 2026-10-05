@@ -666,6 +666,14 @@ accounts saved in magpie: the Providers line naming them has Remove, whose
 dialog lists them; Cancel and Escape post nothing, Remove posts
 login/forget once per account and the line goes; in English and Chinese.
 
+`codex-signout.test.cjs` opens Codex with one account (mamba on Discord: it
+couldn't be removed while Codex was signed in to it): its row has Sign out,
+asked in the app's own dialog; Cancel and Escape post nothing and go back to
+the editor, Sign out posts login/forget and says so. With another account
+saved the one in use has no Sign out, and a signed_in refusal is said in the
+reader's language. No select, no left border, the page doesn't move; in
+English and Chinese.
+
 `nokey-editor.test.cjs` opens two local Ollama providers saved with no key,
 one from the preset and one custom, as /api/providers gives them: a click
 on each row opens its editor (the key box saying one is optional) and

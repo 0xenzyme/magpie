@@ -108,6 +108,12 @@ async function api(path, body) {
     // reader's language
     if (data?.code === "no_models") err.message = t("Add a provider or subscription in magpie first, then connect {agent}", { agent: data.agent });
     if (data?.why) err.why = data.why; // a failed move's reason, said in the reader's language
+    // an account the agent is signed in to, refused removal while it has
+    // another: said in the reader's language
+    if (data?.code === "signed_in") {
+      err.code = data.code;
+      err.message = t("{agent} is signed in to {user} now: sign it in to another of its accounts first (Use on that account), then remove this one", { agent: { codex: "Codex", claude: "Claude Code" }[data.agent] || data.agent, user: data.user });
+    }
     throw err;
   }
   // the accounts it names, for Hide accounts to know them (#568); a
@@ -4698,6 +4704,8 @@ function askForgetAccount(x) {
   head.append(icon(x.agentIcon), el("b", "", t("Sign {name} out of magpie?", { name: x.agentName })));
   ed.append(head);
   ed.append(el("p", "lib-confirm", t("magpie signs out the accounts it keeps for {name} and forgets them; adding {name} again signs in afresh. The account itself is left as it is.", { name: x.agentName })));
+  // the one Codex is signed in to goes last, and Codex with it (ForgetLogin)
+  if (x.agent === "codex") ed.append(el("p", "lib-confirm", t("Codex itself is signed out too, as codex logout does.")));
   const bar = el("div", "bar");
   const go = el("button", "text primary danger-fill", t("Sign out"));
   go.onclick = async (e) => {
@@ -4713,6 +4721,36 @@ function askForgetAccount(x) {
   cancel.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); };
   bar.append(el("span", "grow"), cancel, go);
   ed.append(bar);
+  confirmAsk = ed;
+  openModal(ed);
+  $("#modal").classList.add("lib");
+  cancel.focus({ preventScroll: true });
+}
+
+// askSignOutLogin asks before Codex is signed out of its only account, as
+// codex logout does: its sign-in file goes and magpie forgets the account.
+// It is the reset's dialog, so the backdrop and Escape close it the same way,
+// back to the provider's editor it was asked from.
+function askSignOutLogin(a, l) {
+  const ed = el("div", "editor forget-ask");
+  const head = el("div", "ehead");
+  head.append(icon(a.agentIcon), el("b", "", t("Sign {agent} out of {user}?", { agent: a.agentName, user: l.user })));
+  ed.append(head);
+  ed.append(el("p", "lib-confirm", t("{agent} is signed out, as codex logout does, and magpie forgets the account. Sign in again to use it; an open {agent} may need quitting and opening again. The account itself is left as it is.", { agent: a.agentName })));
+  const bar = el("div", "bar");
+  const go = el("button", "text primary danger-fill", t("Sign out"));
+  go.onclick = async (e) => {
+    e.stopPropagation();
+    go.disabled = true;
+    go.classList.add("busy");
+    if (await accountAction("login/forget", { agent: a.agent, user: l.user }, t("{agent} signed out of {user}", { agent: a.agentName, user: l.user }))) closeConfirmAsk();
+    else go.disabled = false;
+  };
+  const cancel = el("button", "text", t("Cancel"));
+  cancel.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); };
+  bar.append(el("span", "grow"), cancel, go);
+  ed.append(bar);
+  ed.back = renderProviders; // the provider's editor it was asked from
   confirmAsk = ed;
   openModal(ed);
   $("#modal").classList.add("lib");
@@ -9848,6 +9886,13 @@ function renderAccounts(a, p) {
         if (l.own) forget.title = forgetOwnTitle(a);
         forget.onclick = () => accountAction("login/forget", { agent: a.agent, user: l.user }, t("{user} removed", { user: l.user }));
         row.append(forget);
+      } else if (a.agent === "codex" && ls.length === 1) {
+        // Codex's only account: no other to sign it in to first, so it is
+        // signed out, as codex logout does (ForgetLogin)
+        const out = el("button", "text quiet", t("Sign out"));
+        out.title = t("Signs Codex out of this account, as codex logout does");
+        out.onclick = () => askSignOutLogin(a, l);
+        row.append(out);
       }
     } else {
       const forget = el("button", "text quiet", t("Remove"));
@@ -12853,7 +12898,10 @@ function askReset(q) {
 }
 function closeConfirmAsk() {
   if (!confirmAsk) return;
+  // one asked from an editor goes back to it rather than close it too
+  const back = confirmAsk.back;
   confirmAsk = null;
+  if (back) { $("#modal").classList.remove("lib"); back(); return; }
   closeModal().then(() => { if (!confirmAsk) $("#modal").classList.remove("lib"); });
 }
 // the dialog is the providers page's: while this asks, its backdrop and
