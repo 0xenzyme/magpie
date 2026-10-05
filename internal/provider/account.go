@@ -185,10 +185,45 @@ func (p Provider) Sign(ctx context.Context, req *http.Request, proto Protocol, b
 	// they can override a default when a gateway insists on a private scheme.
 	// Written to the map directly, not via Set, so the name keeps the exact
 	// case the user typed — some gateways match header names case-sensitively.
+	// A list the request has its own of (anthropic-beta) is added to, not
+	// replaced: the user's betas go after those the agent asked.
 	for k, v := range p.Headers {
+		if ListHeader(k) {
+			MergeList(req.Header, k, v)
+			continue
+		}
 		req.Header[k] = []string{v}
 	}
 	return nil
+}
+
+// ListHeader is a header whose value is a comma-separated list the request
+// has its own of, which a provider's header of the same name adds to:
+// anthropic-beta, the betas an agent asks on each request.
+func ListHeader(name string) bool { return strings.EqualFold(name, "anthropic-beta") }
+
+// MergeList writes name in h as the items h has under it, in any case,
+// followed by those of add: comma-separated, each once, empty ones left
+// out, under name as written.
+func MergeList(h http.Header, name, add string) {
+	var vals []string
+	for _, k := range slices.Sorted(maps.Keys(h)) {
+		if strings.EqualFold(k, name) {
+			vals = append(vals, h[k]...)
+			delete(h, k)
+		}
+	}
+	var out []string
+	for _, v := range append(vals, add) {
+		for _, it := range strings.Split(v, ",") {
+			if it = strings.TrimSpace(it); it != "" && !slices.Contains(out, it) {
+				out = append(out, it)
+			}
+		}
+	}
+	if len(out) > 0 {
+		h[name] = []string{strings.Join(out, ",")}
+	}
 }
 
 // Retries is whether the account can mend a refusal (Retry), so the

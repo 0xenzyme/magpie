@@ -147,6 +147,16 @@ separate Responses endpoint, `catalog=` to borrow a models.dev list, and
 `models=` to name the models to expose. Anything a preset does not know can
 be overridden the same way.
 
+`magpie provider set <id> header.<Name>=<value>` sends a header of your own
+on every request to a key+URL provider (an empty value removes it; signed-in
+accounts ignore them). It replaces a header of the same name magpie would
+send, except `anthropic-beta`, which is a list: your betas are added after
+the ones the agent asked for that request (Claude Code's, its 1M context's
+`context-1m-2025-08-07` for a `[1m]` model, fast mode's), each once. A beta
+the provider turns away (`Unexpected value(s) … for the anthropic-beta
+header`) is dropped from the retry and from then on, yours as well as the
+agent's; any other of yours is always sent.
+
 `magpie usage` also lists **upstream provider keys** to help check upstream bills.
 Each request records the fingerprint and saved name of the key that actually
 served it, including image calls and account/key failover. The CSV adds

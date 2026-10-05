@@ -2485,6 +2485,9 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	if err := p.Sign(ctx, req, to, body); err != nil {
 		return nil, err
 	}
+	if to == provider.Anthropic {
+		s.fitUserBetas(p, req.Header)
+	}
 	res, err := p.Do(s.client, req)
 	if err != nil {
 		return res, err
