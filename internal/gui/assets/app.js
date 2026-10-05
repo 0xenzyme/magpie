@@ -3245,7 +3245,8 @@ async function confirmUpdate(u, go) {
   if (mode === "panel" || !$("#modal").hidden) return go();
   const ed = el("div", "editor whatsnew update-ask");
   const head = el("div", "ehead");
-  head.append(el("b", "", t("Update to {v}", { v: "v" + u.latest })));
+  const title = el("b", "", t("Update to {v}", { v: "v" + u.latest }));
+  head.append(title);
   if (u.current) head.append(el("span", "wn-since", t("What changed since {v}", { v: "v" + u.current })));
   const box = el("div", "wn-list");
   const draw = (releases) => {
@@ -3276,8 +3277,12 @@ async function confirmUpdate(u, go) {
   openModal(ed);
   $("#modal").classList.add("lib");
   ok.focus({ preventScroll: true });
+  // the notes' answer asks the feed again first, and names a release out
+  // since the one downloaded (#910), which the restart then waits for
   const w = await api(updatePath("update/notes")).catch(() => null);
-  if (confirmAsk === ed && w?.releases?.length) draw(w.releases);
+  if (confirmAsk !== ed) return;
+  if (w?.latest && w.latest !== u.latest) title.textContent = t("Update to {v}", { v: "v" + w.latest });
+  if (w?.releases?.length) draw(w.releases);
 }
 
 // ---------- picker ----------
@@ -6971,6 +6976,9 @@ function drawEditor(p, presetID) {
   // a preset already added is added again only through "Add another": one
   // more provider of it, under a name and id of its own
   const another = isNew && !!pr?.added;
+  // an editor opened afresh has Names & levels folded: it stayed open in
+  // every editor after, until magpie was restarted (Hu9956, #868)
+  if (!draft) naming = null;
   draft = draft || (p
     ? draftOf(p)
     : pr
@@ -8527,6 +8535,21 @@ function renderModels(p) {
     names.replaceChildren();
     names.hidden = naming !== p.id;
     if (names.hidden) return;
+    // its own quiet title and a Fold where it opened (Hu9956, #868: the
+    // only way to close it was the button under the list, out of sight
+    // once it was open, and the editor read as one long run of settings)
+    const head = el("div", "mnhead");
+    const fold = el("button", "text action", t("Fold"));
+    fold.title = t("Fold Names & levels");
+    fold.onclick = (e) => {
+      e.stopPropagation();
+      naming = null;
+      rename.classList.remove("on");
+      drawNames();
+      rename.focus({ preventScroll: true });
+    };
+    head.append(el("b", "", t("Names & levels")), fold);
+    names.append(head);
     const ids = draft.chosen.length ? draft.chosen : p.models.filter((m) => m.on).map((m) => m.id);
     if (!ids.length) { names.append(el("span", "hint", t("Pick a model first."))); return; }
     const prefs = draft.modelPrefs = draft.modelPrefs || {};

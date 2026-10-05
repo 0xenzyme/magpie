@@ -162,6 +162,21 @@ func (u *updater) recheck() {
 	}
 }
 
+// freshAfter is how long the feed's answer stays fresh for the dialog
+// that shows the update before it is put in.
+const freshAfter = 5 * time.Minute
+
+// freshen asks the feed again, as recheck does, when a version downloaded
+// waits and the feed was last asked over freshAfter ago (#910).
+func (u *updater) freshen() {
+	u.mu.Lock()
+	stale := u.state == "ready" && u.staged != "" && time.Since(u.asked) >= freshAfter
+	u.mu.Unlock()
+	if stale {
+		u.recheck()
+	}
+}
+
 // begin marks a check as under way, unless one is. One with a version
 // already downloaded checks too: a newer one out since takes its place,
 // so the restart goes straight to the latest.
@@ -393,12 +408,21 @@ func updateRoutes(mux *http.ServeMux, w Windows) {
 	// notes: what changed in every release after this one up to the update,
 	// newest first, shown before it is put in (Hu9956, #844); with the site's
 	// list out of reach, the update's own notes
+	// The update waiting is the one found when the feed was last asked, up
+	// to Settings' interval ago (six hours), and releases come many a day:
+	// the dialog stopped at v0.1.1020 with v0.1.1024 out (#910, Moody-Sin).
+	// So a feed not asked for a while is asked again first; a newer release
+	// is the one the dialog names (latest) and starts downloading, and the
+	// restart waits for it, as one after a recheck does.
 	mux.HandleFunc("GET /api/update/notes", func(rw http.ResponseWriter, r *http.Request) {
+		updates.inLang(askedLang(r))
+		updates.freshen()
 		j := updates.jsonIn(askedLang(r))
 		out := struct {
+			Latest   string        `json:"latest,omitempty"`
 			Releases []update.Note `json:"releases"`
 			Error    string        `json:"error,omitempty"`
-		}{Releases: []update.Note{}}
+		}{Latest: j.Latest, Releases: []update.Note{}}
 		if j.Latest != "" {
 			notes, err := fetchNotes(r.Context(), Version, j.Latest, pageLang(r))
 			if len(notes) == 0 && strings.TrimSpace(j.Notes) != "" {

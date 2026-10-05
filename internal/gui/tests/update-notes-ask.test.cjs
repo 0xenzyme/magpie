@@ -15,8 +15,8 @@ const { chromium, webkit } = require("playwright");
 const assets = path.resolve(__dirname, "../assets");
 
 const words = {
-  en: { pill: "Update", restart: "Restart to update", later: "Later", head: "Update to v0.1.402", since: "What changed since v0.1.400", version: "Version" },
-  zh: { pill: "更新", restart: "重启以更新", later: "稍后", head: "更新到 v0.1.402", since: "自 v0.1.400 以来的更新内容", version: "版本" },
+  en: { pill: "Update", restart: "Restart to update", later: "Later", head: "Update to v0.1.402", newer: "Update to v0.1.403", since: "What changed since v0.1.400", version: "Version" },
+  zh: { pill: "更新", restart: "重启以更新", later: "稍后", head: "更新到 v0.1.402", newer: "更新到 v0.1.403", since: "自 v0.1.400 以来的更新内容", version: "版本" },
 };
 
 function server(lang, ctl) {
@@ -32,7 +32,9 @@ function server(lang, ctl) {
     if (url.pathname === "/api/update/notes") {
       ctl.asked.push(url.searchParams.get("lang"));
       await new Promise((r) => setTimeout(r, 200));
-      return json({ releases: [{ version: "0.1.402", notes: "- Two: the pill asks first" }, { version: "0.1.401", notes: "- One: a fix" }] });
+      // #910: the feed asked again names a release out since the download
+      if (ctl.newer) return json({ latest: "0.1.403", releases: [{ version: "0.1.403", notes: "- Three: out since" }, { version: "0.1.402", notes: "- Two: the pill asks first" }, { version: "0.1.401", notes: "- One: a fix" }] });
+      return json({ latest: "0.1.402", releases: [{ version: "0.1.402", notes: "- Two: the pill asks first" }, { version: "0.1.401", notes: "- One: a fix" }] });
     }
     if (url.pathname === "/api/update/install") {
       ctl.installs.push(req.postDataJSON() || {});
@@ -105,6 +107,30 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await ask.locator(".bar button.primary").click();
       for (let i = 0; i < 50 && ctl.installs.length < 2; i++) await page.waitForTimeout(20);
       assert.equal(ctl.installs.length, 2);
+      assert.deepEqual(errors, []);
+    });
+
+    // Moody-Sin, #910: an update downloaded hours ago held the sheet to its
+    // version with newer ones out; the notes' answer asks the feed again,
+    // and the sheet names the newest, with every release up to it
+    test(`${engine} ${lang}: the sheet names a release out since the download`, async (t) => {
+      const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+      t.after(() => browser.close());
+      const w = words[lang], ctl = { installs: [], asked: [], newer: true }, errors = [];
+      const page = await (await browser.newContext({ viewport: { width: 1000, height: 640 }, reducedMotion: "reduce" })).newPage();
+      page.setDefaultTimeout(5000);
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.route("**/*", server(lang, ctl));
+      await page.goto("http://magpie.test/?view=agents");
+      const pill = page.locator("#update");
+      await pill.waitFor({ state: "visible" });
+      await pill.click();
+      const ask = page.locator("#modal .update-ask");
+      await ask.waitFor();
+      await page.waitForFunction(() => document.querySelectorAll("#modal .update-ask .wn-rel").length === 3);
+      assert.equal((await ask.locator(".ehead b").textContent()).trim(), w.newer);
+      assert.equal((await ask.locator(".wn-since").textContent()).trim(), w.since);
+      assert.deepEqual((await shown(page)).map((r) => r[0]), ["v0.1.403", "v0.1.402", "v0.1.401"]);
       assert.deepEqual(errors, []);
     });
   }

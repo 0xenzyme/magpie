@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/yetone/magpie/internal/update"
 )
@@ -69,5 +72,66 @@ func TestUpdateNotesRoute(t *testing.T) {
 	updates.mu.Unlock()
 	if j := get(); len(j.Releases) != 0 || j.Error != "" {
 		t.Fatalf("none: %+v", j)
+	}
+}
+
+// The dialog asks the feed again when it was last asked a while ago (#910,
+// Moody-Sin: it stopped at v0.1.1020, downloaded hours before, with
+// v0.1.1024 out): the newest release is the one it names, with the notes
+// of every release up to it.
+func TestUpdateNotesAskTheFeedAgain(t *testing.T) {
+	feedAsked := 0
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		feedAsked++
+		json.NewEncoder(w).Encode(update.Release{Version: "0.1.1024", Notes: "- twenty-four"})
+	}))
+	defer feed.Close()
+	notes := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upto := r.URL.Query().Get("upto")
+		all := []update.Note{{Version: "0.1.1024", Notes: "- twenty-four"}, {Version: "0.1.1020", Notes: "- twenty"}}
+		if upto == "0.1.1020" {
+			all = all[1:]
+		}
+		json.NewEncoder(w).Encode(map[string]any{"releases": all})
+	}))
+	defer notes.Close()
+	t.Setenv("MAGPIE_UPDATE_FEED", feed.URL)
+	t.Setenv("MAGPIE_NOTES_FEED", notes.URL)
+	updates.mu.Lock()
+	oldState, oldStaged, oldIn, oldLatest, oldAsked, oldV := updates.state, updates.staged, updates.notesIn, updates.latest, updates.asked, Version
+	Version = "0.1.1010"
+	// downloaded hours ago; this test's updater can't replace the app, so
+	// the newer release is left "available" rather than downloaded
+	updates.state, updates.staged, updates.notesIn = "ready", filepath.Join(t.TempDir(), "staged"), "en"
+	updates.latest, updates.asked = &update.Release{Version: "0.1.1020", Notes: "- twenty"}, time.Now().Add(-3*time.Hour)
+	updates.mu.Unlock()
+	defer func() {
+		updates.mu.Lock()
+		updates.state, updates.staged, updates.notesIn, updates.latest, updates.asked, Version = oldState, oldStaged, oldIn, oldLatest, oldAsked, oldV
+		updates.mu.Unlock()
+	}()
+	mux := http.NewServeMux()
+	updateRoutes(mux, nil)
+	get := func() (out struct {
+		Latest   string        `json:"latest"`
+		Releases []update.Note `json:"releases"`
+	}) {
+		rw := httptest.NewRecorder()
+		mux.ServeHTTP(rw, httptest.NewRequest("GET", "/api/update/notes?lang=en", nil))
+		json.Unmarshal(rw.Body.Bytes(), &out)
+		return out
+	}
+	if j := get(); j.Latest != "0.1.1024" || len(j.Releases) != 2 || j.Releases[0].Version != "0.1.1024" {
+		t.Fatalf("stale: %+v", j)
+	}
+
+	// asked a moment ago: not again
+	updates.mu.Lock()
+	updates.state, updates.staged = "ready", filepath.Join(t.TempDir(), "staged")
+	updates.latest, updates.asked = &update.Release{Version: "0.1.1020", Notes: "- twenty"}, time.Now()
+	updates.mu.Unlock()
+	feedAsked = 0
+	if j := get(); j.Latest != "0.1.1020" || feedAsked != 0 || !strings.Contains(j.Releases[0].Notes, "twenty") {
+		t.Fatalf("fresh: %+v, feed asked %d", j, feedAsked)
 	}
 }
