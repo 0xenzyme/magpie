@@ -13630,7 +13630,11 @@ function renderUsage() {
       share.title = t("{n}% of tokens", { n: Math.round(100 * tokensOf(g) / total) });
       r.append(share);
       const num = el("div", "num");
-      num.append(el("b", "", fmtN(tokensOf(g))), el("small", "", t("{a} in · {b} out", { a: fmtN(g.input), b: fmtN(g.output) }) + (g.cache_read ? " · " + t("{n} cached", { n: fmtN(g.cache_read) }) : "")));
+      // how much of its prompt came from the cache, counted as the cache
+      // read tile counts it (#925)
+      const prompt = g.input + g.cache_read + (g.cache_write || 0);
+      const hit = g.cache_read && prompt ? " · " + t("hit rate {p}", { p: Math.round(100 * g.cache_read / prompt) + "%" }) : "";
+      num.append(el("b", "", fmtN(tokensOf(g))), el("small", "", t("{a} in · {b} out", { a: fmtN(g.input), b: fmtN(g.output) }) + (g.cache_read ? " · " + t("{n} cached", { n: fmtN(g.cache_read) }) : "") + hit));
       r.append(num);
       r.append(el("div", "cost", fmtCost(g) ? "≈" + fmtCost(g) : ""));
       box.append(r);
@@ -17410,8 +17414,10 @@ function renderSearch(s, keep) {
     i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") add.onclick(); };
   }
   draw();
-  const by = s.searchProvider ? t("Now done by {who}; these come after it", { who: s.searchProvider })
-    : t("No provider can search, so these are asked");
+  const apiFirst = s.searchFirst === "api" && (s.searchAPIs || []).length > 0;
+  const by = !s.searchProvider ? t("No provider can search, so these are asked")
+    : apiFirst ? t("Asked before {who}, which searches when these fail", { who: s.searchProvider })
+    : t("Now done by {who}; these come after it", { who: s.searchProvider });
   const head = row(t("Search APIs"), d.err || t("When a model can't search the web, magpie searches for it with these, in this order, and gives it what they found") + " · " + by,
     pick, key, url, get, add);
   head.classList.add("rule-row", "search-add");
@@ -17447,6 +17453,14 @@ function renderSearch(s, keep) {
     const r = row(`${n + 1}. ${a.name}`, what, ...tools);
     r.classList.add("search-api");
   });
+  // which goes first when both a provider and a search API can search
+  // (#928); with only one of them there is nothing to choose
+  if (s.searchProvider && (s.searchAPIs || []).length) {
+    const r = row(t("Search first with"), t("The other is asked when it fails"),
+      segs([["model", t("Model search")], ["api", t("Search APIs")]], apiFirst ? "api" : "model",
+        (v) => savePrefs({ ...keep, searchFirst: v === "api" ? "api" : "" })));
+    r.id = "searchFirstRow";
+  }
 }
 
 // renderSearcher: the provider that searches the web for a model that
@@ -18020,7 +18034,7 @@ function prefsKeep(s) {
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "", workbuddyCheckin: !!s.workbuddyCheckin, traeCheckin: !!s.traeCheckin, minimaxCheckin: !!s.minimaxCheckin, noStats: !!s.noStats,
     memberModel: !!s.memberModel,
     noUpdatePill: !!s.noUpdatePill, noAutoUpdate: !!s.noAutoUpdate, updateEvery: s.updateEvery || 360,
-    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, trayNoBird: !!s.trayNoBird, vision: s.vision || "", imageGen: s.imageGen || "", searcher: s.searcher || "", currency: s.currency || "usd",
+    trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, trayNoBird: !!s.trayNoBird, vision: s.vision || "", imageGen: s.imageGen || "", searcher: s.searcher || "", searchFirst: s.searchFirst || "", currency: s.currency || "usd",
     chineseUnits: !!s.chineseUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0, resetReminder: s.resetReminder || 0 };
 }
 
