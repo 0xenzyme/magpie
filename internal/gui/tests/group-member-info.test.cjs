@@ -121,6 +121,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await off.getAttribute("aria-checked"), "false", "the member is switched off");
       await off.click();
       assert.equal(await off.getAttribute("aria-checked"), "true", "and on again");
+      // the last row is wheeled up into view as a reader would: a scroll the
+      // page wasn't asked for by the reader (Playwright's own) is put back
+      // after the clicks above (scrollOnPurpose), which leaves the row under
+      // the footer
+      await page.mouse.move(550, 400);
+      await page.mouse.wheel(0, 400);
       await page.locator(".rt-gedit .fbrow").last().locator("button.text", { hasText: lang === "zh" ? "移除" : "Remove" }).click();
       assert.equal((await rows(page)).length, 2, "the last member is removed");
     });
