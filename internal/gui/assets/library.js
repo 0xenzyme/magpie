@@ -781,7 +781,9 @@
       else if (a.on && rtk.offPath) row.append(tag(t("Not on PATH"), "warn", t("{agent}'s hook runs rtk by name and can't find it, so RTK does nothing for it. Put RTK on PATH above.", { agent: a.name })));
       // OpenCode 2 won't load rtk's plugin (written for OpenCode 1): it can't
       // be switched on, and one already there can be switched off
-      if (a.blocked && a.id !== "opencode") row.append(tag(t("Update RTK"), "warn", t("{agent}'s hook needs RTK 0.50 or newer: older ones only add @RTK.md to AGENTS.md, which rewrites no command. Update RTK (brew upgrade rtk, or its installer again), then switch it on.", { agent: a.name })));
+      // an agent RTK has no hook for (DeepSeek Harness): listed, with why
+      if (a.noHook) row.append(tag(t("No RTK hook"), "warn", t("RTK can't be given to {agent} yet: RTK works by rewriting the shell command an agent is about to run, and {agent}'s hooks can only allow or deny a command, not change it. RTK's installer has no option for it either (github.com/rtk-ai/rtk/issues/3847).", { agent: a.name })));
+      else if (a.blocked && a.id !== "opencode") row.append(tag(t("Update RTK"), "warn", t("{agent}'s hook needs RTK 0.50 or newer: older ones only add @RTK.md to AGENTS.md, which rewrites no command. Update RTK (brew upgrade rtk, or its installer again), then switch it on.", { agent: a.name })));
       else if (a.blocked) row.append(tag(t("Not for OpenCode 2"), "warn", a.on
         ? t("RTK's plugin is written for OpenCode 1, and OpenCode 2 refuses to load it. Switch this off until RTK supports OpenCode 2.")
         : t("RTK's plugin is written for OpenCode 1, and OpenCode 2 refuses to load it. It can be switched on once RTK supports OpenCode 2.")));

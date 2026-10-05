@@ -19,7 +19,7 @@ agents RTK, a CLI that cuts shell output down before the model reads it.
 | MCP servers | A `Server` is a command or a URL (`http`, `sse`). `mcpFile` encodes it in each agent's own format (one `mcpFormat` per agent family) and merges it with the user's own fields for that entry. `Also` files get the same servers; `Extra` files are only read when importing. `CheckServers` connects as an agent would and keeps the result in memory only. A server that needs OAuth is signed in once in magpie, and agents reach it through the gateway's `/mcp/<name>` (#615). | [`mcp.go`](../../internal/library/mcp.go), [`mcp_check.go`](../../internal/library/mcp_check.go), [`mcp_signin.go`](../../internal/library/mcp_signin.go) |
 | Skills | A skill is a folder with a `SKILL.md`. It comes from GitHub, from a folder on this machine (linked, so editing the folder edits the skill) or from the market. Each agent gets a link or a marked copy (#896, `SkillHow`). An agent in a WSL distro always gets a copy. | [`skills.go`](../../internal/library/skills.go), [`skill_how.go`](../../internal/library/skill_how.go), [`skill_edits.go`](../../internal/library/skill_edits.go), [`skill_from.go`](../../internal/library/skill_from.go) |
 | Backups | Before a change first writes an agent file, `backups` copies it to `BackupDir`, one folder per change. The last `keepBackups` (30) changes are kept. | [`backup.go`](../../internal/library/backup.go) |
-| RTK | `SetRTK` runs rtk's own installer (`rtk init -g …`) for an agent being switched on. For one being switched off, it removes exactly what the installer wrote, using magpie's own code, which works even with rtk gone. `ReadRTK` reads each agent's files to say which have the hook. `rtkSpec.blocked` stops the installer where it would break an agent. | [`rtk.go`](../../internal/library/rtk.go) |
+| RTK | `SetRTK` runs rtk's own installer (`rtk init -g …`) for an agent being switched on. For one being switched off, it removes exactly what the installer wrote, using magpie's own code, which works even with rtk gone. `ReadRTK` reads each agent's files to say which have the hook. `rtkSpec.blocked` stops the installer where it would break an agent. A detected agent RTK has no hook for at all is still listed, from `rtkNoHook`, with the reason and a switch that can't be turned on (dsh: its hooks can allow or deny a command but not rewrite it, and `rtk init` has no `--agent dsh`). | [`rtk.go`](../../internal/library/rtk.go) |
 
 ## Runtime path
 
@@ -42,7 +42,7 @@ agents RTK, a CLI that cuts shell output down before the model reads it.
 ```sh
 go test -tags nogui ./internal/library -run 'TestTargets|TestServer|TestImportServer|TestCheck|TestInstructions|TestInstructionSets|TestSkill|TestEverySkillAgents|TestRTK'
 go test -tags nogui ./internal/library
-node --test internal/gui/tests/library-items.test.cjs internal/gui/tests/library-rtk-gain.test.cjs
+node --test internal/gui/tests/library-items.test.cjs internal/gui/tests/library-rtk-gain.test.cjs internal/gui/tests/library-rtk-nohook.test.cjs
 ```
 
 The package's `TestMain` runs in a home of its own (`testenv`), never the
