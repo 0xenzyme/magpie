@@ -16160,6 +16160,7 @@ function renderAlerts(s, keep) {
   };
   sub("#usageAlertSub", t("A notification when a 5-hour, weekly or monthly window reaches this share used, once each time it runs"));
   sub("#balanceAlertSub", t("A notification when a balance falls to this amount, in its own currency or credits, once until it is topped up"));
+  sub("#resetReminderSub", t("A notification this long before a weekly or monthly window renews with under 85% of it used, or before unused resets expire"));
   const field = (box, value, label, unit, ok, save) => {
     box.replaceChildren();
     if (value) {
@@ -16184,6 +16185,12 @@ function renderAlerts(s, keep) {
   field($("#balanceAlertSegs"), s.balanceAlert || 0, t("Amount"), "", (n) => Number.isFinite(n) && n > 0,
     (n) => savePrefs({ ...keep, balanceAlert: n }))
     .append(segs([["off", t("Off")], ["on", t("On")]], s.balanceAlert ? "on" : "off", (v) => savePrefs({ ...keep, balanceAlert: v === "on" ? s.balanceAlert || 5 : 0 })));
+  // the reset reminder (#720): Off, or how many hours before
+  const hours = [12, 24, 48];
+  const r = s.resetReminder || 0;
+  const opts = [["0", t("Off")], ...hours.map((h) => [String(h), t("{n} h before", { n: h })])];
+  if (r && !hours.includes(r)) opts.push([String(r), t("{n} h before", { n: r })]);
+  $("#resetReminderSegs").replaceChildren(segs(opts, String(r), (v) => savePrefs({ ...keep, resetReminder: Number(v) })));
 }
 
 // renderCodexTitles: where Codex's requests for a thread's title go (#705)
@@ -16925,7 +16932,7 @@ function prefsKeep(s) {
     memberModel: !!s.memberModel,
     noUpdatePill: !!s.noUpdatePill, noAutoUpdate: !!s.noAutoUpdate, updateEvery: s.updateEvery || 360,
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, trayNoBird: !!s.trayNoBird, vision: s.vision || "", imageGen: s.imageGen || "", searcher: s.searcher || "", currency: s.currency || "usd",
-    chineseUnits: !!s.chineseUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0 };
+    chineseUnits: !!s.chineseUnits, usageAlert: s.usageAlert || 0, balanceAlert: s.balanceAlert || 0, resetReminder: s.resetReminder || 0 };
 }
 
 // savePrefs sends what the page was drawn with (prefsBase) and the choice

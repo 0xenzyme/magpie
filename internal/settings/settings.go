@@ -210,6 +210,11 @@ type Settings struct {
 	// magpie says so, in that balance's own currency or credits, once until
 	// it is topped up past it again; 0 is off.
 	BalanceAlert float64 `json:"balanceAlert,omitempty"`
+	// ResetReminder is how many hours before a renewal magpie says what
+	// would be lost by it (#720): a weekly or monthly window with much of
+	// it left before it renews, a reset credit unspent before it runs out;
+	// once each. 0 is off.
+	ResetReminder int `json:"resetReminder,omitempty"`
 	// PlainNames has the model lists magpie gives agents name each model
 	// by its name alone, without its provider's or "routing group" after it
 	// (#335) — but for two in one list that would read the same, which keep
@@ -718,6 +723,9 @@ func Save(s Settings) error {
 	}
 	if s.UsageAlert < 0 || s.UsageAlert > 100 {
 		return fmt.Errorf("a usage alert is at a percentage from 1 to 100, or 0 for off, not %d", s.UsageAlert)
+	}
+	if s.ResetReminder < 0 || s.ResetReminder > 168 {
+		return fmt.Errorf("a reset reminder is from 1 to 168 hours before, or 0 for off, not %d", s.ResetReminder)
 	}
 	if math.IsNaN(s.BalanceAlert) || math.IsInf(s.BalanceAlert, 0) || s.BalanceAlert < 0 {
 		return fmt.Errorf("a balance alert is at an amount of 0 or more (0 for off), not %v", s.BalanceAlert)
