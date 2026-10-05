@@ -33,16 +33,32 @@ const ConversationHeader = "X-Magpie-Conversation"
 
 // PluginID is the id magpie gives the provider OpenCode calls id: the same,
 // unless a preset or a built-in subscription has it (google, openai,
-// anthropic), when it is id-plugin — but for a built-in moved onto the
-// plugin, whose id the plugin has now.
+// anthropic), or a provider of the user's own made before the plugin was
+// installed (zenmux, #867), when it is id-plugin — but for a built-in moved
+// onto the plugin, whose id the plugin has now.
 func PluginID(id string) string {
 	if Moved(id) {
 		return id
 	}
-	if slices.Contains(accountIDs, id) || Preset(id) != nil || id == "magpie" {
+	if slices.Contains(accountIDs, id) || Preset(id) != nil || id == "magpie" || customIDs()[id] {
 		return id + "-plugin"
 	}
 	return id
+}
+
+// customIDs are the ids of the user's own providers, those with an endpoint
+// in providers.json: a signed-in account with one of them would be hidden
+// behind it, not listed (allProviders).
+func customIDs() map[string]bool {
+	return heldOf("customIDs", func() map[string]bool {
+		ids := map[string]bool{}
+		for _, p := range load().Providers {
+			if p.Chat != "" || p.Responses != "" || p.Anthropic != "" || p.Decide != "" {
+				ids[p.ID] = true
+			}
+		}
+		return ids
+	})
 }
 
 // subscriptionID is whether id is a subscription's, a built-in's or an
