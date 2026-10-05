@@ -872,6 +872,16 @@ key. See [Connecting anything else](#connecting-anything-else) for the
 protocol-specific base URLs. Keep `3425` behind a firewall or VPN and do not
 expose it publicly without gateway-key authentication.
 
+Such a page is in **gateway mode**: it shows Providers, Gateway, Routing,
+Usage, Plugins and Settings, with no Agents, Sessions or Library tab, and
+Settings leaves out what is written into this machine's agents (provider in
+model names, Codex subagents, long conversations, Codex thread titles) and
+the desktop's alerts and tray. `magpie web` is in it by itself when it finds
+no agents on its machine, as in the container, and with
+`magpie web --gateway`. *Settings › General › Gateway mode* picks Automatic,
+On or Off for this machine (it wins over both); Off brings every page back.
+The app's own window is never in gateway mode.
+
 For a bind-mounted configuration directory, the directory must be writable by
 the non-root container user (uid 65532):
 
@@ -934,7 +944,7 @@ gateway translates.
 magpie                          # open the app: a window plus the menu bar icon
 magpie tray                     # menu bar icon only (use this in your login items)
 magpie tui                      # the same thing, in the terminal
-magpie web                      # the app's window in a browser (WSL, a server over SSH); --lan, --addr, --no-open
+magpie web                      # the app's window in a browser (WSL, a server over SSH); --lan, --addr, --no-open, --gateway
                                 # (a new key each run; MAGPIE_WEB_KEY keeps one, for a page run as a service)
 magpie ls                       # list every agent and its current settings
 magpie claude opus              # set a model (agent names accept prefixes: cc, oc, gem …)

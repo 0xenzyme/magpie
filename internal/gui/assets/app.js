@@ -10,6 +10,12 @@ if (mode === "panel") $("header.top").style.setProperty("--wails-draggable", "no
 // around it — it opens links itself, and what is the desktop's is left out
 const web = !!window.bootPrefs?.web;
 if (web) document.body.classList.add("web");
+// Gateway mode (gatewaymode.go): magpie web on a server that is only the
+// gateway for other computers' agents leaves out this computer's agents'
+// pages — Agents, Sessions, Library — and their settings; Settings ›
+// General turns it off, and they are back.
+let gatewayMode = web && !!window.bootPrefs?.gateway;
+const GATEWAY_HIDES = ["agents", "sessions", "library"];
 // iOS zooms the page into a field it focuses whose text is under 16px, and
 // leaves it zoomed; at most 1 stops that, and Safari still lets a pinch zoom
 if (web && (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1))) {
@@ -15507,8 +15513,8 @@ function applyPrefs(s, rate) {
 // icon), offered only in the app on Omarchy
 let barIcon = null;
 function renderBarIcon() {
-  $("#barIconRow").hidden = !barIcon?.available;
-  if (!barIcon?.available) return;
+  $("#barIconRow").hidden = !barIcon?.available || gatewayMode; // the desktop's, not a gateway's
+  if ($("#barIconRow").hidden) return;
   $("#barIconSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], barIcon.on ? "on" : "off", (v) =>
     api("omarchy/widget", { on: v === "on" }).then((b) => { barIcon = b; renderBarIcon(); })
       .catch((e) => { status(t(e.message), "err"); renderBarIcon(); })));
@@ -15526,6 +15532,8 @@ async function loadSettings() {
   // form open: load() keeps off this path while one is, so it is never
   // rebuilt under whoever is typing in it
   syncView = null;
+  // gateway mode turned in another tab, or the agents here come and gone
+  if (web && !!s.gatewayOn !== gatewayMode) setGatewayMode(!!s.gatewayOn);
   renderSettings();
 }
 
@@ -15730,6 +15738,7 @@ function renderSettings() {
   prefsBase = keep;
   $("#themeSegs").replaceChildren(segs(THEMES.map(([id, name]) => [id, t(name)]), s.theme, (theme) => savePrefs({ ...keep, theme })));
   $("#langSegs").replaceChildren(segs(LOCALES.map(([id, name]) => [id, t(name)]), s.lang, (lang) => savePrefs({ ...keep, lang })));
+  renderGatewayMode(s);
   // a browser tab has its own zoom, and magpie leaves it to it
   $("#textSizeRow").hidden = web;
   $("#textSizeSub").textContent = t("Everything in magpie's windows, larger; {keys} too", { keys: textSizeKeys() });
@@ -15868,8 +15877,31 @@ function renderSettings() {
   repo.title = "github.com/yetone/magpie";
   repo.onclick = () => api("open", { url: "https://github.com/yetone/magpie" }).catch(() => {});
   row(t("Community"), t("questions, ideas and feedback, on Discord or GitHub"), "", join, repo);
+  // gateway mode leaves out what is written into this computer's agents'
+  // files, and the alerts its desktop would show
+  for (const r of [$("#plainNamesSegs").parentElement, $("#codexAgentsV1Segs").parentElement, $("#fullContextSegs").parentElement,
+    $("#codexTitlesRow"), $("#usageAlertRow"), $("#balanceAlertRow"), $("#resetReminderRow")]) r.hidden = gatewayMode;
   // the parts' tabs, one gone whose rows are all hidden here
   setSetTab(setTab);
+}
+
+// Gateway mode's switch, in magpie web alone (gatewaymode.go): Automatic
+// (on with --gateway or no agents here), On or Off. Turned, the tabs follow
+// at once.
+function renderGatewayMode(s) {
+  $("#gatewayModeRow").hidden = !web;
+  if (!web) return;
+  $("#gatewayModeSegs").replaceChildren(segs([["auto", t("Automatic")], ["on", t("On")], ["off", t("Off")]], s.gatewayMode || "auto", (v) =>
+    writingPrefs(api("settings/gateway-mode", { mode: v === "auto" ? "" : v })).then((ns) => {
+      prefs = ns;
+      setGatewayMode(!!ns.gatewayOn);
+      renderSettings();
+    }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
+  const now = s.gatewayMode ? "" : {
+    flag: t("Now on: magpie web was started with --gateway"),
+    "no-agents": t("Now on: no agents on this computer"),
+  }[s.gatewayWhy] || t("Now off: agents found on this computer");
+  $("#gatewayModeSub").textContent = [t("Only what a gateway for other computers needs: no Agents, Sessions or Library, nor this computer's agents' settings"), now].filter(Boolean).join(" · ");
 }
 
 function renderSessionTerminal(s, keep) {
@@ -17551,6 +17583,8 @@ for (const v of document.querySelectorAll(".view")) {
 }
 
 function show(v) {
+  // a page gateway mode leaves out (a link to it, an address kept) opens Providers
+  if (gatewayMode && GATEWAY_HIDES.includes(v)) v = "providers";
   view = v;
   if (mode === "window") { for (const b of $("#nav").querySelectorAll("button")) b.classList.toggle("on", b.dataset.view === v); slide($("#nav"), "nav"); navInSight(); }
   $("#prefs").classList.toggle("on", v === "settings");
@@ -17584,6 +17618,16 @@ function syncURL() {
   if (s !== location.search) history.replaceState(null, "", s);
 }
 if (mode === "window") for (const b of $("#nav").querySelectorAll("button")) b.onclick = () => { show(b.dataset.view); b.blur(); };
+// setGatewayMode shows or leaves out gateway mode's pages' tabs; the page
+// open, one of them, gives way to Providers
+function setGatewayMode(on) {
+  gatewayMode = on;
+  document.body.classList.toggle("gateway-mode", on);
+  if (mode !== "window") return;
+  for (const v of GATEWAY_HIDES) $(`#nav button[data-view="${v}"]`).hidden = on;
+  if (on && GATEWAY_HIDES.includes(view)) show("providers");
+  else slide($("#nav"), "nav");
+}
 // openSettings: the Settings page, in the window (the panel opens it there)
 function openSettings() {
   if (mode !== "window") { api("window/main?view=settings", {}); return; }
@@ -18105,5 +18149,7 @@ if (mode === "window" && params.get("view") === "usage") {
   history.replaceState(null, "", u);
 }
 if (mode === "window" && ["providers", "gateway", "routing", "usage", "sessions", "library", "plugins", "settings"].includes(params.get("view"))) show(params.get("view"));
-else if (mode === "window") slide($("#nav"), "nav");
+else if (mode === "window" && !gatewayMode) slide($("#nav"), "nav");
+// in gateway mode the first page is Providers, Agents' tab gone
+if (gatewayMode) setGatewayMode(true);
 load();
