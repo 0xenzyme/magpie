@@ -3893,7 +3893,9 @@ function renderList() {
     const path = pathTag(o);
     if (path) { words.append(path); note = note.replace(/(^| · )via magpie$/, ""); }
     if (q && o.group && !note) note = o.group;
-    if (note) words.append(el("span", "n", note));
+    // a note cut off by its ellipsis (the other groups a model is in,
+    // #907) reads whole on hover
+    if (note) { const n = el("span", "n", note); n.title = note; words.append(n); }
     li.append(words);
     if (o.run) li.title = t(DISCONNECT_TIP, { agent: pick.agent.name });
     if (pick.modelPicker && o.value && !o.custom && !o.run) {

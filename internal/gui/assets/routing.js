@@ -2452,16 +2452,39 @@
   // gSel: the groups picked to be removed together, while picking (lc on
   // Discord: they could only be removed one at a time); null otherwise
   let gSel = null;
+  // gQ: the groups filtered by name and by the models in them, as many
+  // as there may be (PAMI on Discord); kept across redraws, and focused
+  // again when one comes while typing
+  const gQ = el("input", "sess-filter rt-gfilter");
+  gQ.type = "search";
+  gQ.spellcheck = false;
+  gQ.autocomplete = "off";
+  gQ.oninput = () => renderGroups();
+  gQ.onkeydown = (e) => { if (e.key === "Escape" && gQ.value) { e.stopPropagation(); gQ.value = ""; renderGroups(); } };
+  // groupMatches: every word of the filter in the group's name, id, or a
+  // member's id or label (its provider and model names)
+  function groupMatches(g, words) {
+    const hay = [g.name, g.id, "group/" + g.id, ...g.members.flatMap((id) => [id, memberLabel(g, id)]), ...(g.patterns || []).map((p) => p.pattern)].join("\n").toLowerCase();
+    return words.every((w) => hay.includes(w));
+  }
   function drawGroups() {
-    const shown = groups.groups.filter((g) => !g.hidden), hidden = groups.groups.filter((g) => g.hidden);
+    const all = groups.groups.filter((g) => !g.hidden), hidden = groups.groups.filter((g) => g.hidden);
+    const words = gQ.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    // the group being changed stays, whatever the filter
+    const shown = words.length ? all.filter((g) => gEdit?.id === g.id || groupMatches(g, words)) : all;
     if (gSel) gSel = new Set([...gSel].filter((id) => shown.some((g) => g.id === id)));
-    if (gSel && !shown.length) gSel = null;
+    if (gSel && !all.length) gSel = null;
     const newBtn = el("button", "text", t("New group"));
     newBtn.onclick = () => { gSel = null; gEdit = { id: "", draft: { name: "", members: [], match: [], matched: [], fast: [], off: [], routing: "", affinity: "", rules: [] } }; renderGroups(); };
     const head = [el("span", "label", t("Routing groups")), el("span", "grow"), el("span", "note", t("models agents pick as one"))];
+    const typing = document.activeElement === gQ, [a, b] = [gQ.selectionStart, gQ.selectionEnd];
+    if (all.length > 1 || gQ.value) {
+      gQ.placeholder = t("Filter groups and models");
+      head.push(gQ);
+    }
     if (!gSel) {
       // several removed at once: pick them, then Remove
-      if (shown.length > 1) {
+      if (all.length > 1) {
         const pick = el("button", "text rt-gselect", t("Select"));
         pick.title = t("Pick several groups to remove together");
         pick.onclick = () => { gEdit = null; gSel = new Set(); renderGroups(); };
@@ -2470,12 +2493,14 @@
       head.push(newBtn);
     }
     gHead.replaceChildren(...head);
+    if (typing && gQ.isConnected) { gQ.focus({ preventScroll: true }); try { gQ.setSelectionRange(a, b); } catch {} }
     drawFound();
     drawNames();
     const rows = [];
     if (gSel) rows.push(selectBar(shown));
     if (gEdit && !gEdit.id) rows.push(groupEditor(null));
     for (const g of shown) rows.push(gSel ? pickedRow(g) : gEdit?.id === g.id ? groupEditor(g) : groupRow(g));
+    if (!rows.length && all.length) rows.push(el("div", "none rt-gnone", t("No group or model matches “{q}”", { q: gQ.value.trim() })));
     if (!rows.length) rows.push(el("div", "none rt-gnone", groups.found === false
       ? t("No group yet. New group makes one of any models you like.")
       : t("No group yet. A model two of your providers serve becomes one on its own; New group makes one of any models you like.")));
@@ -2700,7 +2725,7 @@
       if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
       e.preventDefault();
       e.stopPropagation();
-      moveGroup(g.id, shownGroups().indexOf(g.id) + (e.key === "ArrowUp" ? -1 : 1), true);
+      moveGroup(g.id, nextTo(g.id, e.key === "ArrowUp" ? -1 : 1), true);
     };
     // the card opens the editor; the handle its menu, but not for the
     // click that ends a drag
@@ -2722,11 +2747,19 @@
     const again = agentMenu?.anchor === anchor;
     closeAgentMenu();
     if (again) return;
-    const ids = shownGroups(), i = ids.indexOf(g.id);
+    const up = nextTo(g.id, -1), down = nextTo(g.id, 1);
     openRowMenu(anchor, [
-      { name: "Move up", icon: MOVE_UP, key: ALT + "↑", off: i <= 0, run: () => moveGroup(g.id, i - 1, true) },
-      { name: "Move down", icon: MOVE_DOWN, key: ALT + "↓", off: i < 0 || i >= ids.length - 1, run: () => moveGroup(g.id, i + 1, true) },
+      { name: "Move up", icon: MOVE_UP, key: ALT + "↑", off: up < 0, run: () => moveGroup(g.id, up, true) },
+      { name: "Move down", icon: MOVE_DOWN, key: ALT + "↓", off: down < 0, run: () => moveGroup(g.id, down, true) },
     ]);
+  }
+  // nextTo: where a group moved one up (-1) or down goes, among them all:
+  // the place of the card listed next to it, so a filtered list moves it
+  // past the one the reader sees; -1 at either end
+  function nextTo(id, by) {
+    const seen = [...gList.querySelectorAll(".rt-group[data-id]")].map((r) => r.dataset.id);
+    const n = seen[seen.indexOf(id) + by];
+    return n === undefined || !seen.includes(id) ? -1 : shownGroups().indexOf(n);
   }
   // moveGroup puts the group at index `to` among the ones listed; the
   // removed ones keep their places after them. The list is drawn in its new
@@ -3011,11 +3044,16 @@
         .map((x) => ({ value: "group/" + x.id, label: x.name, note: noted("group/" + x.id, "group/" + x.id), icons: groupIcons(x), group: ROUTING_GROUPS, ref: "group/" + x.id }));
       const options = [...subs, ...groups.models
         .map((x) => ({ value: x.id, label: x.name || x.id, note: noted(x.providerName, x.id), icon: x.icon, group: x.providerName, ref: x.id, context: x.context }))];
-      openPicker({ id: "", name: "", fields: [] }, { key: "member", label: "model", value: "", options, multi: true, picked: (id) => d.members.includes(id), onPick: (id) => {
+      // the member a model is in the group as: itself, or with its
+      // reasoning fixed (deepseek/x:max), which is ticked as it and taken
+      // out by it rather than added twice (#907)
+      const holding = (id) => d.members.includes(id) ? id : d.members.find((m) => splitMember(m)[0] === id);
+      openPicker({ id: "", name: "", fields: [] }, { key: "member", label: "model", value: "", options, multi: true, picked: (id) => !!holding(id), onPick: (id) => {
         if (!id) return;
-        if (!d.members.includes(id)) d.members.splice(named(), 0, id); // after those named, before a pattern's
-        else if (d.matched.includes(id)) return status(t("In the group by a pattern: switch it off to send it nothing"), "warn");
-        else { d.members.splice(d.members.indexOf(id), 1); rematch(); }
+        const m = holding(id);
+        if (!m) d.members.splice(named(), 0, id); // after those named, before a pattern's
+        else if (d.matched.includes(m)) return status(t("In the group by a pattern: switch it off to send it nothing"), "warn");
+        else { d.members.splice(d.members.indexOf(m), 1); rematch(); }
         draw(); drawRules();
       } }, addBtn, ev);
     };

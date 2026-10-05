@@ -700,6 +700,16 @@ Add threw. A save the server refuses shows its error in sight, the editor
 stays, and a second Add is posted, where the button stayed busy. At 600x420
 and 1000x700, in Chromium and WebKit, English and Chinese.
 
+`group-pick-filter.test.cjs` covers a group's Add a model picker and the
+filter over the routing groups (#907; PAMI on Discord). A model in the group
+with its reasoning fixed (a/two:max) is ticked, and a click takes that member
+out instead of adding it a second time. A model that is in other groups names
+them, and the whole note shows on hover. The filter keeps the groups whose
+name, id or models match every word typed, and the keyboard stays in it.
+When nothing matches it says so, and Escape clears it. The page never moves,
+and there is no select or left border. In Chromium and WebKit, English and
+Chinese.
+
 `old-webkit.test.cjs` holds the page to Safari 15.0, the WebKit macOS 12 can
 have (#220: a regex lookbehind in app.js, a syntax error before Safari 16.4,
 left the panel with its headings and nothing working). Every script in
