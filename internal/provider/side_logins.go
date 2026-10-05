@@ -169,13 +169,14 @@ func setSideLoginOn(agent, user string, on bool, ls []sideLogin) error {
 // forgetSideLogin drops an account magpie signed in; gone is told what it
 // kept. The agent's own sign-in is only hidden: its files stay as they
 // are, and it shows again once the agent signs in anew (ownMark). Hidden
-// while first, the next account is put first.
+// while first, the next account is put first. One of magpie's that is
+// first waits for another to be put first, unless it is the only one: then
+// there is none to put first, and it goes, leaving the subscription with no
+// account (#874: a removed subscription's Sign out… could never take its
+// one account).
 func forgetSideLogin(agent, user string, ls []sideLogin, gone func(savedLogin)) error {
 	own := slices.ContainsFunc(ls, func(l sideLogin) bool { return l.Own && strings.EqualFold(l.User, user) })
 	first := strings.EqualFold(activeOf(ls), user)
-	if first && !own {
-		return fmt.Errorf("magpie uses %s first; put another account first", user)
-	}
 	next := ""
 	if first {
 		for _, l := range ls {
@@ -184,6 +185,9 @@ func forgetSideLogin(agent, user string, ls []sideLogin, gone func(savedLogin)) 
 				break
 			}
 		}
+	}
+	if first && !own && next != "" {
+		return fmt.Errorf("magpie uses %s first; put another account first", user)
 	}
 	mark := hiddenNoMark
 	if own {

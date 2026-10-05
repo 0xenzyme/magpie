@@ -4668,8 +4668,10 @@ function askForgetAccount(x) {
     e.stopPropagation();
     go.disabled = true;
     go.classList.add("busy");
-    await providerAction("forget", { id: x.provider }, t("{name} signed out", { name: x.agentName }));
-    closeConfirmAsk();
+    // failed, the ask stays with the error in it rather than close over it
+    // (#874: the error showed for a blink as the ask closed)
+    if (await providerAction("forget", { id: x.provider }, t("{name} signed out", { name: x.agentName }))) closeConfirmAsk();
+    else go.disabled = false;
   };
   const cancel = el("button", "text", t("Cancel"));
   cancel.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); };
@@ -7416,11 +7418,27 @@ function contextPicks(p, cx) {
 // may hold, over what the vendor or models.dev says, one for all of them
 // and model=size for one, as the context window is set (ARNO on Discord: a
 // model's maxTokens was wrong, and only its window could be set here).
+// The usual sizes sit under it, one click each, as under the window (#875).
 function outputField() {
   const ox = input(draft.outputs || "", t("e.g. 32k · or gpt-6=128k, comma separated"));
   ox.classList.add("outputs");
-  ox.oninput = () => { draft.outputs = ox.value; };
-  return field(t("Max output"), ox, t("The most a reply may hold, told to the agents as their max tokens; empty leaves it to the vendor and models.dev"));
+  const sizes = [8e3, 16e3, 32e3, 64e3, 128e3].map((n) => contextsText({ "*": n }));
+  const row = el("div", "cxpicks");
+  const same = (a, b) => JSON.stringify(parseContexts(a).map || {}) === JSON.stringify(parseContexts(b).map || {});
+  const light = () => {
+    for (const [i, b] of [...row.children].entries()) b.classList.toggle("on", !!ox.value.trim() && same(ox.value, sizes[i]));
+  };
+  for (const v of sizes) {
+    const b = el("button", "cxpick", v.toUpperCase());
+    b.type = "button";
+    b.onclick = () => { ox.value = v; draft.outputs = v; light(); };
+    row.append(b);
+  }
+  ox.oninput = () => { draft.outputs = ox.value; light(); };
+  light();
+  const wrap = el("div", "cxfield");
+  wrap.append(ox, row);
+  return field(t("Max output"), wrap, t("The most a reply may hold, told to the agents as their max tokens; empty leaves it to the vendor and models.dev"));
 }
 
 function outputError(ed, v) {
@@ -10844,6 +10862,7 @@ async function providerAction(action, body, okMsg, base = "provider/") {
     state = await api("state");
     renderAgents();
     saidMoved(okMsg);
+    return true;
   } catch (e) {
     // a Remove may have gone through before what failed: the list as it is
     // now, and the editor of a provider gone closes, rather than stay open
