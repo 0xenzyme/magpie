@@ -832,8 +832,9 @@ func kiroIdentity(key, home string) (user, plan string) {
 	}
 	if time.Since(s.at) > 5*time.Minute && !s.refreshing {
 		s.refreshing = true
+		ask := askKiroIdentity // read here: a test puts its own back meanwhile
 		go func() {
-			u, p := askKiroIdentity(key, home)
+			u, p := ask(key, home)
 			kiroStatus.Lock()
 			if u != "" || p != "" {
 				s.user, s.plan = u, p
