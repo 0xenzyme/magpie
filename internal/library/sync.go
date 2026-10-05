@@ -138,6 +138,7 @@ func (l *Library) syncMCP(t *Target, b *backups, res *Result) {
 			res.fail(id, "mcp:"+s.Name, err)
 			continue
 		}
+		s, _ = t.MCP.side(s)
 		old := entries[s.Name]
 		if old != nil {
 			if cur, ok := t.MCP.decode(s.Name, old); ok && cur.same(s) && t.MCP.has(s) && !t.MCP.behind(s, old) {

@@ -318,13 +318,13 @@ func wslTargetOf(a *agent.Agent) *Target {
 	case "claude":
 		d := filepath.Join(h, ".claude")
 		t.Instructions = filepath.Join(d, "CLAUDE.md")
-		t.MCP = &mcpFile{Path: filepath.Join(h, ".claude.json"), Format: fmtClaude, WSL: true}
+		t.MCP = &mcpFile{Path: filepath.Join(h, ".claude.json"), Format: fmtClaude, WSL: true, Distro: a.WSL, Home: linuxHome(h)}
 		t.Skills = filepath.Join(d, "skills")
 	case "codex":
 		d := filepath.Join(h, ".codex")
 		t.Instructions = filepath.Join(d, "AGENTS.md")
 		t.Override = filepath.Join(d, "AGENTS.override.md")
-		t.MCP = &mcpFile{Path: filepath.Join(d, "config.toml"), Format: fmtCodex, WSL: true}
+		t.MCP = &mcpFile{Path: filepath.Join(d, "config.toml"), Format: fmtCodex, WSL: true, Distro: a.WSL, Home: linuxHome(h)}
 		t.Skills = filepath.Join(d, "skills")
 	case "pi":
 		// its MCP servers go where the Pi installed there reads them,
@@ -335,7 +335,7 @@ func wslTargetOf(a *agent.Agent) *Target {
 	case "omo":
 		d := filepath.Join(h, ".omo", "agent")
 		t.Instructions = filepath.Join(d, "AGENTS.md")
-		t.MCP = &mcpFile{Path: filepath.Join(d, "mcp.json"), Format: fmtPiNative, WSL: true}
+		t.MCP = &mcpFile{Path: filepath.Join(d, "mcp.json"), Format: fmtPiNative, WSL: true, Distro: a.WSL, Home: linuxHome(h)}
 		t.Skills = filepath.Join(d, "skills")
 	default:
 		return nil
