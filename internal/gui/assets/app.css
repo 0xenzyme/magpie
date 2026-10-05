@@ -300,13 +300,20 @@ body.window .view { padding: 2px 16px 8px; }
    Sessions take the whole width */
 body.window :is(#view-agents, #view-providers, #view-gateway, #view-library, #view-plugins, #view-settings) { padding-left: max(16px, calc(50% - 600px)); padding-right: max(16px, calc(50% - 600px)); }
 .view > .view-room { flex: none; pointer-events: none; } /* see "where the reader is" */
-.view::-webkit-scrollbar { width: 0; }
 /* Windows and Linux draw a classic scrollbar, arrows and all; a thin rounded
    thumb instead, like the overlay one macOS shows (left as it is there) */
 :where(body:not(.mac)) ::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
 :where(body:not(.mac)) ::-webkit-scrollbar-thumb { background: var(--faint); border: 3px solid transparent; border-radius: 10px; background-clip: padding-box; }
 :where(body:not(.mac)) ::-webkit-scrollbar-thumb:hover { background-color: var(--muted); }
 :where(body:not(.mac)) ::-webkit-scrollbar-button, :where(body:not(.mac)) ::-webkit-scrollbar-corner { display: none; background: transparent; }
+/* a page, a dialog and a framed editor that run longer than the window
+   show where the reader is in them with a thin thumb, on the Mac too
+   (PAMI on Discord: no page had a scrollbar) — the WebView draws the
+   Mac's overlay one only while a trackpad scrolls, and a mouse never */
+body.mac :is(.view, .modal .dialog, .modal .editor.framed > .ebody)::-webkit-scrollbar { width: 8px; background: transparent; }
+body.mac :is(.view, .modal .dialog, .modal .editor.framed > .ebody)::-webkit-scrollbar-thumb { background: var(--faint); border: 2px solid transparent; border-radius: 8px; background-clip: padding-box; }
+body.mac :is(.view, .modal .dialog, .modal .editor.framed > .ebody)::-webkit-scrollbar-thumb:hover { background-color: var(--muted); }
+body.mac :is(.view, .modal .dialog, .modal .editor.framed > .ebody)::-webkit-scrollbar-corner { background: transparent; }
 .list { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; flex: none; }
 body.panel .list { border: 0; border-radius: 10px; box-shadow: var(--card-edge); }
 .row { display: flex; align-items: center; gap: 9px; min-height: 40px; padding: 5px 9px 5px 11px; }
@@ -2450,7 +2457,6 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   box-shadow: 0 0 0 1px var(--line), 0 24px 60px rgba(0, 0, 0, .32), 0 2px 8px rgba(0, 0, 0, .12);
 }
 .modal .dialog.swap { animation: content-in .22s var(--ease); }
-.modal .dialog::-webkit-scrollbar { width: 0; }
 /* In a dialog the editor's head and buttons stay put and only the fields
    between them scroll; both bars are the same height, their contents
    centred in it. */
@@ -2460,7 +2466,6 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
   display: grid; grid-template-columns: inherit; gap: 10px 14px; align-items: start; padding: 14px 18px;
 }
-.modal .editor.framed > .ebody::-webkit-scrollbar { width: 0; }
 .modal .editor.framed > .ehead, .modal .editor.framed > .bar { flex: none; min-height: 48px; margin: 0; padding: 0 18px; }
 .modal .editor.framed > .ehead { border-bottom: 1px solid var(--line-2); }
 .modal .editor.framed > .bar { border-top: 1px solid var(--line-2); }

@@ -287,6 +287,9 @@ func groupRoutes(mux *http.ServeMux) {
 			}
 		case "show":
 			err = provider.ShowGroup(in.ID)
+		case "switch":
+			// a group of the user's on or off, kept as it is (PAMI on Discord)
+			err = provider.SwitchGroup(in.ID, body.On)
 		case "arrange":
 			err = provider.SetGroupOrder(body.Order)
 		default:

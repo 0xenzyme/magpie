@@ -2609,7 +2609,7 @@
     }
   }
   function groupRow(g) {
-    const row = el("div", "rt-group" + (g.ready ? "" : " off"));
+    const row = el("div", "rt-group" + (g.ready ? "" : " off") + (g.disabled ? " disabled" : ""));
     row.dataset.id = g.id;
     const ics = groupHandle(g, row);
     const main = el("div", "main");
@@ -2641,13 +2641,33 @@
       r.title = (manual ? t("The rules wait while you pick the model by hand.") + "\n" : "") + g.rules.map((x, i) => `${i + 1}. ${ruleText(x)} → ${memberLabel(g, x.use)}`).join("\n");
       tags.append(r);
     }
-    if (!g.ready) tags.append(el("span", "tag bad", t("no member ready")));
+    if (g.disabled) tags.append(el("span", "tag idle", t("switched off")));
+    else if (!g.ready) tags.append(el("span", "tag bad", t("no member ready")));
     const edit = el("button", "text", t("Edit"));
     edit.onclick = (e) => { e.stopPropagation(); open(); };
     const open = () => { gEdit = { id: g.id, draft: { name: g.name, members: [...g.members], match: [...(g.match || [])], matched: [...(g.matched || [])], fast: [...(g.fast || [])], off: [...(g.off || [])], routing: g.routing || "", pick: g.pick || "", affinity: g.affinity || "", sink: !!g.sink, firstToken: g.firstToken || 0, context: g.context || 0, classifier: g.classifier || "", effort: g.effort || "", levels: [...(g.levels || [])], rules: (g.rules || []).map((r) => ({ ...r, intent: r.intent || "", agents: [...(r.agents || [])], time: r.time ? { ...r.time, days: [...(r.time.days || [])] } : null })) } }; renderGroups(); };
     row.onclick = open;
     row.oncontextmenu = (e) => { e.preventDefault(); groupMenu(ics, g); };
     row.append(ics, main, tags, edit);
+    // a group of the user's switches off as a whole, kept as it is (PAMI
+    // on Discord); one magpie found is removed rather (provider.SwitchGroup)
+    if (!g.auto) {
+      const sw = el("button", "lib-switch rt-gon" + (g.disabled ? "" : " on"));
+      sw.type = "button";
+      sw.setAttribute("role", "switch");
+      sw.setAttribute("aria-checked", String(!g.disabled));
+      sw.setAttribute("aria-label", g.name);
+      sw.title = g.disabled ? t("Off: agents aren't offered {name} and a request to it is turned away. Click to switch it on", { name: g.name })
+        : t("On: agents may pick {name}. Click to switch it off and keep it as it is", { name: g.name });
+      sw.append(el("i"));
+      sw.onclick = async (e) => {
+        e.stopPropagation(); // the card opens the editor; this switches
+        const held = document.activeElement === sw;
+        await groupAction("switch", { id: g.id, on: !!g.disabled }, t(g.disabled ? "{name} switched on" : "{name} switched off", { name: g.name }));
+        if (held) gList.querySelector(`.rt-group[data-id="${CSS.escape(g.id)}"] .rt-gon`)?.focus({ preventScroll: true });
+      };
+      row.append(sw);
+    }
     return row;
   }
   // groupHandle is a group row's logos, which are also its handle, as an
@@ -2842,6 +2862,40 @@
     const list = el("div", "fbl");
     const addBtn = el("button", "rt-gadd");
     addBtn.append(svg(PLUS, 11, 1.8), el("span", "", t("Add a model")));
+    // moveMember puts the member at `from` at `to` among those named — a
+    // pattern's follow them, in the catalog's order — and keeps the
+    // keyboard on its handle when it was there
+    const named = () => d.members.filter((x) => !d.matched.includes(x)).length;
+    const moveMember = (from, to, keep) => {
+      if (to < 0 || to >= named() || to === from) return;
+      d.members.splice(to, 0, d.members.splice(from, 1)[0]);
+      draw();
+      if (keep) list.querySelector(`.rt-mhandle[data-at="${to}"]`)?.focus({ preventScroll: true });
+    };
+    // memberHandle is a named member's place in the order, which is also
+    // its handle (PAMI on Discord: only Up, one step a click): drag it to
+    // move the model, or Alt+↑/↓ from the keyboard; Up and Down stay
+    // beside it. The grip that says so shows only on hover, as on the
+    // groups' cards.
+    const memberHandle = (id, i, row) => {
+      const b = el("button", "i ag-handle rt-mhandle", String(i + 1));
+      b.type = "button";
+      b.dataset.at = i;
+      b.setAttribute("aria-label", t("Move {name}", { name: memberName(id) }));
+      b.title = t("Drag to reorder · Alt+↑/↓ to move");
+      b.onkeydown = (e) => {
+        if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        moveMember(i, i + (e.key === "ArrowUp" ? -1 : 1), true);
+      };
+      b.onclick = (e) => { e.stopPropagation(); delete b.dataset.dragged; };
+      b.onpointerdown = (e) => {
+        const rows = [...list.children].filter((r) => r.querySelector(".rt-mhandle"));
+        dragRows(e, b, row, list, rows, (to) => moveMember(i, to));
+      };
+      return b;
+    };
     const draw = () => {
       list.replaceChildren();
       d.members.forEach((id, i) => {
@@ -2865,7 +2919,7 @@
         sw.append(el("i"));
         sw.onclick = () => { d.off = off ? d.off.filter((x) => x !== id) : [...d.off, id]; draw(); };
         if (off) row.classList.add("muted");
-        row.append(sw, el("span", "i", String(i + 1)), memberIcon(id), n, el("span", "grow"));
+        row.append(sw, matched ? el("span", "i", String(i + 1)) : memberHandle(id, i, row), memberIcon(id), n, el("span", "grow"));
         // the reasoning the model is sent at in this group: the group's
         // (blank), or one of its own whatever the agent asks. A group in
         // it reasons as it says.
@@ -2911,7 +2965,8 @@
           list.append(row);
           return;
         }
-        if (i) { const up = el("button", "text", t("Up")); up.onclick = () => { d.members.splice(i - 1, 0, d.members.splice(i, 1)[0]); draw(); }; row.append(up); }
+        if (i) { const up = el("button", "text", t("Up")); up.onclick = () => moveMember(i, i - 1); row.append(up); }
+        if (i < named() - 1) { const down = el("button", "text", t("Down")); down.onclick = () => moveMember(i, i + 1); row.append(down); }
         const rm = el("button", "text", t("Remove"));
         rm.onclick = () => { d.members.splice(i, 1); rematch(); draw(); drawRules(); };
         row.append(rm);
@@ -2919,15 +2974,26 @@
       });
       addBtn.querySelector("span").textContent = t(d.members.length ? "Add another model" : "Add a model");
     };
+    // the picker stays open for as many models as are wanted, each ticked
+    // once in, and says which other groups a model is in already (PAMI on
+    // Discord: a group was made one model at a time, blind)
+    const inGroups = (id) => groups.groups.filter((x) => !x.hidden && x.id !== g?.id && x.members.some((m) => m === id || splitMember(m)[0] === id)).map((x) => x.name);
+    const noted = (note, id) => {
+      const gs = inGroups(id);
+      return gs.length ? [note, t("in {groups}", { groups: gs.join(", ") })].filter(Boolean).join(" · ") : note;
+    };
     addBtn.onclick = (ev) => {
       // a group in it may be any other, but never one it is in already:
       // that would put it in itself
-      const subs = groups.groups.filter((x) => !x.hidden && x.id !== g?.id && !(g && x.holds?.includes(g.id)) && !d.members.includes("group/" + x.id))
-        .map((x) => ({ value: "group/" + x.id, label: x.name, note: "group/" + x.id, icons: groupIcons(x), group: ROUTING_GROUPS, ref: "group/" + x.id }));
-      const options = [...subs, ...groups.models.filter((x) => !d.members.includes(x.id))
-        .map((x) => ({ value: x.id, label: x.name || x.id, note: x.providerName, icon: x.icon, group: x.providerName, ref: x.id, context: x.context }))];
-      openPicker({ id: "", name: "", fields: [] }, { key: "member", label: "model", value: "", options, onPick: (id) => {
-        if (id && !d.members.includes(id)) d.members.push(id);
+      const subs = groups.groups.filter((x) => !x.hidden && x.id !== g?.id && !(g && x.holds?.includes(g.id)))
+        .map((x) => ({ value: "group/" + x.id, label: x.name, note: noted("group/" + x.id, "group/" + x.id), icons: groupIcons(x), group: ROUTING_GROUPS, ref: "group/" + x.id }));
+      const options = [...subs, ...groups.models
+        .map((x) => ({ value: x.id, label: x.name || x.id, note: noted(x.providerName, x.id), icon: x.icon, group: x.providerName, ref: x.id, context: x.context }))];
+      openPicker({ id: "", name: "", fields: [] }, { key: "member", label: "model", value: "", options, multi: true, picked: (id) => d.members.includes(id), onPick: (id) => {
+        if (!id) return;
+        if (!d.members.includes(id)) d.members.splice(named(), 0, id); // after those named, before a pattern's
+        else if (d.matched.includes(id)) return status(t("In the group by a pattern: switch it off to send it nothing"), "warn");
+        else { d.members.splice(d.members.indexOf(id), 1); rematch(); }
         draw(); drawRules();
       } }, addBtn, ev);
     };
