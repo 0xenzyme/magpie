@@ -83,6 +83,9 @@ type Settings struct {
 	// named caller keys. LANKey is retained for older Magpie versions.
 	LAN    bool   `json:"lan,omitempty"`
 	LANKey string `json:"lanKey,omitempty"`
+	// Port is the gateway's port on this computer, 0 for DefaultPort.
+	// MAGPIE_ADDR, where it is set, comes first (GatewayAddr).
+	Port int `json:"port,omitempty"`
 	// LANKeyID remembers the default named key created when sharing is enabled.
 	LANKeyID string `json:"lanKeyId,omitempty"`
 	// RequestArchive keeps each call the gateway serves — its headers and
@@ -537,11 +540,11 @@ func (s Settings) Working(n int) int {
 
 // KeepOwn puts back cur's settings that are this computer's own, which a
 // sync or a restored backup never brings from another: the window's size,
-// the proxy, the Dock, and what the menu bar or tray shows beside magpie's
+// the proxy, the gateway's port, the Dock, and what the menu bar or tray shows beside magpie's
 // icon (yoooo on Discord: usage turned off on a Mac came back from a
 // Windows box that shows it).
 func (s *Settings) KeepOwn(cur Settings) {
-	s.Window, s.Proxy, s.Dock, s.DockWindow, s.Lightweight = cur.Window, cur.Proxy, cur.Dock, cur.DockWindow, cur.Lightweight
+	s.Window, s.Proxy, s.Port, s.Dock, s.DockWindow, s.Lightweight = cur.Window, cur.Proxy, cur.Port, cur.Dock, cur.DockWindow, cur.Lightweight
 	s.TrayUsages, s.TrayUsage, s.TrayUsageEvery, s.TrayNoLogos, s.TrayNoBird = cur.TrayUsages, cur.TrayUsage, cur.TrayUsageEvery, cur.TrayNoLogos, cur.TrayNoBird
 }
 
@@ -631,6 +634,41 @@ func CheckProxy(p string) error {
 	return nil
 }
 
+// DefaultPort is the gateway's port unless Settings or MAGPIE_ADDR say
+// another.
+const DefaultPort = 3425
+
+// CheckPort says what is wrong with a port for the gateway: one from 1024
+// to 65535 (below that a system wants an administrator to listen on it),
+// or 0 for the default.
+func CheckPort(p int) error {
+	if p != 0 && (p < 1024 || p > 65535) {
+		return fmt.Errorf("the gateway's port is a number from 1024 to 65535, not %d", p)
+	}
+	return nil
+}
+
+// GatewayAddr is where the gateway listens: MAGPIE_ADDR when it is set,
+// else the port Settings has, on loopback (Magic_zero on Discord: 3425 was
+// taken, and a port of one's own is easier to tell apart).
+func GatewayAddr() string {
+	if a := os.Getenv("MAGPIE_ADDR"); a != "" {
+		return a
+	}
+	return SavedAddr()
+}
+
+// SavedAddr is GatewayAddr with MAGPIE_ADDR left aside: the address of the
+// magpie whose settings these are, which one the variable moves (magpie-dev,
+// a sandbox) runs beside.
+func SavedAddr() string {
+	p := Load().Port
+	if p == 0 || CheckPort(p) != nil {
+		p = DefaultPort
+	}
+	return fmt.Sprintf("127.0.0.1:%d", p)
+}
+
 // Save validates and writes the settings.
 func Save(s Settings) error {
 	fileMu.Lock()
@@ -679,6 +717,9 @@ func Save(s Settings) error {
 	}
 	if math.IsNaN(s.BalanceAlert) || math.IsInf(s.BalanceAlert, 0) || s.BalanceAlert < 0 {
 		return fmt.Errorf("a balance alert is at an amount of 0 or more (0 for off), not %v", s.BalanceAlert)
+	}
+	if err := CheckPort(s.Port); err != nil {
+		return err
 	}
 	if !slices.Contains(TextSizes, s.TextSize) {
 		return fmt.Errorf("text size must be one of %v percent, not %d", TextSizes, s.TextSize)

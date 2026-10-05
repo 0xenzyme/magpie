@@ -36,7 +36,8 @@ import (
 	"github.com/yetone/magpie/internal/usage"
 )
 
-// DefaultAddr is where the gateway listens unless MAGPIE_ADDR says otherwise.
+// DefaultAddr is where the gateway listens unless Settings' port or
+// MAGPIE_ADDR says otherwise.
 const DefaultAddr = "127.0.0.1:3425"
 
 // Token is the bearer token agents are told to use. The gateway only
@@ -174,13 +175,13 @@ func switchedOff(p provider.Provider, model string) string {
 // Version is set by main.
 var Version = "dev"
 
-// Addr is the listen address.
-func Addr() string {
-	if a := os.Getenv("MAGPIE_ADDR"); a != "" {
-		return a
-	}
-	return DefaultAddr
-}
+// Addr is the listen address: MAGPIE_ADDR, else Settings' port on
+// loopback (settings.GatewayAddr).
+func Addr() string { return settings.GatewayAddr() }
+
+// SavedURL is URL by Settings alone, MAGPIE_ADDR left aside: where the
+// installed magpie, whose settings these are, is reached.
+func SavedURL() string { return "http://" + settings.SavedAddr() }
 
 // URL is the base URL agents use, e.g. http://127.0.0.1:3425: a gateway
 // listening on every interface is reached here on loopback.

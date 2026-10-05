@@ -180,11 +180,12 @@ func (a *Agent) Drift() *Drift {
 }
 
 // installedURL is the gateway of the magpie people install, on its own
-// port; a magpie on another one (magpie-dev, a sandbox) is run beside it.
-var installedURL = "http://" + gateway.DefaultAddr
+// port, the one its Settings have; a magpie MAGPIE_ADDR puts on another
+// (magpie-dev, a sandbox) is run beside it.
+var installedURL = gateway.SavedURL
 
 // elsewhere: this magpie is not on the installed one's port.
-func elsewhere() bool { return !sameHost(gateway.URL(), installedURL) }
+func elsewhere() bool { return !sameHost(gateway.URL(), installedURL()) }
 
 // theInstalled: this magpie runs beside the installed one, and the agent is
 // wired to that one's gateway, not this one's — the installed magpie set it
@@ -198,7 +199,7 @@ func (a *Agent) theInstalled() bool {
 	if err != nil {
 		return false
 	}
-	return strings.Contains(string(b), gateway.DefaultAddr) && !strings.Contains(string(b), hostOf(gateway.URL()))
+	return strings.Contains(string(b), hostOf(installedURL())) && !strings.Contains(string(b), hostOf(gateway.URL()))
 }
 
 // bypassed: the agent was used — while this gateway was up and after magpie

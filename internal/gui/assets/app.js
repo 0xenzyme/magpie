@@ -15221,6 +15221,7 @@ function renderSettings() {
   renderReplies(s, keep);
   renderRedact(s, keep);
   renderOTel(s, keep);
+  renderPort(s);
   renderLAN(s);
   renderSync();
 
@@ -16341,6 +16342,69 @@ function renderRedactRules(s, row) {
     x.onclick = () => set(rules.filter((_, i) => i !== n));
     row(r.kind, r.prefix ? t("Starts with {p}", { p: r.prefix }) : t("Matches {re}", { re: r.regex }), x);
   });
+}
+
+// renderPort: the gateway's port on this computer (Magic_zero on Discord:
+// 3425 taken by another program, or one easier to tell apart). Any port
+// from 1024 up can be typed; magpie moves its gateway there and every
+// agent it connected with it, or says why it can't (another program has
+// it). MAGPIE_ADDR, set, comes first and the field says so.
+let portDraft = { value: null, err: "" };
+// portSays is the gateway's word on a port it couldn't take, in the page's
+// language: it says the port, so it is matched rather than looked up
+function portSays(m) {
+  let x;
+  if ((x = /^port (\d+) is in use by another program/.exec(m))) return t("Port {p} is in use by another program: pick another one", { p: x[1] });
+  if ((x = /^another magpie serves the gateway at (\S+):/.exec(m))) return t("Another magpie serves the gateway at {url}: set its port there, or quit it first", { url: x[1] });
+  if (/from 1024 to 65535/.test(m)) return t("A port is a number from 1024 to 65535");
+  return t(m);
+}
+function renderPort(s) {
+  const box = $("#portList");
+  const r = el("div", "row pref port-row");
+  const who = el("div", "who");
+  who.append(el("div", "name", t("Gateway port")));
+  const sub = el("div", "sub");
+  const d = portDraft;
+  const now = s.addrEnv ? "" : String(s.port || 3425);
+  const field = input(d.value ?? now, "3425");
+  field.className = "words gateway-port";
+  field.inputMode = "numeric";
+  field.setAttribute("aria-label", t("Gateway port"));
+  const save = el("button", "text", t("Apply"));
+  if (s.addrEnv) {
+    field.value = s.addrEnv;
+    field.disabled = save.disabled = true;
+    sub.textContent = t("MAGPIE_ADDR={addr} sets the gateway’s address: unset it to set the port here", { addr: s.addrEnv });
+  } else if (d.err) {
+    sub.textContent = d.err;
+    sub.classList.add("err");
+  } else sub.textContent = t("Agents magpie connected move with it. Now {url}", { url: s.gateway || "" });
+  who.append(sub);
+  save.onclick = () => {
+    const p = Number(field.value.trim());
+    if (!Number.isInteger(p) || p < 1024 || p > 65535) {
+      d.value = field.value; d.err = t("A port is a number from 1024 to 65535");
+      return renderPort(s);
+    }
+    if (p === (s.port || 3425)) { d.value = null; d.err = ""; return renderPort(s); }
+    save.disabled = true;
+    writingPrefs(api("settings/port", { port: p }).then((res) => res.settings && (prefs = res.settings, res)))
+      .then((res) => {
+        portDraft = { value: null, err: "" };
+        const n = res.port?.moved?.length || 0;
+        if (res.port?.error) status(res.port.error, "err");
+        else status(n ? t("Gateway on port {p}; {n} agents moved with it", { p, n }) : t("Gateway on port {p}", { p }), "ok", 2500);
+        renderSettings();
+      })
+      .catch((e) => { d.value = field.value; d.err = portSays(e.message); status(d.err, "err"); renderSettings(); });
+  };
+  field.oninput = () => { d.value = field.value; };
+  field.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") save.onclick(); if (e.key === "Escape") { portDraft = { value: null, err: "" }; renderPort(s); } };
+  const val = el("div", "val");
+  val.append(field, save);
+  r.append(who, val);
+  box.replaceChildren(r); // swapped whole: the list is never laid out empty
 }
 
 // renderLAN: the gateway shared on the local network, for agents on other
