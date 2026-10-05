@@ -153,9 +153,12 @@ func TestZedWindowHoldsPromptAndReply(t *testing.T) {
 	zedCredential = func(string) error { return nil }
 	writeFile(t, catalog.CachePath(), `{"openai":{"models":{
 		"gpt-5":{"id":"gpt-5","name":"GPT-5","limit":{"context":400000,"input":272000,"output":128000}},
-		"plain":{"id":"plain","name":"Plain","limit":{"context":64000}}}}}`)
+		"gpt-5-pro":{"id":"gpt-5-pro","limit":{"context":400000,"input":128000,"output":272000}},
+		"plain":{"id":"plain","name":"Plain","limit":{"context":64000}},
+		"unknown":{"id":"unknown","limit":{"output":256000}}}},
+		"zai":{"models":{"glm-4.6":{"id":"glm-4.6","limit":{"context":204800,"output":131072}}}}}`)
 	catalog.Reset()
-	if err := provider.Save(provider.Provider{ID: "relay", Name: "Relay", Key: "k", Chat: "http://127.0.0.1:1/v1", Models: []string{"gpt-5", "plain"}}); err != nil {
+	if err := provider.Save(provider.Provider{ID: "relay", Name: "Relay", Key: "k", Chat: "http://127.0.0.1:1/v1", Models: []string{"gpt-5", "gpt-5-pro", "plain", "unknown", "glm-4.6"}}); err != nil {
 		t.Fatal(err)
 	}
 	a := zedAt(filepath.Join(home, "zed"))
@@ -181,11 +184,59 @@ func TestZedWindowHoldsPromptAndReply(t *testing.T) {
 		}
 		got[m.Name] = s
 	}
-	for name, want := range map[string]string{"relay/gpt-5": "400000 128000 prompt 272000", "relay/plain": "64000"} {
+	for name, want := range map[string]string{
+		"relay/gpt-5":     "400000 128000 prompt 272000",
+		"relay/gpt-5-pro": "400000 272000 prompt 128000",
+		"relay/plain":     "64000",
+		"relay/unknown":   "256000 128000 prompt 128000",
+		"relay/glm-4.6":   "335872 131072 prompt 204800",
+	} {
 		if got[name] != want {
 			t.Errorf("%s: max_tokens, max_output_tokens = %q, want %q (all %v)", name, got[name], want, got)
 		}
 	}
+}
+
+func TestZedTokenLimitOverrides(t *testing.T) {
+	home := syncHome(t)
+	credential := zedCredential
+	t.Cleanup(func() { zedCredential = credential })
+	zedCredential = func(string) error { return nil }
+	writeFile(t, catalog.CachePath(), `{"zai":{"models":{"glm-4.6":{"id":"glm-4.6","limit":{"context":204800,"output":128000}}}}}`)
+	catalog.Reset()
+	p, err := provider.Find("relay")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.SetContext(*p, "glm-4.6", 64000); err != nil {
+		t.Fatal(err)
+	}
+	a := zedAt(filepath.Join(home, "zed"))
+	if err := a.Field("model").Set("magpie/relay/glm-4.6"); err != nil {
+		t.Fatal(err)
+	}
+	check := func(output int) {
+		t.Helper()
+		var m struct {
+			Max    int `json:"max_tokens"`
+			Output int `json:"max_output_tokens"`
+		}
+		raw, _ := edit.GetJSON(a.Path, zedProvider+".available_models.0")
+		if err := json.Unmarshal([]byte(raw), &m); err != nil {
+			t.Fatal(err)
+		}
+		if m.Output != output || m.Max-m.Output != 64000 {
+			t.Errorf("max_tokens=%d, max_output_tokens=%d: want output %d and prompt 64000", m.Max, m.Output, output)
+		}
+	}
+	check(128000)
+	if err := provider.SetModelOutput("relay/glm-4.6", 256000); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	check(256000)
 }
 
 func TestZedRestoresProviderAndModelLimits(t *testing.T) {
@@ -201,9 +252,9 @@ func TestZedRestoresProviderAndModelLimits(t *testing.T) {
 	if err := a.Field("model").Set("magpie/relay/glm-4.6"); err != nil {
 		t.Fatal(err)
 	}
-	// Zed keeps max_output_tokens of max_tokens for the reply: the prompt's
-	// 204800 stays (#850), not 204800 - 204800 = 0
-	for key, want := range map[string]string{"max_tokens": "409600", "max_output_tokens": "204800", "capabilities.images": "true"} {
+	// The independent reply limit keeps its allowance beside the prompt's
+	// 204800 tokens, even when the reply may be longer than the prompt.
+	for key, want := range map[string]string{"max_tokens": "504800", "max_output_tokens": "300000", "capabilities.images": "true"} {
 		if got, _ := edit.GetJSON(a.Path, zedProvider+".available_models.0."+key); got != want {
 			t.Errorf("%s = %q, want %q", key, got, want)
 		}

@@ -139,8 +139,11 @@ func zedProviderJSON() map[string]any {
 				"chat_completions": true,
 			},
 		}
-		if output := maxTokens(m); output > 0 {
-			output = min(output, context)
+		if output := m.Output; output > 0 {
+			if m.Context == 0 {
+				// Keep the fallback reply cap when the prompt limit is unknown.
+				output = min(output, context)
+			}
 			entry["max_output_tokens"] = output
 			entry["max_tokens"] = context + output
 		}
