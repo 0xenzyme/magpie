@@ -45,6 +45,11 @@ type modelJSON struct {
 	Auto     []string `json:"auto,omitempty"`      // the APIs its vendor's list says it is served on, what Auto asks it on
 	Same     string   `json:"same,omitempty"`      // the model the user said it is the same as, for the groups magpie finds (#583)
 	Merge    string   `json:"merge,omitempty"`     // what those groups merge it by when the user says nothing
+	// what it costs, USD per million tokens (#819): the price the user set
+	// for it, and its list price, its vendor's else its maker's, before the
+	// provider's price rate
+	Price *catalog.Price `json:"price,omitempty"`
+	List  *catalog.Price `json:"list,omitempty"`
 }
 
 type providerJSON struct {
@@ -457,7 +462,8 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 	}
 	seen := map[string]bool{}
 	names, kept := p.ModelNames(), p.ModelEfforts()
-	sames := settings.Load().ModelSameAs
+	held := settings.Load()
+	sames := held.ModelSameAs
 	// a list fetched before magpie kept each model's most: the one Codex
 	// CLI keeps says it
 	var most []catalog.Model
@@ -490,6 +496,16 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		}
 		j.Same = sames[p.ID+"/"+m.ID]
 		j.Merge = provider.MergeName(m.ID)
+		if mp, ok := held.ModelPrices[p.ID+"/"+m.ID]; ok {
+			if pr, bad := mp.Price(); bad == "" {
+				j.Price = &pr
+			}
+		}
+		if pr, ok := p.ListPrice(m.ID); ok {
+			j.List = &pr
+		} else if pr, ok := provider.MakerPrice(m.ID); ok {
+			j.List = &pr
+		}
 		if len(j.Efforts) == 0 {
 			j.Efforts, j.Given = provider.Levels, true
 		}

@@ -8177,6 +8177,8 @@ function renderModels(p) {
   // saved on its own, every one rewriting the agents' files, so picking a
   // model's levels lagged a click behind (ARNO on Discord).
   const drawNames = () => {
+    // drawn again, the list stays where it was scrolled to
+    const top = names.scrollTop;
     names.replaceChildren();
     names.hidden = naming !== p.id;
     if (names.hidden) return;
@@ -8241,6 +8243,56 @@ function renderModels(p) {
       same.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") same.blur(); else if (e.key === "Escape") { same.value = sameNow(); same.blur(); } };
       sameBox.append(el("span", "", t("Same as")), same);
       row.append(sameBox);
+      // what it costs the user, in dollars per million tokens, as the
+      // Usage page counts it (#819: only `magpie model price` set it):
+      // each box shows its list price until a price is given, a part left
+      // empty is the list's, and every part empty is its list price again
+      const parts = [["input", "Input"], ["output", "Output"], ["cache_read", "Cache read"], ["cache_write", "Cache write"]];
+      const priceNow = () => prefs[id]?.ownPrice ? null : prefs[id]?.price ?? m.price ?? null;
+      const shown = (n) => String(Math.round(n * 1e6) / 1e6);
+      const priceBox = el("div", "mprice");
+      priceBox.title = t("What {id} costs, in US dollars per million tokens, as the Usage page counts it; empty: its list price, shown greyed. A price set here isn't multiplied by the provider's price rate", { id: m.id });
+      priceBox.append(el("span", "", t("Price, $ / 1M tokens")));
+      const cells = parts.map(([k, l]) => {
+        const box = el("label", "mpart");
+        const i = input(priceNow() ? shown(priceNow()[k]) : "", m.list ? shown(m.list[k]) : "", "number");
+        i.inputMode = "decimal";
+        i.min = "0";
+        i.step = "any";
+        i.dataset.part = k;
+        i.setAttribute("aria-label", t(l));
+        i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") i.blur(); };
+        i.onchange = () => takePrice();
+        box.append(el("span", "", t(l)), i);
+        priceBox.append(box);
+        return i;
+      });
+      const showPrice = () => { const pr = priceNow(); cells.forEach((c, i) => { c.value = pr ? shown(pr[parts[i][0]]) : ""; }); };
+      const takePrice = () => {
+        const v = cells.map((c) => c.value.trim());
+        const x = pref();
+        delete x.price; delete x.ownPrice;
+        if (v.every((s) => s === "")) {
+          if (m.price) x.ownPrice = true;
+          drawReset();
+          return;
+        }
+        const price = {};
+        for (const [i, [k]] of parts.entries()) {
+          const n = v[i] === "" ? m.list?.[k] ?? (k.startsWith("cache") ? 0 : NaN) : Number(v[i]);
+          if (!Number.isFinite(n) || n < 0) {
+            status(Number.isNaN(n) && v[i] === "" ? t("{id} has no list price: give its input and output prices", { id: m.id }) : t("A price is a number of dollars, 0 or more"), "err");
+            showPrice();
+            drawReset();
+            return;
+          }
+          price[k] = n;
+        }
+        if (!m.price || parts.some(([k]) => m.price[k] !== price[k])) x.price = price;
+        showPrice();
+        drawReset();
+      };
+      row.append(priceBox);
       const [img, imgCb] = tick(t("Accepts images"), imagesNow());
       img.title = t("Whether agents are told {id} can see images", { id: m.id });
       imgCb.onchange = () => {
@@ -8295,7 +8347,7 @@ function renderModels(p) {
       const unsaved = el("span", "hint munsaved", t("unsaved"));
       unsaved.title = t("Made when the provider is saved; Cancel drops it");
       const reset = el("button", "text action", t("Restore default"));
-      reset.title = t("Its own name, every reasoning level it has, whether it sees images, the API it is asked on, and the model it is the same as");
+      reset.title = t("Its own name, every reasoning level it has, whether it sees images, the API it is asked on, the model it is the same as, and its list price");
       reset.onclick = () => {
         prefs[id] = {};
         if (m.default) prefs[id].name = "";
@@ -8307,6 +8359,8 @@ function renderModels(p) {
         if (m.api) prefs[id].api = "";
         if (m.same) prefs[id].same = "";
         same.value = sameNow();
+        if (m.price) prefs[id].ownPrice = true;
+        showPrice();
         if (apiSeg) { for (const b of apiSeg.querySelectorAll(".opt")) b.classList.toggle("on", b.dataset.api === apiNow()); slide(apiSeg, "api"); }
         drawReset();
       };
@@ -8316,13 +8370,14 @@ function renderModels(p) {
         unsaved.hidden = !prefs[id];
         // staged back to its own already, there is nothing to restore
         const images = prefs[id]?.ownImages ? false : prefs[id]?.images !== undefined ? prefs[id].images !== !!m.ownImages : !!m.imageSet;
-        const custom = nameNow() !== "" || (prefs[id]?.efforts ? prefs[id].efforts.length > 0 : !!m.kept?.length) || images || apiNow() !== "" || sameNow() !== "";
+        const custom = nameNow() !== "" || (prefs[id]?.efforts ? prefs[id].efforts.length > 0 : !!m.kept?.length) || images || apiNow() !== "" || sameNow() !== "" || priceNow() !== null;
         reset.hidden = !custom;
       };
       row.append(unsaved, reset);
       drawReset();
       names.append(row);
     }
+    names.scrollTop = top;
   };
   // every model at once (those the filter shows, when there is one), or none
   const bulk = el("div", "mbulk");

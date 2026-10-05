@@ -426,15 +426,18 @@ func (p Provider) ModelAPI(model string) (Protocol, bool) {
 // model, sent with its Save: each part left nil is as it was. Name "" gives
 // the model its own name back, Efforts [] all its levels, OwnImages the
 // vendor's answer for whether it sees images, API "" every API the
-// provider has for it, and Same "" its own id to merge it with other
-// vendors' by (see SetModelSame).
+// provider has for it, Same "" its own id to merge it with other
+// vendors' by (see SetModelSame), and OwnPrice its list price again in
+// place of Price, what the user said it costs (SetModelPrice, #819).
 type ModelPref struct {
-	Name      *string   `json:"name,omitempty"`
-	Efforts   *[]string `json:"efforts,omitempty"`
-	Images    *bool     `json:"images,omitempty"`
-	OwnImages bool      `json:"ownImages,omitempty"`
-	API       *string   `json:"api,omitempty"`
-	Same      *string   `json:"same,omitempty"`
+	Name      *string        `json:"name,omitempty"`
+	Efforts   *[]string      `json:"efforts,omitempty"`
+	Images    *bool          `json:"images,omitempty"`
+	OwnImages bool           `json:"ownImages,omitempty"`
+	API       *string        `json:"api,omitempty"`
+	Same      *string        `json:"same,omitempty"`
+	Price     *catalog.Price `json:"price,omitempty"`
+	OwnPrice  bool           `json:"ownPrice,omitempty"`
 }
 
 // SetModelPrefs makes the changes to a provider's models, by model id, as
@@ -477,6 +480,17 @@ func SetModelPrefs(pid string, prefs map[string]ModelPref) error {
 			}
 			if m.Same != nil {
 				if err := set(setModelSame(ref, *m.Same)); err != nil {
+					return err
+				}
+			}
+			// a price isn't what an agent picks a model by: the agents
+			// aren't told of it
+			if m.Price != nil || m.OwnPrice {
+				price := m.Price
+				if m.OwnPrice {
+					price = nil
+				}
+				if err := SetModelPrice(ref, price); err != nil {
 					return err
 				}
 			}
