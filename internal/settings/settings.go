@@ -372,6 +372,12 @@ type ModelPrice struct {
 	Output     *float64 `json:"output,omitempty"`
 	CacheRead  *float64 `json:"cache_read,omitempty"`
 	CacheWrite *float64 `json:"cache_write,omitempty"`
+	// CacheWrite1h is a 1-hour cache write's price, absent where none is
+	// given: such a write is then counted at 2× input (catalog.Price).
+	CacheWrite1h *float64 `json:"cache_write_1h,omitempty"`
+	// Tiers are the prices of a request whose input is over a size, each
+	// whole: "magpie model price … --tier 272k …" (PAMI on Discord).
+	Tiers []catalog.Tier `json:"tiers,omitempty"`
 }
 
 // priceParts are the parts of a price, in the order they are asked for and
@@ -391,10 +397,35 @@ func (m ModelPrice) Price() (catalog.Price, string) {
 			return catalog.Price{}, priceParts[i]
 		}
 	}
-	return catalog.Price{
+	bad := func(v float64) bool { return math.IsNaN(v) || math.IsInf(v, 0) || v < 0 }
+	if m.CacheWrite1h != nil && bad(*m.CacheWrite1h) {
+		return catalog.Price{}, "1-hour cache write"
+	}
+	for i, t := range m.Tiers {
+		if t.Above <= 0 || i > 0 && t.Above <= m.Tiers[i-1].Above ||
+			bad(t.Input) || bad(t.Output) || bad(t.CacheRead) || bad(t.CacheWrite) || bad(t.CacheWrite1h) {
+			return catalog.Price{}, fmt.Sprintf("tier %d", i+1)
+		}
+	}
+	p := catalog.Price{
 		Input: *m.Input, Output: *m.Output,
 		CacheRead: *m.CacheRead, CacheWrite: *m.CacheWrite,
-	}, ""
+		Tiers: slices.Clone(m.Tiers),
+	}
+	if m.CacheWrite1h != nil {
+		p.CacheWrite1h = *m.CacheWrite1h
+	}
+	return p, ""
+}
+
+// StatedPrice is a price as ModelPrices keeps it: every part given, the
+// 1-hour cache write only when it is.
+func StatedPrice(p catalog.Price) ModelPrice {
+	m := ModelPrice{Input: new(p.Input), Output: new(p.Output), CacheRead: new(p.CacheRead), CacheWrite: new(p.CacheWrite), Tiers: slices.Clone(p.Tiers)}
+	if p.CacheWrite1h > 0 {
+		m.CacheWrite1h = new(p.CacheWrite1h)
+	}
+	return m
 }
 
 // CheckModelPrice is whether a price the user gives is one magpie will bill a
@@ -414,7 +445,9 @@ func CheckModelPrice(key string, m ModelPrice) error {
 	} else if err := CheckModelKey("price", key); err != nil {
 		return err
 	}
-	if _, bad := m.Price(); bad != "" {
+	if _, bad := m.Price(); strings.HasPrefix(bad, "tier ") {
+		return fmt.Errorf("the price of %q has a %s that is not over a size above 0 and above the tier before it, with every part finite and not negative", key, bad)
+	} else if bad != "" {
 		return fmt.Errorf("the price of %q needs %s %s price that is present, finite and not negative", key, anArticle(bad), bad)
 	}
 	return nil

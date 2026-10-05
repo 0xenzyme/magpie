@@ -20,7 +20,7 @@ func TestSetModelPrefsPrice(t *testing.T) {
 	if err := SetModelPrefs("a", map[string]ModelPref{"sol": {Price: &want}}); err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := EffectivePrice("a", "sol"); !ok || got != want {
+	if got, ok := EffectivePrice("a", "sol"); !ok || !got.Same(want) {
 		t.Fatalf("a/sol costs %+v (%v), want %+v", got, ok, want)
 	}
 	if _, ok := settings.Load().ModelPrices["b/sol"]; ok {

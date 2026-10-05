@@ -144,10 +144,7 @@ func SetModelPrice(id string, p *catalog.Price) error {
 		key = pr.ID + "/" + model
 	}
 	s := settings.Load()
-	m := settings.ModelPrice{
-		Input: new(p.Input), Output: new(p.Output),
-		CacheRead: new(p.CacheRead), CacheWrite: new(p.CacheWrite),
-	}
+	m := settings.StatedPrice(*p)
 	if err := settings.CheckModelPrice(key, m); err != nil {
 		return err
 	}

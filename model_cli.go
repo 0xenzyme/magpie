@@ -26,7 +26,11 @@ const modelUsage = `usage:
   magpie model price <provider/model> <in>,<out>,<cache read>,<cache write>
                                                  say what it costs, in USD per million tokens, all four parts as
                                                  0.12,1.20,0.01,0.15; 0 is a model served for nothing, which is
-                                                 a price, not the absence of one
+                                                 a price, not the absence of one; a fifth part is a 1-hour cache
+                                                 write's (Anthropic's 2× input, what it is counted at if not given)
+  magpie model price <provider/model> <in>,<out>,<cache read>,<cache write> --tier 272k <in>,<out>,<cr>,<cw>
+                                                 and what a request whose input, cached tokens included, is over
+                                                 272K costs, the whole request; --tier may be given again
   magpie model price <provider/model> --reset    take your price off this model
   magpie model price <model> <in>,<out>,<cache read>,<cache write>
                                                  what the model costs from any provider you have not priced it
@@ -287,7 +291,9 @@ func modelPrice(args []string) error {
 			return nil
 		}
 		fmt.Println(bold.Render(perMillion(pr)), muted.Render("· "+id))
-		fmt.Println(faint.Render("  · cache read " + money(pr.CacheRead) + ", cache write " + money(pr.CacheWrite)))
+		for _, l := range priceDetail(pr) {
+			fmt.Println(faint.Render(l))
+		}
 		switch priceFrom(settings.Load(), p.ID, model) {
 		case "model":
 			fmt.Println(faint.Render("  · what you said this model costs · --reset takes that away"))
@@ -313,26 +319,98 @@ func modelPrice(args []string) error {
 		return err
 	}
 	fmt.Println(green.Render("✓"), id, muted.Render("costs"), bold.Render(perMillion(pr)))
+	for _, t := range pr.Tiers {
+		fmt.Println(faint.Render(fmt.Sprintf("  · and $%.4g/$%.4g in/out the whole request over %s input tokens", t.Input, t.Output, tokenSize(t.Above))))
+	}
 	return nil
 }
 
-// parsePrice is the four parts of a price as typed, in USD per million
-// tokens.
+// parsePrice is a price as typed, in USD per million tokens: its four
+// parts, a 1-hour cache write's after them if given, and then each
+// "--tier <size>" with the parts of what a request whose input is over that
+// size costs.
 func parsePrice(rest []string) (catalog.Price, error) {
-	var nums []float64
-	for _, a := range rest {
-		for _, f := range strings.FieldsFunc(a, func(r rune) bool { return r == ',' || r == ' ' || r == '/' }) {
-			v, err := strconv.ParseFloat(f, 64)
-			if err != nil {
-				return catalog.Price{}, fmt.Errorf("a price is numbers in USD per million tokens, like 0.12,1.20,0.01,0.15, not %q", f)
+	var groups [][]string
+	var sizes []string
+	cur := []string{}
+	for i := 0; i < len(rest); i++ {
+		a := rest[i]
+		size, isTier := strings.CutPrefix(a, "--tier=")
+		if !isTier && a == "--tier" {
+			if i+1 >= len(rest) {
+				return catalog.Price{}, fmt.Errorf("--tier takes the input size it starts over, like --tier 272k 20,75,2,25")
 			}
-			nums = append(nums, v)
+			isTier, size = true, rest[i+1]
+			i++
 		}
+		if isTier {
+			groups, sizes, cur = append(groups, cur), append(sizes, size), []string{}
+			continue
+		}
+		cur = append(cur, a)
 	}
-	if len(nums) != 4 {
-		return catalog.Price{}, fmt.Errorf("give all four parts, input,output,cache read,cache write — %d given", len(nums))
+	groups = append(groups, cur)
+	var out catalog.Price
+	for g, args := range groups {
+		var nums []float64
+		for _, a := range args {
+			for _, f := range strings.FieldsFunc(a, func(r rune) bool { return r == ',' || r == ' ' || r == '/' }) {
+				v, err := strconv.ParseFloat(f, 64)
+				if err != nil {
+					return catalog.Price{}, fmt.Errorf("a price is numbers in USD per million tokens, like 0.12,1.20,0.01,0.15, not %q", f)
+				}
+				nums = append(nums, v)
+			}
+		}
+		if len(nums) != 4 && len(nums) != 5 {
+			what := "the price"
+			if g > 0 {
+				what = "the tier over " + sizes[g-1]
+			}
+			return catalog.Price{}, fmt.Errorf("give all four parts of %s, input,output,cache read,cache write (and a 1-hour cache write after them if you like) — %d given", what, len(nums))
+		}
+		var oneHour float64
+		if len(nums) == 5 {
+			oneHour = nums[4]
+		}
+		if g == 0 {
+			out = catalog.Price{Input: nums[0], Output: nums[1], CacheRead: nums[2], CacheWrite: nums[3], CacheWrite1h: oneHour}
+			continue
+		}
+		above, err := provider.ParseTokens(sizes[g-1])
+		if err != nil || above <= 0 {
+			return catalog.Price{}, fmt.Errorf("--tier takes the input size it starts over, like 272k or 200000, not %q", sizes[g-1])
+		}
+		out.Tiers = append(out.Tiers, catalog.Tier{Above: above, Input: nums[0], Output: nums[1], CacheRead: nums[2], CacheWrite: nums[3], CacheWrite1h: oneHour})
 	}
-	return catalog.Price{Input: nums[0], Output: nums[1], CacheRead: nums[2], CacheWrite: nums[3]}, nil
+	slices.SortFunc(out.Tiers, func(a, b catalog.Tier) int { return a.Above - b.Above })
+	return out, nil
+}
+
+// priceDetail is the parts of a price after the two perMillion gives: its
+// cache's, and what a request over each of its sizes costs.
+func priceDetail(p catalog.Price) []string {
+	cache := "  · cache read " + money(p.CacheRead) + ", cache write " + money(p.CacheWrite) + " (5 min), " + money(p.OneHour()) + " (1 hour)"
+	if p.CacheWrite1h <= 0 {
+		cache += " at 2× input"
+	}
+	lines := []string{cache}
+	for _, t := range p.Tiers {
+		lines = append(lines, "  · over "+tokenSize(t.Above)+" input tokens, the whole request: "+
+			fmt.Sprintf("$%.4g/$%.4g in/out", t.Input, t.Output)+", cache "+money(t.CacheRead)+"/"+money(t.CacheWrite))
+	}
+	return lines
+}
+
+// tokenSize is a number of tokens as --tier takes it: 272K, 1M.
+func tokenSize(n int) string {
+	switch {
+	case n >= 1e6 && n%1e6 == 0:
+		return strconv.Itoa(n/1e6) + "M"
+	case n >= 1e3 && n%1e3 == 0:
+		return strconv.Itoa(n/1e3) + "K"
+	}
+	return strconv.Itoa(n)
 }
 
 // anyModelPrice shows or sets what a model costs from any provider (*/model):
@@ -347,7 +425,9 @@ func anyModelPrice(ref string, rest []string) error {
 	if len(rest) == 0 {
 		if pr, ok := statedPrice(settings.Load().ModelPrices, key); ok {
 			fmt.Println(bold.Render(perMillion(pr)), muted.Render("· "+key))
-			fmt.Println(faint.Render("  · cache read " + money(pr.CacheRead) + ", cache write " + money(pr.CacheWrite)))
+			for _, l := range priceDetail(pr) {
+				fmt.Println(faint.Render(l))
+			}
 			fmt.Println(faint.Render("  · what you said this model costs from any provider · --reset takes that away"))
 			return nil
 		}
@@ -480,6 +560,9 @@ func modelPrices() error {
 		}
 		fmt.Println(bold.Render(id), muted.Render("· "+perMillion(p)+
 			" · cache "+money(p.CacheRead)+"/"+money(p.CacheWrite)))
+		for _, t := range p.Tiers {
+			fmt.Println(faint.Render(fmt.Sprintf("  · over %s input tokens $%.4g/$%.4g in/out · cache %s/%s", tokenSize(t.Above), t.Input, t.Output, money(t.CacheRead), money(t.CacheWrite))))
+		}
 	}
 	return nil
 }

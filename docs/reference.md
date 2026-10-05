@@ -168,6 +168,11 @@ deleted keys keep their historical identity. Older records appear as
 **key not recorded**, never inferred from today's configured key.
 These are upstream credentials, not keys clients use to call Magpie.
 
+The CSV's `cache_write_tokens` is still every cache write; the last two
+columns, `cache_write_5m_tokens` and `cache_write_1h_tokens`, split it by how
+long Anthropic keeps it (a record from before the split is all 5-minute).
+The app shows the split on a request's Cache and the usage tiles' tooltips.
+
 It lists **accounts** too: each Codex, Claude or other subscription account's
 tokens and cost, by the account that actually answered — the one that took
 over after a failover, the one `X-Magpie-Account` pinned. The account is named
@@ -443,7 +448,37 @@ magpie model prices                                       # every model you pric
 
 The four numbers are USD per million tokens. All four are asked for, because
 a price missing one would understate the rest of every call; `0` is a model
-served at no cost, which is a price, not the absence of one.
+served at no cost, which is a price, not the absence of one. Decimals take a
+point or, in the app's boxes, a comma (`0,25`).
+
+A **fifth number** is a 1-hour cache write's price. Anthropic bills a cache
+write kept for 5 minutes at 1.25× input and one kept for an hour at 2× input,
+and its usage says which were which (`cache_creation.ephemeral_5m_input_tokens`
+/ `ephemeral_1h_input_tokens`, from the API and from Claude Code's
+transcripts). The fourth number is the 5-minute price; the fifth, when not
+given, is 2× input — Anthropic's rule, and only Anthropic reports 1-hour
+writes, so for any other model it never comes into play. A call recorded
+before magpie kept the split counts all its writes at the 5-minute price, as
+it did.
+
+A **long-context price** is what the whole request costs once its prompt is
+over a size, as OpenAI bills gpt-6-astra, gpt-6.1-sol and gpt-6-luna over
+272K input (2× input and cache, 1.5× output):
+
+```sh
+magpie model price openai/gpt-6-astra 10,50,1,12.5 --tier 272k 20,75,2,25
+```
+
+The size counts the prompt the way OpenAI does: uncached input + cache reads
++ cache writes, and the tier applies when that is **over** the size (272,000
+is not, 272,001 is). Then every part of the call — input, output, cache — is
+at the tier's price, not only the tokens past the size. `--tier` may be given
+again for another size. The built-in prices carry a tier only where
+models.dev lists one (`cost.tiers` of type `context`), as it does for those
+three. Session and day totals sum many calls, so they are counted at the base
+price; the ledger and each request are counted at the tier they reached. In
+the app, a model's price row has a quiet **Long-context price** row under it,
+shown with the list's tier greyed in, or behind a link where there is none.
 
 The order a price is looked for in is: **the price for this model → the price
 for `<provider id>/*`, which covers every model of that provider → what the

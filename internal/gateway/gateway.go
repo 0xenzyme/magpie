@@ -1836,7 +1836,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 					ProviderKeyID: providerKeyID, ProviderKeyName: providerKeyName, ProviderAccount: providerAccount,
 					Requested: call.Model, Served: call.Usage.Served, Upstream: call.Usage.Upstream,
 					Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
-					CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: time.Since(began).Milliseconds(), Status: call.Status,
+					CacheWrite: call.Usage.CacheWrite, CacheWrite1h: call.Usage.CacheWrite1h, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: time.Since(began).Milliseconds(), Status: call.Status,
 					TTFT: try.TTFT, FirstText: try.FirstText, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind,
 					RequestID: call.Usage.RequestID, Endpoint: endpointOf(r, from, call.To), Archive: call.archiveName()}
 				failedWith(&rec, call.Status, call.Error, call.Usage.ErrType)
@@ -1873,7 +1873,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 					ProviderKeyID: providerKeyID, ProviderKeyName: providerKeyName, ProviderAccount: providerAccount,
 					Requested: call.Model, Served: call.Usage.Served,
 					Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
-					CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: time.Since(began).Milliseconds(), Status: call.Status,
+					CacheWrite: call.Usage.CacheWrite, CacheWrite1h: call.Usage.CacheWrite1h, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: time.Since(began).Milliseconds(), Status: call.Status,
 					TTFT: try.TTFT, FirstText: try.FirstText, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind,
 					RequestID: call.Usage.RequestID, Endpoint: endpointOf(r, from, call.To), Archive: call.archiveName()}
 				failedWith(&rec, call.Status, call.Error, call.Usage.ErrType)
@@ -2146,7 +2146,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			ProviderKeyID: providerKeyID, ProviderKeyName: providerKeyName, ProviderAccount: providerAccount,
 			Requested: call.Model, Served: call.Usage.Served, Upstream: call.Usage.Upstream,
 			Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
-			CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: call.Millis, Status: call.Status,
+			CacheWrite: call.Usage.CacheWrite, CacheWrite1h: call.Usage.CacheWrite1h, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: call.Millis, Status: call.Status,
 			TTFT: call.TTFT, FirstText: call.FirstText, Sent: sentMs, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind,
 			RequestID: call.Usage.RequestID, ResponseID: call.Usage.ResponseID, Endpoint: endpointOf(r, from, call.To), Archive: call.archiveName()}
 		failedWith(&rec, call.Status, call.Error, call.Usage.ErrType)

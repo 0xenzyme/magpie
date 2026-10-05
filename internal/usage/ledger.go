@@ -233,7 +233,7 @@ const UnknownProvider = "session-unknown"
 // model it was sent to, never the one the response named) (#680).
 func logRecord(c sessions.Call) Record {
 	r := Record{Time: c.Time, Agent: c.Agent, Provider: UnknownProvider, Model: c.Model, Served: c.Model, Requested: c.Requested,
-		Input: c.Input, Output: c.Output, CacheRead: c.CacheRead, CacheWrite: c.CacheWrite, Reasoning: c.Reasoning, Effort: c.Effort,
+		Input: c.Input, Output: c.Output, CacheRead: c.CacheRead, CacheWrite: c.CacheWrite, CacheWrite1h: c.CacheWrite1h, Reasoning: c.Reasoning, Effort: c.Effort,
 		Millis: c.Millis, TTFT: c.TTFT, Session: c.Session, RequestID: c.RequestID, Error: c.ErrorText, ErrType: c.Error}
 	if c.Agent == "codex" || c.Agent == "opencode" {
 		r.Requested, r.Served = c.Model, ""
@@ -302,7 +302,7 @@ func ledgerWithShared(since time.Time, f Filter, recs []Record, logs []sessions.
 		}
 		row := Row{Record: r, Swapped: r.Served != "" && Swapped(sent, r.Served), Routed: GroupRouted(sent, r.Served), Source: source}
 		if pr != nil && r.Input+r.Output > 0 {
-			row.Cost, row.Priced = pr.Cost(r.Input, r.Output, r.CacheRead, r.CacheWrite), true
+			row.Cost, row.Priced = r.CostAt(*pr), true
 		}
 		row.Agent = AgentOf(r.Agent)
 		rows = append(rows, row)
@@ -390,9 +390,12 @@ func NewPricer() func([]Record) Totals {
 var CSVHeader = []string{"time", "agent", "requested_model", "provider", "host", "model", "served_model", "swapped",
 	"effort", "input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens", "reasoning_tokens",
 	"cost_usd", "duration_ms", "ttft_ms", "status", "error", "session", "kind", "provider_key_id", "provider_key_name", "provider_account", "route_id",
-	"request_id", "endpoint", "error_message", "error_type", "source", "rejected", "session_provider", "session_account", "session_official_login", "caller_key_id", "caller_key_name", "response_id", "upstream"}
+	"request_id", "endpoint", "error_message", "error_type", "source", "rejected", "session_provider", "session_account", "session_official_login", "caller_key_id", "caller_key_name", "response_id", "upstream",
+	"cache_write_5m_tokens", "cache_write_1h_tokens"}
 
-// WriteCSV writes rows as CSV, a header first: times in RFC 3339 with
+// WriteCSV writes rows as CSV, a header first (cache_write_tokens is every
+// cache write, as it always was, and the last two columns split it into
+// 5-minute and 1-hour writes): times in RFC 3339 with
 // their offset, the cost in USD at the effective price (empty when unknown), error
 // "true" for a call that failed: answered with a status of 400 or more, or
 // ended by an error a session file tells.
@@ -416,7 +419,8 @@ func WriteCSV(w io.Writer, rows []Row) error {
 		cw.Write([]string{r.Time.Format(time.RFC3339), r.Agent, r.Requested, r.Provider, r.Host, r.Model, r.Served,
 			strconv.FormatBool(r.Swapped), r.Effort, n(r.Input), n(r.Output), n(r.CacheWrite), n(r.CacheRead), n(r.Reasoning),
 			cost, strconv.FormatInt(r.Millis, 10), ttft, n(r.Status), strconv.FormatBool(r.Failed()), r.Session, r.Kind, r.ProviderKeyID, r.ProviderKeyName, r.Account(), routeID,
-			r.RequestID, r.Endpoint, r.Error, r.ErrType, r.Source, strconv.FormatBool(r.IsRejected()), r.SessionProvider, r.SessionAccount, strconv.FormatBool(r.SessionOfficialLogin), r.CallerKeyID, r.CallerKeyName, r.ResponseID, r.Upstream})
+			r.RequestID, r.Endpoint, r.Error, r.ErrType, r.Source, strconv.FormatBool(r.IsRejected()), r.SessionProvider, r.SessionAccount, strconv.FormatBool(r.SessionOfficialLogin), r.CallerKeyID, r.CallerKeyName, r.ResponseID, r.Upstream,
+			n(r.CacheWrite - min(r.CacheWrite1h, r.CacheWrite)), n(min(r.CacheWrite1h, r.CacheWrite))})
 	}
 	cw.Flush()
 	return cw.Error()
@@ -506,6 +510,7 @@ func (t *Totals) addRow(r Row) {
 	t.Output += r.Output
 	t.CacheRead += r.CacheRead
 	t.CacheWrite += r.CacheWrite
+	t.CacheWrite1h += r.CacheWrite1h
 	t.Reasoning += r.Reasoning
 	switch {
 	case r.Priced:

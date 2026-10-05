@@ -102,18 +102,150 @@ type Price struct {
 	Output     float64 `json:"output"`
 	CacheRead  float64 `json:"cache_read"`
 	CacheWrite float64 `json:"cache_write"`
+	// CacheWrite1h is what a cache write kept for an hour costs, Anthropic's
+	// 1-hour TTL, which it bills at 2× input where a 5-minute write (the
+	// CacheWrite above) is 1.25×. 0 is not given: such a write is then
+	// counted at 2× input, Anthropic's rule for every model, as only
+	// Anthropic's usage says which writes were for an hour.
+	CacheWrite1h float64 `json:"cache_write_1h,omitempty"`
+	// Tiers are the prices a request is billed at, whole, once its input
+	// goes over a size (OpenAI's gpt-6-astra: 2× input and cache, 1.5×
+	// output above 272K), lowest first. models.dev lists them as "tiers" of
+	// type "context".
+	Tiers []Tier `json:"tiers,omitempty"`
+}
+
+// Tier is a price from a request's input size on: what the whole request
+// costs once its input, cached and cache-written tokens included, is over
+// Above tokens.
+type Tier struct {
+	Above        int     `json:"above"`
+	Input        float64 `json:"input"`
+	Output       float64 `json:"output"`
+	CacheRead    float64 `json:"cache_read"`
+	CacheWrite   float64 `json:"cache_write"`
+	CacheWrite1h float64 `json:"cache_write_1h,omitempty"`
+}
+
+// UnmarshalJSON reads a price as magpie writes it, and as models.dev does,
+// whose tiers name their size as {"tier": {"type": "context", "size": N}}
+// and may leave a part out, which is then the base price's. A tier of
+// another type, or of no size, is left out.
+func (p *Price) UnmarshalJSON(b []byte) error {
+	type flat Price
+	var raw struct {
+		flat
+		Tiers []struct {
+			Above        int      `json:"above"`
+			Input        *float64 `json:"input"`
+			Output       *float64 `json:"output"`
+			CacheRead    *float64 `json:"cache_read"`
+			CacheWrite   *float64 `json:"cache_write"`
+			CacheWrite1h *float64 `json:"cache_write_1h"`
+			Tier         *struct {
+				Type string `json:"type"`
+				Size int    `json:"size"`
+			} `json:"tier"`
+		} `json:"tiers"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	*p = Price(raw.flat)
+	p.Tiers = nil
+	or := func(v *float64, base float64) float64 {
+		if v != nil {
+			return *v
+		}
+		return base
+	}
+	for _, t := range raw.Tiers {
+		above := t.Above
+		if t.Tier != nil {
+			if t.Tier.Type != "" && t.Tier.Type != "context" {
+				continue
+			}
+			above = t.Tier.Size
+		}
+		if above <= 0 {
+			continue
+		}
+		p.Tiers = append(p.Tiers, Tier{Above: above, Input: or(t.Input, p.Input), Output: or(t.Output, p.Output),
+			CacheRead: or(t.CacheRead, p.CacheRead), CacheWrite: or(t.CacheWrite, p.CacheWrite), CacheWrite1h: or(t.CacheWrite1h, 0)})
+	}
+	slices.SortFunc(p.Tiers, func(a, b Tier) int { return a.Above - b.Above })
+	return nil
+}
+
+// claudeOneHour gives a Claude model's list price its 1-hour cache write,
+// which models.dev doesn't list: 2× input, as Anthropic bills it for every
+// model, wherever the model has a (5-minute) cache write price at all.
+func claudeOneHour(id string, p *Price) {
+	if p == nil || p.CacheWrite <= 0 || p.CacheWrite1h > 0 || !strings.Contains(strings.ToLower(id), "claude") {
+		return
+	}
+	p.CacheWrite1h = 2 * p.Input
+	for i := range p.Tiers {
+		if p.Tiers[i].CacheWrite1h <= 0 {
+			p.Tiers[i].CacheWrite1h = 2 * p.Tiers[i].Input
+		}
+	}
 }
 
 // Times is the price at r times each of its parts.
 func (p Price) Times(r float64) Price {
-	return Price{Input: p.Input * r, Output: p.Output * r, CacheRead: p.CacheRead * r, CacheWrite: p.CacheWrite * r}
+	out := Price{Input: p.Input * r, Output: p.Output * r, CacheRead: p.CacheRead * r, CacheWrite: p.CacheWrite * r, CacheWrite1h: p.CacheWrite1h * r}
+	for _, t := range p.Tiers {
+		out.Tiers = append(out.Tiers, Tier{Above: t.Above, Input: t.Input * r, Output: t.Output * r, CacheRead: t.CacheRead * r, CacheWrite: t.CacheWrite * r, CacheWrite1h: t.CacheWrite1h * r})
+	}
+	return out
 }
 
-// Cost of a call at this price. Reasoning tokens are billed as output by
-// every vendor, and are already inside the output count.
+// Same is whether two prices are the same in every part and tier.
+func (p Price) Same(q Price) bool {
+	return p.Input == q.Input && p.Output == q.Output && p.CacheRead == q.CacheRead && p.CacheWrite == q.CacheWrite &&
+		p.CacheWrite1h == q.CacheWrite1h && slices.Equal(p.Tiers, q.Tiers)
+}
+
+// At is the flat price a request whose input, cached and cache-written
+// tokens included, comes to prompt tokens is billed at: that of the highest
+// tier it is over, else the base price. OpenAI counts a request's input
+// with its cached tokens in it, and bills the whole request at the tier.
+func (p Price) At(prompt int) Price {
+	flat := Price{Input: p.Input, Output: p.Output, CacheRead: p.CacheRead, CacheWrite: p.CacheWrite, CacheWrite1h: p.CacheWrite1h}
+	for _, t := range p.Tiers {
+		if prompt > t.Above {
+			flat = Price{Input: t.Input, Output: t.Output, CacheRead: t.CacheRead, CacheWrite: t.CacheWrite, CacheWrite1h: t.CacheWrite1h}
+		}
+	}
+	return flat
+}
+
+// OneHour is what a 1-hour cache write costs at this flat price: the price
+// given, else 2× input, Anthropic's rule.
+func (p Price) OneHour() float64 {
+	if p.CacheWrite1h > 0 {
+		return p.CacheWrite1h
+	}
+	return 2 * p.Input
+}
+
+// Cost of a call at this price, every cache write a 5-minute one.
+// Reasoning tokens are billed as output by every vendor, and are already
+// inside the output count.
 func (p Price) Cost(input, output, cacheRead, cacheWrite int) float64 {
-	return (float64(input)*p.Input + float64(output)*p.Output +
-		float64(cacheRead)*p.CacheRead + float64(cacheWrite)*p.CacheWrite) / 1e6
+	return p.CostSplit(input, output, cacheRead, cacheWrite, 0)
+}
+
+// CostSplit is Cost where cacheWrite1h of the cacheWrite tokens were
+// written for an hour, billed at that price, and the rest for 5 minutes.
+// The whole call is billed at the tier its input reaches.
+func (p Price) CostSplit(input, output, cacheRead, cacheWrite, cacheWrite1h int) float64 {
+	cacheWrite1h = min(max(cacheWrite1h, 0), max(cacheWrite, 0))
+	f := p.At(input + cacheRead + cacheWrite)
+	return (float64(input)*f.Input + float64(output)*f.Output +
+		float64(cacheRead)*f.CacheRead + float64(cacheWrite-cacheWrite1h)*f.CacheWrite +
+		float64(cacheWrite1h)*f.OneHour()) / 1e6
 }
 
 type mdProvider struct {
@@ -238,6 +370,7 @@ func load() map[string]mdProvider {
 					voted := map[string]bool{}
 					for pid, p := range m {
 						for id, x := range p.Models {
+							claudeOneHour(id, x.Cost)
 							if e := x.efforts(); len(e) > 0 {
 								l := strings.Join(e, ",")
 								if levels[bareID(id)] == nil {

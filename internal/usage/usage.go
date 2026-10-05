@@ -60,7 +60,13 @@ type Record struct {
 	Output     int    `json:"out"`
 	CacheRead  int    `json:"cache_read,omitempty"`
 	CacheWrite int    `json:"cache_write,omitempty"`
-	Reasoning  int    `json:"reasoning,omitempty"`
+	// CacheWrite1h is how many of CacheWrite were written to be kept for
+	// an hour (Anthropic's 1-hour TTL, billed at 2× input where 5 minutes'
+	// is 1.25×); the rest were for 5 minutes. A record from before it was
+	// kept has none: all its writes are counted as 5-minute ones, as they
+	// were.
+	CacheWrite1h int `json:"cache_write_1h,omitempty"`
+	Reasoning    int `json:"reasoning,omitempty"`
 	// Effort is the reasoning the model was asked for — a routing group's
 	// pick for the turn, or the agent's own — as it takes it; "" for none
 	Effort string `json:"effort,omitempty"`
@@ -245,17 +251,25 @@ const (
 // Periods lists the windows in order.
 var Periods = []Period{Today, Week, Month, All}
 
+// CostAt is what the call costs at a price: at the tier its input reaches,
+// its 1-hour cache writes at theirs.
+func (r Record) CostAt(p catalog.Price) float64 {
+	return p.CostSplit(r.Input, r.Output, r.CacheRead, r.CacheWrite, r.CacheWrite1h)
+}
+
 // Totals is a sum of calls.
 type Totals struct {
-	Calls      int     `json:"calls"`
-	Errors     int     `json:"errors"`
-	Input      int     `json:"input"`
-	Output     int     `json:"output"`
-	CacheRead  int     `json:"cache_read"`
-	CacheWrite int     `json:"cache_write"`
-	Reasoning  int     `json:"reasoning"`
-	Cost       float64 `json:"cost"`     // USD at the effective price, for the priced calls
-	Unpriced   int     `json:"unpriced"` // calls with tokens but no known price
+	Calls      int `json:"calls"`
+	Errors     int `json:"errors"`
+	Input      int `json:"input"`
+	Output     int `json:"output"`
+	CacheRead  int `json:"cache_read"`
+	CacheWrite int `json:"cache_write"`
+	// CacheWrite1h is how many of CacheWrite were 1-hour writes
+	CacheWrite1h int     `json:"cache_write_1h,omitempty"`
+	Reasoning    int     `json:"reasoning"`
+	Cost         float64 `json:"cost"`     // USD at the effective price, for the priced calls
+	Unpriced     int     `json:"unpriced"` // calls with tokens but no known price
 	// Timed: the answered calls whose first token was timed (streamed),
 	// TTFT the sum of their ttft_ms; DecodeMs the time from it to the end
 	// of those that wrote any, over which DecodeOut tokens came: their
@@ -346,6 +360,7 @@ func (t *Totals) add(r Record, price *catalog.Price) {
 	t.Output += r.Output
 	t.CacheRead += r.CacheRead
 	t.CacheWrite += r.CacheWrite
+	t.CacheWrite1h += r.CacheWrite1h
 	t.Reasoning += r.Reasoning
 	if r.TTFT > 0 && !r.Failed() {
 		t.Timed++
@@ -362,7 +377,7 @@ func (t *Totals) add(r Record, price *catalog.Price) {
 		t.Unpriced++
 		return
 	}
-	t.Cost += price.Cost(r.Input, r.Output, r.CacheRead, r.CacheWrite)
+	t.Cost += r.CostAt(*price)
 }
 
 // Group is the share of one agent or model.

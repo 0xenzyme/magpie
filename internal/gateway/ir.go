@@ -201,7 +201,12 @@ type Usage struct {
 	Output     int `json:"output"`
 	CacheRead  int `json:"cache_read"`
 	CacheWrite int `json:"cache_write"`
-	Reasoning  int `json:"reasoning"`
+	// CacheWrite1h is how many of the CacheWrite tokens were written to
+	// be kept for an hour, which Anthropic bills at 2× input where a
+	// 5-minute write is 1.25×, when its usage says so (cache_creation's
+	// ephemeral_1h_input_tokens)
+	CacheWrite1h int `json:"cache_write_1h,omitempty"`
+	Reasoning    int `json:"reasoning"`
 	// Served: the model the vendor's reply says answered, when it named
 	// one — which may not be the one it was asked for
 	Served string `json:"served,omitempty"`
@@ -236,6 +241,9 @@ func (u *Usage) add(v Usage) {
 	}
 	if v.CacheWrite > 0 {
 		u.CacheWrite = v.CacheWrite
+	}
+	if v.CacheWrite1h > 0 {
+		u.CacheWrite1h = v.CacheWrite1h
 	}
 	if v.Reasoning > 0 {
 		u.Reasoning = v.Reasoning

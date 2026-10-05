@@ -70,10 +70,10 @@ func TestDroid(t *testing.T) {
 		t.Fatalf("droid: %+v", d)
 	}
 	// magpie's custom model by the model it asks for, the subagent's in
-	if m := model(d, "anthropic/claude-sonnet-4-5"); m.Tokens != (Tokens{100, 50, 1000, 10}) {
+	if m := model(d, "anthropic/claude-sonnet-4-5"); m.Tokens != (Tokens{100, 50, 1000, 10, 0}) {
 		t.Fatalf("sonnet: %+v", d.Models)
 	}
-	if m := model(d, "claude-haiku-4-5"); m.Tokens != (Tokens{5, 2, 0, 0}) {
+	if m := model(d, "claude-haiku-4-5"); m.Tokens != (Tokens{5, 2, 0, 0, 0}) {
 		t.Fatalf("haiku, the subagent's in: %+v", d.Models)
 	}
 	if !d.Start.Equal(at("2026-09-27T08:00:00Z")) || !d.Last.Equal(at("2026-09-27T08:02:00Z")) {
@@ -90,7 +90,7 @@ func TestDroid(t *testing.T) {
 	if f.Title != "Try another way" || !f.Start.Equal(at("2026-09-27T09:00:00Z")) || !f.Last.Equal(at("2026-09-27T09:00:30Z")) {
 		t.Fatalf("fork: %+v", f)
 	}
-	if m := model(f, "Kimi-K2"); m.Tokens != (Tokens{7, 3, 0, 0}) {
+	if m := model(f, "Kimi-K2"); m.Tokens != (Tokens{7, 3, 0, 0, 0}) {
 		t.Fatalf("fork models: %+v", f.Models)
 	}
 	if o := find(t, ss, "droid", droidOld); o.Title != "hi there" || !o.Tokens.zero() {

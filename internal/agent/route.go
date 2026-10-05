@@ -139,7 +139,7 @@ func entryPrice(st settings.Settings, find func(string) (provider.Group, []provi
 	var first catalog.Price
 	for i, m := range ms {
 		pr, ok := provider.EffectivePriceIn(st, m.Provider.ID, m.Model)
-		if !ok || m.Fast || i > 0 && pr != first {
+		if !ok || m.Fast || i > 0 && !pr.Same(first) {
 			return catalog.Price{}, false
 		}
 		first = pr

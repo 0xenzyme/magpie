@@ -6230,6 +6230,33 @@ function field(label, control, hint) {
   if (hint) wrap.append(el("div", "hint", hint));
   return [l, wrap];
 }
+// decimalOf is a number as typed in a price box, a comma taken for the
+// decimal point as some keyboards give it (0,25); NaN for anything else.
+// The boxes are text ones: a number box drops what its locale doesn't
+// take, and "0,25" became 25.
+function decimalOf(s) {
+  s = String(s ?? "").trim();
+  if (/^\d*,\d+$/.test(s)) s = s.replace(",", ".");
+  return /^(\d+\.?\d*|\.\d+)$/.test(s) ? Number(s) : NaN;
+}
+// tokensTyped is a number of tokens as typed, 272K, 1M or 200000; NaN for
+// anything else
+function tokensTyped(s) {
+  const x = /^(\d+(?:[.,]\d+)?)\s*([km]?)$/i.exec(String(s ?? "").trim());
+  if (!x) return NaN;
+  const n = Math.round(Number(x[1].replace(",", ".")) * ({ k: 1e3, m: 1e6 }[x[2].toLowerCase()] || 1));
+  return n > 0 ? n : NaN;
+}
+function tokenSize(n) {
+  return n >= 1e6 && n % 1e6 === 0 ? n / 1e6 + "M" : n >= 1e3 && n % 1e3 === 0 ? n / 1e3 + "K" : String(n);
+}
+// samePrice: two prices alike in every part, their 1-hour cache writes and
+// long-context prices included
+function samePrice(a, b) {
+  const norm = (p) => JSON.stringify([p.input, p.output, p.cache_read || 0, p.cache_write || 0, p.cache_write_1h || 0,
+    (p.tiers || []).map((x) => [x.above, x.input, x.output, x.cache_read || 0, x.cache_write || 0, x.cache_write_1h || 0])]);
+  return norm(a) === norm(b);
+}
 function input(value, placeholder, type = "text") {
   const i = el("input");
   i.type = type;
@@ -6337,11 +6364,8 @@ function concurrencyField(p) {
 // costs are its list price, else its maker's, times this. Empty is the
 // price as listed; steps of 0.001.
 function priceRateField() {
-  const box = input(draft.priceRate ?? "", t("1, the official price"), "number");
+  const box = input(draft.priceRate ?? "", t("1, the official price"));
   box.classList.add("price-rate");
-  box.min = "0";
-  box.max = "1000";
-  box.step = "0.001";
   box.inputMode = "decimal";
   box.oninput = () => { draft.priceRate = box.value; };
   return field(t("Price rate"), box, t("Costs are counted at the official price times this, as a relay bills, like 0.8 or 1.5; a price you set for a model stays as set"));
@@ -6351,8 +6375,8 @@ function priceRateField() {
 function priceRateOfDraft() {
   const v = String(draft.priceRate ?? "").trim();
   if (!v) return null;
-  const n = Number(v);
-  if (!/^\d*\.?\d+$|^\d+\.$/.test(v) || !(n >= 0 && n <= 1000) || Math.abs(n * 1000 - Math.round(n * 1000)) > 1e-6) return undefined;
+  const n = decimalOf(v);
+  if (!(n >= 0 && n <= 1000) || Math.abs(n * 1000 - Math.round(n * 1000)) > 1e-6) return undefined;
   return n;
 }
 function priceRateError(ed) {
@@ -8564,60 +8588,122 @@ function renderModels(p) {
       // Usage page counts it (#819: only `magpie model price` set it):
       // each box shows its list price until a price is given, a part left
       // empty is the list's, and every part empty is its list price again
-      const parts = [["input", "Input"], ["output", "Output"], ["cache_read", "Cache read"], ["cache_write", "Cache write"]];
+      // the 1-hour cache write, empty, is 2× input as Anthropic bills it;
+      // a long-context price (OpenAI's over 272K) is what the whole request
+      // costs when its input is over its size, empty parts its list's
+      const parts = [["input", "Input"], ["output", "Output"], ["cache_read", "Cache read"], ["cache_write", "Cache write"], ["cache_write_1h", "Cache write 1h"]];
+      const tierParts = parts.slice(0, 4);
       const priceNow = () => prefs[id]?.ownPrice ? null : prefs[id]?.price ?? m.price ?? null;
       const shown = (n) => String(Math.round(n * 1e6) / 1e6);
+      const listTier = m.list?.tiers?.[0];
       const priceBox = el("div", "mprice");
       priceBox.title = t("What {id} costs, in US dollars per million tokens, as the Usage page counts it; empty: its list price, shown greyed. A price set here isn't multiplied by the provider's price rate", { id: m.id });
       priceBox.append(el("span", "", t("Price, $ / 1M tokens")));
-      const cells = parts.map(([k, l]) => {
-        const box = el("label", "mpart");
-        const typed = draft.priceTyped?.[id];
-        const i = input(typed ? typed[parts.findIndex(([x]) => x === k)] : priceNow() ? shown(priceNow()[k]) : "", m.list ? shown(m.list[k]) : "", "number");
+      const typed = draft.priceTyped?.[id];
+      const cell = (value, placeholder, k, label) => {
+        const i = input(value, placeholder);
         i.inputMode = "decimal";
-        i.min = "0";
-        i.step = "any";
         i.dataset.part = k;
-        i.setAttribute("aria-label", t(l));
+        i.setAttribute("aria-label", label);
         i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") i.blur(); };
         i.onchange = () => takePrice();
+        return i;
+      };
+      const oneHour = (pr) => pr ? pr.cache_write_1h || 2 * pr.input : 0;
+      const cells = parts.map(([k, l], n) => {
+        const box = el("label", "mpart");
+        const pr = priceNow();
+        const value = typed ? typed[n] : !pr ? "" : k === "cache_write_1h" ? pr.cache_write_1h ? shown(pr.cache_write_1h) : "" : shown(pr[k]);
+        const placeholder = !m.list ? "" : k === "cache_write_1h" ? shown(oneHour(m.list)) : shown(m.list[k]);
+        const i = cell(value, placeholder, k, t(l));
+        if (k === "cache_write_1h") box.title = t("A cache write kept for an hour, as Anthropic bills it; empty: 2× input");
         box.append(el("span", "", t(l)), i);
         priceBox.append(box);
         return i;
       });
-      const showPrice = () => { const pr = priceNow(); cells.forEach((c, i) => { c.value = pr ? shown(pr[parts[i][0]]) : ""; }); };
+      // the long-context price, a quiet row of its own: shown where there is
+      // one, else behind a link
+      const tierRow = el("div", "mtier");
+      tierRow.title = t("What the whole request costs when its input — cached tokens and cache writes included — is over this many tokens, as OpenAI bills gpt-6-astra over 272K; empty: the list's");
+      const tierNow = () => priceNow()?.tiers?.[0];
+      const above = cell(typed ? typed[parts.length] : tierNow() ? tokenSize(tierNow().above) : "", listTier ? tokenSize(listTier.above) : "272K", "above", t("Over input tokens"));
+      above.classList.add("mabove");
+      const overBox = el("label", "mpart");
+      overBox.append(el("span", "", t("Long-context price, over")), above);
+      tierRow.append(overBox);
+      const tierCells = tierParts.map(([k, l], n) => {
+        const box = el("label", "mpart");
+        const i = cell(typed ? typed[parts.length + 1 + n] : tierNow() ? shown(tierNow()[k]) : "", listTier ? shown(listTier[k]) : "", "tier_" + k, t("Long-context price") + " · " + t(l));
+        box.append(el("span", "", t(l)), i);
+        tierRow.append(box);
+        return i;
+      });
+      const moreTier = el("button", "text action mtier-add", t("Long-context price"));
+      moreTier.title = tierRow.title;
+      let tierOpen = false;
+      moreTier.onclick = (e) => { e.preventDefault(); tierOpen = true; drawTier(); above.focus({ preventScroll: true }); };
+      const drawTier = () => {
+        tierRow.hidden = !tierOpen && !tierNow() && !listTier;
+        moreTier.hidden = !tierRow.hidden;
+      };
+      priceBox.append(moreTier, tierRow);
+      drawTier();
+      const showPrice = () => {
+        const pr = priceNow();
+        cells.forEach((c, i) => { const k = parts[i][0]; c.value = !pr ? "" : k === "cache_write_1h" ? pr.cache_write_1h ? shown(pr.cache_write_1h) : "" : shown(pr[k]); });
+        const tr = tierNow();
+        above.value = tr ? tokenSize(tr.above) : "";
+        tierCells.forEach((c, i) => { c.value = tr ? shown(tr[tierParts[i][0]]) : ""; });
+        drawTier();
+      };
       const takePrice = () => {
         const v = cells.map((c) => c.value.trim());
+        const tv = [above, ...tierCells].map((c) => c.value.trim());
         const x = pref();
         delete x.price; delete x.ownPrice;
         if (draft.priceTyped) delete draft.priceTyped[id];
-        if (v.every((s) => s === "")) {
+        if (v.every((s) => s === "") && tv.every((s) => s === "")) {
           if (m.price) x.ownPrice = true;
           drawReset();
           return;
         }
+        const bad = (msg) => { status(msg, "err"); showPrice(); drawReset(); };
         const price = {};
-        for (const [i, [k]] of parts.entries()) {
-          const n = v[i] === "" ? m.list?.[k] ?? (k.startsWith("cache") ? 0 : NaN) : Number(v[i]);
+        for (const [i, [k]] of tierParts.entries()) {
+          const n = v[i] === "" ? m.list?.[k] ?? (k.startsWith("cache") ? 0 : NaN) : decimalOf(v[i]);
           // a model with no list price is given its input and output one
           // box at a time: what is typed stays, waiting for the other, and
           // the Save asks for it (PAMI on Discord: each box typed was
           // emptied again, so a price could never be set)
-          if (Number.isNaN(n) && v[i] === "" && v.every((s) => s === "" || (Number.isFinite(Number(s)) && Number(s) >= 0))) {
-            (draft.priceTyped = draft.priceTyped || {})[id] = v;
+          if (Number.isNaN(n) && v[i] === "" && v.every((s) => s === "" || decimalOf(s) >= 0)) {
+            (draft.priceTyped = draft.priceTyped || {})[id] = [...v, ...tv];
             status(t("{id} has no list price: give its input and output prices", { id: m.id }), "warn");
             drawReset();
             return;
           }
-          if (!Number.isFinite(n) || n < 0) {
-            status(Number.isNaN(n) && v[i] === "" ? t("{id} has no list price: give its input and output prices", { id: m.id }) : t("A price is a number of dollars, 0 or more"), "err");
-            showPrice();
-            drawReset();
-            return;
-          }
+          if (!Number.isFinite(n) || n < 0) return bad(Number.isNaN(n) && v[i] === "" ? t("{id} has no list price: give its input and output prices", { id: m.id }) : t("A price is a number of dollars, 0 or more"));
           price[k] = n;
         }
-        if (!m.price || parts.some(([k]) => m.price[k] !== price[k])) x.price = price;
+        if (v[4] !== "") {
+          const n = decimalOf(v[4]);
+          if (!(n >= 0)) return bad(t("A price is a number of dollars, 0 or more"));
+          if (n > 0) price.cache_write_1h = n;
+        }
+        // the long-context price: its parts typed, else the list's, else the
+        // price's own; none typed, the list's as it is
+        const from = tierNow() || listTier;
+        if (tv.some((s) => s !== "")) {
+          const size = tv[0] === "" ? from?.above : tokensTyped(tv[0]);
+          if (!(size > 0)) return bad(t("A long-context price starts over a number of input tokens, like 272K"));
+          const tier = { above: size };
+          for (const [i, [k]] of tierParts.entries()) {
+            const n = tv[i + 1] === "" ? from?.[k] ?? price[k] : decimalOf(tv[i + 1]);
+            if (!(n >= 0)) return bad(t("A price is a number of dollars, 0 or more"));
+            tier[k] = n;
+          }
+          price.tiers = [tier, ...((priceNow() || m.list)?.tiers || []).slice(1).filter((x) => x.above > size)];
+        } else if (m.list?.tiers?.length) price.tiers = m.list.tiers;
+        if (!m.price || !samePrice(m.price, price)) x.price = price;
         showPrice();
         drawReset();
       };
@@ -13323,7 +13409,7 @@ function renderUsage() {
   // written count is secondary and only fits in the tooltip.
   const promptTokens = u.input + u.cache_read + u.cache_write;
   const hit = u.cache_read && promptTokens ? t("hit rate {p}", { p: Math.round(100 * u.cache_read / promptTokens) + "%" }) : "";
-  tile(fmtN(u.cache_read), t("cache read"), hit, u.cache_write ? t("{n} written", { n: fmtN(u.cache_write) }) : "");
+  tile(fmtN(u.cache_read), t("cache read"), hit, u.cache_write ? t("{n} written", { n: fmtN(u.cache_write) }) + cacheTTLs(u, fmtN) : "");
   tile(fmtN(u.reasoning), t("reasoning"), t("inside output"));
   tile(String(u.calls), t(u.calls === 1 ? "call" : "calls"), u.errors ? t("{n} failed", { n: u.errors }) : "");
 
@@ -13552,7 +13638,7 @@ function ledDetail(r, cols) {
   };
   opt("Sent", r.model);
   opt("Effort", r.effort);
-  if (r.cache_write || r.cache_read) opt("Cache", t("{w} written · {r} read", { w: ledNum(r.cache_write || 0), r: ledNum(r.cache_read || 0) }));
+  if (r.cache_write || r.cache_read) opt("Cache", t("{w} written · {r} read", { w: ledNum(r.cache_write || 0), r: ledNum(r.cache_read || 0) }) + cacheTTLs(r, ledNum));
   if (ledRowSpeed(r)) add("Speed", t("{n} tok/s", { n: ledNum(Math.round(ledRowSpeed(r))) }));
   add("Request ID", r.rid);
   add("Endpoint", r.ep);
@@ -13716,6 +13802,13 @@ const LED_TREND = [...LED_METRICS, ["speed", "Speed"]];
 const LED_SPLITS = [["model", "Model"], ["modelAt", "Model · provider"], ["provider", "Provider"], ["agent", "Agent"]];
 const LED_SHOWN = 7; // told apart in a chart; the rest are "Other"
 const allTokens = (x) => x.input + x.output + x.cache_read + x.cache_write;
+// cacheTTLs: a call's cache writes split by how long they are kept, where
+// some were for an hour (Anthropic bills those at 2× input, 5 minutes'
+// at 1.25×); nothing when none were
+function cacheTTLs(x, fmt) {
+  const h = Math.min(x.cache_write_1h || 0, x.cache_write || 0);
+  return h ? " · " + t("{m} for 5 minutes, {h} for an hour", { m: fmt(x.cache_write - h), h: fmt(h) }) : "";
+}
 // how fast the timed replies of a point, a share or a part wrote, in tokens
 // a second after their first (usage.Totals.Speed): 0 for none timed
 const ledSpeed = (x) => x?.decode_ms > 0 ? (1000 * x.decode_out) / x.decode_ms : 0;
@@ -14317,7 +14410,7 @@ function renderLedger() {
     td(r.effort || "—", r.effort ? "" : "faint");
     td(ledNum(r.in), "n");
     td(ledNum(r.out), "n", r.reasoning ? t("{n} reasoning, inside output", { n: ledNum(r.reasoning) }) : "");
-    td(ledNum(r.cache_write), "n" + (r.cache_write ? "" : " faint"));
+    td(ledNum(r.cache_write), "n" + (r.cache_write ? "" : " faint"), cacheTTLs(r, ledNum).replace(/^ · /, ""));
     td(ledNum(r.cache_read), "n" + (r.cache_read ? "" : " faint"));
     const cost = td(r.priced ? "≈" + fmtCost({ cost: r.cost, unpriced: 0 }) : "—", "n cost" + (r.priced ? "" : " faint"), r.priced ? (r.pricing_model ? t("API price reference") + ": " + r.pricing_model : "") : t("No known price for this model"));
     if (r.priced && r.pricing_model) {

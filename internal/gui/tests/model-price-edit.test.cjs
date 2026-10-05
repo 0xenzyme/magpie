@@ -64,38 +64,38 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.locator(".row.provider").click();
       if (!(await page.locator(".mnames:not([hidden])").count())) await page.getByRole("button", { name: L.names, exact: true }).click();
       const row = (id) => page.locator(".mname", { has: page.locator("code", { hasText: id }) });
-      const boxes = (id) => row(id).locator(".mprice input");
+      const boxes = (id) => row(id).locator(".mprice > .mpart input");
 
       // the list price shows in the boxes, a price set in them
       assert.equal((await row("model-1").locator(".mprice > span").textContent()), L.price);
-      assert.deepEqual(await boxes("model-1").evaluateAll((is) => is.map((i) => [i.value, i.placeholder])), [["", "1.25"], ["", "10"], ["", "0.125"], ["", "0"]]);
-      assert.deepEqual(await boxes("model-2").evaluateAll((is) => is.map((i) => i.value)), ["0.5", "2", "0.05", "0"]);
-      assert.equal(await row("model-1").getByRole("spinbutton", { name: L.input, exact: true }).count(), 1);
+      assert.deepEqual(await boxes("model-1").evaluateAll((is) => is.map((i) => [i.value, i.placeholder])), [["", "1.25"], ["", "10"], ["", "0.125"], ["", "0"], ["", "2.5"]]);
+      assert.deepEqual(await boxes("model-2").evaluateAll((is) => is.map((i) => i.value)), ["0.5", "2", "0.05", "0", ""]);
+      assert.equal(await row("model-1").getByRole("textbox", { name: L.input, exact: true }).count(), 1);
       assert.equal(await row("model-1").locator("select").count(), 0);
 
       // a part typed, the others the list's; Restore default drops a price
       const y = await page.evaluate(() => scrollY);
-      await row("model-1").getByRole("spinbutton", { name: L.output, exact: true }).fill("8");
-      await row("model-1").getByRole("spinbutton", { name: L.output, exact: true }).press("Enter");
+      await row("model-1").getByRole("textbox", { name: L.output, exact: true }).fill("8");
+      await row("model-1").getByRole("textbox", { name: L.output, exact: true }).press("Enter");
       assert(await row("model-1").getByText(L.unsaved, { exact: true }).isVisible());
-      assert.deepEqual(await boxes("model-1").evaluateAll((is) => is.map((i) => i.value)), ["1.25", "8", "0.125", "0"]);
+      assert.deepEqual(await boxes("model-1").evaluateAll((is) => is.map((i) => i.value)), ["1.25", "8", "0.125", "0", ""]);
       await row("model-2").getByRole("button", { name: L.reset }).click();
-      assert.deepEqual(await boxes("model-2").evaluateAll((is) => is.map((i) => i.value)), ["", "", "", ""]);
+      assert.deepEqual(await boxes("model-2").evaluateAll((is) => is.map((i) => i.value)), ["", "", "", "", ""]);
       // no list price: input and output must be given, one box at a time —
       // the part typed stays (PAMI on Discord: it was emptied, so no price
       // could be set), and a Save before the other part asks for it
-      await row("model-3").getByRole("spinbutton", { name: L.input, exact: true }).fill("3");
-      await row("model-3").getByRole("spinbutton", { name: L.input, exact: true }).press("Enter");
+      await row("model-3").getByRole("textbox", { name: L.input, exact: true }).fill("3");
+      await row("model-3").getByRole("textbox", { name: L.input, exact: true }).press("Enter");
       await page.locator("#status", { hasText: L.nolist }).waitFor();
-      assert.deepEqual(await boxes("model-3").evaluateAll((is) => is.map((i) => i.value)), ["3", "", "", ""]);
+      assert.deepEqual(await boxes("model-3").evaluateAll((is) => is.map((i) => i.value)), ["3", "", "", "", ""]);
       assert(await row("model-3").getByText(L.unsaved, { exact: true }).isVisible());
       await page.getByRole("button", { name: L.save, exact: true }).click();
       await page.locator(".editor-error", { hasText: L.nolist }).waitFor();
       assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), L.output);
       assert.deepEqual(posts, [], "a price half given isn't sent");
-      await row("model-3").getByRole("spinbutton", { name: L.output, exact: true }).fill("15");
-      await row("model-3").getByRole("spinbutton", { name: L.output, exact: true }).press("Enter");
-      assert.deepEqual(await boxes("model-3").evaluateAll((is) => is.map((i) => i.value)), ["3", "15", "0", "0"]);
+      await row("model-3").getByRole("textbox", { name: L.output, exact: true }).fill("15");
+      await row("model-3").getByRole("textbox", { name: L.output, exact: true }).press("Enter");
+      assert.deepEqual(await boxes("model-3").evaluateAll((is) => is.map((i) => i.value)), ["3", "15", "0", "0", ""]);
       assert.equal(await page.evaluate(() => scrollY), y, "nothing scrolled the page");
       assert.deepEqual(posts, [], "nothing is sent before the Save");
       if (process.env.ARTIFACT_DIR) await page.locator(".mnames").screenshot({ path: path.join(process.env.ARTIFACT_DIR, `${engine}-${lang}-model-price-rows.png`) });

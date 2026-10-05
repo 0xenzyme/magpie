@@ -42,6 +42,9 @@ type Tokens struct {
 	Output     int `json:"output"`
 	CacheRead  int `json:"cache_read"`
 	CacheWrite int `json:"cache_write"`
+	// CacheWrite1h is how many of CacheWrite were written to be kept for an
+	// hour, where the agent says (Claude Code's cache_creation)
+	CacheWrite1h int `json:"cache_write_1h,omitempty"`
 }
 
 func (t *Tokens) add(u Tokens) {
@@ -49,6 +52,7 @@ func (t *Tokens) add(u Tokens) {
 	t.Output += u.Output
 	t.CacheRead += u.CacheRead
 	t.CacheWrite += u.CacheWrite
+	t.CacheWrite1h += u.CacheWrite1h
 }
 
 func (t *Tokens) sub(u Tokens) {
@@ -56,6 +60,24 @@ func (t *Tokens) sub(u Tokens) {
 	t.Output -= u.Output
 	t.CacheRead -= u.CacheRead
 	t.CacheWrite -= u.CacheWrite
+	t.CacheWrite1h -= u.CacheWrite1h
+}
+
+// ccCacheCreation is Claude Code's cache writes split by how long they are
+// kept.
+type ccCacheCreation struct {
+	Ephemeral5m int `json:"ephemeral_5m_input_tokens"`
+	Ephemeral1h int `json:"ephemeral_1h_input_tokens"`
+}
+
+// ccTokens is a Claude Code message's usage, its 1-hour cache writes apart.
+func ccTokens(in, out, read, write int, c *ccCacheCreation) Tokens {
+	t := Tokens{Input: in, Output: out, CacheRead: read, CacheWrite: write}
+	if c != nil {
+		t.CacheWrite = max(t.CacheWrite, c.Ephemeral5m+c.Ephemeral1h)
+		t.CacheWrite1h = c.Ephemeral1h
+	}
+	return t
 }
 
 func (t Tokens) zero() bool { return t == Tokens{} }
@@ -507,7 +529,8 @@ func CachePath() string { return filepath.Join(filepath.Dir(catalog.CachePath())
 // 11: Codex's input without what it wrote to the cache (#589).
 // 16: count Codex response records and compaction usage.
 // 17: reconcile recent Claude message revisions.
-const cacheVersion = 17
+// 18: Claude Code's 1-hour cache writes apart from its 5-minute ones.
+const cacheVersion = 18
 
 type cacheFile struct {
 	Version int               `json:"version"`
@@ -927,7 +950,9 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 	}
 	for _, m := range models {
 		if p := price(m.Model); p != nil {
-			m.Cost, m.Priced = p.Cost(m.Input, m.Output, m.CacheRead, m.CacheWrite), true
+			// a sum of the session's calls of the model, at its base price:
+			// which call went over a long-context tier isn't known here
+			m.Cost, m.Priced = p.At(0).CostSplit(m.Input, m.Output, m.CacheRead, m.CacheWrite, m.CacheWrite1h), true
 			s.Cost += m.Cost
 		} else {
 			s.Unpriced++
