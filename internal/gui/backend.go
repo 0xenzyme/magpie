@@ -69,15 +69,34 @@ var gatewayWatch = 15 * time.Second
 func watchGateway() {
 	for {
 		time.Sleep(gatewayWatch)
+		gatewayMu.Lock()
 		if served.Load() == nil && !gateway.Running() {
-			serveGateway()
+			serveGatewayLocked()
 		}
+		gatewayMu.Unlock()
 	}
+}
+
+// gatewayMu keeps one start of the gateway here at a time: the watch's,
+// a restart's, a take-over's (takeover.go).
+var gatewayMu sync.Mutex
+
+// servedRun ends the gateway this process serves, and is closed once it
+// has, for a restart; under gatewayMu.
+var servedRun struct {
+	stop context.CancelFunc
+	done chan struct{}
 }
 
 // serveGateway starts the gateway here when no magpie has it: the one
 // started, or nil.
 func serveGateway() *gateway.Server {
+	gatewayMu.Lock()
+	defer gatewayMu.Unlock()
+	return serveGatewayLocked()
+}
+
+func serveGatewayLocked() *gateway.Server {
 	// handing over, the one there is this one's predecessor, which lets go
 	// once this one listens beside it
 	if !gateway.Handover {
@@ -91,9 +110,14 @@ func serveGateway() *gateway.Server {
 	gw := gateway.New()
 	served.Store(gw)
 	serving.Add(1)
+	ctx, stop := context.WithCancel(backendCtx)
+	done := make(chan struct{})
+	servedRun.stop, servedRun.done = stop, done
 	go func() {
 		defer serving.Done()
-		if err := gw.ListenAndServe(backendCtx); err != nil {
+		defer close(done)
+		defer stop()
+		if err := gw.ListenAndServe(ctx); err != nil {
 			log.Println("gateway:", err)
 			served.CompareAndSwap(gw, nil) // another took the port first
 		}

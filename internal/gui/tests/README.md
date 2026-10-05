@@ -21,6 +21,14 @@ literal custom names and narrow layouts in Chinese and English on both engines.
 Sharing off keeps the original API-key field and hides the gateway-key picker;
 sharing on names the arbitrary local option separately from the Magpie key.
 
+`gateway-takeover.test.cjs` checks the Gateway card's button: with an older
+magpie serving the gateway it reads "Quit magpie {v} and take over" and posts
+`/api/gateway/take-over`; once this magpie serves it is "Restart gateway" and
+posts `/api/gateway/restart`; a magpie of the same version gets no button. A
+refusal (a program that isn't magpie on the port) is said under it with the
+program's path and pid. No click scrolls, nothing has a left border, in
+Chinese and English.
+
 `gateway-key-limit.test.cjs` checks a gateway key's own limit (#585): each
 limited key's badge and line (used, limit, left, reset, requests in flight,
 calls without a price), a spent key's "refused until", and the limit editor

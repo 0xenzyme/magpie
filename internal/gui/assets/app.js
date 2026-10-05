@@ -4838,6 +4838,52 @@ function renderGatewayView() {
   renderActivity();
 }
 
+// The status card's button (leslie_luo on Discord: told to quit the older
+// magpie serving the gateway, with no way to tell which one it was): with
+// an older magpie on the port it quits that one, checked to be magpie by
+// its process, and this one serves the gateway at once; otherwise it
+// restarts the gateway this one serves, or starts it. A magpie of this
+// version or newer serving it gets none: that one is not to be quit here.
+// What stood in the way stays under it until the gateway's state changes.
+let gatewayFix = { busy: false, err: "", when: "" };
+const gatewayFixWhen = (g) => [g.running, g.mine, g.version || ""].join("|");
+function gatewayFixButton(g, older) {
+  if (g.running && !g.mine && !older) return null;
+  const b = el("button", "text gw-fix");
+  b.textContent = gatewayFix.busy
+    ? (older ? t("Quitting magpie {v}…", { v: g.version }) : t(g.running ? "Restarting the gateway…" : "Starting the gateway…"))
+    : (older ? t("Quit magpie {v} and take over", { v: g.version }) : t(g.running ? "Restart gateway" : "Start gateway"));
+  b.disabled = gatewayFix.busy;
+  b.onclick = async () => {
+    const when = gatewayFixWhen(g);
+    gatewayFix = { busy: true, err: "", when };
+    renderGateway();
+    let out;
+    try { out = await api(older ? "gateway/take-over" : "gateway/restart", {}); } catch (e) { out = { reason: "error", error: e.message }; }
+    gatewayFix = { busy: false, err: out?.ok ? "" : gatewayFixSays(out || {}), when };
+    try { await loadProviders(); } catch {}
+    renderGateway();
+  };
+  return b;
+}
+// gatewayFixSays is why a take-over or a restart didn't go, in the page's
+// language, naming the process it was
+function gatewayFixSays(o) {
+  const p = { port: o.port || "", pid: o.pid || "", path: o.path || "", v: o.version || "", error: o.error || "" };
+  switch (o.reason) {
+    case "not-magpie": return t("Port {port} is held by {path} (pid {pid}), which isn't magpie, so magpie leaves it alone. Quit it yourself, or move the gateway to another port in Settings.", p);
+    case "unseen": return t("magpie can't see which process holds port {port}: it runs as another user or as administrator. Quit it there.", p);
+    case "denied": return t("magpie {v} (pid {pid}, {path}) runs as another user or as administrator, so this magpie can't quit it. Quit it there.", p);
+    case "stuck": return t("magpie {v} (pid {pid}) didn't quit. End it in your system's process list (Activity Monitor, Task Manager).", p);
+    case "respawned": return t("Something started magpie on port {port} again at once ({path}, pid {pid}): a login item or a service keeps it running (a LaunchAgent, a systemd unit, a scheduled task). Remove that, then try again.", p);
+    case "taken": return p.pid
+      ? t("Port {port} is in use by {path} (pid {pid}): quit it, or move the gateway to another port in Settings.", p)
+      : t("Port {port} is in use by another program: quit it, or move the gateway to another port in Settings.", p);
+    case "other": return t("magpie {v} serves the gateway, and it isn't older than this one: quit it there to serve the gateway here.", p);
+  }
+  return t("The gateway couldn't be served here: {error}", p);
+}
+
 // The status card: dot, state, the URL.
 function renderGateway() {
   const g = providers.gateway;
@@ -4856,10 +4902,13 @@ function renderGateway() {
   for (const p of providers.providers) for (const a of p.agents) if (a.current) routed.add(a.id);
   const n = routed.size;
   if (older) {
-    who.append(name, el("div", "sub old", t("Agents' requests go through magpie {v} and are sent as it sends them, without this version's fixes. Quit that magpie (a magpie serve, another copy) and this one takes the gateway over within 15 seconds.", { v: g.version })));
+    who.append(name, el("div", "sub old", t("Agents' requests go through magpie {v} and are sent as it sends them, without this version's fixes. Quit it here and this one serves the gateway at once.", { v: g.version })));
   } else who.append(name, el("div", "sub", g.running
     ? [t(g.models === 1 ? "{n} model" : "{n} models", { n: g.models }), n ? t(n === 1 ? "{n} agent routed through it" : "{n} agents routed through it", { n }) : t("no agent routed through it yet"), t("five APIs, one URL")].join(" · ")
     : t("start it with magpie serve, or open magpie at login")));
+  const fix = gatewayFixButton(g, older);
+  if (fix) who.append(fix);
+  if (gatewayFix.err && gatewayFix.when === gatewayFixWhen(g)) who.append(el("div", "sub old err", gatewayFix.err));
   const url = el("button", "url");
   url.append(el("code", "", g.url));
   url.title = t("Copy the gateway URL");

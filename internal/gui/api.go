@@ -892,7 +892,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	updateRoutes(mux, w)
 	whatsNewRoutes(mux)
 	cliBehindRoutes(mux)
-	mux.HandleFunc("GET /api/settings", func(rw http.ResponseWriter, r *http.Request) {
+	gatewayFixRoutes(mux)
+	mux.HandleFunc("GET /api/settings",func(rw http.ResponseWriter, r *http.Request) {
 		access.MigrateLegacyLANKeyBestEffort()
 		writeJSON(rw, settingsState())
 	})
