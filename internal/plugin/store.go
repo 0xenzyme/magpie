@@ -452,6 +452,43 @@ func SetOff(name string, off bool) error {
 	return nil
 }
 
+// SetOptions sets the options a plugin is handed (a middleware's
+// ctx.options); nil takes them away.
+func SetOptions(name string, opts map[string]any) error {
+	listMu.Lock()
+	defer listMu.Unlock()
+	l := Load()
+	i := slices.IndexFunc(l.Plugins, func(x Entry) bool { return Name(x.Spec) == name || x.Spec == name })
+	if i < 0 {
+		// a short name, as the community's READMEs write it: param-override
+		// for @magpie-community/middleware-param-override
+		i = slices.IndexFunc(l.Plugins, func(x Entry) bool { return ShortName(Name(x.Spec)) == name })
+	}
+	if i < 0 {
+		return fmt.Errorf("no plugin %q", name)
+	}
+	if len(opts) == 0 {
+		opts = nil
+	}
+	l.Plugins[i].Options = opts
+	if err := save(l); err != nil {
+		return err
+	}
+	Restart()
+	return nil
+}
+
+// ShortName is a package's name without its scope and the words every
+// package of its kind has: model-map for @magpie-community/middleware-model-map,
+// zed for @magpie-community/opencode-zed-auth.
+func ShortName(pkg string) string {
+	if i := strings.LastIndex(pkg, "/"); i >= 0 {
+		pkg = pkg[i+1:]
+	}
+	pkg = strings.TrimPrefix(strings.TrimPrefix(pkg, "middleware-"), "opencode-")
+	return strings.TrimSuffix(pkg, "-auth")
+}
+
 // SetConfig sets the OpenCode config the plugins are handed.
 func SetConfig(cfg map[string]any) error {
 	listMu.Lock()

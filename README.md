@@ -62,7 +62,7 @@ Your Claude, ChatGPT, Copilot, Gemini or Grok sign-in becomes a provider that ev
 <td valign="top">
 
 **🧩 Plugins**<br>
-OpenCode auth plugins and pi provider packages from npm run in magpie as they do in their own apps. Any plan a plugin signs in to works in every agent.
+OpenCode auth plugins and pi provider packages from npm run in magpie as they do in their own apps. Any plan a plugin signs in to works in every agent. A plugin can also be gateway middleware that reads and rewrites every request and reply.
 
 </td>
 <td valign="top">
@@ -166,6 +166,32 @@ magpie plugin login google-plugin        # its own sign-in flow, in magpie
 ```
 
 magpie runs plugins on [Bun](https://bun.sh), which it downloads the first time a plugin needs it. A plugin signs in, lists its models and makes each request. Agents use its models like any other provider's. Browse the community plugins at **[magpie-community/plugins](https://github.com/magpie-community/plugins)**, or [write your own](https://usemagpie.ai/docs/plugins).
+
+A plugin can also be **gateway middleware**: JavaScript run inside magpie's gateway on what every agent sends and gets back, whatever the provider. `onRequest` can rewrite a request or turn it away, `onEvent` sees each streamed event, and `onResponse` sees a whole reply. It runs in-process, so an event costs about a microsecond, and a hook that throws or runs too long leaves the request as it was.
+
+```js
+// alias.middleware.js — magpie plugin add ./alias.middleware.js
+export function onRequest(body, ctx) {
+  if (body.model === "fast") return { ...body, model: "deepseek/deepseek-chat" };
+}
+```
+
+Ready-made middleware, most of it what [New API](https://github.com/QuantumNous/new-api) does for its channels, with the same JSON, is under Plugins › Discover › Gateway middleware:
+
+| Package | What it does |
+|---|---|
+| `param-override` | New API's `param_override`: set, delete, move or rewrite request fields, under conditions, or turn a request away |
+| `model-map` | New API's `model_mapping`: send a model under another name; replies keep the name asked for |
+| `system-prompt` | Your system prompt on every request, or some agents' or models' |
+| `word-guard` | New API's sensitive-word filter: turn away or mask words in what users send, and in replies |
+| `think-tags` | Take `<think>…</think>` out of replies, or put `reasoning_content` into them |
+
+```sh
+magpie plugin add @magpie-community/middleware-model-map
+magpie plugin options model-map '{"mapping": {"fast": "deepseek/deepseek-chat"}}'
+```
+
+See [Gateway middleware](https://usemagpie.ai/docs/plugins#middleware).
 
 ## Usage and cost tracking
 

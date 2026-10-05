@@ -579,10 +579,10 @@ m plugin logout acme</pre>
   <span class="s">"providers"</span>: [<span class="s">"acme"</span>],
   <span class="s">"summary"</span>: { <span class="s">"en"</span>: <span class="s">"Your Acme Coding Plan."</span>, <span class="s">"zh"</span>: <span class="s">"使用你的 Acme Coding Plan。"</span> } }</pre>
         </div>
-        <code>MAGPIE_PLUGIN_MARKET=&lt;url&gt;</code> points magpie at another list, which is useful to check yours, and <code>off</code> keeps to the built-in copy.</li>
+        A middleware’s entry has <code>"kind": "middleware"</code> and no <code>providers</code>; it is listed under <span class="ui">Gateway middleware</span>. <code>MAGPIE_PLUGIN_MARKET=&lt;url&gt;</code> points magpie at another list, which is useful to check yours, and <code>off</code> keeps to the built-in copy.</li>
       <li><b>The community packages.</b> To contribute one to <a href="https://github.com/magpie-community/plugins">magpie-community/plugins</a>:
         <ul>
-          <li>Put it under <code>packages/&lt;name&gt;</code>, named <code>@magpie-community/opencode-&lt;name&gt;-auth</code>, with no runtime dependencies unless one is really needed.</li>
+          <li>Put it under <code>packages/&lt;name&gt;</code>, named <code>@magpie-community/opencode-&lt;name&gt;-auth</code> (a provider) or <code>@magpie-community/middleware-&lt;name&gt;</code> (middleware), with no runtime dependencies unless one is really needed.</li>
           <li>Pushing a version bump to <code>main</code> publishes it.</li>
           <li>These packages update by themselves in every magpie.</li>
         </ul></li>
@@ -613,6 +613,24 @@ m plugin logout acme</pre>
       <button class="copy" data-copy="mw-cli">Copy</button>
       <pre id="mw-cli">magpie plugin add ./alias.middleware.js   <span class="c"># or a package whose package.json has "magpie": { "middleware": "./mw.js" }</span></pre>
     </div>
+    <h3 id="middleware-community"><a class="anchor" href="#middleware-community">Ready-made middleware</a></h3>
+    <p>The community repository has middleware ready to add, most of it what <a href="https://github.com/QuantumNous/new-api">New API</a> does for its channels, taking the same JSON. They are under <span class="ui">Plugins → Discover → Gateway middleware</span>, and every card there says whether it is a provider or middleware.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Package</th><th>What it does</th></tr>
+      <tr><td><a href="https://github.com/magpie-community/plugins/tree/main/packages/param-override"><code>param-override</code></a></td><td>New API’s <code>param_override</code>: set, delete, move, copy or rewrite fields of the request, for some models or under conditions, or turn a request away. A <code>param_override</code> copied from New API works unchanged.</td></tr>
+      <tr><td><a href="https://github.com/magpie-community/plugins/tree/main/packages/model-map"><code>model-map</code></a></td><td>New API’s <code>model_mapping</code>: send a model under another name, by name or <code>/pattern/</code>. Replies name the model the agent asked for.</td></tr>
+      <tr><td><a href="https://github.com/magpie-community/plugins/tree/main/packages/system-prompt"><code>system-prompt</code></a></td><td>A system prompt of yours on every request, or only some agents’ or models’, in each API’s own place. A request with its own keeps it unless <code>override</code> is on.</td></tr>
+      <tr><td><a href="https://github.com/magpie-community/plugins/tree/main/packages/word-guard"><code>word-guard</code></a></td><td>New API’s sensitive-word filter: turn away or mask words and patterns in what users send, and in replies if you like.</td></tr>
+      <tr><td><a href="https://github.com/magpie-community/plugins/tree/main/packages/think-tags"><code>think-tags</code></a></td><td>Take a <code>&lt;think&gt;…&lt;/think&gt;</code> block out of the start of a reply’s text, or put a Chat reply’s <code>reasoning_content</code> into it (New API’s <code>thinking_to_content</code>).</td></tr>
+    </table></div>
+    <div class="code">
+      <span class="lang">shell</span>
+      <button class="copy" data-copy="mw-add">Copy</button>
+      <pre id="mw-add">magpie plugin add @magpie-community/middleware-model-map
+magpie plugin options model-map '{"mapping": {"fast": "deepseek/deepseek-chat"}}'</pre>
+    </div>
+    <h3 id="middleware-options"><a class="anchor" href="#middleware-options">Options</a></h3>
+    <p>A middleware reads its settings from <code>ctx.options</code>, which are its entry’s <code>options</code> in <code>plugins.json</code>. Set them in <span class="ui">Plugins → Installed</span> with the middleware’s <span class="ui">Options</span> button, which edits them as JSON in its row, or with <code>magpie plugin options &lt;name&gt; '&lt;json&gt;'</code> (<code>off</code> clears them). The name can be the package’s, its spec, or its short name: <code>model-map</code> for <code>@magpie-community/middleware-model-map</code>. They apply from the next request on. A package can suggest options with <code>"magpie": { "options": { … } }</code> in its <code>package.json</code>: the editor starts from those when none are set, but a middleware runs with no options until you save some.</p>
     <h3>How it runs</h3>
     <p>Middleware isn’t run on Bun. It runs inside the gateway’s own process, in <a href="https://github.com/Calcium-Ion/moejs">moejs</a>, a JavaScript engine written in Go, because a reply streams thousands of events and each one waits for it. A hook on one event costs about a microsecond; a round trip to Bun would cost tens. Each middleware is compiled once, and each request gets a runtime of its own, so requests run in parallel and a request’s hooks share <code>ctx.state</code>.</p>
     <ul>
@@ -630,7 +648,7 @@ m plugin logout acme</pre>
       <tr><td><code>onResponse(body, ctx)</code></td><td>A reply that isn’t streamed, whole; <code>ctx.status</code> is its status.</td><td>The body, or nothing.</td></tr>
     </table></div>
     <p><code>export const events = ["content_block_delta"]</code> calls <code>onEvent</code> only for events of those names (Anthropic Messages and Responses name theirs). Chat Completions and Gemini events have no name, so leave <code>events</code> out for them. An event holds a piece of the reply, so a word can be split over two events. A <code>data: [DONE]</code> line and comments pass by unseen. A compressed reply passes as it is.</p>
-    <p><code>ctx</code> has <code>protocol</code> (<code>anthropic</code>, <code>chat</code>, <code>responses</code> or <code>gemini</code>), <code>model</code> and <code>stream</code> as the agent asked, <code>path</code>, <code>agent</code> when magpie knows it, <code>options</code> (the plugin’s options in <code>plugins.json</code>) and <code>state</code>, an object of the request’s own.</p>
+    <p><code>ctx</code> has <code>protocol</code> (<code>anthropic</code>, <code>chat</code>, <code>responses</code> or <code>gemini</code>), <code>model</code> and <code>stream</code> as the agent asked, <code>path</code>, <code>agent</code> when magpie knows it, <code>options</code> (the plugin’s <a href="#middleware-options">options</a>) and <code>state</code>, an object of the request’s own.</p>
     <h3>When a hook fails</h3>
     <p>A hook has 250 ms for a request or a whole reply and 50 ms for an event; loading has a second. A hook that throws, runs out of time or returns something else goes on as if it weren’t there: the request or the event is sent as it was. Settings → Plugins shows each middleware’s hooks, how many calls it had, the average time each took and how many failed, with the last error. The hooks see what the agent sent and gets back, before magpie’s redaction on the way out and after it on the way back. magpie’s own requests (thread titles, the router’s classifier) don’t go through middleware.</p>
 

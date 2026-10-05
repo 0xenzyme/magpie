@@ -5,6 +5,7 @@ These pages describe current responsibilities, runtime paths, state, and contrac
 | Subsystem | Reference |
 | --- | --- |
 | Built-in subscriptions moving to plugins | [Provider and plugin ownership](provider-plugins.md) |
+| Plugins that run on the gateway's requests and replies | [Gateway middleware](gateway-middleware.md) |
 
 A subsystem can span several packages or repositories. Its reference describes the behavior those parts provide together; it does not need to list every function.
 

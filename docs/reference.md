@@ -391,6 +391,26 @@ event) leaves what it was given as it was. Settings → Plugins shows each
 middleware's calls, time and failures. The [plugin guide](https://usemagpie.ai/docs/plugins#middleware)
 has the rest.
 
+`ctx.options` is the middleware's entry's `options` in `plugins.json`: set
+them with its **Options** button in Plugins › Installed, or
+
+```sh
+magpie plugin options model-map '{"mapping": {"fast": "deepseek/deepseek-chat"}}'
+magpie plugin options model-map off   # clears them
+```
+
+The name can be a package's short name (`model-map` for
+`@magpie-community/middleware-model-map`). A package's
+`"magpie": { "options": {…} }` is the example the editor starts from.
+
+Ready-made middleware, under Plugins › Discover › Gateway middleware
+(`@magpie-community/middleware-<name>`), mostly New API's channel settings
+with the same JSON: `param-override` (`param_override`), `model-map`
+(`model_mapping`), `system-prompt`, `word-guard` (sensitive words) and
+`think-tags` (strip `<think>…</think>`, or `thinking_to_content`). A
+middleware's entry in the community `registry.json` has
+`"kind": "middleware"` and no `providers`.
+
 ### What a model costs
 
 A call is counted at its **effective price**: what you set for that provider

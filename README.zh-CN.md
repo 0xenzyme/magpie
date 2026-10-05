@@ -62,7 +62,7 @@ magpie 把这些都收到一处：
 <td valign="top">
 
 **🧩 插件**<br>
-npm 上的 OpenCode 登录插件和 pi provider 包，在 magpie 里的用法和在原应用里一样。插件能登录的套餐，每个 Agent 都能用。
+npm 上的 OpenCode 登录插件和 pi provider 包，在 magpie 里的用法和在原应用里一样。插件能登录的套餐，每个 Agent 都能用。插件也可以是网关中间件，读取并改写每个请求和回复。
 
 </td>
 <td valign="top">
@@ -166,6 +166,32 @@ magpie plugin login google-plugin        # 在 magpie 里走插件自己的登�
 ```
 
 插件运行在 [Bun](https://bun.sh) 上，magpie 会在第一次需要时自动下载 Bun。插件负责登录、列出模型和发送请求，Agent 像用其他 provider 一样用它的模型。社区插件在 **[magpie-community/plugins](https://github.com/magpie-community/plugins)**，你也可以[自己写一个](https://usemagpie.ai/docs/zh/plugins)。
+
+插件也可以是**网关中间件**：在 magpie 网关里运行的 JavaScript，处理每个 Agent 发出和收到的内容，不管走的是哪个 provider。`onRequest` 可以改写请求或拒绝它，`onEvent` 处理流式回复的每个事件，`onResponse` 处理完整回复。它在进程内运行，每个事件约一微秒；钩子出错或超时，请求按原样放行。
+
+```js
+// alias.middleware.js — magpie plugin add ./alias.middleware.js
+export function onRequest(body, ctx) {
+  if (body.model === "fast") return { ...body, model: "deepseek/deepseek-chat" };
+}
+```
+
+现成的中间件在「插件 › 发现 › 网关中间件」里，大多是 [New API](https://github.com/QuantumNous/new-api) 为渠道提供的功能，JSON 也一样：
+
+| 包 | 作用 |
+|---|---|
+| `param-override` | New API 的参数覆盖（`param_override`）：按条件设置、删除、移动或改写请求字段，或拒绝请求 |
+| `model-map` | New API 的模型重定向（`model_mapping`）：换个模型名发出，回复里仍是请求的名字 |
+| `system-prompt` | 给每个请求（或某些 agent、模型）加上你的系统提示词 |
+| `word-guard` | New API 的敏感词过滤：用户发送的内容里有敏感词时拒绝或打码，回复也可打码 |
+| `think-tags` | 去掉回复里的 `<think>…</think>`，或把 `reasoning_content` 放进正文 |
+
+```sh
+magpie plugin add @magpie-community/middleware-model-map
+magpie plugin options model-map '{"mapping": {"fast": "deepseek/deepseek-chat"}}'
+```
+
+详见[网关中间件](https://usemagpie.ai/docs/zh/plugins#middleware)。
 
 ## 用量和费用统计
 

@@ -43,3 +43,22 @@ func Middleware(target string) (file string, only bool) {
 
 // ListStamp changes when plugins.json does.
 func ListStamp() string { return listStamp() }
+
+// OptionsExample is the options a plugin at target suggests, from its
+// package.json's magpie.options: what its options editor starts from
+// before any are set.
+func OptionsExample(target string) map[string]any {
+	b, err := os.ReadFile(filepath.Join(target, "package.json"))
+	if err != nil {
+		return nil
+	}
+	var pkg struct {
+		Magpie struct {
+			Options map[string]any `json:"options"`
+		} `json:"magpie"`
+	}
+	if json.Unmarshal(b, &pkg) != nil {
+		return nil
+	}
+	return pkg.Magpie.Options
+}
