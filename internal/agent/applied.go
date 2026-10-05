@@ -392,6 +392,15 @@ func (a *Agent) Pick(key, v string) error {
 // the provider and the whole catalog in, so the agent's own model list has
 // every one of magpie's models. An agent that can keep the model it is on
 // (Join) keeps it. An agent already connected is left as it is.
+// NoModelsError is Connect's answer while magpie has no models to give
+// the agent: no provider or subscription has been added yet. The GUI says
+// it in the reader's language by its code (no_models).
+type NoModelsError struct{ Agent string }
+
+func (e *NoModelsError) Error() string {
+	return "Add a provider or subscription in magpie first, then connect " + e.Agent
+}
+
 func (a *Agent) Connect() error {
 	_, err := a.ConnectHow()
 	return err
@@ -474,6 +483,11 @@ func (a *Agent) connect() (Connection, error) {
 		}
 	}
 	if f == nil {
+		// nothing to connect it to yet: no provider or subscription added,
+		// which said only that it can't be connected (Tystem on Discord)
+		if shown, hidden := provider.CatalogFor(a.ID); len(shown)+len(hidden) == 0 {
+			return Connection{}, &NoModelsError{Agent: a.Name}
+		}
 		return Connection{}, fmt.Errorf("%s can't be connected to magpie", a.Name)
 	}
 	cur := connectWas(vals[f.Key], opts)

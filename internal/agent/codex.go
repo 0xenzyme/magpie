@@ -48,7 +48,13 @@ import (
 // The [model_providers.magpie] table stays once written. A thread keeps the
 // provider it was started on, and one started on magpie can't be opened
 // again without the table ("Model provider `magpie` not found"), whichever
-// way Codex is routed now.
+// way Codex is routed now. Codex looks model_provider up in the tables as
+// it loads config.toml (codex-rs config: "Model provider `{id}` not
+// found"), so `model_provider = "magpie"` without the table keeps it from
+// loading its config at all, a new thread too: magpie never writes the one
+// without the other, takes model_provider out whenever it steps out as the
+// provider (disconnected, unwired, joined beside the sign-in), and Sync
+// writes the table back when something else took it.
 
 // codexStandIn is the model Codex is set to use, when magpie is its
 // provider, for a model it names that magpie doesn't serve. Codex asks for
@@ -162,6 +168,31 @@ func codexIn(at place) *Agent {
 	hasProvider := func() bool {
 		t, err := edit.GetTOMLTable(path, "model_providers."+magpieID)
 		return err == nil && t != nil
+	}
+	// noProvider: the config was read and has no such table; one magpie
+	// can't read is told by Check as it is, and written to by nothing
+	noProvider := func() bool {
+		t, err := edit.GetTOMLTable(path, "model_providers."+magpieID)
+		return err == nil && t == nil
+	}
+	// namesMagpie: the config has Codex on magpie as its provider, at its
+	// top or in a profile. Codex then reads [model_providers.magpie] as it
+	// loads the config, before any thread: without the table it loads no
+	// config at all ("Model provider `magpie` not found"), the app and the
+	// CLI both, whatever the model.
+	namesMagpie := func() bool {
+		if asProvider() {
+			return true
+		}
+		names, _ := edit.TOMLTables(path)
+		for _, n := range names {
+			if strings.HasPrefix(n, "profiles.") {
+				if t, _ := edit.GetTOMLTable(path, n); t["model_provider"] == magpieID {
+					return true
+				}
+			}
+		}
+		return false
 	}
 	// dropProvider takes magpie out as the provider Codex is on; the table
 	// stays for the threads started on it
@@ -678,6 +709,15 @@ func codexIn(at place) *Agent {
 		Joined: joined,
 		Routed: routed,
 		Sync: func() error {
+			// model_provider = "magpie" left with its table gone (taken by
+			// another tool, or a hand edit), which keeps Codex from loading
+			// its config at all, connected to magpie or not (Tystem on
+			// Discord): the table is written back, as it stays once written
+			if namesMagpie() && noProvider() {
+				if err := putProvider(); err != nil {
+					return err
+				}
+			}
 			if err := failover(); err != nil {
 				return err
 			}
@@ -750,6 +790,9 @@ func codexIn(at place) *Agent {
 			return nil
 		},
 		Check: func() string {
+			if namesMagpie() && noProvider() {
+				return "Codex's config names magpie as its model_provider but has no [model_providers.magpie], so Codex can't load its config (\"Model provider `magpie` not found\"): magpie writes it back when it next syncs, or connect Codex again"
+			}
 			if !wired() {
 				return ""
 			}

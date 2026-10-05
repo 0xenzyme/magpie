@@ -1548,6 +1548,11 @@ func fail(rw http.ResponseWriter, err error) {
 		out["code"] = "runtime_unavailable"
 		out["offline"] = string(unavailable.Offline)
 	}
+	var noModels *agent.NoModelsError
+	if errors.As(err, &noModels) {
+		out["code"] = "no_models"
+		out["agent"] = noModels.Agent
+	}
 	_ = json.NewEncoder(rw).Encode(out)
 }
 

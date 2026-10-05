@@ -756,7 +756,12 @@ model (`opus`, `sonnet`…) removes them and restores whatever was there.
 **Codex** gets a `[model_providers.magpie]` table, `model_catalog_json`
 pointing at `~/.codex/magpie-models.json` (written from the catalog, so the
 models show in Codex's own list) and a valid `model`/`effort`; picking a
-native model removes all of that. Your ChatGPT sign-in is never touched.
+native model or disconnecting removes `model_provider` and the catalog. The
+`[model_providers.magpie]` table stays, so a thread started on magpie can
+still be opened. Codex won't load its config at all when `model_provider =
+"magpie"` has no table ("Model provider `magpie` not found"). If another
+tool leaves that state behind, magpie writes the table back the next time
+it syncs. Your ChatGPT sign-in is never touched.
 Codex reads its model list at start-up, so restart it after a switch.
 
 **OpenCode, Pi, Crush** get a `magpie` provider entry and `magpie/provider/model`.

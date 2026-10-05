@@ -104,6 +104,9 @@ async function api(path, body) {
       err.code = data.code;
       if (data.offline === "stage" || data.offline === "disconnect") err.offline = data.offline;
     }
+    // magpie has no models to connect an agent to yet: said in the
+    // reader's language
+    if (data?.code === "no_models") err.message = t("Add a provider or subscription in magpie first, then connect {agent}", { agent: data.agent });
     if (data?.why) err.why = data.why; // a failed move's reason, said in the reader's language
     throw err;
   }
