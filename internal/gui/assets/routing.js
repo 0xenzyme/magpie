@@ -2323,7 +2323,11 @@
   // whether magpie finds groups on its own, by the list it fills (蓝猫 on
   // Discord: they could only be removed one at a time)
   const gFound = el("div", "rt-gfound");
-  gsec.append(gHead, gFound, gList, pHead, pList);
+  // how the agents' lists name every group, one setting for them all (and
+  // for the providers' models), so it sits over the groups rather than in
+  // one group's editor (PAMI on Discord)
+  const gNames = el("div", "rt-gnames");
+  gsec.append(gHead, gFound, gNames, gList, pHead, pList);
   // after the requests: a request picked in the list plays on the stage,
   // so the list sits right under it
   more.append(gsec);
@@ -2467,6 +2471,7 @@
     }
     gHead.replaceChildren(...head);
     drawFound();
+    drawNames();
     const rows = [];
     if (gSel) rows.push(selectBar(shown));
     if (gEdit && !gEdit.id) rows.push(groupEditor(null));
@@ -2592,6 +2597,12 @@
       ? t("A model two or more of your providers serve becomes a group of them (auto-…). Switch it off to list and serve only the groups you made or changed.")
       : t("Off: only the groups you made or changed are listed and served. An agent set to a found group is moved to its model from one provider, and a request still naming one goes there too.")));
     gFound.replaceChildren(txt, s);
+  }
+  function drawNames() {
+    const txt = el("div", "txt");
+    txt.append(el("b", "", t("Names in agents’ lists")), el("small", "", t("Whether “· routing group” follows a group’s name in the agents’ lists: one setting for every group, and for the provider after each model’s name, as on Settings.")));
+    // an open editor says what its group will be called: drawn again with it
+    gNames.replaceChildren(txt, suffixSegs(() => renderGroups()));
   }
   async function setFound(on, s) {
     s.classList.toggle("on", on);
@@ -2829,12 +2840,14 @@
       idHint.textContent = t("Agents pick it as {id}", { id: "group/" + idOf() }) +
         (g && idOf() !== g.id ? " · " + t("an agent set to {id} needs setting again", { id: "group/" + g.id }) : "");
     };
-    // what the agents' lists will call it, and the setting that says
-    // whether "· routing group" follows the name (#868: an agent's narrow
-    // menu cut it to "· rou…"); a group saved here is one the user made
+    // what the agents' lists will call it (#868: an agent's narrow menu
+    // cut it to "· rou…"); whether "· routing group" follows the name is
+    // one setting for every group, over the list (drawNames), not one in
+    // here (PAMI on Discord); a group saved here is one the user made
     const sfxSaid = el("span", "hint");
-    const sayLabel = (mode) => {
-      sfxSaid.textContent = t("Agents’ lists show “{label}”", { label: (d.name.trim() || t("New group")) + ((mode || suffixMode()) === "on" ? " · routing group" : "") });
+    const sayLabel = () => {
+      sfxSaid.textContent = t("Agents’ lists show “{label}”", { label: (d.name.trim() || t("New group")) + (suffixMode() === "on" ? " · routing group" : "") }) +
+        " · " + t("“· routing group” is set for every group above");
     };
     name.oninput = () => { d.name = name.value; showId(); sayLabel(); };
     const nw = el("div");
@@ -2842,7 +2855,7 @@
     if (!g) nw.append(idHint);
     ed.append(el("label", "", t("Name")), nw);
     const sw = el("div", "gsuffix");
-    sw.append(suffixSegs(sayLabel), sfxSaid);
+    sw.append(sfxSaid);
     sayLabel();
     ed.append(el("label", "", t("In agents’ lists")), sw);
     if (idIn) {

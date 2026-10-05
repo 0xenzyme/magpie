@@ -16184,8 +16184,9 @@ const IN_USE = "|*";
 // (or "routing group") after it, all but the names the user gave models
 // and the groups they made (#92), or none (#335). Set on its own, so the
 // agents are told. Offered on Settings and where names are given, the
-// provider's Names & levels and a group's editor (#868: an agent's narrow
-// menu cut "· routing group" short, and the setting wasn't found);
+// provider's Names & levels and over Routing's groups (#868: an agent's
+// narrow menu cut "· routing group" short, and the setting wasn't found;
+// in one group's editor it read as that group's, PAMI on Discord);
 // drawn(mode) redraws the place it was picked in.
 function suffixMode(s = prefs || {}) { return s.plainNames ? "off" : s.plainOwnNames ? "own" : "on"; }
 function suffixSegs(drawn) {

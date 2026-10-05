@@ -368,6 +368,17 @@ and the status line says which agent was moved to the model from one provider;
 clicked on, the found group is back. Neither click moves the page, the switch
 has no left-border accent, and every string has its Chinese.
 
+`name-suffix-where-named.test.cjs` checks the setting that says whether a
+provider's name or "· routing group" follows a name in the agents' lists (#868)
+where names are given, in Chromium and WebKit, English and Chinese. The
+provider editor's Names & levels has its three choices and says what the lists
+show. For the groups it is one setting for all of them, so it sits over the
+groups on Routing (PAMI on Discord: in one group's editor it read as that
+group's): a group's editor has no choices, only what its group will be called
+and that it is set above; a pick there posts settings/plain-names once and the
+open editor's line follows it with its unsaved name. No click scrolls, nothing
+native, no left border, and every string has its Chinese, Japanese and German.
+
 `routing-manual.test.cjs` routes a group by hand in Chromium and WebKit,
 English and Chinese (#317: pick the model, as CC Switch picks a provider). A
 manual group's card lists its models, the one every request goes to marked, and
