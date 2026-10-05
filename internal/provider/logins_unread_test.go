@@ -45,7 +45,12 @@ func TestUnreadLoginsNotWrittenOver(t *testing.T) {
 	}
 
 	// nothing read before (magpie just started): the file is kept aside
-	// before it is written over
+	// before it is written over. The add above kept its own copy, named by
+	// the second it was made, so only the copies made from here count.
+	before, _ := filepath.Glob(p + ".bad-*")
+	for _, f := range before {
+		os.Remove(f)
+	}
 	half := good[:len(good)/2]
 	os.WriteFile(p, half, 0o600)
 	lastLoginsMu.Lock()
