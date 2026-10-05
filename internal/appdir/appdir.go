@@ -136,6 +136,26 @@ func Config() string {
 	return filepath.Join(mustHome(), ".config", "magpie")
 }
 
+// Redirected is the folder magpie keeps its files in when it is opened
+// from the Dock, the Start menu or a desktop launcher (~/.config/magpie),
+// while this magpie reads them from another that XDG_CONFIG_HOME, set in
+// the shell it was run from, names; "" when they are the same, or magpie
+// is portable. A magpie run in such a shell sees none of what the app's
+// window shows.
+func Redirected() string {
+	if Portable() != "" || os.Getenv("XDG_CONFIG_HOME") == "" {
+		return ""
+	}
+	h, err := Home()
+	if err != nil {
+		return ""
+	}
+	if def := filepath.Join(h, ".config", "magpie"); filepath.Clean(def) != filepath.Clean(Config()) {
+		return def
+	}
+	return ""
+}
+
 // Cache is the folder for what magpie can fetch again (the models.dev
 // catalog, exchange rates, market lists).
 func Cache() string {

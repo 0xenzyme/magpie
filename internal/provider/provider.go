@@ -464,7 +464,19 @@ func findIn(all []Provider, id string) (*Provider, error) {
 			return &p, nil
 		}
 	}
-	return nil, fmt.Errorf("no provider %q — magpie providers lists them", id)
+	return nil, fmt.Errorf("no provider %q — magpie providers lists them%s", id, readElsewhere())
+}
+
+// readElsewhere says, for a provider not found, that this magpie reads its
+// files from another folder than the app's when XDG_CONFIG_HOME moves them
+// and the app's has some (蒙面人 on Discord: a terminal's magpie had no
+// Antigravity, which the window showed signed in).
+func readElsewhere() string {
+	def := appdir.Redirected()
+	if def == "" || !isFile(filepath.Join(def, "providers.json")) && !isFile(filepath.Join(def, "logins.json")) {
+		return ""
+	}
+	return fmt.Sprintf("\n  this magpie reads its files from %s, as XDG_CONFIG_HOME says; the app opened from the Dock or Start menu keeps them in %s. Run it with XDG_CONFIG_HOME unset (env -u XDG_CONFIG_HOME magpie …) to use those", appdir.Config(), def)
 }
 
 var idRe = regexp.MustCompile(`[^a-z0-9]+`)
