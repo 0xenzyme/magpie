@@ -1509,7 +1509,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		// keepalives, for a failure to be told as the stream's error
 		hw := newHoldWriter(w, !last || again < max(lastRetries, rateRetries) || other != nil || kept.sent || autoPicks(c) && repicked < 2)
 		hw.thinkingShown = !refusesAfterThinking(c.model)
-		hw.ctx, hw.alive = r.Context(), kept
+		hw.ctx, hw.alive, hw.streams = r.Context(), kept, streams
 		if isGroup && g.FirstToken > 0 && !last && streams {
 			// slow to start, the next member is asked (Group.FirstToken)
 			hw.firstWait = time.Duration(g.FirstToken) * time.Second
@@ -1678,7 +1678,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 					// the slot is the vendor's until the reply is read to
 					// its end or the agent has gone: attempt returns then
 					defer release()
-					defer hw.watchFirst()()
+					defer hw.watch()()
 					call.Status, call.Error = s.attempt(hw, r.WithContext(ctx), from, c.p, c.model, attemptBody, &call)
 				}()
 			}
