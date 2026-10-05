@@ -508,11 +508,14 @@ func (a *Agent) connect() (Connection, error) {
 	// alias): on the account it is signed in to (its vendor's) first, then
 	// on a subscription, before a key's; else its own vendor's; else a
 	// subscription's; else the first
-	var pick, same, alike, own, sub string
+	var pick, same, alike, own, sub, group string
 	sameRank, alikeRank := -1, -1
 	for _, o := range opts {
 		if o.Value == magpieID {
 			return Connection{How: "magpie", Field: f.Key, Value: magpieID}, a.Apply(f.Key, magpieID)
+		}
+		if o.Ref != "" && o.Group == RoutingGroups && group == "" {
+			group = o.Value
 		}
 		if o.Ref == "" || o.Group == RoutingGroups {
 			continue
@@ -554,6 +557,10 @@ func (a *Agent) connect() (Connection, error) {
 		pick = own
 	case sub != "":
 		pick = sub
+	case pick == "" && group != "":
+		// only routing groups are shown it (its models hidden, or its own
+		// account's alone beside them): the first group (#939)
+		pick = group
 	}
 	if pick == "" {
 		return Connection{}, fmt.Errorf("magpie has no models %s can use: add a subscription or a provider first", a.Name)
