@@ -21,7 +21,7 @@ import (
 func init() {
 	movers["zcode"] = &mover{
 		pkg:    "@magpie-community/opencode-zcode-auth",
-		min:    "0.1.8", // an account's ZCode gift plans spent before its GLM Coding Plan (plugins #19)
+		min:    "0.1.9", // the gift's models are trial entries (GLM-5.3-Flash-Trial) the user picks; a plain model spends the GLM Coding Plan (plugins #21)
 		agents: []string{"zcode"},
 		// a Start Plan account was never served GLM-5.3, by the built-in
 		// or by ZCode, and the plugin lists it no more than they do; its
