@@ -9131,28 +9131,37 @@ function renderSigning(sub) {
     // ZCode: a Z.ai account or a BigModel (智谱) one, a team's seat included
     tt.append(el("span", "n", t("Where is your {name} account?", { name: sub.name })),
       el("span", "s", t("Sign in where your GLM Coding Plan was bought, a team's plan too: z.ai, or bigmodel.cn for 智谱.")));
+    // the question keeps the row's width, Cancel beside it; the sites go
+    // under it as one group and a plugin's other ways under them as links,
+    // each line wrapping (361: four buttons in its row left the question a
+    // strip a character or two wide)
+    box.classList.add("site-pick");
     box.append(tt);
     const close = el("button", "text", t("Cancel"));
     close.onclick = cancelSignIn;
     box.append(close);
+    const sites = el("div", "sites");
     for (const [id, label, host] of sub.sites) {
       const b = el("button", "text primary", t(label));
       b.dataset.site = id;
       b.title = host;
       b.onclick = () => startSignIn(sub.agent, true, id);
-      box.append(b);
+      sites.append(b);
     }
-    // a plugin's other ways, beside the sites: ZCode's app's own sign-in
+    box.append(sites);
+    // a plugin's other ways, after the sites: ZCode's app's own sign-in
     // (Jinyu: use the account ZCode is signed in to), its API key
     if (sub.plugin && sub.moved) {
-      const sites = sub.sites.map(([, label]) => label);
+      const labels = sub.sites.map(([, label]) => label);
+      const ways = el("div", "ways");
       sub.plugin.methods.forEach((m, i) => {
-        if (sites.some((l) => (m.label || "").includes(l))) return;
-        const b = el("button", "text", t(m.label || (m.type === "api" ? "API key" : "Browser")));
+        if (labels.some((l) => (m.label || "").includes(l))) return;
+        const b = el("button", "link", t(m.label || (m.type === "api" ? "API key" : "Browser")));
         b.dataset.method = String(i);
         b.onclick = () => startPluginSignIn(sub, i);
-        box.append(b);
+        ways.append(b);
       });
+      if (ways.childElementCount) box.append(ways);
     }
     return box;
   }
