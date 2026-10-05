@@ -6401,7 +6401,9 @@ function proxyDraft(p) {
 // tried, and nothing is saved by it. Outside the editor, nothing.
 function asTyped() {
   if (!draft) return {};
-  const body = { typed: true, key: (draft.key || "").trim(), chat: (draft.chat || "").trim(), responses: (draft.responses || "").trim(), anthropic: (draft.anthropic || "").trim(), modelsURL: (draft.modelsURL || "").trim() };
+  // many keys pasted (361 on Discord) are asked about by the first
+  const keys = splitKeys(draft.key || "");
+  const body = { typed: true, key: keys.length > 1 ? keys[0] : (draft.key || "").trim(), chat: (draft.chat || "").trim(), responses: (draft.responses || "").trim(), anthropic: (draft.anthropic || "").trim(), modelsURL: (draft.modelsURL || "").trim() };
   // a System One base is asked at POST …/systemone, not on the three APIs
   if (draft.api === "decide") body.decide = (draft.decide || "").trim();
   if (draft.headers) body.headers = headersOf(draft.headers);
@@ -7202,9 +7204,28 @@ function drawEditor(p, presetID) {
   // key opened no editor, its row just toggling)
   const copied = (!p && draft.copyOf && providers.providers.find((x) => x.id === draft.copyOf)) || null;
   const key = input(draft.key || "", p?.key.set ? t("{masked} · paste a new key to replace it", { masked: p.key.masked }) : copied?.key.set ? t("{masked} · {name}'s key, or paste another", { masked: copied.key.masked, name: copied.name }) : t(pr?.keyHint || (pr?.noKey || p?.key.optional ? "optional for local servers" : "paste an API key")), "password");
-  key.oninput = () => { draft.key = key.value; };
+  // many keys pasted at once (361 on Discord): one a line, or separated by
+  // commas or spaces, are kept as one list; saved, the first is the key
+  // and the others are added to its accounts, as Paste several does
+  const keyCount = el("span", "hint key-count");
+  const countKeys = () => {
+    const n = splitKeys(key.value).length;
+    keyCount.textContent = n > 1 ? t("{n} keys", { n }) : "";
+    keyCount.title = n > 1 ? t("The first is tried first; the other {n} are added to its accounts", { n: n - 1 }) : "";
+  };
+  key.oninput = () => { draft.key = key.value; countKeys(); };
+  key.onpaste = (e) => {
+    const keys = splitKeys(e.clipboardData?.getData("text") || "");
+    if (keys.length < 2) return;
+    e.preventDefault();
+    // an input keeps no line breaks: the keys are kept comma separated
+    key.value = draft.key = keys.join(", ");
+    countKeys();
+  };
+  countKeys();
   key.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter" && isNew) save(); else if (e.key === "Escape") cancelEdit(); };
   const side = el("div", "side");
+  side.append(keyCount);
   const eye = el("button", "text", t("Show"));
   let revealed = false; // the saved key is in the box, not a draft
   eye.onclick = async () => {
@@ -9722,7 +9743,13 @@ function arrangeAccountRows(list, p) {
     list.insertBefore(row, to > from ? current[to].nextSibling : current[to]);
     current.splice(to, 0, ...current.splice(from, 1));
     if (focus) row.focus({ preventScroll: true });
-    const order = current.map((r) => r.dataset.accountId);
+    let order = current.map((r) => r.dataset.accountId);
+    // a folded list (keyFold) sends every key: the shown ones take the
+    // places they had among them, the others stay where they were
+    if (list.accountOrder) {
+      const shown = new Set(order), next = [...order];
+      order = list.accountOrder.map((id) => (shown.has(id) ? next.shift() : id));
+    }
     try {
       providers = await api("provider/arrange", { id: p.id, accountOrder: order });
       accountRenderPending = true;
@@ -10794,7 +10821,12 @@ function renderKeyAccounts(p) {
   // the weights of those on, for each one's share (#841)
   const weightOf = (k) => Math.max(k.weight || 0, 1);
   const weights = p.keyList.filter((k) => k.on).reduce((n, k) => n + weightOf(k), 0);
-  for (const k of p.keyList) {
+  // a long list (361 on Discord: hundreds of keys) is folded: the first
+  // few, then All N keys, which opens on a filter and a page of rows
+  const fold = keyFold(p);
+  const folds = fold.folded ? keyFoldRows(p, fold) : { before: [], after: [] };
+  list.append(...folds.before);
+  for (const k of fold.shown) {
     const row = el("div", "acc" + (k.on ? " in-use" : " off") + (k.id === justAdded ? " new" : ""));
     row.dataset.accountId = k.id;
     // the dot is the switch: every key ticked is in use
@@ -10847,6 +10879,7 @@ function renderKeyAccounts(p) {
     if (amBox) row.append(amBox), row.classList.add("with-am");
     list.append(row);
   }
+  list.append(...folds.after);
   if (addingKey?.id === p.id && addingKey.bulk) {
     // many keys at once (361 on Discord): pasted one a line, or separated
     // by commas or spaces; those the provider has are passed over
@@ -10945,8 +10978,108 @@ function renderKeyAccounts(p) {
     add.onclick = () => { addingKey = { id: p.id, name: "", key: "" }; renderProviders(); };
     list.append(add);
   }
+  // rows folded away keep their places when the shown ones are dragged
+  if (fold.folded) list.accountOrder = p.keyList.map((k) => k.id);
   arrangeAccountRows(list, p);
   return list;
+}
+
+// keyFold: which of a provider's keys its list shows. Up to KEYS_FOLD all
+// of them; past that the first KEYS_FIRST, or, opened, those the filter
+// matches, KEYS_PAGE at most, so hundreds of rows are never drawn at once.
+const KEYS_FOLD = 8, KEYS_FIRST = 5, KEYS_PAGE = 50;
+let keysOpen = {}; // provider id → { q } while its whole list is open
+function keyFold(p) {
+  const all = p.keyList;
+  if (all.length <= KEYS_FOLD) return { shown: all, folded: false };
+  const open = keysOpen[p.id];
+  if (!open) return { shown: all.slice(0, KEYS_FIRST), folded: true, open: false, matched: all };
+  const matched = all.filter((k) => keyMatches(k, open.q));
+  return { shown: matched.slice(0, KEYS_PAGE), folded: true, open: true, matched };
+}
+// keyMatches: a key the filter's words all find in its name, its masked
+// key, or what it is (off, resting, and why)
+function keyMatches(k, q) {
+  const words = String(q || "").toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const resting = k.rest && new Date(k.rest.until) > Date.now();
+  const text = [k.name, k.masked, k.on ? "" : "off " + t("turned off"),
+    resting ? "resting " + t("resting") + " " + (KEY_FAIL[k.rest.why] || "failed") + " " + t(KEY_FAIL[k.rest.why] || "failed") + " " + (k.rest.status || "") : ""].join(" ").toLowerCase();
+  return words.every((w) => text.includes(w));
+}
+// keyDead: a key the gateway is passing over for good reason, not a rate
+// limit that ends by itself: its sign-in refused, or its credit gone
+function keyDead(k) {
+  return !!k.rest && (k.rest.why === "auth" || k.rest.why === "credit") && new Date(k.rest.until) > Date.now();
+}
+// keyFoldRows: under the rows a folded list shows, All N keys; opened,
+// above them the filter and removing many at once, and under them how many
+// more the filter holds back
+function keyFoldRows(p, fold) {
+  const all = p.keyList;
+  if (!fold.open) {
+    const more = el("button", "acc keys-more");
+    more.dataset.provider = p.id;
+    const ic = el("span", "dot");
+    ic.append(svg(CHEV, 10, 1.8));
+    const on = all.filter((k) => k.on).length, dead = all.filter(keyDead).length;
+    more.append(ic, el("span", "n", t("All {n} keys", { n: all.length })),
+      el("span", "plan", [t("{n} in use", { n: on }), dead ? t("{n} failing", { n: dead }) : ""].filter(Boolean).join(" · ")));
+    more.onclick = () => { keysOpen[p.id] = { q: "" }; renderProviders(); focusKeyFilter(p.id); };
+    return { before: [], after: [more] };
+  }
+  const after = [];
+  const bar = el("div", "keys-tools");
+  bar.dataset.provider = p.id;
+  const q = input(keysOpen[p.id].q, t("Filter {n} keys — name, key, off, resting…", { n: all.length }));
+  q.className = "keys-filter";
+  q.dataset.provider = p.id;
+  q.oninput = () => {
+    keysOpen[p.id].q = q.value;
+    const at = q.selectionStart;
+    renderProviders();
+    focusKeyFilter(p.id, at);
+  };
+  q.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") { if (q.value) q.oninput(q.value = ""); else { delete keysOpen[p.id]; renderProviders(); } } };
+  const count = el("span", "hint keys-count", fold.matched.length === all.length ? t("{n} keys", { n: all.length }) : t("{n} of {m} keys", { n: fold.matched.length, m: all.length }));
+  const fewer = el("button", "text", t("Show fewer"));
+  fewer.onclick = () => { delete keysOpen[p.id]; renderProviders(); };
+  bar.append(q, count, el("span", "grow"));
+  // removing many at once: those turned off, those failing for good, or
+  // those the filter matches; a second click does it
+  const removeMany = (label, keys) => {
+    if (!keys.length || keys.length === all.length) return null;
+    const b = el("button", "text keys-remove", label);
+    b.onclick = () => {
+      if (!b.dataset.armed) {
+        b.dataset.armed = "1";
+        b.classList.add("danger");
+        b.textContent = t("Remove {n} keys? Click again", { n: keys.length });
+        setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.classList.remove("danger"); b.textContent = label; } }, 4000);
+        return;
+      }
+      b.classList.add("busy");
+      accountAction("keys/remove-many", { id: p.id, refs: keys.map((k) => k.id) }, t("{n} keys removed", { n: keys.length }));
+    };
+    return b;
+  };
+  const off = all.filter((k) => !k.on), dead = all.filter(keyDead);
+  const typed = String(keysOpen[p.id].q || "").trim() !== "";
+  for (const b of [
+    removeMany(t("Remove {n} turned off", { n: off.length }), off),
+    removeMany(t("Remove {n} failing", { n: dead.length }), dead),
+    typed ? removeMany(t("Remove the {n} matching", { n: fold.matched.length }), fold.matched) : null,
+  ]) if (b) bar.append(b);
+  bar.append(fewer);
+  if (!fold.matched.length) after.push(el("div", "hint keys-none", t("No key matches")));
+  else if (fold.matched.length > fold.shown.length) after.push(el("div", "hint keys-rest", t("{n} more — type to narrow them down", { n: fold.matched.length - fold.shown.length })));
+  return { before: [bar], after };
+}
+function focusKeyFilter(id, at) {
+  const q = document.querySelector(`.keys-filter[data-provider="${CSS.escape(id)}"]`);
+  if (!q) return;
+  q.focus({ preventScroll: true });
+  if (at != null) q.setSelectionRange(at, at);
 }
 
 // splitKeys is the keys in text pasted at once, as provider.SplitKeys

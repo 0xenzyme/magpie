@@ -347,6 +347,8 @@ type providersJSON struct {
 	// were new and how many the provider had already.
 	Added int `json:"added,omitempty"`
 	Had   int `json:"had,omitempty"`
+	// Removed: of the keys removed at once (keys/remove-many), how many.
+	Removed int `json:"removed,omitempty"`
 	// FileError is why providers.json can't be read (provider.FileError):
 	// the page says so over what is listed, which is then the signed-in
 	// accounts alone, never "add your first provider".
@@ -980,6 +982,19 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				return
 			}
 			in.PriceRate = rate
+			// many keys pasted into the key field (361 on Discord: a provider
+			// added with hundreds): the first is the key, the others its
+			// accounts, as Paste several adds them
+			var moreKeys []string
+			if ks := provider.SplitKeys(in.Key); len(ks) > 1 {
+				saved := req.From
+				if saved == "" {
+					saved = in.ID
+				}
+				if o, err := provider.Find(saved); req.New || err != nil || o.Key != in.Key {
+					in.Key, moreKeys = ks[0], ks[1:]
+				}
+			}
 			var old *provider.Provider
 			if req.New {
 				// a second one of a preset, or a name already in use, is
@@ -1087,6 +1102,13 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 						return
 					}
 					in.ID = to
+				}
+			}
+			if len(moreKeys) > 0 {
+				// those it has already are passed over, not an error
+				if added, had, err := provider.AddKeys(in.ID, moreKeys, in.KeyProtocol); err != nil && !(added == 0 && had > 0) {
+					fail(rw, err)
+					return
 				}
 			}
 			if len(req.ModelPrefs) > 0 {
@@ -1452,10 +1474,11 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 	mux.HandleFunc("POST /api/keys/{action}", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct {
 			ID, Key, Name, Ref string
+			Refs               []string
 			Protocol           provider.Protocol
 			Weight             int
 		}
-		var added, had int
+		var added, had, removed int
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			fail(rw, err)
 			return
@@ -1477,6 +1500,9 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		case "remove":
 			// the last key gone, or off, takes the provider's models away
 			moved, err = agent.Reseat(func() error { return provider.RemoveKey(in.ID, in.Ref) })
+		case "remove-many":
+			// the keys picked in a long list, or every dead one, at once
+			moved, err = agent.Reseat(func() (err error) { removed, err = provider.RemoveKeys(in.ID, in.Refs); return err })
 		case "rename":
 			err = provider.RenameKey(in.ID, in.Ref, in.Name)
 		case "on", "off":
@@ -1501,7 +1527,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			}
 		}
 		st := providersState()
-		st.Moved, st.Added, st.Had = moved, added, had
+		st.Moved, st.Added, st.Had, st.Removed = moved, added, had, removed
 		writeJSON(rw, st)
 	})
 	// Adding a subscription: magpie opens the vendor's sign-in in the
