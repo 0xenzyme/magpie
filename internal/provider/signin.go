@@ -765,6 +765,7 @@ func addLogin(l savedLogin) (using bool, err error) {
 	l.Seen = time.Now().UTC().Truncate(time.Second)
 	live, signedIn := liveLogin(l.Agent)
 	ls := readLogins()
+	l.User = codexName(ls, l)
 	using = !signedIn || sameLogin(live, l)
 	if first := claudeStandIn(ls); !signedIn && l.Agent == "claude" && first != "" {
 		// logged out of Claude Code with accounts in magpie: it stays so,

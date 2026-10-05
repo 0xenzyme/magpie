@@ -124,7 +124,7 @@ func readLogins() []savedLogin {
 		// doesn't allow its subscription used outside its client), so one
 		// signed in before is left out, and gone from the file at its next write
 		out = slices.DeleteFunc(out, func(l savedLogin) bool { return l.Agent == "dimagent" })
-		return dedupeLogins(out), nil
+		return nameAlike(dedupeLogins(out)), nil
 	})
 	return slices.Clone(ls) // callers change theirs
 }
@@ -184,6 +184,7 @@ func writePrivate(path string, b []byte) error {
 }
 
 func upsertLogin(ls []savedLogin, l savedLogin) []savedLogin {
+	l.User = codexName(ls, l)
 	for i := range ls {
 		if sameLogin(ls[i], l) {
 			// a refused Claude credential stays refused while it is the
@@ -277,6 +278,58 @@ func codexWho(auth json.RawMessage) (email, workspace string) {
 		workspace = claimString(id, "https://api.openai.com/auth", "chatgpt_account_id")
 	}
 	return claimString(id, "email"), workspace
+}
+
+// codexName is the name a Codex account goes by among the saved ones ls:
+// codexUser's, unless another account goes by that already — two seats of
+// one email in two Team workspaces read alike — and then the one it was
+// saved under, or for a new one the name with its workspace after it.
+// Every account is told by its name (switched to, refreshed, removed), and
+// two by one name were taken as one: removing the one not in use signed
+// Codex out of the other, as the last account, and a refresh of one was
+// written over the other's credentials (vincentzhang on Discord).
+func codexName(ls []savedLogin, l savedLogin) string {
+	if l.Agent != "codex" {
+		return l.User
+	}
+	taken := func(user string) bool {
+		return slices.ContainsFunc(ls, func(x savedLogin) bool {
+			return x.Agent == "codex" && strings.EqualFold(x.User, user) && !sameLogin(x, l)
+		})
+	}
+	for _, x := range ls {
+		// told apart once, it keeps that name; else it takes a new plan's
+		if x.Agent == "codex" && sameLogin(x, l) && (taken(l.User) || strings.HasPrefix(strings.ToLower(x.User), strings.ToLower(l.User)+" · ")) {
+			return x.User
+		}
+	}
+	if !taken(l.User) {
+		return l.User
+	}
+	_, ws := codexWho(l.Auth)
+	if len(ws) > 8 {
+		ws = ws[:8]
+	}
+	name := l.User
+	if ws != "" {
+		name += " · " + ws
+	}
+	for n := 2; taken(name); n++ {
+		name = fmt.Sprintf("%s · %s (%d)", l.User, ws, n)
+	}
+	return name
+}
+
+// nameAlike gives each Codex account in ls a name of its own (codexName),
+// the first by a name keeping it: two saved by one name before are told
+// apart from the next write on.
+func nameAlike(ls []savedLogin) []savedLogin {
+	for i := range ls {
+		if ls[i].Agent == "codex" {
+			ls[i].User = codexName(ls[:i], ls[i])
+		}
+	}
+	return ls
 }
 
 // codexUser names a ChatGPT account from its ID token's claims: its email,
@@ -433,8 +486,11 @@ func liveLogin(agent string) (savedLogin, bool) {
 		if user == "" {
 			return savedLogin{}, false
 		}
-		return savedLogin{Agent: agent, User: user, Plan: claimString(id, "https://api.openai.com/auth", "chatgpt_plan_type"),
-			Auth: json.RawMessage(bytes.TrimSpace(b))}, true
+		l := savedLogin{Agent: agent, User: user, Plan: claimString(id, "https://api.openai.com/auth", "chatgpt_plan_type"),
+			Auth: json.RawMessage(bytes.TrimSpace(b))}
+		// by the name it is saved under, which may not be codexUser's
+		l.User = codexName(readLogins(), l)
+		return l, true
 	case "claude":
 		c, _, ok := claudeCredential()
 		if !ok {
