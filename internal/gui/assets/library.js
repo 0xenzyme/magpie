@@ -1810,6 +1810,12 @@
   try { folds = JSON.parse(localStorage.getItem("magpie.libSkillFolds") || "{}") || {}; } catch {}
   function saveFolds() { try { localStorage.setItem("magpie.libSkillFolds", JSON.stringify(folds)); } catch {} }
   const repoOf = (u) => (u || "").replace(/^https:\/\/github\.com\//, "").split("/").slice(0, 2).join("/");
+  // the repository a skill came from, however it came in: magpie traces
+  // one not installed from GitHub too (the skills CLI's lock, the git
+  // checkout it's in), so a repository's skills are one group (White
+  // Immortal on Discord). owner/repo on GitHub, host/path elsewhere.
+  const skillRepo = (s) => s.repo || (s.kind === "github" ? repoOf(s.source) : s.origin ? repoOf(s.origin) : "");
+  const repoURL = (r) => (/^[^/]+\.[^/]+\//.test(r) ? "https://" + r : "https://github.com/" + r);
   const MANY = 40;   // a group bigger than this starts folded, and so do its parts
   const SPLIT = 8;   // a group bigger than this is split by folder, or by name
   // Heights the rows are held to (library.css): a list's room is known
@@ -1827,9 +1833,8 @@
     if (grouped?.lib === lib && grouped.pick === pick) return grouped.groups;
     if (pick !== "source") {
       const skills = [...lib.skills].sort(byName(pick));
-      const repo = (s) => (s.kind === "github" ? repoOf(s.source) : s.origin ? repoOf(s.origin) : "");
       const g = { key: "flat", repo: "", skills, parts: null,
-        text: new Map(skills.map((s) => [s, (s.name + " " + (s.description || "") + " " + repo(s)).toLowerCase()])) };
+        text: new Map(skills.map((s) => [s, (s.name + " " + (s.description || "") + " " + skillRepo(s)).toLowerCase()])) };
       grouped = { lib, pick, groups: [g] };
       return grouped.groups;
     }
@@ -1842,7 +1847,7 @@
     for (const s of lib.skills) {
       const own = inMine.get(s.name);
       if (own) { own.skills.push(s); continue; }
-      const repo = s.kind === "github" ? repoOf(s.source) : s.origin ? repoOf(s.origin) : "";
+      const repo = skillRepo(s);
       const key = repo ? "gh:" + repo.toLowerCase() : "local";
       let g = by.get(key);
       if (!g) by.set(key, (g = { key, repo, skills: [] }));
@@ -1900,7 +1905,9 @@
     const label = (key, mono) => key || (mono ? (g.repo ? t("At the top of the repository") : t("Kept in the library")) : t("Others"));
     const order = (a, b) => (!a.key) - (!b.key) || a.mono - b.mono || a.key.localeCompare(b.key);
     if (g.repo) {
-      let m = split(g.skills, folderIn), mono = true;
+      // the folder in the repository is known of those installed from it
+      // only: one traced to it goes by its name with the rest
+      let m = g.skills.every((s) => s.kind === "github") ? split(g.skills, folderIn) : null, mono = true;
       if (!m) { mono = false; m = byStart(); }
       if (!m) return null;
       return [...m].map(([key, skills]) => ({ key, skills, mono, label: label(key, mono) })).sort(order);
@@ -2056,9 +2063,9 @@
       tags.append(rn, un);
     }
     if (g.repo) {
-      const o = button("", "lib-icon", () => browse("https://github.com/" + g.repo));
+      const o = button("", "lib-icon", () => browse(repoURL(g.repo)));
       o.append(svg(GLYPH.out, 13, 1.4));
-      o.title = t("Open {repo} on GitHub", { repo: g.repo });
+      o.title = repoURL(g.repo).startsWith("https://github.com/") ? t("Open {repo} on GitHub", { repo: g.repo }) : t("Open {repo}", { repo: g.repo });
       acts.append(o);
     }
     const chev = el("span", "chev");
