@@ -1466,14 +1466,22 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 
 // held has a page's reads share one build of the catalog, which every row
 // resolving its model rebuilt (provider.Hold): /api/state took 4s with a
-// few hundred models. Anything else may have written, and drops it.
+// few hundred models. A write shares it too: a save answers with the whole
+// state it wrote — every group's members, every model's facts — and that
+// was a build per look-up, seconds on a slow disk. The write's own
+// catalog.Touched drops what is held as it happens, so the answer is never
+// what was read before it, and the request leaves nothing held for the next.
 func held(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/") {
+		api := strings.HasPrefix(r.URL.Path, "/api/")
+		if api {
 			defer provider.Hold()()
 			// and the files read, not looked at again for each look-up
 			defer filememo.Hold()()
-		} else {
+		}
+		if !(api && r.Method == http.MethodGet) {
+			// anything that may have written drops what was held, once it
+			// has answered with it
 			defer provider.Changed()
 		}
 		h.ServeHTTP(rw, r)
