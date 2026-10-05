@@ -145,6 +145,12 @@ type Provider struct {
 	// it as the client sent it, rather than given magpie's search (#359).
 	Searches bool `json:"searches,omitempty"`
 
+	// PinUpstream, on the Cline API, has its DeepSeek models answered only
+	// by DeepSeek's own API (White Immortal on Discord): Cline routes a
+	// model through an AI gateway that may serve it from any host, and
+	// DeepSeek's own keeps its prompt cache. See ClinePin.
+	PinUpstream bool `json:"pinUpstream,omitempty"`
+
 	// Proxy is the proxy magpie's requests to this provider go through
 	// (#237: Codex through one, a vendor at home without): "" follows
 	// the global one (Settings' Proxy, the environment's, the system's),

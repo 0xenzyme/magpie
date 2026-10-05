@@ -63,6 +63,10 @@ type providerJSON struct {
 	Headers   map[string]string `json:"headers,omitempty"`
 	// the vendor searches the web by itself (provider.Searches)
 	Searches bool `json:"searches"`
+	// on the Cline API: its DeepSeek models are served by DeepSeek's own
+	// API alone (provider.PinUpstream), which only it offers
+	Cline       bool `json:"cline,omitempty"`
+	PinUpstream bool `json:"pinUpstream"`
 	// the proxy its requests go through: "" the global one, "direct"
 	// none, or an address (#237)
 	Proxy string `json:"proxy"`
@@ -372,7 +376,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		ID: p.ID, Name: p.Name, Icon: p.Icon, Preset: p.Preset, Host: p.Host(),
 		Chat: p.Chat, Responses: p.Responses, Anthropic: p.Anthropic, Decide: p.Decide, ModelTest: p.ModelTest(), DecideTest: p.AsksDecideModels(),
 		Catalog: p.Catalog, Website: p.Website, KeysURL: p.KeysURL,
-		Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, AccountCaps: p.AccountCaps, Headers: p.Headers, Searches: p.Searches, BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, ModelsURL: p.ModelsURL,
+		Proxy: p.Proxy, AccountProxies: p.AccountProxies, AccountModels: p.AccountModels, AccountCaps: p.AccountCaps, Headers: p.Headers, Searches: p.Searches, Cline: p.IsCline(), PinUpstream: p.PinUpstream, BalanceURL: p.BalanceURL, BalancePath: p.BalancePath, ModelsURL: p.ModelsURL,
 		Ready: p.Ready(), Chosen: p.Models, Models: []modelJSON{}, Agents: []providerAgent{},
 		Fallback: p.Fallback, Routing: p.Routing, Sink: p.Sink, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
 		MaxConcurrency: p.MaxConcurrency, PluginConcurrency: p.PluginConcurrency(), PriceRate: p.PriceRate,
@@ -879,6 +883,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				pr.Key, pr.Models, pr.Fallback, pr.Headers, pr.BalanceToken, pr.Contexts = in.Key, in.Models, in.Fallback, in.Headers, in.BalanceToken, in.Contexts
 				pr.ZhipuTeam = in.ZhipuTeam
 				pr.Searches = in.Searches
+				pr.PinUpstream = in.PinUpstream
 				if in.Name != "" {
 					pr.Name = in.Name
 				}
