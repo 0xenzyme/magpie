@@ -5,7 +5,8 @@
 // flight, the restart then waits with "Restart now" and "Cancel", and the
 // counts follow the gateway. The header's Update pill does the same: its
 // click waits, its next click (not one straight after, a double click)
-// restarts at once. A wait that ran out says so. No click moves the page; no
+// restarts at once. A wait that ran out says so. In the window the restart
+// is asked first, with what changed (#844). No click moves the page; no
 // coloured left border. English and Chinese; no backend, the API is faked.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -89,6 +90,8 @@ const fresh = (over) => ({
   update: { state: "ready", current: "0.1.400", latest: "0.1.401", busy: { requests: 2, tools: 1 }, ...over },
   installs: [], restarted: false,
 });
+// the window asks first, showing what changed (#844)
+const confirmAsk = (page) => page.locator("#modal .update-ask button.primary").click();
 const scrolls = (page) => page.evaluate(() => [window.scrollY, document.scrollingElement.scrollTop, ...[...document.querySelectorAll(".view")].map((v) => v.scrollTop)].join(","));
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -123,6 +126,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const before = await scrolls(page);
 
         await row.locator("button", { hasText: w.restart }).click();
+        await confirmAsk(page);
         await row.locator("button", { hasText: w.now }).waitFor();
         assert.equal((await sub.textContent()).trim(), w.waiting);
         assert.deepEqual(ctl.installs, [{ view: "settings" }], "the click asks to restart, not to restart now");
@@ -140,6 +144,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(ctl.restarted, false);
 
         await row.locator("button", { hasText: w.restart }).click();
+        await confirmAsk(page);
         await row.locator("button", { hasText: w.now }).click();
         for (let i = 0; i < 50 && !ctl.restarted; i++) await page.waitForTimeout(20);
         assert.deepEqual(ctl.installs.at(-1), { view: "settings", when: "now" });
@@ -190,6 +195,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await row.locator("button", { hasText: w.restart }).waitFor();
         assert.equal((await row.locator(".sub").textContent()).trim(), w.busy.split(" · ")[0]);
         await row.locator("button", { hasText: w.restart }).click();
+        await confirmAsk(page);
         for (let i = 0; i < 50 && !ctl.restarted; i++) await page.waitForTimeout(20);
         assert.equal(ctl.restarted, true);
         assert.deepEqual(errors, []);

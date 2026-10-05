@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -334,6 +335,28 @@ func (u *updater) relang(version, lang string) {
 func updateRoutes(mux *http.ServeMux, w Windows) {
 	mux.HandleFunc("GET /api/update", func(rw http.ResponseWriter, r *http.Request) {
 		writeJSON(rw, updates.jsonIn(askedLang(r)))
+	})
+	// notes: what changed in every release after this one up to the update,
+	// newest first, shown before it is put in (Hu9956, #844); with the site's
+	// list out of reach, the update's own notes
+	mux.HandleFunc("GET /api/update/notes", func(rw http.ResponseWriter, r *http.Request) {
+		j := updates.jsonIn(askedLang(r))
+		out := struct {
+			Releases []update.Note `json:"releases"`
+			Error    string        `json:"error,omitempty"`
+		}{Releases: []update.Note{}}
+		if j.Latest != "" {
+			notes, err := fetchNotes(r.Context(), Version, j.Latest, pageLang(r))
+			if len(notes) == 0 && strings.TrimSpace(j.Notes) != "" {
+				notes = []update.Note{{Version: j.Latest, Notes: j.Notes, URL: j.URL}}
+			}
+			if len(notes) > 0 {
+				out.Releases = notes
+			} else if err != nil {
+				out.Error = err.Error()
+			}
+		}
+		writeJSON(rw, out)
 	})
 	mux.HandleFunc("POST /api/update/check", func(rw http.ResponseWriter, r *http.Request) {
 		lang := askedLang(r)

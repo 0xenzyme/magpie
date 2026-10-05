@@ -2428,10 +2428,11 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 /* what's new after an update: each release's notes, one under another,
    divided by a hairline, the text selectable */
 .modal .editor.whatsnew > .ebody { gap: 0; }
-.whatsnew .wn-rel { grid-column: 1 / -1; min-width: 0; }
+.whatsnew .wn-rel, .whatsnew .wn-list { grid-column: 1 / -1; min-width: 0; }
 .whatsnew .wn-rel + .wn-rel { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-2); }
 .whatsnew .wn-ver { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .whatsnew .wn-ver b { font-weight: 600; }
+.whatsnew .wn-since { margin-left: 10px; font-size: 12px; color: var(--muted); }
 .whatsnew .wn-notes { font-size: 12.5px; line-height: 1.55; color: var(--fg-2); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
 .whatsnew .wn-h { margin: 10px 0 2px; font-size: 12px; font-weight: 600; color: var(--fg); }
 .whatsnew .wn-h1, .whatsnew .wn-h2 { font-size: 12.5px; }

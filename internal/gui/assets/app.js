@@ -239,6 +239,7 @@ function renderAgentsLoading() {
 let agentArranging = false, agentRenderPending = false;
 function renderAgents() {
   if (agentArranging) { agentRenderPending = true; return; }
+  if (unhideCleared()) return; // it renders again with the hiding dropped
   const page = $("#view-agents");
   page.classList.remove("loading");
   page.removeAttribute("aria-busy");
@@ -1748,7 +1749,36 @@ function importButton(a) {
   };
   return b;
 }
-const isHidden = (a) => (state.settings?.agentsHidden || []).includes(a.id);
+// unhid: the agents whose hiding unhideCleared dropped here. A state answered
+// while that was being saved (a pick's, which is read once the agent's files
+// are written) can still name them hidden; they stay shown unless hidden by
+// hand again.
+const unhid = new Set();
+const hiddenIds = () => (state.settings?.agentsHidden || []).filter((id) => !unhid.has(id));
+const isHidden = (a) => hiddenIds().includes(a.id);
+
+// unhideCleared: a hidden agent whose settings change so that nothing is set
+// on it any more goes under Not set up, its hiding dropped (Hu9956, #842):
+// put back to its defaults it kept Hidden and its Show until the switch was
+// turned on and off. One hidden while nothing was set on it stays hidden
+// until something on it changes. True when the arrangement is saved, which
+// renders the list again.
+const agentSeen = new Map(); // each agent's settings when last rendered
+const agentSig = (a) => JSON.stringify([!!a.wired, !!a.added, !!a.drift, a.fields.filter((f) => !tweak(f)).map((f) => [f.key, f.value || ""])]);
+function unhideCleared() {
+  const hidden = hiddenIds();
+  const cleared = [];
+  for (const a of state.agents || []) {
+    const was = agentSeen.get(a.id), now = agentSig(a);
+    agentSeen.set(a.id, now);
+    if (was !== undefined && was !== now && hidden.includes(a.id) && !agentUsed(a)) cleared.push(a);
+  }
+  if (!cleared.length) return false;
+  for (const a of cleared) unhid.add(a.id);
+  saveArrangement(state.settings?.agentOrder || [], hiddenIds(), []);
+  status(t("{agent} has nothing set on it now · it is under Not set up, no longer hidden", { agent: cleared.map((a) => a.name).join(", ") }), "ok", 4000);
+  return true;
+}
 
 // arrangeAgents: the rows in view, in order, and the folded rest. Folded is
 // what was hidden by hand, and what nothing is set on — noise in a picker —
@@ -1756,7 +1786,7 @@ const isHidden = (a) => (state.settings?.agentsHidden || []).includes(a.id);
 // otherwise).
 function arrangeAgents() {
   const s = state.settings || {};
-  const order = s.agentOrder || [], hidden = new Set(s.agentsHidden || []);
+  const order = s.agentOrder || [], hidden = new Set(hiddenIds());
   const rank = (a) => { const i = order.indexOf(a.id); return i < 0 ? order.length : i; };
   const all = state.agents.map((a, i) => [a, i]).sort(([x, i], [y, j]) => rank(x) - rank(y) || i - j).map(([a]) => a);
   // with 「接入」 there to use, folding starts once one is on magpie, not for a
@@ -1793,14 +1823,14 @@ function moveAgent(id, to) {
   if (from < 0 || to < 0 || to >= ids.length || to === from) return;
   ids.splice(to, 0, ...ids.splice(from, 1));
   const s = state.settings || {};
-  saveArrangement([...ids, ...folded.map((a) => a.id)], s.agentsHidden || [], []);
+  saveArrangement([...ids, ...folded.map((a) => a.id)], hiddenIds(), []);
 }
 
 function setAgentHidden(a, hide) {
   const s = state.settings || {};
   const { all } = arrangeAgents();
-  let hidden = (s.agentsHidden || []).filter((x) => x !== a.id);
-  if (hide) hidden.push(a.id);
+  let hidden = hiddenIds().filter((x) => x !== a.id);
+  if (hide) { hidden.push(a.id); unhid.delete(a.id); }
   // the rows that change go on the panel's edge, as the fold does
   agentsGlide = hide ? ROLLUP : UNROLL;
   saveArrangement(all.map((x) => x.id), hidden, []);
@@ -2815,7 +2845,9 @@ async function renderUpdateBadge() {
     : t("{v} is out", { v: u.latest });
   if (u.error) b.title += "\n" + u.error;
   b.onclick = () => {
-    if (u.state === "ready") return restart();
+    // what changed is shown first, and a click there restarts (#844); one
+    // that failed restarts again at once
+    if (u.state === "ready") return u.error ? restart() : confirmUpdate(u, restart);
     if (u.state === "error") {
       b.dataset.pulling = "1";
       b.classList.add("busy");
@@ -3044,6 +3076,51 @@ function noteLink(text, url) {
   a.rel = "noopener";
   a.onclick = (e) => { e.preventDefault(); e.stopPropagation(); api("open", { url }).catch(() => {}); };
   return a;
+}
+
+// confirmUpdate shows what changed before an update downloaded is put in
+// (Hu9956, #844: every update came unseen, its notes three clicks away in
+// Settings › About): every release's notes after this one up to it, newest
+// first, with Restart to update and Later. The update's own notes show at
+// once; the releases between come in after. go restarts. The tray's panel,
+// with no room for a dialog, restarts as before.
+async function confirmUpdate(u, go) {
+  if (mode === "panel" || !$("#modal").hidden) return go();
+  const ed = el("div", "editor whatsnew update-ask");
+  const head = el("div", "ehead");
+  head.append(el("b", "", t("Update to {v}", { v: "v" + u.latest })));
+  if (u.current) head.append(el("span", "wn-since", t("What changed since {v}", { v: "v" + u.current })));
+  const box = el("div", "wn-list");
+  const draw = (releases) => {
+    box.replaceChildren();
+    for (const r of releases) {
+      const sec = el("section", "wn-rel");
+      const h = el("div", "wn-ver");
+      h.append(el("b", "", "v" + r.version));
+      sec.append(h, noteBlocks(r.notes));
+      box.append(sec);
+    }
+    if (!releases.length) {
+      const sec = el("section", "wn-rel wn-none");
+      sec.append(el("p", "wn-msg", t("No release notes provided.")));
+      if (u.url) sec.append(noteLink(t("Open the release page"), u.url));
+      box.append(sec);
+    }
+  };
+  draw(u.notes ? [{ version: u.latest, notes: u.notes }] : []);
+  const bar = el("div", "bar");
+  const later = el("button", "text", t("Later"));
+  later.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); };
+  const ok = el("button", "text primary", t("Restart to update"));
+  ok.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); go(); };
+  bar.append(el("span", "grow"), later, ok);
+  ed.append(head, box, bar);
+  confirmAsk = ed;
+  openModal(ed);
+  $("#modal").classList.add("lib");
+  ok.focus({ preventScroll: true });
+  const w = await api(updatePath("update/notes")).catch(() => null);
+  if (confirmAsk === ed && w?.releases?.length) draw(w.releases);
 }
 
 // ---------- picker ----------
@@ -16398,7 +16475,7 @@ async function renderUpdate(r, u) {
       if (u.gaveUp) sub.textContent += " · " + t("the gateway stayed busy for an hour, so magpie didn't restart; it updates when you restart or quit it");
       else if (busyNow) sub.textContent += " · " + busyNow;
       if (u.gaveUp) sub.classList.add("wraps");
-      btn(t("Restart to update"), () => install());
+      btn(t("Restart to update"), () => (u.error ? install() : confirmUpdate(u, () => install())));
       if (u.error && u.url) btn(t("Download"), () => (web ? window.open(u.url, "_blank", "noopener") : api("open", { url: u.url })));
       break;
     }
