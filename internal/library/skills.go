@@ -398,6 +398,7 @@ func (l *Library) syncSkills(t *Target, res *Result, all []*Target) {
 			sharers = append(sharers, o.Agent.ID)
 		}
 	}
+	cp := l.copies(t, sharers)
 	wanted := func(s *Skill) bool {
 		if s == nil {
 			return false
@@ -461,10 +462,20 @@ func (l *Library) syncSkills(t *Target, res *Result, all []*Target) {
 			if ours(p, s.Name) {
 				dropOld(p, s.Name)
 			}
+			// magpie's copy in an agent given links now is a link again
+			// (#896), unless no link can be made here (Windows without the
+			// right to), where the copy stays
+			if ours(p, s.Name) && !cp && !linked(p) {
+				if ok, err := relink(id, p, s.Name); err != nil {
+					res.fail(id, "skill:"+s.Name, err)
+				} else if ok {
+					res.changed(id)
+				}
+			}
 			// a copy is made again once the library's skill has changed: in
 			// an agent that takes copies, and where magpie couldn't link
 			// (Windows without the right to) and left a copy instead
-			if ours(p, s.Name) && ((t.Copy && linked(p)) || (!linked(p) && !fresh(p, s.Name) && hashDir(realDir(skillDir(s.Name))) != "")) {
+			if ours(p, s.Name) && ((cp && linked(p)) || (!linked(p) && !fresh(p, s.Name) && hashDir(realDir(skillDir(s.Name))) != "")) {
 				if err := copyIn(p, s.Name); err != nil {
 					res.fail(id, "skill:"+s.Name, err)
 				} else {
@@ -491,7 +502,7 @@ func (l *Library) syncSkills(t *Target, res *Result, all []*Target) {
 			}
 		}
 		put := link
-		if t.Copy {
+		if cp {
 			put = copyIn
 		}
 		if err := put(p, s.Name); err != nil {

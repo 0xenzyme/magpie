@@ -1754,6 +1754,8 @@
       body.append(rh);
       drawSkills(box, all);
       body.append(box);
+      // under the list, so the skills stay where they were above it
+      if (all.length) body.append(skillHowBar());
       if (picking) body.append(pickBar(all));
     }
     if (lib.foundSkills.length) {
@@ -2743,6 +2745,71 @@
   // Every skill on, or off, for every agent shown that can take skills, in
   // one write rather than a row's All for each (#443); an agent not shown
   // keeps what it has. Off asks first, in the page.
+  // How the agents are given their skills (#896): links to the library's
+  // folder, which an update reaches at once, or folders of their own, made
+  // again when the library's skill changes. By agent gives one agent its
+  // own way; Claude Desktop and an agent in WSL only ever take copies.
+  function skillHowBar() {
+    const bar = el("div", "lib-skillhow");
+    bar.id = "lib-skillhow";
+    const how = lib.copySkills ? "copy" : "link";
+    bar.append(el("span", "label", t("Give skills as")), segs([["link", t("Links")], ["copy", t("Copies")]], how, (h) => {
+      if (h !== how) change("skills/how", { agent: "", how: h }, h === "copy" ? t("The agents get copies of their skills now") : t("The agents get links to their skills now"));
+    }));
+    const own = skillAgents().filter((a) => a.howOwn).length;
+    const by = button(own ? t("By agent ({n})", { n: own }) : t("By agent"), "action lib-updall lib-howagent", () => openSkillHow());
+    by.title = t("Give an agent its skills its own way");
+    bar.append(by, el("span", "note", how === "copy"
+      ? t("Each agent gets a folder of its own, made again when the library's skill changes; edits made in a copy are replaced.")
+      : t("Links follow the library's skill: an update reaches the agents at once.")));
+    return bar;
+  }
+
+  function openSkillHow() {
+    const ed = el("div", "editor lib-editor lib-byagent-sheet lib-howsheet");
+    const head = el("div", "ehead");
+    head.append(glyph(GLYPH.skill), el("b", "", t("How each agent gets its skills")));
+    ed.append(head);
+    ed.append(el("p", "lib-confirm", lib.copySkills
+      ? t("An agent can have its own way; the others get copies, as the library gives them.")
+      : t("An agent can have its own way; the others get links, as the library gives them.")));
+    const list = el("div", "list lib-list lib-byagent-list");
+    let busy = false;
+    const draw = () => list.replaceChildren(...lib.agents.filter((a) => a.skills && (!isHidden(a) || a.howOwn)).map((a) => {
+      const row = el("div", "row lib-row lib-byagent-row lib-how-row");
+      row.dataset.agent = a.id;
+      const who = el("div", "who");
+      who.append(el("div", "name", a.name), el("div", "sub", a.mustCopy ? t("Only ever takes copies") : a.how === "copy" ? t("Gets copies") : t("Gets links")));
+      row.append(agentIcon(a.icon), who);
+      if (!a.mustCopy) {
+        row.append(segs([["", t("Library's way")], ["link", t("Links")], ["copy", t("Copies")]], a.howOwn ? a.how : "", async (h) => {
+          if (busy) return;
+          busy = true;
+          try {
+            const v = await api("library/skills/how", { agent: a.id, how: h });
+            take(v);
+            const now = agentOf(a.id);
+            report(v.result, now?.how === "copy" ? t("{agent} gets copies of its skills now", { agent: a.name }) : t("{agent} gets links to its skills now", { agent: a.name }));
+            render();
+          } catch (e) {
+            status(e.message, "err", 6000);
+          }
+          busy = false;
+          if (list.isConnected) draw();
+        }));
+      }
+      return row;
+    }));
+    draw();
+    ed.append(list);
+    const bar = el("div", "bar");
+    const done = button(t("Done"), "primary", closeLibModal);
+    bar.append(el("span", "grow"), done);
+    ed.append(bar);
+    modal = { save: () => done.click() };
+    openLib(ed);
+  }
+
   function everySkillButtons(all) {
     const ids = all.map((a) => a.id), n = all.length;
     const on = button(t("Turn all on"), "action lib-updall lib-everyon", () => everySkill(ids, true));
@@ -3092,6 +3159,13 @@
       nm.append(b);
     } else if (c?.status === "unknown") {
       nm.append(tag(t("Not checked"), "lib-unchecked", checkError(c)));
+    }
+    // a copy in an agent that differs from the library's skill (#896): a
+    // sync makes it again
+    if (s.behind?.length) {
+      const b = tag(t("Copy out of date"), "lib-new link lib-behind", t("The copy in {agents} differs from the library's skill. Click to copy it again.", { agents: s.behind.map(nameOf).join(", ") }));
+      b.onclick = (e) => { e.stopPropagation(); change("all/sync", {}, t("Copies updated")); };
+      nm.append(b);
     }
     who.append(nm);
     const sub = el("div", "sub", s.missing ? t("Its folder is gone from the library") : s.description || "");
