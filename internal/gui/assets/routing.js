@@ -2495,7 +2495,19 @@
     try { groups = await api("groups"); } catch { return; }
     if (!gEdit && !gsec.contains(document.activeElement)) renderGroups(); // not under someone's hands
   }
+  const groupDirty = () => !!gEdit && gEdit.was !== undefined &&
+    (JSON.stringify(gEdit.draft) !== gEdit.was || !!gsec.querySelector(".rt-patadd input")?.value.trim());
+  async function cancelGroup() {
+    if (groupDirty() && !(await confirmDiscard())) return false;
+    gEdit = null;
+    renderGroups();
+    return true;
+  }
+  window.routingDirty = groupDirty;
+  window.discardRouting = () => { gEdit = null; renderGroups(); };
   async function groupAction(action, body, ok) {
+    if (action === "delete" && !await confirmRemoval(groups?.groups.find((g) => g.id === body.id)?.name || body.id,
+      "This routing group will no longer be available to agents.")) return;
     try {
       groups = await api("groups/" + action, body);
       gEdit = null;
@@ -2547,9 +2559,11 @@
   // member takes no reasoning of its own (provider.SaveGroup refuses
   // "group/x:high"), so its row says where its reasoning is set and goes
   // there, rather than leaving the slot empty.
-  const openGroupEditor = (g) => {
+  const openGroupEditor = async (g) => {
+    if (groupDirty() && !(await confirmDiscard())) return false;
     gEdit = { id: g.id, draft: { name: g.name, members: [...g.members], match: [...(g.match || [])], matched: [...(g.matched || [])], fast: [...(g.fast || [])], off: [...(g.off || [])], routing: g.routing || "", pick: g.pick || "", affinity: g.affinity || "", sink: !!g.sink, firstToken: g.firstToken || 0, context: g.context || 0, classifier: g.classifier || "", effort: g.effort || "", levels: [...(g.levels || [])], rules: (g.rules || []).map((r) => ({ ...r, intent: r.intent || "", agents: [...(r.agents || [])], time: r.time ? { ...r.time, days: [...(r.time.days || [])] } : null })) } };
     renderGroups();
+    return true;
   };
   const groupIcons = (g) => [...new Map((g.memberInfo || []).filter((i) => i.icon).map((i) => [i.provider || i.icon, i.icon])).values()];
   const memberIcon = (id) => { const s = subOf(id); return s ? stackIcon(groupIcons(s)) : icon(modelOf(id)?.icon || "generic"); };
@@ -2603,6 +2617,7 @@
     const typing = document.activeElement === gQ, [a, b] = [gQ.selectionStart, gQ.selectionEnd];
     if (all.length > 1 || gQ.value) {
       gQ.placeholder = t("Filter groups and models");
+      gQ.setAttribute("aria-label", gQ.placeholder);
       head.push(gQ);
     }
     if (!gSel) {
@@ -2610,7 +2625,10 @@
       if (all.length > 1) {
         const pick = el("button", "text rt-gselect", t("Select"));
         pick.title = t("Pick several groups to remove together");
-        pick.onclick = () => { gEdit = null; gSel = new Set(); renderGroups(); };
+        pick.onclick = async () => {
+          if (groupDirty() && !(await confirmDiscard())) return;
+          gEdit = null; gSel = new Set(); renderGroups();
+        };
         head.push(pick);
       }
       head.push(newBtn);
@@ -2652,8 +2670,7 @@
     renderPools();
   }
   // selectBar: over the groups while picking: all or none, how many are
-  // picked, Remove them (a second click, as it can't be undone for the
-  // groups the user made), and Done
+  // picked, Remove them after confirmation, and Done
   function selectBar(shown) {
     const bar = el("div", "rt-gsel");
     const all = el("input");
@@ -2665,16 +2682,13 @@
     const done = el("button", "text", t("Done"));
     done.type = "button";
     done.onclick = () => { gSel = null; renderGroups(); };
-    let armed = 0;
     const sync = () => {
       const k = gSel.size;
       all.checked = k > 0 && k === shown.length;
       all.indeterminate = k > 0 && k < shown.length;
       n.textContent = k ? t("{n} selected", { n: k }) : t("Pick the groups to remove");
       rm.disabled = !k;
-      if (!k) armed = 0;
-      rm.textContent = armed ? t("Remove {n}? Click again", { n: k }) : t("Remove");
-      rm.classList.toggle("armed", !!armed);
+      rm.textContent = t("Remove");
       for (const r of gList.querySelectorAll(".rt-gpick")) {
         const on = gSel.has(r.dataset.id);
         r.classList.toggle("on", on);
@@ -2682,11 +2696,11 @@
       }
     };
     bar.sync = sync;
-    all.onchange = () => { gSel = new Set(all.checked ? shown.map((g) => g.id) : []); armed = 0; sync(); };
+    all.onchange = () => { gSel = new Set(all.checked ? shown.map((g) => g.id) : []); sync(); };
     rm.onclick = async () => {
       if (!gSel.size) return;
-      if (!armed || Date.now() - armed > 5000) { armed = Date.now(); sync(); return; }
       const ids = shown.map((g) => g.id).filter((id) => gSel.has(id));
+      if (!await confirmRemoval(shown.filter((g) => ids.includes(g.id)).map((g) => g.name).join(t(", ")), "These routing groups will no longer be available to agents.")) return;
       rm.disabled = true;
       try {
         groups = await api("groups/delete", { ids });
@@ -2695,7 +2709,6 @@
         status(ids.length === 1 ? t("{name} removed", { name: ids[0] }) : t("{n} groups removed", { n: ids.length }), "ok");
         load(); // the gateway's model list, the agents' pickers
       } catch (e) {
-        armed = 0;
         sync();
         status(e.message, "err");
       }
@@ -2753,6 +2766,7 @@
     gNames.replaceChildren(txt, suffixSegs(() => renderGroups()));
   }
   async function setFound(on, s) {
+    if (groupDirty() && !(await confirmDiscard())) return;
     s.classList.toggle("on", on);
     s.setAttribute("aria-checked", String(on));
     try {
@@ -2960,7 +2974,7 @@
     h.append(el("b", "", g ? g.name : t("New group")));
     if (g?.auto) h.append(el("span", "note", t("found by magpie — saving a change makes it yours")));
     ed.append(h);
-    const keys = (i) => { i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") { gEdit = null; renderGroups(); } else if (e.key === "Enter" && i === name) saveBtn.onclick(); }; return i; };
+    const keys = (i) => { i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") { cancelGroup(); } else if (e.key === "Enter" && i === name) saveBtn.onclick(); }; return i; };
     const name = keys(input(d.name, t("e.g. Opus anywhere")));
     const idHint = el("div", "hint");
     // an existing group's id can change (an auto- one found by magpie too);
@@ -2970,7 +2984,6 @@
     // from the row (ARNO on Discord) — only while nothing in it has
     // changed, so a stray click never throws an edit away; Cancel does that
     if (g) {
-      if (gEdit.was === undefined) gEdit.was = JSON.stringify(d);
       h.classList.add("fold");
       h.setAttribute("role", "button");
       h.tabIndex = 0;
@@ -3150,8 +3163,8 @@
           // the row: the desktop app's member row doesn't wrap
           hx.append(el("span", "", t("Follows {name}", { name: s.name })));
           hx.title = t("Its models reason as {name} says: set that up on {name}'s own card, not here", { name: s.name });
-          hx.onclick = (ev) => {
-            openGroupEditor(s);
+          hx.onclick = async (ev) => {
+            if (!(await openGroupEditor(s))) return;
             const ed = gList.querySelector(".rt-gedit");
             if (ed && window.scrollOnPurpose?.(ev)) ed.scrollIntoView({ block: "center", behavior: "smooth" });
           };
@@ -3248,7 +3261,7 @@
       return "";
     };
     pAdd.onclick = () => { addPattern(); };
-    pin.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") addPattern(); else if (e.key === "Escape") { gEdit = null; renderGroups(); } };
+    pin.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") addPattern(); else if (e.key === "Escape") cancelGroup(); };
     const padd = el("div", "rt-patadd");
     padd.append(pin, pAdd);
     pbox.append(plist, padd);
@@ -3286,12 +3299,16 @@
     const ctxHint = el("div", "hint"), ctxW = el("div", "ctx-wrap");
     const ctxIn = keys(input(d.context > 0 ? ctxShort(d.context).toLowerCase() : "", t("e.g. 200k")));
     ctxIn.classList.add("ctx-in");
+    ctxIn.setAttribute("aria-label", t("Context"));
+    ctxHint.id = "groupContextHint";
+    ctxIn.setAttribute("aria-describedby", ctxHint.id);
     const ctxs = () => d.members.map((id) => groups.models.find((x) => x.id === id)?.context || infoOf(id)?.context || 0).filter((n) => n > 0);
     const ctxMode = () => d.context === -1 ? "smallest" : d.context > 0 ? "custom" : "largest";
     let ctxErr = "";
     const drawCtx = () => {
       const ns = ctxs(), mode = ctxMode();
       ctxIn.hidden = mode !== "custom";
+      ctxIn.setAttribute("aria-invalid", String(!!ctxErr));
       const big = ns.length ? Math.max(...ns) : 0, small = ns.length ? Math.min(...ns) : 0;
       ctxHint.textContent = ctxErr || (mode === "custom"
         ? t("Agents are told the group takes {n} tokens; a longer conversation still goes on to a member with room for it.", { n: (d.context || 0).toLocaleString() })
@@ -3563,7 +3580,7 @@
     }
     bar.append(el("span", "grow"));
     const cancel = el("button", "text", t("Cancel"));
-    cancel.onclick = () => { gEdit = null; renderGroups(); };
+    cancel.onclick = cancelGroup;
     const saveBtn = el("button", "text primary", t(g ? "Save" : "Add"));
     const save = () => {
       if (addPattern() === null) return pin.focus({ preventScroll: true }); // typed, not added: it is meant
@@ -3602,6 +3619,7 @@
     bar.append(cancel, saveBtn);
     ed.append(bar);
     if (!g) setTimeout(() => name.focus({ preventScroll: true }), 0); // WebKit would scroll the page to put it mid-view
+    if (gEdit.was == null) gEdit.was = JSON.stringify(d);
     return ed;
   }
   // the providers that route over several accounts or keys of their own
@@ -3645,9 +3663,10 @@
   // ask it (and the tray panel, by ?newgroup= on the window it opens).
   window.newGroupWith = async (id, name, ev) => {
     // app.js's show, the page's: this one's own show is the stage's caption
-    if (document.body.classList.contains("window") && $("#view-routing").hidden) window.show("routing");
+    if (document.body.classList.contains("window") && $("#view-routing").hidden && !(await window.show("routing"))) return;
     if (!groups) await loadGroups();
     if (!groups) return;
+    if (groupDirty() && !(await confirmDiscard())) return;
     gEdit = { id: "", draft: { name: name || modelOf(id)?.name || id.split("/").pop(), members: [id], fast: [], routing: "", affinity: "", rules: [] } };
     renderGroups();
     const ed = gList.querySelector(".rt-gedit");
@@ -3657,7 +3676,8 @@
   // newGroup: an empty new group's editor. The groups sit below the
   // requests, out of sight on a first look, so the page's head has a New
   // group too (mintonight, #944), which brings the editor into view.
-  function newGroup(ev) {
+  async function newGroup(ev) {
+    if (groupDirty() && !(await confirmDiscard())) return;
     gSel = null;
     gEdit = { id: "", draft: { name: "", members: [], match: [], matched: [], fast: [], off: [], routing: "", affinity: "", rules: [] } };
     renderGroups();

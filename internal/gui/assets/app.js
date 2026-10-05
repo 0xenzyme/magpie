@@ -3,32 +3,18 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
 const params = new URLSearchParams(location.search);
 const mode = params.get("mode") || "window";
-document.body.classList.add(mode);
 // The panel loads Wails for ExecJS readiness, but stays attached to the tray.
 if (mode === "panel") $("header.top").style.setProperty("--wails-draggable", "no-drag");
 // `magpie web`: the page in a browser tab, with no window of the app's
 // around it — it opens links itself, and what is the desktop's is left out
 const web = !!window.bootPrefs?.web;
-if (web) document.body.classList.add("web");
+// layout.js applies the mode and platform before the header can paint.
 // Gateway mode (gatewaymode.go): magpie web on a server that is only the
 // gateway for other computers' agents leaves out this computer's agents'
 // pages — Agents, Sessions, Library — and their settings; Settings ›
 // General turns it off, and they are back.
 let gatewayMode = web && !!window.bootPrefs?.gateway;
 const GATEWAY_HIDES = ["agents", "sessions", "library"];
-// iOS zooms the page into a field it focuses whose text is under 16px, and
-// leaves it zoomed; at most 1 stops that, and Safari still lets a pinch zoom
-if (web && (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1))) {
-  document.querySelector('meta[name="viewport"]')?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
-}
-// The Mac window draws its title bar inside the page (the traffic lights);
-// on Linux the page's header is the whole title bar (plainTitlebar), so it
-// has the name, the close button and a double-click to maximise.
-if (!web && /^Mac/.test(navigator.platform)) document.body.classList.add("mac");
-if (!web && /^Linux/.test(navigator.platform)) document.body.classList.add("linux");
-// Windows: its own UI faces by name, Chinese in Microsoft YaHei UI rather
-// than whatever the webview falls back to for it
-if (/^Win/.test(navigator.platform)) document.documentElement.classList.add("win");
 // The window is dragged by its header, and only where the header says so
 // (--wails-draggable), so the tabs and buttons in it stay plain clicks.
 // Outside the app — a browser on the gateway's page, or on `magpie web` —
@@ -36,14 +22,8 @@ if (/^Win/.test(navigator.platform)) document.documentElement.classList.add("win
 // console, Jorben on Discord).
 // The panel also needs runtime readiness to drain Go's queued ExecJS calls.
 const winRuntime = !web ? import("/wails/runtime.js").catch(() => null) : Promise.resolve(null);
-if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme");
-// the saved language and theme from boot.js, so the first paint is in them
-if (window.bootPrefs) {
-  const b = window.bootPrefs;
-  if (!params.get("theme") && b.theme && b.theme !== "system") document.documentElement.dataset.theme = b.theme;
-  setLocale(b.lang);
-  document.documentElement.style.setProperty("--zoom", b.web ? 1 : (b.textSize || 100) / 100);
-}
+// theme.js already applied the theme and text size before the first paint.
+if (window.bootPrefs) setLocale(window.bootPrefs.lang);
 
 let state = { agents: [], profiles: [], catalog: "", settings: {} };
 let prefs = null; // the settings page: theme, lang, version, dir, gateway
@@ -211,6 +191,7 @@ function status(msg, kind = "", ms = kind === "err" ? 8000 : 3500) {
   s.textContent = msg;
   s.title = msg;
   s.className = "status " + kind;
+  s.setAttribute("role", kind === "err" ? "alert" : "status");
   // with a dialog open the footer is under its scrim: the pill floats over both
   const m = $("#modal");
   s.classList.toggle("lift", !!msg && !m.hidden && !m.classList.contains("out"));
@@ -1187,8 +1168,8 @@ function agentsLead(list) {
   }
 }
 
-function addProviderFromAgents() {
-  show("providers");
+async function addProviderFromAgents() {
+  if (!await show("providers")) return;
   $("#addProvider")?.click();
 }
 
@@ -4475,7 +4456,10 @@ function renderProviders() {
     // a provider on is listed, and tried, in the order the user puts it in
     // (#499): its logo is the handle, as an agent row's is
     row.append(p.off ? icon(p.icon || "generic") : providerHandle(p, row), who, uses, key, providerSwitch(p), chev);
-    row.onclick = () => { editing = open ? null : p.id; draft = null; renderProviders(); }; // the preset sheet stays as it is under the dialog
+    row.onclick = async () => {
+      if (providerDirty() && !(await confirmDiscard())) return;
+      editing = open ? null : p.id; draft = null; renderProviders();
+    }; // the preset sheet stays as it is under the dialog
     list.append(row);
     if (open) dialog = renderEditor(p);
   }
@@ -4717,7 +4701,7 @@ function askForgetSaved(x) {
     go.classList.add("busy");
     for (const [i, user] of x.users.entries()) {
       const last = i === x.users.length - 1;
-      if (!await accountAction("login/forget", { agent: x.agent, user }, last ? t("{user} removed", { user: x.users.join(", ") }) : "")) {
+      if (!await accountAction("login/forget", { agent: x.agent, user }, last ? t("{user} removed", { user: x.users.join(", ") }) : "", true)) {
         go.disabled = false;
         go.classList.remove("busy");
         return;
@@ -4784,7 +4768,7 @@ function askSignOutLogin(a, l) {
     e.stopPropagation();
     go.disabled = true;
     go.classList.add("busy");
-    if (await accountAction("login/forget", { agent: a.agent, user: l.user }, t("{agent} signed out of {user}", { agent: a.agentName, user: l.user }))) closeConfirmAsk();
+    if (await accountAction("login/forget", { agent: a.agent, user: l.user }, t("{agent} signed out of {user}", { agent: a.agentName, user: l.user }), true)) closeConfirmAsk();
     else go.disabled = false;
   };
   const cancel = el("button", "text", t("Cancel"));
@@ -5211,7 +5195,16 @@ function segs(items, current, onPick) {
   let key = kind + "#" + ++segsMade;
   for (const [id, name] of items) {
     const b = el("button", "opt" + (id === current ? " on" : ""), name);
-    b.onclick = () => { for (const x of box.querySelectorAll(".opt")) x.classList.toggle("on", x === b); slide(box, key); onPick(id); };
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(id === current));
+    b.onclick = () => {
+      for (const x of box.querySelectorAll(".opt")) {
+        x.classList.toggle("on", x === b);
+        x.setAttribute("aria-pressed", String(x === b));
+      }
+      slide(box, key);
+      onPick(id);
+    };
     box.append(b);
   }
   queueMicrotask(() => { // once it is in the page
@@ -6168,26 +6161,27 @@ function morePluginsTile(q) {
 }
 
 // openPlugins: the Plugins tab, looking for q when there is one
-function openPlugins(q) {
+async function openPlugins(q) {
   if (mode !== "window") { api("window/main?view=plugins", {}).catch(() => {}); return; }
-  show("plugins");
+  if (!await show("plugins")) return;
   window.pluginQuery?.(q || "");
 }
 
 // pluginSignIn: a plugin's provider signed in to as every subscription is,
 // in the Providers add sheet
-function pluginSignIn(id) {
+async function pluginSignIn(id) {
+  if (!await show("providers")) return;
   closeModal();
-  show("providers");
   adding = true; editing = null; draft = null; presetQuery = "";
   renderProviders();
   startSignIn(id);
 }
 
 // openProvider: a provider opened in the Providers tab
-function openProvider(id) {
+async function openProvider(id) {
+  if (view === "providers" && providerDirty() && !(await confirmDiscard())) return;
+  if (!await show("providers")) return;
   closeModal();
-  show("providers");
   adding = false; editing = id; draft = null; presetQuery = "";
   renderProviders();
   syncURL();
@@ -6270,11 +6264,26 @@ function tile(pr) {
   return b;
 }
 
+let fieldIDs = 0;
 function field(label, control, hint) {
   const l = el("label", "", label);
   const wrap = el("div");
   wrap.append(control);
-  if (hint) wrap.append(el("div", "hint", hint));
+  const inputSelector = "input, select, textarea";
+  const inputs = control.matches(inputSelector) ? [control] : [...control.querySelectorAll(inputSelector)];
+  if (label && inputs.length) {
+    for (const input of inputs) {
+      if (!input.id) input.id = "field-" + ++fieldIDs;
+      if (!input.closest("label") && !input.hasAttribute("aria-label") && !input.hasAttribute("aria-labelledby")) input.setAttribute("aria-label", label);
+    }
+    l.htmlFor = inputs[0].id;
+  }
+  if (hint) {
+    const help = el("div", "hint", hint);
+    help.id = "field-help-" + ++fieldIDs;
+    wrap.append(help);
+    for (const input of inputs) input.setAttribute("aria-describedby", [input.getAttribute("aria-describedby"), help.id].filter(Boolean).join(" "));
+  }
   return [l, wrap];
 }
 // decimalOf is a number as typed in a price box, a comma taken for the
@@ -6311,15 +6320,91 @@ function input(value, placeholder, type = "text") {
   i.placeholder = placeholder || "";
   i.spellcheck = false;
   i.autocomplete = "off";
-  i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") cancelEdit(); };
+  i.onkeydown = (e) => {
+    e.stopPropagation();
+    if (e.key === "Escape") {
+      if (editing !== null || importing || importingApps) cancelEdit();
+    }
+  };
   return i;
 }
 // keep: leaving the page, a sign-in under way in the editor goes on; the
 // editor put away (Cancel, Escape, a click outside) takes it with it (#526)
-function cancelEdit(keep) {
+let providerDraftRef = null, providerDraftBase = "";
+function providerDraftValue() {
+  return JSON.stringify({ ...draft, headers: headersOf(draft?.headers), modelPrefs: modelPrefsOfDraft() });
+}
+function providerDirty() {
+  // Price boxes parse on change; a page closed while typing hasn't blurred one yet.
+  const active = document.activeElement;
+  return !!draft && draft === providerDraftRef && (providerDraftValue() !== providerDraftBase ||
+    (active?.matches(".editor .mprice input") && active.value !== active.defaultValue));
+}
+let confirmationPending = null;
+function confirmAction(title, message, action) {
+  if (confirmationPending) return Promise.resolve(false);
+  const dialog = el("dialog", "action-confirm");
+  dialog.setAttribute("role", "alertdialog");
+  dialog.setAttribute("aria-labelledby", "actionConfirmTitle");
+  dialog.setAttribute("aria-describedby", "actionConfirmMessage");
+  const heading = el("h2", "", title); heading.id = "actionConfirmTitle";
+  const description = el("p", "", message); description.id = "actionConfirmMessage";
+  const bar = el("div", "bar");
+  const cancel = el("button", "text", t("Cancel"));
+  const accept = el("button", "text primary danger-fill", action);
+  cancel.type = accept.type = "button";
+  bar.append(el("span", "grow"), cancel, accept);
+  dialog.append(heading, description, bar);
+  const previousFocus = document.activeElement;
+  document.body.append(dialog);
+  return new Promise((resolve) => {
+    confirmationPending = dialog;
+    const finish = (accepted) => {
+      dialog.close(); dialog.remove(); confirmationPending = null;
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+      resolve(accepted);
+    };
+    cancel.onclick = () => finish(false);
+    accept.onclick = () => finish(true);
+    dialog.addEventListener("cancel", (event) => { event.preventDefault(); finish(false); });
+    dialog.addEventListener("click", (event) => {
+      const rect = dialog.getBoundingClientRect();
+      if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) finish(false);
+    });
+    // Keep the underlying editor's Escape handlers from seeing this dialog.
+    dialog.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key !== "Tab") return;
+      const boundary = event.shiftKey ? cancel : accept;
+      if (document.activeElement !== boundary) return;
+      event.preventDefault();
+      (event.shiftKey ? accept : cancel).focus();
+    });
+    // Open after the triggering Escape has finished, so it cannot cancel this dialog.
+    requestAnimationFrame(() => {
+      dialog.showModal();
+      cancel.focus({ preventScroll: true });
+    });
+  });
+}
+function confirmRemoval(name, consequence = "This removes the selected item. Continue?") {
+  return confirmAction(t("Remove {name}?", { name }), t(consequence), t("Remove"));
+}
+function confirmDiscard() {
+  return confirmAction(t("Discard"), t("Discard unsaved changes? Your changes will be lost."), t("Discard"));
+}
+async function cancelEdit(keep) {
+  if ((providerDirty() || ((importing || importingApps) && modalFormDirty())) && !(await confirmDiscard())) return false;
   if (keep !== true) dropSigningIn(editing);
   editing = null; draft = null; importing = null; importingApps = null; renderProviders();
+  return true;
 }
+window.addEventListener("beforeunload", (e) => {
+  if (providerDirty() || window.routingDirty?.() || ((view === "library" || importing || importingApps) && modalFormDirty())) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
 
 // priceTypedError: a model with no list price given only part of its
 // price in Names & levels (its input and output both needed) holds the
@@ -6844,6 +6929,45 @@ function fromRect(from, to) {
   const dx = from.left + from.width / 2 - (to.left + to.width / 2), dy = from.top + from.height / 2 - (to.top + to.height / 2);
   return `translate(${dx}px, ${dy}px) scale(${s})`;
 }
+let modalReturnFocus = null, modalFormBase = "";
+function formValues(box) {
+  return JSON.stringify([
+    [...box.querySelectorAll("input:not([type=search]), textarea, select")].map((input) =>
+      [input.type, input.type === "checkbox" || input.type === "radio" ? input.checked : input.value]),
+    [...box.querySelectorAll(".segs button")].map((button) => button.getAttribute("aria-pressed")),
+  ]);
+}
+function modalFormValues() { return formValues($("#modal")); }
+function modalFormDirty() {
+  return !$("#modal").hidden && !!modalFormBase && modalFormValues() !== modalFormBase;
+}
+function markModalSaved() { modalFormBase = modalFormValues(); }
+let modalBackgroundElements = [];
+function modalBackground(inert) {
+  if (inert) {
+    // A fresh editor may interrupt its closing animation; keep the original background.
+    if (modalBackgroundElements.length) return;
+    const modal = $("#modal");
+    modalBackgroundElements = [...document.body.children].filter((element) =>
+      element !== modal && element.tagName !== "SCRIPT" && !element.inert);
+    for (const element of modalBackgroundElements) element.inert = true;
+  } else {
+    for (const element of modalBackgroundElements) element.inert = false;
+    modalBackgroundElements = [];
+  }
+}
+$("#modal").addEventListener("keydown", (e) => {
+  if (e.key !== "Tab") return;
+  const modal = e.currentTarget;
+  const controls = [...modal.querySelectorAll('button, input, select, textarea, a[href], [tabindex="0"]')]
+    .filter((element) => !element.disabled && element.getClientRects().length && !element.closest("[inert]"));
+  if (!controls.length) { e.preventDefault(); modal.querySelector(".dialog").focus(); return; }
+  const first = controls[0], last = controls.at(-1);
+  const boundary = e.shiftKey ? first : last;
+  if (document.activeElement !== boundary && modal.contains(document.activeElement)) return;
+  e.preventDefault();
+  (e.shiftKey ? last : first).focus();
+});
 function openModal(content) {
   const m = $("#modal"), d = m.firstElementChild;
   const fresh = m.hidden || m.classList.contains("out");
@@ -6855,8 +6979,26 @@ function openModal(content) {
   d.classList.remove("swap");
   if (!fresh) { void d.offsetWidth; d.classList.add("swap"); } // content changed: a soft refresh, not a re-entrance
   frame(content);
+  // Keep focus through a redraw of an open editor.
+  const active = d.contains(document.activeElement) ? document.activeElement : null;
+  const focusID = active?.id;
+  const focusLabel = active?.getAttribute("aria-label");
+  const focusIndex = active ? [...d.querySelectorAll("input, textarea, select, button")].indexOf(active) : -1;
+  if (fresh) modalReturnFocus = document.activeElement;
   d.replaceChildren(content);
+  d.setAttribute("role", "dialog");
+  d.setAttribute("aria-modal", "true");
+  d.tabIndex = -1;
+  const title = content.querySelector(".ehead b, .mk-name, h2, h3");
+  if (title) { title.id = "modalTitle"; d.setAttribute("aria-labelledby", title.id); d.removeAttribute("aria-label"); }
+  else { d.removeAttribute("aria-labelledby"); d.setAttribute("aria-label", t("Settings")); }
   m.hidden = false;
+  if (fresh) modalBackground(true);
+  if (fresh) markModalSaved();
+  const focus = focusID && content.querySelector("#" + CSS.escape(focusID))
+    || focusLabel && [...content.querySelectorAll("[aria-label]")].find((element) => element.getAttribute("aria-label") === focusLabel)
+    || focusIndex >= 0 && content.querySelectorAll("input, textarea, select, button")[focusIndex];
+  (focus || content.querySelector("input:not([disabled]), textarea, select, button:not([disabled])") || d).focus({ preventScroll: true });
   const body = content.querySelector(":scope > .ebody");
   if (body) body.scrollTop = top; // a re-render keeps the place
   const nextNames = content.querySelector(".mnames:not([hidden])");
@@ -6887,6 +7029,8 @@ function closeModal() {
   if (m.hidden) return Promise.resolve();
   if (m.classList.contains("out")) return modalDone || Promise.resolve();
   m.classList.add("out");
+  modalBackground(false);
+  modalFormBase = "";
   for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.commitStyles?.(), a.cancel();
   // where it would sit at rest, whatever an opening cut short left it at
   const was = d.style.transform;
@@ -6907,6 +7051,10 @@ function closeModal() {
     m.hidden = true;
     m.classList.remove("out");
     d.replaceChildren();
+    modalFormBase = "";
+    if (modalReturnFocus?.isConnected && !modalReturnFocus.closest("[hidden]")) modalReturnFocus.focus({ preventScroll: true });
+    else if (!$("#view-" + view).hidden) $("#view-" + view).focus({ preventScroll: true });
+    modalReturnFocus = null;
     for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.cancel();
     d.style.opacity = d.style.transform = m.style.opacity = "";
     // an editor opened from the add sheet gives the focus back to its option
@@ -7006,7 +7154,14 @@ function renderEditor(p, presetID) {
   // its own icons, not the page's kept ones, which the rows after it take back
   const kept = keptIcons;
   keptIcons = null;
-  try { return drawEditor(p, presetID); } finally { keptIcons = kept; }
+  try {
+    const editor = drawEditor(p, presetID);
+    if (draft && draft !== providerDraftRef) {
+      providerDraftRef = draft;
+      providerDraftBase = providerDraftValue();
+    }
+    return editor;
+  } finally { keptIcons = kept; }
 }
 function drawEditor(p, presetID) {
   const pr = presetID ? providers.presets.find((x) => x.id === presetID) : p?.preset ? providers.presets.find((x) => x.id === p.preset) : null;
@@ -8669,6 +8824,7 @@ function renderModels(p) {
       const typed = draft.priceTyped?.[id];
       const cell = (value, placeholder, k, label) => {
         const i = input(value, placeholder);
+        i.defaultValue = i.value;
         i.inputMode = "decimal";
         i.dataset.part = k;
         i.setAttribute("aria-label", label);
@@ -10879,7 +11035,10 @@ function resetInText(at) {
 
 // accountAction changes which account a provider uses, or which it has,
 // and leaves its editor open on the result.
-async function accountAction(path, body, okMsg) {
+async function accountAction(path, body, okMsg, confirmed = false) {
+  const key = path === "keys/remove" && providers?.providers?.find((p) => p.id === body.id)?.keyList?.find((k) => k.id === body.ref);
+  if (!confirmed && (path === "login/forget" || path === "keys/remove") && !await confirmRemoval(body.user || key?.name || key?.masked || body.ref,
+    "This account or key will stop being used for requests. You will need to add it again to use it.")) return false;
   try {
     providers = await api(path, body);
     renderProviders();
@@ -10962,6 +11121,8 @@ function keyWeight(p, k, w, total) {
     i.min = "1";
     i.max = "1000";
     i.className = "key-weight-in";
+    i.setAttribute("aria-label", t("Key weight"));
+    i.title = b.title;
     let done = false;
     const save = (keep) => {
       if (done) return;
@@ -11203,6 +11364,7 @@ function keyFoldRows(p, fold) {
   const q = input(keysOpen[p.id].q, t("Filter {n} keys — name, key, off, resting…", { n: all.length }));
   q.className = "keys-filter";
   q.dataset.provider = p.id;
+  q.setAttribute("aria-label", q.placeholder);
   q.oninput = () => {
     keysOpen[p.id].q = q.value;
     const at = q.selectionStart;
@@ -11215,18 +11377,13 @@ function keyFoldRows(p, fold) {
   fewer.onclick = () => { delete keysOpen[p.id]; renderProviders(); };
   bar.append(q, count, el("span", "grow"));
   // removing many at once: those turned off, those failing for good, or
-  // those the filter matches; a second click does it
+  // those the filter matches; the confirmation names them before they go
   const removeMany = (label, keys) => {
     if (!keys.length || keys.length === all.length) return null;
     const b = el("button", "text keys-remove", label);
-    b.onclick = () => {
-      if (!b.dataset.armed) {
-        b.dataset.armed = "1";
-        b.classList.add("danger");
-        b.textContent = t("Remove {n} keys? Click again", { n: keys.length });
-        setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.classList.remove("danger"); b.textContent = label; } }, 4000);
-        return;
-      }
+    b.onclick = async () => {
+      if (!await confirmRemoval(keys.map((k) => k.name || k.masked || k.id).join(", "),
+        "This account or key will stop being used for requests. You will need to add it again to use it.")) return;
       b.classList.add("busy");
       accountAction("keys/remove-many", { id: p.id, refs: keys.map((k) => k.id) }, t("{n} keys removed", { n: keys.length }));
     };
@@ -11518,6 +11675,8 @@ function renderMove(p) {
 }
 
 async function providerAction(action, body, okMsg, base = "provider/") {
+  if (action === "delete" && !await confirmRemoval(providers?.providers.find((p) => p.id === body.id)?.name || body.id,
+    "Its saved configuration will be removed. Agents using it may switch to another provider or their default model.")) return false;
   try {
     const was = editing;
     providers = await api(base + action, body);
@@ -13357,7 +13516,7 @@ $("#modal").addEventListener("click", (e) => {
   if (confirmAsk && e.target === e.currentTarget) { e.stopImmediatePropagation(); closeConfirmAsk(); }
 }, true);
 document.addEventListener("keydown", (e) => {
-  if (confirmAsk && e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); closeConfirmAsk(); }
+  if (!confirmationPending && confirmAsk && e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); closeConfirmAsk(); }
 }, true);
 function resetOutcome(out) {
   switch (out.code) {
@@ -15294,7 +15453,10 @@ function renderSessions() {
       seg.append(b);
     }
   }
-  for (const b of seg.querySelectorAll(":scope > .opt")) b.classList.toggle("on", b.dataset.agent === sessAgent);
+  for (const b of seg.querySelectorAll(":scope > .opt")) {
+    b.classList.toggle("on", b.dataset.agent === sessAgent);
+    b.setAttribute("aria-pressed", String(b.dataset.agent === sessAgent));
+  }
   // and the agent picked is brought into the strip, the page left where it is
   const picked = seg.querySelector(":scope > .on");
   if (picked && seg.scrollWidth > seg.clientWidth) {
@@ -16877,7 +17039,9 @@ function tick(label, on) {
 function syncBar(ed, err, ...tools) {
   const bar = el("div", "bar");
   bar.append(...tools);
-  ed.append(el("div", "editor-error", ""), bar);
+  const error = el("div", "editor-error", "");
+  error.setAttribute("role", "alert");
+  ed.append(error, bar);
   return (msg) => { ed.querySelector(".editor-error").textContent = msg || ""; };
 }
 
@@ -17109,6 +17273,7 @@ function renderTrayUsage(s, keep) {
   compactNum.className = "words compact-num";
   compactNum.hidden = !!s.fullContext;
   compactNum.title = t("Compact at");
+  compactNum.setAttribute("aria-label", t("Compact at"));
   compactNum.onchange = () => {
     const r = parseContexts(compactNum.value);
     const n = r.map?.["*"] || 0;
@@ -18425,6 +18590,7 @@ addEventListener("click", (e) => {
   if (held && !holding) { holding = true; requestAnimationFrame(keepHeld); }
 }, true);
 for (const v of document.querySelectorAll(".view")) {
+  v.tabIndex = -1;
   v.addEventListener("scroll", () => {
     if (v.hidden) return;
     if (performance.now() < purposeUntil) { fitRoom(v); readerLeaves(v); }
@@ -18433,11 +18599,37 @@ for (const v of document.querySelectorAll(".view")) {
   }, { passive: true });
 }
 
-function show(v) {
+async function show(v) {
   // a page gateway mode leaves out (a link to it, an address kept) opens Providers
   if (gatewayMode && GATEWAY_HIDES.includes(v)) v = "providers";
+  if (v !== view) {
+    if (view === "providers" && (editing !== null || importing || importingApps)) {
+      if (!await cancelEdit(true)) return false;
+    } else if (!$("#modal").hidden && !$("#modal").classList.contains("out")) {
+      if (view === "library" && modalFormDirty() && !(await confirmDiscard())) return false;
+      if (view === "library") window.closeLibraryModal?.(); else closeModal();
+    }
+    if (view === "routing" && window.routingDirty?.()) {
+      if (!(await confirmDiscard())) return false;
+      window.discardRouting?.();
+    }
+    if (view === "library" && window.libraryDirty?.()) {
+      if (!(await confirmDiscard())) return false;
+      window.discardLibrary?.();
+    }
+  }
   view = v;
-  if (mode === "window") { for (const b of $("#nav").querySelectorAll("button")) b.classList.toggle("on", b.dataset.view === v); slide($("#nav"), "nav"); navInSight(); }
+  const title = ({ agents: "Agents", providers: "Providers", gateway: "Gateway", routing: "Routing", usage: "Usage", sessions: "Sessions", library: "Library", plugins: "Plugins", settings: "Settings" })[v];
+  $("#pageTitle").dataset.en = title;
+  $("#pageTitle").textContent = t(title);
+  if (mode === "window") {
+    for (const b of $("#nav").querySelectorAll("button")) {
+      const on = b.dataset.view === v;
+      b.classList.toggle("on", on);
+      if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    }
+    slide($("#nav"), "nav"); navInSight();
+  }
   $("#prefs").classList.toggle("on", v === "settings");
   for (const id of ["agents", "providers", "gateway", "routing", "usage", "sessions", "library", "plugins", "settings"]) $("#view-" + id).hidden = v !== id;
   // back to where the reader was in it, and again once it has what it loads
@@ -18455,6 +18647,7 @@ function show(v) {
   if (v === "sessions") window.loadSessionsPage?.()?.then(back);
   syncTitle();
   syncURL();
+  return true;
 }
 
 // The tab, and the provider open in it, are kept in the address so a
