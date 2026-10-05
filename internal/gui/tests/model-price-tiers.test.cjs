@@ -105,7 +105,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), L.over);
       await typeIn(row("plain-1").getByRole("textbox", { name: L.over, exact: true }), "lots");
       await page.locator("#status", { hasText: L.badSize }).waitFor();
-      await row("plain-1").getByRole("textbox", { name: L.over, exact: true }).fill("200k");
+      // (Enter first: the size taken fills the price boxes from its own, and
+      // in Chromium a fill that blurs the size box lands after that fill)
+      await typeIn(row("plain-1").getByRole("textbox", { name: L.over, exact: true }), "200k");
       await typeIn(row("plain-1").getByRole("textbox", { name: L.long + " · " + L.input, exact: true }), "2,5");
       assert.deepEqual(await tier("plain-1").evaluateAll((is) => is.map((i) => i.value)), ["200K", "2.5", "4", "0.1", "0"]);
       assert.equal(await page.evaluate(() => scrollY), y, "nothing scrolled the page");
