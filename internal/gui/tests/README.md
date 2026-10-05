@@ -604,6 +604,12 @@ the same. Settings → Update button says which version it is hidden for, with
 Show again, and turns it off for good; the version row still offers the
 restart. No click moves the page. Panel and window, English and Chinese.
 
+`update-download-percent.test.cjs` checks the Update pill while a failed
+update downloads again (inaction on Discord): with the size known and
+nothing in yet it says 0%, with no size "Downloading…", then the percent —
+never NaN, which it said while the answer left `done` out. The click doesn't
+move the page. English and Chinese.
+
 `update-auto.test.cjs` checks Settings → Automatic updates (#472): on, every
 6 h, with nothing set; Check every saves 30 min, 1 h, 6 h or 24 h; Off is
 saved and kept through a reload, the interval staying in place, dimmed, for

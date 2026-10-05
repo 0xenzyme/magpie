@@ -2936,7 +2936,7 @@ async function renderUpdateBadge() {
       delete b.dataset.pulling;
       return restart();
     }
-    label.textContent = u.total ? t("Downloading… {p}%", { p: Math.floor((u.done / u.total) * 100) }) : t("Downloading…");
+    label.textContent = downloadingText(u);
     setTimeout(renderUpdateBadge, 700);
     return;
   }
@@ -2983,6 +2983,15 @@ async function renderUpdateBadge() {
     if (web && u.url) return window.open(u.url, "_blank", "noopener");
     api("update/install", {}).catch(() => {});
   };
+}
+
+// downloadingText is the pill's word while an update downloads: its
+// percent once there is one. The answer leaves done out while it is 0, and
+// total too while the size isn't known yet, so the first reads have none —
+// they said "NaN%" (inaction on Discord).
+function downloadingText(u) {
+  const p = u?.total > 0 ? Math.floor(((u.done || 0) / u.total) * 100) : NaN;
+  return Number.isFinite(p) ? t("Downloading… {p}%", { p: Math.min(100, Math.max(0, p)) }) : t("Downloading…");
 }
 
 // updatePillOff is whether the user keeps the Update pill away for v.
