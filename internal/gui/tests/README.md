@@ -802,6 +802,12 @@ scroll sideways; the agent strip fits the window and scrolls in itself, and
 the last agent, clicked at the strip's end, stays in view as the strip is
 drawn again; in Chromium and WebKit, English and Chinese.
 
+`usage-unpriced-names.test.cjs` checks Usage › Sessions where an agent
+recorded tokens under no model name (tony on Discord: the cost's note read
+"未计入：，没有已知价格"): the cost header's note, a session row's cost note
+and its models name it "a model with no name", with no blank where a name
+goes; in Chromium and WebKit, English and Chinese.
+
 `sessions-calendar-fill.test.cjs` checks that the Sessions overview's activity
 calendar fills its card: 118 days (17 weeks) at 1400 wide take over 90% of
 it, the weeks before the range coming in as empty cells without tooltips, the
