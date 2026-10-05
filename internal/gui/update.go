@@ -26,17 +26,23 @@ import (
 // restart asks for the administrator's password; only an app that can't be
 // replaced at all (run from its disk image, say) is sent to the release page.
 type updater struct {
-	mu      sync.Mutex
-	state   string // checking | latest | downloading | ready | available | source | error
-	latest  *update.Release
-	err     string
-	bundle  string      // the .app to replace, "" when not in one or stuck
-	stuck   string      // why the .app can't be replaced where it is (update.Stuck)
-	exe     string      // off the Mac: the binary to replace, "" when not writable
-	self    os.FileInfo // exe as this process started from it
-	retry   bool        // error: the download failed, and may be tried again
-	mirror  string      // error: the mirror the failed download came through (#893)
-	staged  string
+	mu     sync.Mutex
+	state  string // checking | latest | downloading | ready | available | source | error | blocked
+	latest *update.Release
+	err    string
+	bundle string      // the .app to replace, "" when not in one or stuck
+	stuck  string      // why the .app can't be replaced where it is (update.Stuck)
+	exe    string      // off the Mac: the binary to replace, "" when not writable
+	self   os.FileInfo // exe as this process started from it
+	retry  bool        // error: the download failed, and may be tried again
+	mirror string      // error: the mirror the failed download came through (#893)
+	staged string
+	aside  string // Windows: where install moved the running exe, to put back
+	// a version this computer wouldn't start (Smart App Control, #894),
+	// which the clock's checks don't download again; byClock, the check
+	// under way is the clock's
+	blocked *update.Blocked
+	byClock bool
 	asked   time.Time // when the feed was last asked, by the clock or a click
 	done    int64     // downloading: bytes so far, of total (0 when unknown)
 	total   int64
@@ -69,9 +75,11 @@ type updateJSON struct {
 	// error: the download failed through this mirror (Settings' UpdateMirror),
 	// and GitHub itself may do (#893)
 	Mirror string `json:"mirror,omitempty"`
-	Error   string `json:"error,omitempty"`
-	Done    int64  `json:"done,omitempty"` // downloading: bytes so far
-	Total   int64  `json:"total,omitempty"`
+	Error  string `json:"error,omitempty"`
+	Done   int64  `json:"done,omitempty"` // downloading: bytes so far
+	// blocked: the version this computer wouldn't start, and why (#894)
+	Blocked *update.Blocked `json:"blocked,omitempty"`
+	Total   int64           `json:"total,omitempty"`
 	// ready: what the gateway this process serves has in flight, which a
 	// restart would cut short; Waiting, the restart waits for it to end;
 	// GaveUp, the last wait ran out with it still busy
@@ -101,6 +109,7 @@ func (u *updater) start() {
 			u.self, _ = os.Stat(exe)
 			update.RemoveOld(exe)      // what the last updates on Windows moved aside
 			update.RemoveStaleNew(exe) // what a magpie left running downloaded again
+			u.blocked = update.ReadBlocked(Version)
 		}
 	}
 	go func() {
@@ -110,7 +119,7 @@ func (u *updater) start() {
 			last := u.asked
 			u.mu.Unlock()
 			if updateDue(settings.Load(), last, time.Now()) {
-				u.check()
+				u.checkByClock()
 			}
 			time.Sleep(time.Minute)
 		}
@@ -120,6 +129,17 @@ func (u *updater) start() {
 // check asks the feed and, when it can, stages the new version.
 func (u *updater) check() {
 	if u.begin() {
+		u.run()
+	}
+}
+
+// checkByClock is check, by the clock rather than a click: a version this
+// computer wouldn't start is left as it is.
+func (u *updater) checkByClock() {
+	if u.begin() {
+		u.mu.Lock()
+		u.byClock = true
+		u.mu.Unlock()
 		u.run()
 	}
 }
@@ -151,7 +171,7 @@ func (u *updater) begin() bool {
 	if u.state == "checking" || u.state == "downloading" {
 		return false
 	}
-	u.state, u.err, u.retry, u.mirror, u.asked = "checking", "", false, "", time.Now()
+	u.state, u.err, u.retry, u.mirror, u.asked, u.byClock = "checking", "", false, "", time.Now(), false
 	return true
 }
 
@@ -185,6 +205,11 @@ func (u *updater) run() {
 		return
 	case u.bundle == "" && u.exe == "":
 		u.state = "available" // the user fetches it from the release page
+		return
+	case u.byClock && u.blocked != nil && u.blocked.Version == rel.Version:
+		// this computer didn't start it (#894): not downloaded again by
+		// itself; a check asked for tries it once more
+		u.state = "blocked"
 		return
 	case u.replaced():
 		// another magpie put the update in already: a restart is all
@@ -245,12 +270,17 @@ func (u *updater) install(ask bool) bool {
 			err = update.InstallAsAdmin(u.staged, u.bundle)
 		}
 	} else {
-		err = update.InstallBinary(u.staged, u.exe)
+		u.aside, err = update.InstallBinaryAside(u.staged, u.exe)
 		if ask && update.NeedsAdmin(err) && update.CanElevate() {
 			err = update.InstallBinaryAsAdmin(u.staged, u.exe)
 		}
 	}
 	u.err = ""
+	if errors.As(err, new(*update.BlockedError)) {
+		u.staged = "" // removed: this computer won't run it
+		u.wontStart(err)
+		return false
+	}
 	if err != nil {
 		if !errors.Is(err, update.ErrCanceled) {
 			log.Println("update:", err)
@@ -260,6 +290,20 @@ func (u *updater) install(ask bool) bool {
 	}
 	u.staged = ""
 	return true
+}
+
+// wontStart notes that the version downloaded didn't start here: it is
+// not downloaded again by the clock, and the version row says why. Called
+// with u.mu held.
+func (u *updater) wontStart(err error) {
+	log.Println("update:", err)
+	v := ""
+	if u.latest != nil {
+		v = u.latest.Version
+	}
+	b := update.NoteBlocked(v, err)
+	u.blocked, u.state, u.aside = &b, "blocked", ""
+	u.err = err.Error()
 }
 
 // replaced is whether the binary was updated by another magpie since this
@@ -296,6 +340,9 @@ func (u *updater) jsonIn(lang string) updateJSON {
 	}
 	if u.state == "downloading" {
 		j.Done, j.Total = u.done, u.total
+	}
+	if u.state == "blocked" {
+		j.Blocked = u.blocked
 	}
 	if j.State == "ready" || u.waiting {
 		j.Waiting, j.GaveUp = u.waiting, u.gaveUp && !u.waiting
@@ -421,6 +468,9 @@ func updateRoutes(mux *http.ServeMux, w Windows) {
 	})
 }
 
+// relaunchBinary is update.RelaunchBinary; tests stand in for it.
+var relaunchBinary = update.RelaunchBinary
+
 // restartToUpdate installs the staged version and arranges for it to open
 // once this process is gone; the caller then quits. magpie web runs on as
 // the new version in its own place (Web.Wait) instead of opening the app.
@@ -446,7 +496,19 @@ func restartToUpdate(web, window bool, view string) bool {
 	if bundle != "" {
 		err = update.Relaunch(bundle)
 	} else {
-		err = update.RelaunchBinary(exe, window, view)
+		updates.mu.Lock()
+		aside := updates.aside
+		updates.mu.Unlock()
+		err = relaunchBinary(exe, aside, window, view)
+	}
+	if errors.As(err, new(*update.BlockedError)) {
+		// the new version didn't start and this one is back in its place
+		// (#894): it runs on, and says why
+		os.Remove(filepath.Join(settings.Dir(), updatedInAppFile))
+		updates.mu.Lock()
+		updates.wontStart(err)
+		updates.mu.Unlock()
+		return false
 	}
 	if err != nil {
 		log.Println("update:", err)

@@ -17483,6 +17483,20 @@ async function renderUpdate(r, u) {
       }
       btn(t("Check"), check);
       break;
+    case "blocked": {
+      // the new version didn't start on this computer (#894) and this one
+      // runs on: why, and what the user can do. The clock doesn't download
+      // it again; Check tries it once more.
+      const b = u.blocked || {};
+      sub.textContent = b.policy
+        ? t("{v} didn't start on this computer: Windows' Smart App Control (or another app control policy) blocked the new version, which isn't signed. magpie stays on {cur}. Download it and run it yourself, or turn Smart App Control off and check again", { v: u.latest || b.version, cur: u.current })
+        : t("{v} didn't start on this computer, so magpie stays on {cur}", { v: u.latest || b.version, cur: u.current }) + (b.error ? " · " + b.error : "");
+      sub.title = b.error || u.error || "";
+      sub.classList.add("wraps");
+      if (u.url) btn(t("Download"), () => (web ? window.open(u.url, "_blank", "noopener") : api("open", { url: u.url })));
+      btn(t("Check"), check);
+      break;
+    }
     case "": // not asked yet: with automatic updates off, only this asks
       sub.textContent = prefs && prefs.noAutoUpdate ? t("Automatic updates are off") : "";
       btn(t("Check"), check);
