@@ -92,6 +92,34 @@ func List() ([]Key, error) {
 	return keys, nil
 }
 
+// LANSecret is the key magpie shares the gateway on the local network with
+// (the default key ConfigureLAN made), for an agent of this computer's that
+// reaches it from beyond loopback — one in a WSL distro under NAT, whose
+// requests the gateway takes only with a named key; "" while the gateway
+// isn't shared, or that key is off.
+func LANSecret() string {
+	mu.Lock()
+	defer mu.Unlock()
+	s := settings.Load()
+	if !s.LAN {
+		return ""
+	}
+	keys, err := load()
+	if err != nil {
+		return ""
+	}
+	if i := slices.IndexFunc(keys, func(k Key) bool { return k.ID == s.LANKeyID || k.LAN }); i >= 0 {
+		if keys[i].Off {
+			return ""
+		}
+		return keys[i].Secret
+	}
+	if s.LANKeyID == "" && s.LANKey != "" && !strings.HasPrefix(s.LANKey, revokedLANPrefix) {
+		return s.LANKey
+	}
+	return ""
+}
+
 // Export returns credentials only for the encrypted backup bundle.
 func Export() ([]Key, error) {
 	mu.Lock()

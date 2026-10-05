@@ -779,15 +779,22 @@ const wslProbeVersion = 2
 // its default route (the Windows host under NAT), and WSL's networking
 // mode as wslinfo (WSL 2.0 on) says it; and the version of each that asks
 // for it (omp, whose models.yml takes max only from 16.4.0).
+//
+// A command is also looked for in the folders its installers put it in
+// (wslbin): sh -l reads ~/.profile but not ~/.bashrc, where bun's and
+// nvm's installers add theirs to PATH (whqtian on Discord: a WSL omp from
+// bun was never asked its version, so its models still offered xhigh).
+// It is asked with its own folder on PATH, where bun's script finds bun.
 var wslProbeScript = func() string {
-	s := `echo "home:$HOME"; `
+	s := `wslbin() { for d in "$HOME/.bun/bin" "$HOME/.local/bin" "$HOME/.npm-global/bin" "$HOME/.volta/bin" "$HOME/.local/share/pnpm" "$HOME"/.nvm/versions/node/*/bin "$HOME/.local/share/mise/shims" "$HOME/.asdf/shims"; do [ -x "$d/$1" ] && { echo "$d/$1"; return 0; }; done; return 1; }; `
+	s += `echo "home:$HOME"; `
 	for _, k := range wslKinds {
 		s += `[ -d "$HOME/` + k.dir + `" ] && echo dir:` + k.dir + `; `
 		if k.bin != "" {
-			s += `p=$(command -v ` + k.bin + ` 2>/dev/null) && echo "bin:` + k.bin + ` $p"`
+			s += `p=$(command -v ` + k.bin + ` 2>/dev/null || wslbin ` + k.bin + `) && echo "bin:` + k.bin + ` $p"`
 			if k.version {
 				// not one on Windows' drives (WSL's /mnt/c), which isn't the distro's
-				s += ` && case "$p" in /mnt/*) ;; *) echo "ver:` + k.id + ` $(timeout 10 "$p" --version </dev/null 2>&1 | head -n1)";; esac`
+				s += ` && case "$p" in /mnt/*) ;; *) echo "ver:` + k.id + ` $(PATH="${p%/*}:$PATH" timeout 10 "$p" --version </dev/null 2>&1 | head -n1)";; esac`
 			}
 			s += `; `
 		}
