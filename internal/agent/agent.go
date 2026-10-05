@@ -194,10 +194,16 @@ type Agent struct {
 }
 
 // Running reports whether a process whose command line matches any pattern
-// (an extended regexp, as for pgrep -f) is alive. Unknown on Windows.
+// (an extended regexp, as for pgrep -f) is alive. Windows can't be asked
+// what runs, so anything may be: every caller is the advice an agent's own
+// lists need after magpie changed what it reads at start ("restart Codex",
+// "open a new dsh session"), and a Windows that answered no here dropped
+// that advice silently — a model picked in magpie looked like it had done
+// nothing at all. claudeRunning and Pencil's own check already say they
+// can't be told, and say yes for the same reason.
 func Running(patterns ...string) bool {
 	if runtime.GOOS == "windows" {
-		return false
+		return len(patterns) > 0
 	}
 	for _, pat := range patterns {
 		if err := proc.Command("pgrep", "-f", pat).Run(); err == nil {
