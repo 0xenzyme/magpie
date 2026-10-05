@@ -271,6 +271,10 @@ type Settings struct {
 	// or a group's) taken out of an agent's lists one by one, by agent id,
 	// after Visible: a model not named here, a new one among them, is shown.
 	HiddenModels map[string][]string `json:"hiddenModels,omitempty"`
+	// OrderedModels is the order an agent's lists put its models in, by
+	// agent id and then entry id, as the user dragged them on the Agents
+	// page (Codex's, #855): the ones named first, any other after them.
+	OrderedModels map[string][]string `json:"orderedModels,omitempty"`
 
 	// The three maps below, and every one added beside them, are the
 	// per-model ones: a field named Model* whose type is a map[string]X,

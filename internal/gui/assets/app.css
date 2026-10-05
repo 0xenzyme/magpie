@@ -2777,6 +2777,17 @@ body.window .row.agent .who.with-models { flex-wrap: wrap; row-gap: 0; }
 .am-reset:hover:not(:disabled) { color: var(--accent); }
 .am-reset:disabled { color: var(--faint); cursor: default; }
 .am-dot { color: var(--faint); }
+/* Codex's list in the order it shows it (#855): the whole list, dragged by
+   any row; its grip shows only on the row under the pointer */
+.pop.am-pop.ordering .am-search, .pop.am-pop.ordering .am-rail { display: none; }
+.am-order { padding-top: 4px; }
+.am-rows.am-order .am-mr { padding-left: 14px; cursor: grab; user-select: none; -webkit-user-select: none; }
+.am-or .grip { flex: none; width: 6px; height: 11px; margin-right: -4px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3px 3.75px; opacity: 0; transition: opacity .15s; }
+.am-or:is(:hover, :focus-visible, .dragging) .grip { opacity: 1; }
+@media (hover: none) { .am-or .grip { opacity: 1; } }
+.am-or .ix { flex: none; min-width: 16px; font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; text-align: right; }
+.am-order.sorting .am-or { transition: transform .22s cubic-bezier(.22, 1, .36, 1); cursor: grabbing; }
+.am-order .am-or.dragging { position: relative; z-index: 2; transition: none; background: var(--pop-bg); box-shadow: 0 6px 18px rgba(20, 22, 30, .12), 0 0 0 1px var(--line); }
 
 /* ---- an agent's switch onto magpie ---------------------------------------- */
 /* the rows drawn again under the line said beneath each name had WebKit's

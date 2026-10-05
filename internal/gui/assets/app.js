@@ -2160,8 +2160,9 @@ async function openAgentModels(a, anchor, ev) {
     },
   };
   document.addEventListener("mousedown", loading.away, true);
-  let models;
-  try { models = (await api("agent-models/" + encodeURIComponent(a.id))).models; }
+  // an agent whose list goes in the order dragged here (Codex's, #855)
+  let models, orderable = false, ordered = false;
+  try { ({ models, orderable, ordered } = await api("agent-models/" + encodeURIComponent(a.id))); }
   catch (e) {
     if (agentModelsLoading === loading) { loading.drop(); status(e.message, "err"); }
     return;
@@ -2185,9 +2186,10 @@ async function openAgentModels(a, anchor, ev) {
   q.placeholder = t("Search models");
   search.append(q);
   const seg = el("div", "am-seg");
-  const segAll = el("button", "on", t("All")), segOn = el("button", "", t("Shown"));
-  segAll.type = segOn.type = "button";
+  const segAll = el("button", "on", t("All")), segOn = el("button", "", t("Shown")), segOrder = el("button", "", t("Order"));
+  segAll.type = segOn.type = segOrder.type = "button";
   seg.append(segAll, segOn);
+  if (orderable) seg.append(segOrder);
   tools.append(search, seg);
   const list = el("div", "am-list");
   const foot = el("div", "am-foot");
@@ -2195,16 +2197,23 @@ async function openAgentModels(a, anchor, ev) {
   const hideAll = el("button", "am-reset am-hide", t("Hide all"));
   const reset = el("button", "am-reset", t("Show all"));
   hideAll.type = reset.type = "button";
-  foot.append(el("span", "", t("New models are shown")), el("span", "sp"), hideAll, el("span", "am-dot", "·"), reset);
+  const unorder = el("button", "am-reset", t("Default order"));
+  unorder.type = "button";
+  const footNote = el("span", "", t("New models are shown"));
+  foot.append(footNote, el("span", "sp"), hideAll, el("span", "am-dot", "·"), reset);
   // groups as the catalog has them, routing groups first; a long one
   // starts folded, unless the agent is set to a model in it
   const groups = [];
-  for (const m of models) {
-    let g = groups.find((x) => x.name === m.group);
-    if (!g) groups.push(g = { name: m.group, icon: m.icon, models: [] });
-    g.models.push(m);
-  }
-  groups.sort((x, y) => (y.name === ROUTING_GROUPS) - (x.name === ROUTING_GROUPS));
+  const regroup = () => {
+    groups.length = 0;
+    for (const m of models) {
+      let g = groups.find((x) => x.name === m.group);
+      if (!g) groups.push(g = { name: m.group, icon: m.icon, models: [] });
+      g.models.push(m);
+    }
+    groups.sort((x, y) => (y.name === ROUTING_GROUPS) - (x.name === ROUTING_GROUPS));
+  };
+  regroup();
   const shut = new Set(groups.filter((g) => groups.length > 1 && g.models.length > 8 && !g.models.some((m) => m.inUse)).map((g) => g.name));
   // with a few providers, a rail of them down the left: one picked shows
   // its models alone, so a long list is one click away rather than a
@@ -2243,6 +2252,8 @@ async function openAgentModels(a, anchor, ev) {
   };
   // under "Shown", one just turned off stays until the view changes
   let onlyShown = false, kept = new Set();
+  // under "Order", the models shown, as the agent lists them
+  let ordering = false;
 
   const me = agentModels = { a, anchor, box, saving: Promise.resolve(), changed: false };
   const save = () => {
@@ -2271,7 +2282,65 @@ async function openAgentModels(a, anchor, ev) {
     me.saving = me.saving.then(() => api("agent-models/" + encodeURIComponent(a.id), { hidden }))
       .catch((e) => status(e.message, "err"));
   };
+  // the shown models as the agent lists them: as dragged, or, before any
+  // drag, Codex's own (a ChatGPT account's) ahead of magpie's, as its
+  // /model has them
+  const inOrder = () => {
+    const shown = models.filter((m) => !m.hidden);
+    return ordered ? shown : [...shown.filter((m) => m.own), ...shown.filter((m) => !m.own)];
+  };
+  const saveOrder = (ids) => {
+    me.changed = true;
+    me.saving = me.saving.then(() => api("agent-models/" + encodeURIComponent(a.id), { order: ids }))
+      .catch((e) => status(e.message, "err"));
+    return me.saving;
+  };
+  const moveTo = (id, to) => {
+    const shown = inOrder();
+    const from = shown.findIndex((m) => m.id === id);
+    to = Math.max(0, Math.min(shown.length - 1, to));
+    if (from < 0 || to === from) return false;
+    shown.splice(to, 0, ...shown.splice(from, 1));
+    // the hidden after them, as they were; the groups keep the new order
+    models.splice(0, models.length, ...shown, ...models.filter((m) => m.hidden));
+    for (const g of groups) g.models.sort((x, y) => models.indexOf(x) - models.indexOf(y));
+    ordered = true;
+    saveOrder(shown.map((m) => m.id));
+    return true;
+  };
+  const drawOrder = () => {
+    const top = list.scrollTop;
+    list.replaceChildren();
+    const body = el("div", "am-rows am-order");
+    body.setAttribute("role", "list");
+    const shown = inOrder();
+    shown.forEach((m, i) => {
+      const r = el("div", "am-mr am-or");
+      r.tabIndex = 0;
+      r.dataset.id = m.id;
+      r.setAttribute("role", "listitem");
+      r.title = t("Drag to move · Alt+↑/↓ from the keyboard");
+      const lg = m.group === ROUTING_GROUPS ? svg(FAN, 14, 1.5) : icon(m.logo || m.icon || "generic");
+      lg.classList.add("lg");
+      r.append(el("span", "grip"), el("span", "ix", String(i + 1)), lg, el("span", "n", m.name),
+        el("span", "x", m.group === ROUTING_GROUPS ? t(m.group) : m.group));
+      r.onkeydown = (e) => {
+        if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+        e.preventDefault();
+        if (!moveTo(m.id, i + (e.key === "ArrowUp" ? -1 : 1))) return;
+        draw();
+        list.querySelector(`.am-or[data-id="${CSS.escape(m.id)}"]`)?.focus({ preventScroll: true });
+      };
+      r.onpointerdown = (e) => dragRows(e, r, r, body, [...body.children], (to) => { moveTo(m.id, to); draw(); });
+      body.append(r);
+    });
+    list.append(body);
+    if (!shown.length) list.append(el("div", "am-none", t("No matches.")));
+    list.scrollTop = top;
+    unorder.disabled = !ordered;
+  };
   const draw = () => {
+    if (ordering) return drawOrder();
     const top = list.scrollTop;
     list.replaceChildren();
     const words = q.value.trim().toLowerCase();
@@ -2351,16 +2420,37 @@ async function openAgentModels(a, anchor, ev) {
     hideAll.disabled = !models.some((m) => !m.hidden && !m.inUse);
   };
   q.oninput = () => { list.scrollTop = 0; draw(); };
-  const view = (shown) => {
+  const view = (shown, order = false) => {
     onlyShown = shown;
+    ordering = order;
     kept = new Set();
-    segAll.classList.toggle("on", !shown);
-    segOn.classList.toggle("on", shown);
+    segAll.classList.toggle("on", !shown && !order);
+    segOn.classList.toggle("on", shown && !order);
+    segOrder.classList.toggle("on", order);
+    // ordering is of the whole list: no search, no provider picked, and the
+    // foot puts magpie's own order back rather than showing or hiding
+    box.classList.toggle("ordering", order);
+    footNote.textContent = order ? t("Drag to put them in the order {agent} lists them; new models go last", { agent: a.name }) : t("New models are shown");
+    if (order) foot.replaceChildren(footNote, el("span", "sp"), unorder);
+    else foot.replaceChildren(footNote, el("span", "sp"), hideAll, el("span", "am-dot", "·"), reset);
     list.scrollTop = 0;
     draw();
   };
   segAll.onclick = () => view(false);
   segOn.onclick = () => view(true);
+  segOrder.onclick = () => view(false, true);
+  unorder.onclick = async () => {
+    unorder.disabled = true;
+    const r = await saveOrder([]);
+    ordered = false;
+    // magpie's own order, as the list comes back
+    if (r?.models) {
+      const was = new Map(models.map((m) => [m.id, m]));
+      models.splice(0, models.length, ...r.models.map((m) => was.get(m.id) || m));
+      regroup();
+    }
+    draw();
+  };
   reset.onclick = () => {
     for (const m of models) m.hidden = false;
     save();

@@ -791,7 +791,11 @@ func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 	ms := provider.CodexListed()
 	// the list is the backend's and magpie's, and so is its ETag
 	w.Header().Set("ETag", codexcat.WithTag(etag, provider.CodexListTag()))
-	writeJSON(w, 200, map[string]any{"models": append(own, codexcat.Entries(ms, len(own)+100)...)})
+	all := append(own, codexcat.Entries(ms, len(own)+100)...)
+	if at, ok := provider.CodexOrder(); ok {
+		codexcat.Order(all, at)
+	}
+	writeJSON(w, 200, map[string]any{"models": all})
 }
 
 // modelsEtag is the X-Models-Etag of a backend reply as Codex should read

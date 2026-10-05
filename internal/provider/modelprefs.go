@@ -577,11 +577,14 @@ func renameModelPrefs(s *settings.Settings, from, to string) bool {
 	// the models a user has hidden from a picker are keyed by provider as
 	// well, and are not one of the per-model preference maps: they say
 	// which models are shown, not what a model is called or costs
+	// (and so is the order they are listed in)
 	hidden := false
-	for _, ids := range s.HiddenModels {
-		for i, id := range ids {
-			if rest, ok := strings.CutPrefix(id, from+"/"); ok {
-				ids[i], hidden = to+"/"+rest, true
+	for _, m := range []map[string][]string{s.HiddenModels, s.OrderedModels} {
+		for _, ids := range m {
+			for i, id := range ids {
+				if rest, ok := strings.CutPrefix(id, from+"/"); ok {
+					ids[i], hidden = to+"/"+rest, true
+				}
 			}
 		}
 	}

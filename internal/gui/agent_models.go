@@ -3,6 +3,7 @@ package gui
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -54,6 +55,9 @@ type agentModelJSON struct {
 	Hidden  bool   `json:"hidden,omitempty"`
 	// InUse: the agent is set to it, so it can't be taken out
 	InUse bool `json:"inUse,omitempty"`
+	// Own: one of Codex's own, a ChatGPT account's, which Codex lists
+	// ahead of magpie's until the user puts them in an order (#855)
+	Own bool `json:"own,omitempty"`
 }
 
 // takesCatalog reports whether an agent picks among magpie's catalog: some
@@ -154,7 +158,7 @@ func agentModelList(a *agent.Agent) []agentModelJSON {
 	out := []agentModelJSON{}
 	for _, e := range listed {
 		m := agentModelJSON{ID: e.ID, Name: e.Name, Group: e.Provider.Name, Icon: e.Provider.Icon, Context: e.Context,
-			Hidden: off[e.ID], InUse: usedBy(a, vals, e)}
+			Hidden: off[e.ID], InUse: usedBy(a, vals, e), Own: a.ID == "codex" && provider.CodexOwn(e)}
 		if m.Name == "" {
 			m.Name = e.Model
 		}
@@ -172,6 +176,11 @@ func agentModelList(a *agent.Agent) []agentModelJSON {
 	return out
 }
 
+// orderable reports whether the agent's model list is put in the order the
+// user drags it into: Codex's, whose /model lists the models by the
+// priority magpie gives them (#855).
+func orderable(id string) bool { return id == "codex" }
+
 func agentModelsAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agent-models/{id}", func(rw http.ResponseWriter, r *http.Request) {
 		a, err := agent.Find(r.PathValue("id"))
@@ -179,12 +188,18 @@ func agentModelsAPI(mux *http.ServeMux) {
 			fail(rw, err)
 			return
 		}
-		writeJSON(rw, map[string]any{"models": agentModelList(a)})
+		writeJSON(rw, map[string]any{"models": agentModelList(a), "orderable": orderable(a.ID), "ordered": len(provider.ModelOrder(a.ID)) > 0})
 	})
 	// hidden is every entry to take out of the agent's lists; the others
 	// are shown, and one the agent is set to is kept in whatever is asked
+	//
+	// order, instead, is the order the agent's list puts them in (#855):
+	// the ones named first, as named; none puts back magpie's own
 	mux.HandleFunc("POST /api/agent-models/{id}", func(rw http.ResponseWriter, r *http.Request) {
-		var in struct{ Hidden []string }
+		var in struct {
+			Hidden []string
+			Order  *[]string
+		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			fail(rw, err)
 			return
@@ -192,6 +207,18 @@ func agentModelsAPI(mux *http.ServeMux) {
 		a, err := agent.Find(r.PathValue("id"))
 		if err != nil {
 			fail(rw, err)
+			return
+		}
+		if in.Order != nil {
+			if !orderable(a.ID) {
+				fail(rw, errors.New(a.Name+"'s model list can't be put in an order"))
+				return
+			}
+			if err := provider.SetModelOrder(a.ID, *in.Order); err != nil {
+				fail(rw, err)
+				return
+			}
+			writeJSON(rw, map[string]any{"models": agentModelList(a), "ordered": len(provider.ModelOrder(a.ID)) > 0})
 			return
 		}
 		used := map[string]bool{}
