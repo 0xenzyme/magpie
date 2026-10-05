@@ -10078,6 +10078,13 @@ function renderAccounts(a, p) {
         out.title = t("Signs Codex out of this account, as codex logout does");
         out.onclick = () => askSignOutLogin(a, l);
         row.append(out);
+      } else if (a.agent === "codex") {
+        // Codex is signed in to another of its accounts first, then this
+        // one goes (ForgetLogin), rather than Codex signed out
+        const forget = el("button", "text quiet", t("Remove"));
+        forget.title = t("Codex is signed in to another of its accounts, and magpie forgets this one; the account itself is untouched");
+        forget.onclick = () => accountAction("login/forget", { agent: a.agent, user: l.user }, t("{user} removed", { user: l.user }));
+        row.append(forget);
       }
     } else {
       const forget = el("button", "text quiet", t("Remove"));

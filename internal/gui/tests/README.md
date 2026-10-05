@@ -681,8 +681,9 @@ login/forget once per account and the line goes; in English and Chinese.
 couldn't be removed while Codex was signed in to it): its row has Sign out,
 asked in the app's own dialog; Cancel and Escape post nothing and go back to
 the editor, Sign out posts login/forget and says so. With another account
-saved the one in use has no Sign out, and a signed_in refusal is said in the
-reader's language. No select, no left border, the page doesn't move; in
+saved the one in use has no Sign out but Remove, which posts login/forget
+(vincentzhang1_55530 on Discord: magpie signs Codex in to another account
+first), and a signed_in refusal is said in the reader's language. No select, no left border, the page doesn't move; in
 English and Chinese.
 
 `nokey-editor.test.cjs` opens two local Ollama providers saved with no key,

@@ -946,7 +946,8 @@ func putClaudeLogin(l savedLogin) error {
 
 // ForgetLogin drops a remembered account. The one an agent is signed in to
 // now can't be forgotten while it has another to be signed in to; it would
-// only be remembered again (SignedInError). Codex's last one is signed out
+// only be remembered again (SignedInError). Codex is signed in to another
+// of its accounts first (nextOnForget), and its last one is signed out
 // instead, as `codex logout` does (mamba on Discord: a single Codex account
 // couldn't be removed at all).
 func ForgetLogin(agent, user string) error {
@@ -979,12 +980,47 @@ func ForgetLogin(agent, user string) error {
 	case "gemini", "antigravity":
 		return forgetGoogleLogin(agent, user)
 	}
+	if agent == "codex" {
+		// the account Codex is signed in to, with another saved: Codex is
+		// signed in to that one first, as its Use would, and this one is
+		// forgotten then, rather than Codex left signed out or the removal
+		// refused (vincentzhang1_55530 on Discord: a Team account removed
+		// beside a Plus one, and Codex was at its sign-in screen)
+		if next := nextOnForget(agent, user); next != "" {
+			if err := SwitchLogin(agent, next); err != nil {
+				return err
+			}
+		}
+	}
 	signedOut, err := forgetLogin(agent, user)
 	if signedOut {
 		// gone from the agent too: nothing of it is served any more
 		ForgetAccounts()
 	}
 	return err
+}
+
+// nextOnForget is the account an agent is signed in to in place of user,
+// which is being removed: "" when it isn't signed in to user, or has no
+// other saved. The first other in the order that is on, else one whose
+// sign-in still holds, else any other.
+func nextOnForget(agent, user string) string {
+	ls := Logins(agent)
+	if !slices.ContainsFunc(ls, func(l Login) bool { return l.Active && strings.EqualFold(l.User, user) }) {
+		return ""
+	}
+	for _, fit := range []func(Login) bool{
+		func(l Login) bool { return l.On && !l.Paused && l.Lapsed == "" },
+		func(l Login) bool { return l.Lapsed == "" },
+		func(Login) bool { return true },
+	} {
+		for _, l := range ls {
+			if !strings.EqualFold(l.User, user) && fit(l) {
+				return l.User
+			}
+		}
+	}
+	return ""
 }
 
 func forgetLogin(agent, user string) (signedOut bool, err error) {
