@@ -37,7 +37,7 @@ const usage = `magpie — one place to pick every agent's model
   magpie tray                     start in the menu bar only
   magpie panel                    open the menu bar icon's quick panel, or close it
   magpie autostart [on|off]       open magpie (in the menu bar) when you log in, or say whether it does
-  magpie tui                      the same thing, in the terminal
+  magpie tui                      the same thing, in the terminal (serves the gateway while open when no magpie does)
   magpie web [--addr host:port] [--lan] [--no-open] [--gateway]
                                   the app's window in a browser, with the gateway (no desktop needed: WSL, a server over SSH)
                                   a new key each run; MAGPIE_WEB_KEY (16+ letters, digits, - . _ ~) keeps one, signed in for 400 days

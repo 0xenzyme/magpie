@@ -151,7 +151,15 @@ func Run(ready func()) error {
 	if len(m.agents) == 0 {
 		return fmt.Errorf("no supported agents found on this machine")
 	}
+	ctx, stop := context.WithCancel(context.Background())
+	wait := serveGateway(ctx)
 	_, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
+	served := gw.here.Load()
+	stop()
+	wait()
+	if served {
+		fmt.Fprintln(os.Stderr, gatewayGoneNote())
+	}
 	return err
 }
 
@@ -730,6 +738,8 @@ func (m model) View() string {
 		status = sBad.Render("✗ ") + sText.Render(m.flash)
 	case m.syncing:
 		status = sMuted.Render("… syncing model catalog")
+	default:
+		status = gatewayStatus()
 	}
 
 	lines := strings.Count(body, "\n") + 1

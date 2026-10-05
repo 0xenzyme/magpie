@@ -12,7 +12,10 @@ the model it is set to. Click a value, pick a model. That is the whole app.
 
 It lives in the menu bar: click the icon and a panel drops down; the same
 screen also opens as a normal window (`magpie`, or *Open magpie* in the tray menu),
-and there is a terminal version (`magpie tui`) and a plain CLI.
+and there is a terminal version (`magpie tui`) and a plain CLI. The
+terminal version serves the gateway while it is open when no other magpie
+(the app, `magpie web`, `magpie serve`) does, and says so on its status
+line; agents connected to magpie lose it when it quits.
 
 ```
   ◉ magpie
@@ -1004,7 +1007,7 @@ gateway translates.
 ```sh
 magpie                          # open the app: a window plus the menu bar icon
 magpie tray                     # menu bar icon only (use this in your login items)
-magpie tui                      # the same thing, in the terminal
+magpie tui                      # the same thing, in the terminal; serves the gateway while open when no other magpie does
 magpie web                      # the app's window in a browser (WSL, a server over SSH); --lan, --addr, --no-open, --gateway
                                 # (a new key each run; MAGPIE_WEB_KEY keeps one, for a page run as a service)
 magpie ls                       # list every agent and its current settings
