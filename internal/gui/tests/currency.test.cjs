@@ -111,10 +111,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         for (let i = 0; i < 20 && !(await view(page)); i++) { await page.mouse.wheel(0, 200); await page.waitForTimeout(20); }
         const before = await view(page);
         assert(before > 0, "the settings list must be long enough to scroll");
+        const tall = () => page.locator("#view-settings").evaluate((v) => v.getBoundingClientRect().height);
+        const height = await tall();
         await segs.nth(1).click();
         await page.locator('#currencySegs .opt.on', { hasText: cny }).waitFor();
         await page.waitForTimeout(400);
         assert.equal(await view(page), before, "picking a currency must not scroll the settings page");
+        // the footer's "Saved" doesn't make it taller and the page shorter
+        assert.equal(await tall(), height, "the saved note resized the settings page");
 
         // the Usage page now shows ¥, at the fixed rate (12.34 * 7.2)
         await page.locator('[data-view="usage"]').click();
