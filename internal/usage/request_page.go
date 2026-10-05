@@ -346,7 +346,14 @@ func queryPage(p Period, f Filter, offset, limit int, readSource func(sessions.C
 	on := map[string]bool{}
 	var chunks []*rowChunk
 	var resolver *sessionResolver
-	for _, s := range sources {
+	read := prefetchSources(sources, func(s sessions.CallSource) bool {
+		if !since.IsZero() && s.Modified.Before(since) {
+			return false
+		}
+		c := idx.chunks[s.Path]
+		return c == nil || c.Source.Size != s.Size || !c.Source.Modified.Equal(s.Modified)
+	}, readSource)
+	for i, s := range sources {
 		on[s.Path] = true
 		if !since.IsZero() && s.Modified.Before(since) {
 			continue
@@ -358,7 +365,7 @@ func queryPage(p Period, f Filter, offset, limit int, readSource func(sessions.C
 			if resolver == nil {
 				resolver = newSessionResolver([]sessions.Call{{}})
 			}
-			cs := readSource(s)
+			cs := read(i)
 			c = &rowChunk{Source: s, Rows: make([]packedRow, 0, len(cs))}
 			for _, call := range cs {
 				r := logRecord(call)
@@ -1055,4 +1062,59 @@ func callerGroups(groups map[string]*Group) []Group {
 		return strings.Compare(a.ID, b.ID)
 	})
 	return out
+}
+
+// prefetchSources reads the session files a query has to parse a few at a
+// time, ahead of the loop that takes them in order. The first All after
+// magpie starts parses every one of them, and one by one that was a wait on
+// the disk for each: Requests stayed a skeleton for 40 s over 12k Codex
+// sessions. read(i) gives source i's calls; at most a window of them waits
+// to be taken, so the history is never all held at once. A source that
+// wasn't wanted is read when it is asked for.
+func prefetchSources(sources []sessions.CallSource, want func(sessions.CallSource) bool, readSource func(sessions.CallSource) []sessions.Call) func(int) []sessions.Call {
+	type slot struct {
+		done  chan struct{}
+		calls []sessions.Call
+	}
+	slots := map[int]*slot{}
+	var order []int
+	for i, s := range sources {
+		if want(s) {
+			slots[i] = &slot{done: make(chan struct{})}
+			order = append(order, i)
+		}
+	}
+	if len(order) < 2 {
+		return func(i int) []sessions.Call { return readSource(sources[i]) }
+	}
+	workers := min(8, len(order))
+	window := make(chan struct{}, 4*workers)
+	next := make(chan int)
+	go func() {
+		for _, i := range order {
+			window <- struct{}{}
+			next <- i
+		}
+		close(next)
+	}()
+	for range workers {
+		go func() {
+			for i := range next {
+				s := slots[i]
+				s.calls = readSource(sources[i])
+				close(s.done)
+			}
+		}()
+	}
+	return func(i int) []sessions.Call {
+		s := slots[i]
+		if s == nil {
+			return readSource(sources[i])
+		}
+		<-s.done
+		<-window
+		cs := s.calls
+		s.calls = nil
+		return cs
+	}
 }
