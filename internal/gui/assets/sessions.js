@@ -216,9 +216,6 @@
           : "magpie can list {agent}'s sessions, but cannot resume or delete them.";
       box.append(el("p", "usage-note sm-note", t(key, { agent: a.name })));
     }
-    if (a?.deletable && data.sessions.some((s) => s.wsl)) {
-      box.append(el("p", "usage-note sm-note", t("Sessions in WSL can be resumed, but not deleted from magpie: delete them in WSL.")));
-    }
     box.append(selectBar(), el("div", "sm-tree"));
     queueMicrotask(redrawList);
     return box;
@@ -229,7 +226,7 @@
     const bar = el("div", "row-head sm-bar");
     const a = current();
     if (!a?.deletable) { bar.hidden = true; return bar; }
-    const list = shown().filter((s) => !s.read_only && !s.wsl);
+    const list = shown().filter((s) => !s.read_only);
     const all = el("input", "sm-check");
     all.type = "checkbox";
     all.checked = list.length > 0 && list.every((s) => picked.has(s.id));
@@ -289,7 +286,7 @@
       const open = !!q || opened.has(cwd);
       const g = el("div", "list sm-group");
       const r = el("div", "row sm-folder");
-      const writable = items.filter((s) => !s.read_only && !s.wsl);
+      const writable = items.filter((s) => !s.read_only);
       // the folder's box picks every session of it shown, folded or not,
       // for the bar's Delete; the bar still counts sessions (#527)
       if (current()?.deletable && writable.length) {
@@ -333,7 +330,7 @@
     const wrap = el("div", "sess-item sm-item" + (detail === s.id ? " open" : ""));
     const r = el("div", "row sess sm-sess");
     r.dataset.id = s.id;
-    if (a?.deletable && !s.read_only && !s.wsl) {
+    if (a?.deletable && !s.read_only) {
       const c = el("input", "sm-check");
       c.type = "checkbox";
       c.checked = picked.has(s.id);
@@ -376,7 +373,7 @@
       }
     }
     if (s.carry?.length) r.append(carryPick(s));
-    if (a?.deletable && !s.read_only && !s.wsl) {
+    if (a?.deletable && !s.read_only) {
       const del = el("button", "copy sm-del");
       del.type = "button";
       del.title = t("Delete");

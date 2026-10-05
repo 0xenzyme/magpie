@@ -265,6 +265,76 @@ func wslDirs() []string {
 	return out
 }
 
+// wslHomeOf is the home of a listed distro, "" when it isn't.
+func wslHomeOf(distro string) string {
+	wslSess.Lock()
+	defer wslSess.Unlock()
+	if l := wslSess.lists[distro]; l != nil {
+		return l.Home
+	}
+	return ""
+}
+
+// wslForget drops a deleted session's files from their distro's listing,
+// and has the next read list the distros again (which keeps that on disk).
+func wslForget(fs []file) {
+	gone := map[string]bool{}
+	for _, f := range fs {
+		if f.wsl != "" {
+			gone[f.path] = true
+		}
+	}
+	if len(gone) == 0 {
+		return
+	}
+	wslSess.Lock()
+	defer wslSess.Unlock()
+	for _, l := range wslSess.lists {
+		var kept []wslEntry
+		for _, e := range l.Files {
+			if !gone[e.Path] {
+				kept = append(kept, e)
+			}
+		}
+		l.Files = kept
+	}
+	wslSess.at = time.Time{}
+}
+
+// wslRelistNow lists the distros again when a restored session's files
+// went back into one, after any listing under way (which may have missed
+// them), waiting for it as a first listing is waited for: the session is
+// listed when the page asks next.
+func wslRelistNow(items []moved) {
+	if WSLHomes == nil {
+		return
+	}
+	wslSess.Lock()
+	in := false
+	for _, l := range wslSess.lists {
+		for _, m := range items {
+			in = in || under(m.From, l.Home)
+		}
+	}
+	busy := wslSess.done
+	wslSess.Unlock()
+	if !in {
+		return
+	}
+	if busy != nil {
+		<-busy
+	}
+	done := make(chan struct{})
+	wslSess.Lock()
+	wslSess.done, wslSess.at = done, time.Now()
+	go wslList(wslSess.gen, done)
+	wslSess.Unlock()
+	select {
+	case <-done:
+	case <-time.After(wslFirstWait):
+	}
+}
+
 // wslReset forgets the listings, in memory.
 func wslReset() {
 	wslSess.Lock()

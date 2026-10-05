@@ -78,18 +78,57 @@ func TestWSLSessionsListed(t *testing.T) {
 	if !strings.Contains(dirs, filepath.Join(home, ".claude")) || !strings.Contains(dirs, filepath.Join(home, ".codex")) {
 		t.Fatalf("dirs %s", dirs)
 	}
+}
 
-	// listed and resumed, never deleted from Windows
-	for _, m := range ListAgent("claude") {
-		if m.Deletable {
-			t.Fatalf("a WSL session deletable: %+v", m)
+// A session in a WSL distro is deleted as this computer's are (TJHHHH: 请问
+// 是否可以增加wsl内对于会话的删除呢): moved to magpie's trash, its Claude Code
+// files from the distro's ~/.claude and not this computer's, gone from the
+// listing at once; restored, it is back in the distro and listed again.
+func TestWSLSessionDeleted(t *testing.T) {
+	home, _ := wslDistro(t)
+	const id = "11111111-2222-3333-4444-555555555555"
+	own := os.Getenv("CLAUDE_CONFIG_DIR")
+	distro := filepath.Join(home, ".claude")
+	for _, p := range []string{filepath.Join(distro, "file-history", id, "a@v1"), filepath.Join(own, "file-history", id, "a@v1")} {
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte("x"), 0o644)
+	}
+	old := time.Now().Add(-time.Hour)
+	filepath.WalkDir(home, func(p string, _ os.DirEntry, _ error) error { return os.Chtimes(p, old, old) })
+	List(0)
+	wslSettle()
+	m, ok := findManaged(ListAgent("claude"), id)
+	if !ok || m.WSL != "Ubuntu" || !m.Deletable {
+		t.Fatalf("the WSL session listed as %+v, %v", m, ok)
+	}
+	tr, err := Delete("claude", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{m.Path, filepath.Join(distro, "file-history", id)} {
+		if _, err := os.Lstat(p); err == nil {
+			t.Fatalf("%s is still there", p)
 		}
 	}
-	if _, err := Delete("claude", cc.ID); err == nil || !strings.Contains(err.Error(), "WSL Ubuntu") {
-		t.Fatalf("delete: %v", err)
+	if _, err := os.Lstat(filepath.Join(own, "file-history", id, "a@v1")); err != nil {
+		t.Fatal("this computer's own file history was moved")
 	}
-	if _, err := os.Stat(cc.Path); err != nil {
+	if _, ok := findManaged(ListAgent("claude"), id); ok {
+		t.Fatal("still listed")
+	}
+	if trash := Trash(); len(trash) != 1 || trash[0].Key != tr.Key {
+		t.Fatalf("trash %+v", trash)
+	}
+	if _, err := Restore(tr.Key); err != nil {
 		t.Fatal(err)
+	}
+	for _, p := range []string{m.Path, filepath.Join(distro, "file-history", id, "a@v1")} {
+		if _, err := os.Lstat(p); err != nil {
+			t.Fatalf("%s wasn't restored", p)
+		}
+	}
+	if m, ok := findManaged(ListAgent("claude"), id); !ok || m.WSL != "Ubuntu" {
+		t.Fatalf("restored session listed as %+v, %v", m, ok)
 	}
 }
 

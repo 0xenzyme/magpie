@@ -9052,6 +9052,18 @@ function renderSigning(sub) {
       b.onclick = () => startSignIn(sub.agent, true, id);
       box.append(b);
     }
+    // a plugin's other ways, beside the sites: ZCode's app's own sign-in
+    // (Jinyu: use the account ZCode is signed in to), its API key
+    if (sub.plugin && sub.moved) {
+      const sites = sub.sites.map(([, label]) => label);
+      sub.plugin.methods.forEach((m, i) => {
+        if (sites.some((l) => (m.label || "").includes(l))) return;
+        const b = el("button", "text", t(m.label || (m.type === "api" ? "API key" : "Browser")));
+        b.dataset.method = String(i);
+        b.onclick = () => startPluginSignIn(sub, i);
+        box.append(b);
+      });
+    }
     return box;
   }
   if (signing.state === "ghe") return renderCopilotGHE(sub);
@@ -9174,6 +9186,21 @@ function renderSigning(sub) {
       startPluginSignIn(sub, keyWay);
     };
     acts.append(k);
+  }
+  // a moved subscription goes straight to its plugin's usual way (#777:
+  // one click, as the built-in did); ways other than that one and the key
+  // above (ZCode's app's own sign-in) are a link away
+  const others = sub.plugin && sub.moved && signing.state === "waiting"
+    ? (sub.plugin.methods || []).filter((_, i) => i !== signing.method && i !== keyWay).length : 0;
+  if (others) {
+    const acts = tt.querySelector(".acts") || tt.appendChild(el("span", "acts"));
+    const other = el("button", "link other-ways", t("Other ways to sign in…"));
+    other.onclick = () => {
+      if (signing?.id) api("signin/" + signing.id + "/cancel", {}).catch(() => {});
+      signing = { agent: sub.agent, state: "method" };
+      renderProviders();
+    };
+    acts.append(other);
   }
   if (sub.importable) {
     // an account another tool is signed in to comes in from its file
