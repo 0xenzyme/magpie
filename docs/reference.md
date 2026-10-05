@@ -708,6 +708,9 @@ deployments, set `MAGPIE_PUBLIC_URL=https://magpie.example.com` to the base
 URL shown in the console and CLI, including connection examples. Local
 agent configs still use the local gateway address.
 
+Building an app or agent that should use magpie, or get a row on the
+Agents page: see [Integrating your app or agent](integrating.md).
+
 A reverse proxy must enforce authentication itself, or you must enable
 Settings → Share on local network and use an enabled gateway key
 (Gateway → Gateway keys) for external clients. A public URL with no port of
