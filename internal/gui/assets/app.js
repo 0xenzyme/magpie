@@ -11318,8 +11318,9 @@ function closeProtoMenu() {
 // openProtoMenu picks one of opts, or several when value is a list: each
 // ticked or unticked in turn with the menu kept open, choose given the
 // ticked ones, in the menu's order, once it closes (and only if they
-// changed); "" is none of them and closes it, "\x00" a note to read.
-function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key speaks", cls = "", align = "left") {
+// changed). With live, choose runs after each tick instead; "" is none
+// of them and closes it, "\x00" a note to read.
+function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key speaks", cls = "", align = "left", live = false) {
   closeProtoMenu();
   const multi = Array.isArray(value);
   let picked = multi ? [...value] : null;
@@ -11345,9 +11346,13 @@ function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key sp
       e.stopPropagation();
       if (!multi) { closeProtoMenu(); choose(o.v); return; }
       if (o.v === "\x00") return;
-      if (!o.v) { picked = []; closeProtoMenu(); return; }
+      if (!o.v) { picked = []; closeProtoMenu(); if (live) choose([]); return; }
       picked = picked.includes(o.v) ? picked.filter((v) => v !== o.v) : [...picked, o.v];
       items.forEach((it, i) => tick(it, opts[i]));
+      if (live) {
+        choose(opts.map((o) => o.v).filter((v) => picked.includes(v)));
+        b.focus({ preventScroll: true });
+      }
     };
     b.onmouseenter = () => b.focus({ preventScroll: true });
     box.append(b);
@@ -11386,7 +11391,7 @@ function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key sp
   document.addEventListener("keydown", keys, true);
   document.addEventListener("scroll", scroll, true);
   addEventListener("resize", closeProtoMenu);
-  const done = multi ? () => {
+  const done = multi && !live ? () => {
     if (picked.length === value.length && picked.every((v) => value.includes(v))) return;
     choose(opts.map((o) => o.v).filter((v) => picked.includes(v)));
   } : null;

@@ -1804,6 +1804,40 @@ compare the same completed API state rather than a loading-order difference.
 node --test internal/gui/tests/mobile-web.test.cjs internal/gui/tests/old-webkit.test.cjs
 ```
 
+## Routing request metrics
+
+`routing-request-metrics.test.cjs` checks request-row cache hit rates (cache
+reads divided by uncached input, cache reads and cache writes across billable
+tries) and output speeds (reply output over the time after its first token).
+It covers known zero hits, missing historical tiers, unstreamed and burst
+replies, retries, unfinished and failed requests, the cache-rate description
+in the story, weighted session cache rates and decode speeds (with coverage
+in tooltips), folds, history, live updates, narrow layouts and persisted
+metric choices. Missing values are omitted from request rows and session
+headings; known zero cache rates and costs remain visible. The first-token
+label matches the metric picker and the Chinese routing story.
+Request and session token totals have tooltips with exact uncached input,
+output, cache-read and cache-write counts. Billable retries are included and
+explained; missing historical tiers and partial session coverage are explicit.
+The six choices apply immediately while the menu stays open, with focus
+kept on the checkbox. Mouse and keyboard changes work in both directions,
+including when none are selected.
+It runs in English and Chinese on Chromium and WebKit. Set `ARTIFACT_DIR`
+to keep screenshots. APIs are isolated fixtures.
+
+```sh
+node --test internal/gui/tests/routing-request-metrics.test.cjs
+```
+
+`routing-columns.test.cjs` checks that side-by-side requests get more room
+than accounts, whose column stays between 280 and 400 CSS pixels. It checks
+aligned list bottoms, account model labels, and no horizontal overflow at
+940, 1100, 1440 and 1920 pixels, then the full-width stack at 700 pixels.
+
+```sh
+node --test internal/gui/tests/routing-columns.test.cjs
+```
+
 ## Automatic Codex title grouping
 
 `routing-sessions.test.cjs` checks automatic grouping after a Codex title write,

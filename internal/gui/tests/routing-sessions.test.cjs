@@ -65,7 +65,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.match(await group.locator(".summary").textContent(), lang === "zh" ? /3 个请求.*6.0k/ : /3 requests.*6.0k/);
       assert.equal(await group.locator(".cost").textContent(), "≈$0.030+", "partial totals must be marked");
       assert.equal(await page.locator("button.rt-session").filter({ hasText: "Claude Code" }).locator(".cost").textContent(), "≈$0.000", "zero price is known");
-      assert.equal(await page.locator("div.rt-session .cost").textContent(), "—", "legacy requests are unknown");
+      assert.equal(await page.locator("div.rt-session .cost").isVisible(), false, "unknown cost is omitted for legacy requests");
       assert.equal(await page.locator(".rt-req").count(), 6);
 
       await group.click();
@@ -327,7 +327,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.match(await group("Codex · partial").locator(".summary").textContent(), lang === "zh" ? /^1 个请求/ : /^1 request ·/);
       assert.equal(await group("Codex · mixed").locator(".cost").textContent(), "≈$0.000+", "a free request plus an unknown request is a partial zero estimate");
       assert.match(await group("Codex · mixed").locator(".summary").textContent(), lang === "zh" ? /^2 个请求/ : /^2 requests ·/);
-      assert.equal(await group("Claude Code · unknown").locator(".cost").textContent(), "—", "all unknown stays unknown");
+      assert.equal(await group("Claude Code · unknown").locator(".cost").isVisible(), false, "all unknown costs are omitted");
       await page.evaluate(() => { currency = "cny"; fx = { rate: 7, at: null, stale: false }; renderCosts(); });
       assert.equal(await group("Codex · mixed").locator(".cost").textContent(), "≈¥0.000+");
       assert.equal(await page.locator(".rt-req").filter({ hasText: "model-a" }).locator(".cost").textContent(), "≈¥0.000+");

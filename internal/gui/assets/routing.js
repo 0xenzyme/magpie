@@ -125,6 +125,28 @@
   purposeClear.id = "rtPurposeClear";
   purposeClear.append(svg(CROSS, 11, 1.6));
   purposeTools.append(purposePick, purposeClear);
+  const metricOptions = [["duration", "Duration"], ["ttft", "First token"], ["tokens", "Tokens"],
+    ["cache", "Cache hit rate"], ["speed", "Output speed"], ["cost", "Cost"]];
+  let visibleMetrics = metricOptions.map(([key]) => key);
+  try {
+    const saved = JSON.parse(localStorage.getItem("magpie.routingMetrics"));
+    if (Array.isArray(saved)) visibleMetrics = metricOptions.map(([key]) => key).filter((key) => saved.includes(key));
+  } catch {}
+  const metricPick = el("button", "text rt-metric-pick"), metricLabel = el("span");
+  metricPick.type = "button";
+  metricPick.id = "rtMetrics";
+  metricPick.setAttribute("aria-haspopup", "menu");
+  metricPick.setAttribute("aria-expanded", "false");
+  metricPick.append(metricLabel, svg(CHEV, 11, 1.6));
+  metricPick.onclick = (e) => {
+    e.stopPropagation();
+    if (metricPick.classList.contains("open")) return closeProtoMenu();
+    openProtoMenu(metricPick, metricOptions.map(([v, name]) => ({ v, name, note: "" })), visibleMetrics, (keys) => {
+      visibleMetrics = keys;
+      try { localStorage.setItem("magpie.routingMetrics", JSON.stringify(keys)); } catch {}
+      steady(renderHist);
+    }, "Metrics to show", "rt-metric-menu", "right", true);
+  };
   let purpose = "";
   purposeClear.onclick = () => {
     closeProtoMenu();
@@ -174,12 +196,69 @@
   // burst at its end (usage.DecodeWindow, #731: a whole Gemini tool call,
   // 8264 tokens 1 ms before the end, read 8,264,000 tok/s)
   const speedOf = (out, ms, ttft) => out > 0 && ttft > 0 && ms - ttft >= 100 && out * 1000 <= 10000 * (ms - ttft) ? out / ((ms - ttft) / 1000) : 0;
+  function promptOf(r) {
+    let prompt = 0, read = 0;
+    // Input excludes both cache tiers. Include writes in the denominator,
+    // and every billable try, as the request's cost does. Older history
+    // without the tiers cannot tell a hit rate, even when it has tokens.
+    for (const u of r.usage || []) {
+      read += u.cache_read || 0;
+      prompt += (u.in || 0) + (u.cache_read || 0) + (u.cache_write || 0);
+    }
+    return { prompt, read };
+  }
+  function tokenBreakdown(rs) {
+    let input = 0, output = 0, read = 0, write = 0, recorded = 0;
+    for (const r of rs) {
+      if (!r.usage?.length) continue;
+      recorded++;
+      for (const u of r.usage) {
+        input += u.in || 0; output += u.out || 0;
+        read += u.cache_read || 0; write += u.cache_write || 0;
+      }
+    }
+    if (!recorded) return t("No token breakdown was recorded");
+    // The recorded tiers are disjoint: cached input is not counted again
+    // as uncached input, nor is reasoning counted again outside output.
+    const lines = [t("Token breakdown"), ...[["Input (uncached)", input], ["Output", output], ["Cache read", read], ["Cache write", write]]
+      .map(([label, n]) => t(label) + ": " + ledNum(n))];
+    if (rs.some((r) => r.tries.length > 1)) lines.push(t("Includes token usage from billable retries; the row totals show the final attempts"));
+    if (recorded < rs.length) lines.push(t("Breakdown available for {n} of {total} requests", { n: recorded, total: rs.length }));
+    return lines.join("\n");
+  }
+  function requestMetrics(r, how) {
+    const { prompt, read } = r.done ? promptOf(r) : { prompt: 0, read: 0 };
+    // Both times start at the request, so subtracting them leaves the
+    // reply's decode window even after a retry. Output is the reply's,
+    // not the prompt or the output of earlier billable tries.
+    const speed = r.done && how !== "bad" ? speedOf(r.out, r.ms, r.ttft) : 0;
+    const values = {
+      duration: ["duration", "Duration", r.done && r.ms ? took(r.ms) : "—", ""],
+      ttft: ["ttft", "First token", r.done && r.ttft ? took(r.ttft) : "—", t("First token")],
+      tokens: ["tokens", "Tokens", r.tokens ? tokens(r.tokens) : "—", tokenBreakdown([r])],
+      cache: ["cache-hit", "Cache", prompt ? pct(100 * read / prompt) : "—",
+        t("Cache hit rate") + ": " + t("The share of the prompt read from the cache")],
+      speed: ["speed", "Speed", speed ? t("{n} tok/s", { n: Math.round(speed) }) : "—",
+        t("Output tokens a second after the first, over the streamed replies")],
+      cost: ["cost", "Cost", routeCost(r), r.priced ? costNote() : t("No known price or token counts for this request")],
+    };
+    return visibleMetrics.map((key) => values[key]).filter((metric) => metric[2] !== "—");
+  }
+  function metricElement([cls, label, value, help], compact = false) {
+    const metric = el("span", "rt-metric " + (cls === "cost" ? "cost-metric" : cls));
+    if (!compact || cls === "ttft" || cls === "cache-hit") metric.append(el("span", "k", t(label)));
+    metric.append(el("span", "v" + (cls === "cost" ? " cost" : ""), value));
+    if (compact && cls === "tokens") metric.append(el("span", "k", t("{n} tokens", { n: "" }).trim()));
+    metric.title = help || t(label);
+    return metric;
+  }
   function firstNote(r, tr) {
-    if (!tr.ttft) return "";
-    let s = " · " + t("first token in {ms}", { ms: took(tr.ttft) });
-    if (tr.firstText > tr.ttft) s += " · " + t("first text in {ms}", { ms: took(tr.firstText) });
+    let s = tr.ttft ? " · " + t("first token in {ms}", { ms: took(tr.ttft) }) : "";
+    if (tr.ttft && tr.firstText > tr.ttft) s += " · " + t("first text in {ms}", { ms: took(tr.firstText) });
     const v = speedOf(r.out, tr.ms, tr.ttft);
     if (v) s += " · " + t("{n} tok/s", { n: Math.round(v) });
+    const { prompt, read } = promptOf(r);
+    if (prompt) s += " · " + t("request cache hit rate {p}", { p: pct(100 * read / prompt) });
     return s;
   }
   const tokens = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(Math.round(n));
@@ -1410,7 +1489,7 @@
   // button made again each time is one WebKit may drop a click on
   const reqLabel = el("span", "label"), replayAll = el("button", "text");
   replayAll.onclick = () => replay(listed(), pinned);
-  reqHead.append(reqLabel, el("span", "grow"), reqNote, purposeTools, replayAll);
+  reqHead.append(reqLabel, el("span", "grow"), reqNote, purposeTools, metricPick, replayAll);
   // each request's row, kept while what it says is the same: the list
   // is redrawn on every trace update, and made again whole each time it
   // was most of what a busy gateway cost the page (#308)
@@ -1495,8 +1574,16 @@
         if (r.priced) { s.cost += r.cost || 0; s.priced++; }
         if (!r.priced || r.unpriced) s.unpriced++;
         if (!r.done) s.running++;
+        else {
+          s.completed++;
+          const { prompt, read } = promptOf(r);
+          if (prompt) { s.prompt += prompt; s.read += read; s.cached++; }
+          if (outcome(r)[1] !== "bad" && speedOf(r.out, r.ms, r.ttft)) {
+            s.decodeMs += r.ms - r.ttft; s.decodeOut += r.out; s.timed++;
+          }
+        }
         return s;
-      }, { cost: 0, tokens: 0, priced: 0, unpriced: 0, running: 0 });
+      }, { cost: 0, tokens: 0, priced: 0, unpriced: 0, running: 0, completed: 0, prompt: 0, read: 0, cached: 0, decodeMs: 0, decodeOut: 0, timed: 0 });
       setText(x.arrow, g.key ? open ? "▾" : "▸" : "");
       // Background workers have their own IDs. Label groups made entirely
       // for one purpose without renaming a chat that also made helper calls.
@@ -1508,10 +1595,26 @@
         : suggestions ? kindWhy(g.r) + "\n"
         : g.rows.some((r) => r.parentMatched) ? t("Title requests were automatically matched using the prompt and the applied chat title.") + "\n" : "";
       x.name.title = g.key ? (name ? name + "\n" : "") + purpose + t("Session id") + ": " + groupSession(g.r) : t("These requests did not provide a session ID; they are not treated as one conversation.");
-      const bits = [t(g.rows.length === 1 ? "{n} request" : "{n} requests", { n: g.rows.length }), t("{n} tokens", { n: tokens(total.tokens) })];
+      const bits = [t(g.rows.length === 1 ? "{n} request" : "{n} requests", { n: g.rows.length })];
+      if (visibleMetrics.includes("tokens") && total.tokens) bits.push(t("{n} tokens", { n: tokens(total.tokens) }));
       if (total.running) bits.push(t("{n} in progress", { n: total.running }));
-      setText(x.meta, bits.join(" · "));
-      setText(x.cost, total.priced ? "≈" + fmtCost({ cost: total.cost, unpriced: 0 }) + (total.unpriced ? "+" : "") : "—");
+      const count = el("span", "session-count", bits[0]), tokenHelp = visibleMetrics.includes("tokens") && total.tokens ? tokenBreakdown(g.rows) : "";
+      if (tokenHelp) {
+        const amount = el("span", "rt-token-total", bits[1]);
+        amount.title = tokenHelp;
+        count.append(" · ", amount);
+      }
+      if (total.running) count.append(" · " + bits[bits.length - 1]);
+      const meta = [count];
+      const coverage = (n) => t("Based on {n} of {total} completed requests", { n, total: total.completed });
+      if (g.key && visibleMetrics.includes("cache") && total.prompt) meta.push(metricElement(["cache-hit", "Avg. cache", pct(100 * total.read / total.prompt),
+        t("Total cache reads divided by total prompt tokens; larger prompts carry more weight") + "\n" + coverage(total.cached)]));
+      if (g.key && visibleMetrics.includes("speed") && total.decodeMs) meta.push(metricElement(["speed", "Avg. speed", t("{n} tok/s", { n: Math.round(total.decodeOut * 1000 / total.decodeMs) }),
+        t("Total output tokens divided by total decode time; excludes waiting and replies without usable timing") + "\n" + coverage(total.timed)]));
+      const metaSig = JSON.stringify([bits, tokenHelp, meta.map((e) => [e.textContent, e.title])]);
+      if (x.meta.dataset.sig !== metaSig) { x.meta.replaceChildren(...meta); x.meta.dataset.sig = metaSig; }
+      setText(x.cost, total.priced ? "≈" + fmtCost({ cost: total.cost, unpriced: 0 }) + (total.unpriced ? "+" : "") : "");
+      x.cost.hidden = !visibleMetrics.includes("cost") || !total.priced;
       x.cost.title = costNote();
       if (g.key) x.b.setAttribute("aria-expanded", String(open));
       els.push(x.b);
@@ -1536,6 +1639,8 @@
     setText(purposeLabel, label);
     purposePick.setAttribute("aria-label", label);
     purposePick.title = t("Filter routing by purpose") + (purpose ? "\n" + label : "");
+    setText(metricLabel, t("Metrics"));
+    metricPick.title = t("Metrics to show");
     purposePick.onclick = (e) => {
       e.stopPropagation();
       if (purposePick.classList.contains("open")) return closeProtoMenu();
@@ -1587,17 +1692,15 @@
       const ag = agentOf(r.agent);
       const meta = [];
       if (r.tries.length > 1) meta.push(t("{n} tries", { n: r.tries.length }));
-      if (r.done && r.ms) meta.push(took(r.ms));
-      if (r.done && r.ttft) meta.push(t("TTFT {ms}", { ms: took(r.ttft) }));
-      if (r.tokens) meta.push(t("{n} tokens", { n: tokens(r.tokens) }));
+      const metrics = requestMetrics(r, how);
       // all the row says, and its titles
       const title = reqTitle(r, how, tr);
       const sig = JSON.stringify([lang, said, how, title, r.time, r.agent, agentName(r.agent), ag?.icon, r.model, r.provider, r.kind, r.effort,
-        tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tryOk(tr) ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tryOk(tr) ? tr.served : 0, tr?.done && tryOk(tr) ? tr.upstream : 0, meta, routeCost(r)]);
+        tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tryOk(tr) ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tryOk(tr) ? tr.served : 0, tr?.done && tryOk(tr) ? tr.upstream : 0, meta, metrics, routeCost(r)]);
       ids.add(r.id);
       let x = reqRows.get(r.id);
       if (!x || x.sig !== sig) {
-        const row = x = { sig, b: reqRow(r, said, how, tr, ag, meta, title) };
+        const row = x = { sig, b: reqRow(r, said, how, tr, ag, meta, metrics, title) };
         row.b.onclick = () => pick(row.r); // the request as it is when clicked
         reqRows.set(r.id, x);
       }
@@ -1619,7 +1722,7 @@
     }
     renderActs(rs);
   }
-  function reqRow(r, said, how, tr, ag, meta, title) {
+  function reqRow(r, said, how, tr, ag, meta, metrics, title) {
     const b = el("button", "rt-req " + how);
     const when = el("span", "at", new Date(r.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     const asked = el("span", "asked");
@@ -1656,8 +1759,9 @@
     else if (tr?.routed && tr.done && tryOk(tr)) to.append(routedTag(tr));
     if (tr?.upstream && tr.done && tryOk(tr)) to.append(upstreamTag(tr));
     const info = el("span", "meta");
-    info.append(el("span", "", meta.join(" · ")), el("span", "cost", routeCost(r)));
-    info.lastChild.title = r.priced ? costNote() : t("No known price or token counts for this request");
+    if (meta.length) info.append(el("span", "retry-count", meta.join(" · ")));
+    info.append(...metrics.map((m) => metricElement(m, true)));
+    info.hidden = !metrics.length && !meta.length;
     b.append(when, asked, to, info);
 
     b.title = title;
