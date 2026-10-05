@@ -5389,12 +5389,17 @@ function modelInfo(m) {
     box.append(el("span", "badge mi-effort", effortSpan(levels)));
     lines.push(t("Reasoning: {levels}", { levels: levels.map((l) => t(l)).join(", ") }));
   } else lines.push(t("Reasoning levels: none known"));
+  // nothing read of its images either way: magpie counts it text-only for a
+  // describer (gateway.blindTo), which is not the same as its list saying so,
+  // so it is not called text-only here either. Only a model that carries the
+  // flag is unknown; one magpie has an answer for carries no such key at all.
+  const imgUnknown = m.imagesUnknown === true;
   if (m.images) {
     const c = el("span", "badge mi-img");
     c.append(svg(IMAGE_GLYPH, 11, 1.4));
     box.append(c);
   }
-  lines.push(t(m.images ? (m.group ? "Accepts images (every model in it does)" : "Accepts images") : "Text only"));
+  lines.push(t(imgUnknown ? "Images: not known" : m.images ? (m.group ? "Accepts images (one of its models does)" : "Accepts images") : "Text only"));
   if (m.context) {
     box.append(el("span", "badge mi-ctx", ctxShort(m.context)));
     lines.push(t(m.group ? "Context: {n} tokens (the largest of its models')" : "Context: {n} tokens", { n: m.context.toLocaleString() }));

@@ -2933,6 +2933,15 @@
         sw.onclick = () => { d.off = off ? d.off.filter((x) => x !== id) : [...d.off, id]; draw(); };
         if (off) row.classList.add("muted");
         row.append(sw, matched ? el("span", "i", String(i + 1)) : memberHandle(id, i, row), memberIcon(id), n, el("span", "grow"));
+        // what the model is, in the same chips the Gateway page's list says it
+        // in (modelInfo): its reasoning levels, whether it sees images and the
+        // window it holds. A group mixing members that see images with ones
+        // that don't had nothing here to tell one from another, and which
+        // member a picture would reach was only found out by sending one.
+        // A member whose list says nothing of images is marked unknown rather
+        // than text-only: magpie counts it text-only for a describer
+        // (gateway.blindTo), which is not the same as its list saying so.
+        if (m) row.append(modelInfo({ ...m, images: infoOf(id)?.images ?? m.images, imagesUnknown: infoOf(id)?.imagesUnknown ?? m.imagesUnknown }));
         // the reasoning the model is sent at in this group: the group's
         // (blank), or one of its own whatever the agent asks. A group in
         // it reasons as it says.
