@@ -69,6 +69,10 @@ func keepLast(q SubscriptionQuota, user string) SubscriptionQuota {
 	defer c.Unlock()
 	c.load()
 	if q.Error == "" {
+		if kept := c.m[key].Q; q.readSeq != 0 && kept.readSeq > q.readSeq {
+			kept.Name, kept.Icon, kept.User = q.Name, q.Icon, q.User
+			return kept
+		}
 		if len(q.Windows) == 0 && q.Balance == "" {
 			return q
 		}

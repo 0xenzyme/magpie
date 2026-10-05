@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -15,6 +16,27 @@ import (
 type cardRefresh struct{ provider, user string }
 
 type cardRefreshKey struct{}
+
+type quotaReadKey struct{}
+
+var quotaReadSequence atomic.Uint64
+
+// quotaReading orders reads when they start, not when the vendor answers.
+// A card refresh shares its order across the three kinds of usage.
+func quotaReading(ctx context.Context) (context.Context, uint64) {
+	if seq, ok := ctx.Value(quotaReadKey{}).(uint64); ok {
+		return ctx, seq
+	}
+	seq := quotaReadSequence.Add(1)
+	return context.WithValue(ctx, quotaReadKey{}, seq), seq
+}
+
+// keepReading also orders the last good reading on disk: a late response
+// must not become the fallback for the next failed request.
+func keepReading(ctx context.Context, q SubscriptionQuota, user string) SubscriptionQuota {
+	q.readSeq, _ = ctx.Value(quotaReadKey{}).(uint64)
+	return keepLast(q, user)
+}
 
 // refreshing is the card a read is for, when it is for one card alone.
 func refreshing(ctx context.Context) (cardRefresh, bool) {
@@ -71,6 +93,7 @@ func forgetLoginReading(l Login) {
 func RefreshUsage(ctx context.Context, provider, user string) {
 	r := cardRefresh{provider, user}
 	ctx = context.WithValue(ctx, cardRefreshKey{}, r)
+	ctx, seq := quotaReading(ctx)
 	if provider == "claude" {
 		// Claude Code's /usage, run when the user asks (claudeWindows)
 		claudeAsked.Store(time.Now().UnixNano())
@@ -87,10 +110,29 @@ func RefreshUsage(ctx context.Context, provider, user string) {
 		noteQuotaHistory(out, now)
 		c := &subscriptionUsageCache
 		c.Lock()
-		c.data = mergeCards(c.data, out)
+		c.data = cacheCards(c.data, out, seq, true)
 		c.Unlock()
 	}()
 	wg.Wait()
+}
+
+// cacheCards commits a batch without overwriting cards read by a newer
+// batch. A whole-page read still replaces the other cards (and drops ones
+// no longer present); a partial read keeps the rest as they were.
+func cacheCards(kept, got []SubscriptionQuota, seq uint64, partial bool) []SubscriptionQuota {
+	out := slices.Clone(got)
+	for i := range out {
+		out[i].readSeq = seq
+	}
+	if partial {
+		return mergeCards(kept, out)
+	}
+	for _, q := range kept {
+		if q.readSeq > seq {
+			out = mergeCards(out, []SubscriptionQuota{q})
+		}
+	}
+	return out
 }
 
 // mergeCards is the cards of kept with each of got in place of the one of
@@ -107,7 +149,7 @@ func mergeCards(kept, got []SubscriptionQuota) []SubscriptionQuota {
 		})
 		if i < 0 {
 			out = append(out, g)
-		} else {
+		} else if g.readSeq >= out[i].readSeq {
 			out[i] = g
 		}
 	}

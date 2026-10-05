@@ -105,13 +105,14 @@ func loginReading(ctx context.Context, l Login) loginUsageEntry {
 			c.pending = map[string]*loginRead{}
 		}
 		c.pending[key] = r
+		ctx, _ = quotaReading(ctx)
 		go func() {
 			start := time.Now()
 			// read for all who wait for it: no one's ctx cuts it short, but
 			// it is bounded as the Usage page's refresh is
 			rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), subscriptionTimeout)
 			defer cancel()
-			r.e = entry(keepLast(readNow(loginQuota(rctx, l)), l.User))
+			r.e = entry(keepReading(rctx, readNow(loginQuota(rctx, l)), l.User))
 			c.Lock()
 			// one dropped meanwhile (StaleAllowance) read too soon, and a
 			// Claude account the user asked to see meanwhile is read again

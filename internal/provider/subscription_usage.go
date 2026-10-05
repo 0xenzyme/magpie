@@ -114,6 +114,9 @@ type SubscriptionQuota struct {
 	Checkins  bool              `json:"checkins,omitempty"`
 	CheckinBy string            `json:"checkinBy,omitempty"`
 	Checkin   *WorkBuddyCheckin `json:"checkin,omitempty"`
+	// In-process read order, separate from the vendor's ReadAt and never
+	// persisted: restarting starts a new sequence.
+	readSeq uint64
 }
 
 var subscriptionUsageCache struct {
@@ -148,13 +151,15 @@ func SubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 	if !fresh && c.pending == nil {
 		done := make(chan struct{})
 		c.pending = done
+		readCtx, seq := quotaReading(context.Background())
 		go func() {
 			start := time.Now()
-			out := fetchSubscriptionUsage(context.Background())
+			out := fetchSubscriptionUsage(readCtx)
 			noteDailyCredits(out, time.Now())
 			noteQuotaHistory(out, time.Now())
 			c.Lock()
-			c.at, c.data, c.pending = time.Now(), out, nil
+			c.data = cacheCards(c.data, out, seq, false)
+			c.at, c.pending = time.Now(), nil
 			if claudeAsked.Load() > start.UnixNano() {
 				c.at = time.Time{} // asked meanwhile: read again
 			}
@@ -253,6 +258,7 @@ func chosenWindows(ws []QuotaWindow, chosen map[string]bool, base func(string) s
 
 // fetchSubscriptionUsage asks every signed-in vendor at once.
 func fetchSubscriptionUsage(ctx context.Context) []SubscriptionQuota {
+	ctx, _ = quotaReading(ctx)
 	// read for every card's caller alike, or for the one card ctx reads
 	// again (RefreshUsage), as long as a refresh of them all would be
 	ctx0, cancel := context.WithTimeout(context.WithoutCancel(ctx), subscriptionTimeout)
@@ -305,14 +311,14 @@ func fetchSubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 		if ls := accountsOf("claude"); len(ls) > 1 || p.Account.standIn {
 			fetches = append(fetches, perLogin(via("claude"), ls, "Claude Code", "claude-color")...)
 		} else {
-			fetches = append(fetches, withUser(p.Account.User, func() SubscriptionQuota { return claudeSubscriptionUsage(viaLogin("claude", p.Account.User)) }))
+			fetches = append(fetches, withUser(ctx, p.Account.User, func() SubscriptionQuota { return claudeSubscriptionUsage(viaLogin("claude", p.Account.User)) }))
 		}
 	}
 	if user, plan, ok := cursorIdentity(); !moved("cursor") && ok && !hidden["cursor"] {
-		fetches = append(fetches, withUser(user, func() SubscriptionQuota { return cursorSubscriptionUsage(viaLogin("cursor", user), plan) }))
+		fetches = append(fetches, withUser(ctx, user, func() SubscriptionQuota { return cursorSubscriptionUsage(viaLogin("cursor", user), plan) }))
 	}
 	if _, ok := grokAccount(); !moved("grok") && ok && !hidden["grok"] {
-		fetches = append(fetches, func() SubscriptionQuota { return keepLast(readNow(grokSubscriptionUsage(via("grok"))), "") })
+		fetches = append(fetches, func() SubscriptionQuota { return keepReading(ctx, readNow(grokSubscriptionUsage(via("grok"))), "") })
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		if p, ok := codexAccount(home); ok && !hidden["codex"] {
@@ -320,7 +326,7 @@ func fetchSubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 				fetches = append(fetches, perLogin(via("codex"), ls, "Codex", "codex-color")...)
 			} else {
 				auth := filepath.Join(home, ".codex", "auth.json")
-				fetches = append(fetches, withUser(p.Account.User, func() SubscriptionQuota { return codexSubscriptionUsage(viaLogin("codex", p.Account.User), auth) }))
+				fetches = append(fetches, withUser(ctx, p.Account.User, func() SubscriptionQuota { return codexSubscriptionUsage(viaLogin("codex", p.Account.User), auth) }))
 			}
 		}
 		// Every Copilot account magpie knows, the editors' or the CLI's own
@@ -336,7 +342,7 @@ func fetchSubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 	}
 	if moved("kiro") {
 	} else if key := kiroKey(); key != "" && !hidden["kiro"] {
-		fetches = append(fetches, func() SubscriptionQuota { return keepLast(readNow(kiroQuotaAt(via("kiro"), key, "")), "") })
+		fetches = append(fetches, func() SubscriptionQuota { return keepReading(ctx, readNow(kiroQuotaAt(via("kiro"), key, "")), "") })
 	} else if !hidden["kiro"] {
 		fetches = append(fetches, perLogin(via("kiro"), kiroLoginList(), "Kiro", "kiro-color")...)
 	}
@@ -407,11 +413,11 @@ func accountsOf(agent string) []Login {
 
 // withUser names the account a fetch is for, and keeps its reading
 // (keepLast).
-func withUser(user string, f func() SubscriptionQuota) func() SubscriptionQuota {
+func withUser(ctx context.Context, user string, f func() SubscriptionQuota) func() SubscriptionQuota {
 	return func() SubscriptionQuota {
 		q := f()
 		q.User = user
-		return keepLast(readNow(q), "")
+		return keepReading(ctx, readNow(q), "")
 	}
 }
 

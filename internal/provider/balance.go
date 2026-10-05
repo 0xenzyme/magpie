@@ -762,6 +762,7 @@ func KeyBalances(ctx context.Context) []SubscriptionQuota {
 		return c.data
 	}
 	c.Unlock()
+	ctx, seq := quotaReading(ctx)
 	type job struct {
 		p    Provider
 		user string
@@ -826,16 +827,15 @@ func KeyBalances(ctx context.Context) []SubscriptionQuota {
 				q.ReadAt = &now
 			}
 			// the vendor failing a while shows the balance last read
-			out[i] = keepLast(q, keyTag("balance", j.p.Key))
+			out[i] = keepReading(ctx, q, keyTag("balance", j.p.Key))
 		}()
 	}
 	wg.Wait()
 	if ctx.Err() == nil {
 		c.Lock()
-		if again {
-			c.data = mergeCards(c.data, out)
-		} else {
-			c.at, c.data = time.Now(), out
+		c.data = cacheCards(c.data, out, seq, again)
+		if !again {
+			c.at, out = time.Now(), c.data
 		}
 		c.Unlock()
 	}
