@@ -125,6 +125,12 @@ func zedProviderJSON() map[string]any {
 		if context == 0 {
 			context = 128000 // Zed requires a context window for every custom model.
 		}
+		// Zed's max_tokens is the window a prompt and its reply share: it
+		// keeps max_output_tokens of it for the reply and lets the prompt
+		// fill the rest before it compacts. Context is what a prompt may
+		// hold, so the window is it and the reply together (#850); written
+		// as Context alone, a model whose reply may be as long as its
+		// prompt (glm-4.6) left Zed no room for a prompt at all.
 		entry := map[string]any{
 			"name": m.ID, "display_name": m.Name, "max_tokens": context,
 			"capabilities": map[string]any{
@@ -134,7 +140,9 @@ func zedProviderJSON() map[string]any {
 			},
 		}
 		if output := maxTokens(m); output > 0 {
-			entry["max_output_tokens"] = min(output, context)
+			output = min(output, context)
+			entry["max_output_tokens"] = output
+			entry["max_tokens"] = context + output
 		}
 		models = append(models, entry)
 	}
