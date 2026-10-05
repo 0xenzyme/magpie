@@ -2,7 +2,7 @@ package provider
 
 import (
 	"encoding/json"
-	"strings"
+	"path/filepath"
 	"testing"
 )
 
@@ -34,20 +34,66 @@ func TestForgetOnlyFirstLogin(t *testing.T) {
 		}
 	}
 
-	// two accounts: Remove on the first still asks for the other first,
-	// and signing the subscription out takes both
+	// two accounts: Remove on the first puts the other first, even one
+	// that was off, and signing the subscription out takes both
+	saveLogins(t,
+		savedLogin{Agent: "antigravity", User: "a@x.com", Auth: auth("ra"), On: true, First: true},
+		savedLogin{Agent: "antigravity", User: "b@x.com", Auth: auth("rb")})
+	ForgetAccounts()
+	if err := ForgetLogin("antigravity", "a@x.com"); err != nil {
+		t.Fatalf("removing the first of two: %v", err)
+	}
+	ForgetAccounts()
+	if ls := Logins("antigravity"); len(ls) != 1 || ls[0].User != "b@x.com" || !ls[0].Active || !ls[0].On {
+		t.Fatalf("after removing the first: %+v", ls)
+	}
 	saveLogins(t,
 		savedLogin{Agent: "antigravity", User: "a@x.com", Auth: auth("ra"), On: true, First: true},
 		savedLogin{Agent: "antigravity", User: "b@x.com", Auth: auth("rb"), On: true})
 	ForgetAccounts()
-	if err := ForgetLogin("antigravity", "a@x.com"); err == nil || !strings.Contains(err.Error(), "put another account first") {
-		t.Fatalf("removing the first of two: %v", err)
-	}
 	if err := ForgetAccount("antigravity"); err != nil {
 		t.Fatalf("signing out both: %v", err)
 	}
 	ForgetAccounts()
 	if ls := Logins("antigravity"); len(ls) != 0 {
+		t.Fatalf("still listed: %+v", ls)
+	}
+}
+
+// 歧路亡羊 on Discord: Copilot signed in to the editors' own account and
+// two of magpie's, one of them first. Removing the first puts the next
+// first, and Sign out… takes them all, where it said "magpie uses wwjxhy
+// first; put another account first".
+func TestForgetFirstCopilotLogin(t *testing.T) {
+	signIn(t)
+	writeFile(t, filepath.Join(copilotConfigDir(), "github-copilot", "apps.json"), map[string]any{"github.com": map[string]any{"user": "octo", "oauth_token": "gho_own"}})
+	tok := func(s string) json.RawMessage { return json.RawMessage(`{"oauth_token":"` + s + `"}`) }
+	saved := []savedLogin{
+		{Agent: "copilot", User: "octo"},
+		{Agent: "copilot", User: "wwjxhy", Auth: tok("gho_w"), On: true, First: true},
+		{Agent: "copilot", User: "other", Auth: tok("gho_o"), On: true},
+	}
+	saveLogins(t, saved...)
+	ForgetAccounts()
+	if ls := Logins("copilot"); len(ls) != 3 || ls[0].User != "wwjxhy" || !ls[0].Active {
+		t.Fatalf("logins before: %+v", ls)
+	}
+	if err := ForgetLogin("copilot", "wwjxhy"); err != nil {
+		t.Fatalf("removing the first: %v", err)
+	}
+	ForgetAccounts()
+	ls := Logins("copilot")
+	if len(ls) != 2 || !ls[0].Active || ls[0].User == "wwjxhy" || ls[1].User == "wwjxhy" {
+		t.Fatalf("after removing the first: %+v", ls)
+	}
+
+	saveLogins(t, saved...)
+	ForgetAccounts()
+	if err := forgetLogins("copilot"); err != nil {
+		t.Fatalf("signing out every account: %v", err)
+	}
+	ForgetAccounts()
+	if ls := Logins("copilot"); len(ls) != 0 {
 		t.Fatalf("still listed: %+v", ls)
 	}
 }
