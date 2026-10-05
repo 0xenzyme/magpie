@@ -89,16 +89,18 @@ func codexVersion() string {
 			newer(c.ClientVersion)
 		}
 		if exe := codexExecutable(); exe != "" {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			if out, err := proc.ProbeContext(ctx, exe, "--version").Output(); err == nil {
-				newer(string(out)) // "codex-cli 0.155.1"
-			}
-			cancel()
+			// "codex-cli 0.155.1"; read from its npm package, and not run
+			// again once it failed (#864: macOS's malware alert each time)
+			newer(codexCLIVersion(exe))
 		}
 		codexVersionCache.v, codexVersionCache.at = v, time.Now()
 	}
 	return newerVersion(codexVersionCache.v, codexSeen.get())
 }
+
+// codexCLIVersion is what the codex CLI at exe says its version is; a var
+// so tests can fake it.
+var codexCLIVersion = proc.Version
 
 // newerVersion is the later of two versions, a when b isn't one.
 func newerVersion(a, b string) string {
