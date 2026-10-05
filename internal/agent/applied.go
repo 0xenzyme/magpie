@@ -485,7 +485,7 @@ func (a *Agent) connect() (Connection, error) {
 	if f == nil {
 		// nothing to connect it to yet: no provider or subscription added,
 		// which said only that it can't be connected (Tystem on Discord)
-		if shown, hidden := provider.CatalogFor(a.ID); len(shown)+len(hidden) == 0 {
+		if shown, hidden := provider.CatalogFor(a.ListsFor()); len(shown)+len(hidden) == 0 {
 			return Connection{}, &NoModelsError{Agent: a.Name}
 		}
 		return Connection{}, fmt.Errorf("%s can't be connected to magpie", a.Name)

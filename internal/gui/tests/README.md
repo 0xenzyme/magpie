@@ -259,6 +259,12 @@ the agents are drawn again from the state, and opens the list again, where
 "Show all" puts them back; no click moves the page. Chromium and WebKit,
 English and Chinese.
 
+`agent-models-picker.test.cjs` takes two of Claude Code · WSL Ubuntu's
+three models out in its model list, then clicks its model picker, which
+closes the list and opens on the one left at once, while the state that
+follows is still on its way (#927). Chromium and WebKit, English and
+Chinese.
+
 `agent-models.test.cjs` opens Codex's model list from the line under its
 name, in Chromium and WebKit, English and Chinese: the line reads "Showing 8 /
 31 models" under the name, opening it moves nothing and puts it on the screen

@@ -2191,8 +2191,13 @@ function closeAgentModels() {
   document.removeEventListener("keydown", m.keys, true);
   document.removeEventListener("scroll", m.scrolled, true);
   removeEventListener("resize", closeAgentModels);
+  if (!m.changed) return;
+  // its pickers drop what was taken out at once, so the one opened next
+  // (the mousedown on it is what closed the list) has it gone (#927); what
+  // was put back comes with the state
+  if (m.hidden) for (const f of m.a.fields || []) f.options = f.options.filter((o) => !o.ref || !m.hidden.has(o.ref) || o.value === f.value);
   // the agents' pickers list what's left once the writes are in
-  if (m.changed) m.saving.then(async () => { state = await api("state"); renderAgents(); }).catch(() => {});
+  m.saving.then(async () => { state = await api("state"); renderAgents(); }).catch(() => {});
 }
 
 async function openAgentModels(a, anchor, ev) {
@@ -2312,6 +2317,7 @@ async function openAgentModels(a, anchor, ev) {
   const save = () => {
     me.changed = true;
     const hidden = models.filter((m) => m.hidden).map((m) => m.id);
+    me.hidden = new Set(hidden);
     // by whose they are, as the state counts them, for a connected row's chips
     const by = [];
     for (const m of models) {
