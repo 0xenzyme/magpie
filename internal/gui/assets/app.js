@@ -16499,7 +16499,7 @@ function renderSearcher(s, keep, box) {
   const icOf = (id) => choices.find((x) => x.id === id.split("/")[0])?.icon;
   const r = el("div", "row pref searcher-row");
   const who = el("div", "who");
-  const sub = el("div", "sub", t("When a model can't search the web, this provider searches for it, and gives it what it found"));
+  const sub = el("div", "sub", t("When a model can't search the web directly, the selected provider searches for it and returns the results. Searches may use the service's quota or incur charges; if a search fails, magpie tries other available sources."));
   if (v && s.searchUnused) {
     const why = { gone: t("it is no longer in magpie"), off: t("it is turned off"), cant: t("it can't search the web by itself"), nomodel: t("it lists no model") }[s.searchUnused] || s.searchUnused;
     sub.append(" · ", el("span", "warn searcher-unused", t("{who} isn't used: {why}, so magpie picks one", { who: named(v), why })));
@@ -16511,11 +16511,10 @@ function renderSearcher(s, keep, box) {
   if (googles.length) sub.append(" · ", el("span", "searcher-own",
     t("{names} search for their own models first, with Gemini's Google Search", { names: googles.join(", ") })));
   if (s.searchRelays?.length) sub.append(" · ", el("span", "searcher-relays",
-    t("Relays said to search ({names}) are never picked automatically: they would spend the relay's quota on other models' searches; if one refuses magpie's own request, magpie falls back", { names: s.searchRelays.join(", ") })));
-  // only a provider that searches by itself can search for another
-  // model; the rest are left out of the picker, and the row says so (#825)
+    t("These relays must be selected manually and are not used for automatic selection or fallback: {names}.", { names: s.searchRelays.join(", ") })));
+  // Being left out can also mean no usable model, not just no search support.
   if (s.searchLeftOut?.length) sub.append(" · ", el("span", "searcher-left-out",
-    t("Only providers that search the web by themselves are offered (Claude, Codex and Grok accounts; the APIs of Anthropic, OpenAI, DeepSeek, xAI, Zhipu and OpenRouter; Gemini on a Google sign-in; a Kimi Code plan). {names} can't, so for their models the search APIs below search", { names: s.searchLeftOut.length > 6
+    t("These providers can't be selected to search for other models with the current configuration: {names}. Their models can still get search results through other available search providers or configured search APIs.", { names: s.searchLeftOut.length > 6
       ? t("{names} and {n} more", { names: s.searchLeftOut.slice(0, 5).join(", "), n: s.searchLeftOut.length - 5 })
       : s.searchLeftOut.join(", ") })));
   who.append(el("div", "name", t("Searches for other models")), sub);
