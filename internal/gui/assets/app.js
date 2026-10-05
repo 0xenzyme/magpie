@@ -17011,8 +17011,13 @@ function renderSearcher(s, keep, box) {
       options.push({ value: c.id, label: t("its web search"), note: c.name, icon: c.icon, group: c.name });
       continue;
     }
-    options.push({ value: c.id, label: t("{model}, its small model", { model: c.smallName || c.small }), note: c.name, icon: c.icon, group: c.name });
-    for (const m of c.models) options.push({ value: m.id, label: m.name || m.id, note: c.name, icon: c.icon, group: c.name, ref: m.id });
+    // its small model is offered once (Player on Discord): the model of the
+    // same name below it searched just the same, "<provider>/<small>" being
+    // that model named rather than magpie's pick, so a pick saved so is
+    // ticked here. No "via magpie": no agent asks for these
+    const small = c.small ? `${c.id}/${c.small}` : "";
+    options.push({ value: v === small ? small : c.id, label: t("{model}, its small model", { model: c.smallName || c.small }), note: c.name, icon: c.icon, group: c.name });
+    for (const m of c.models) if (m.id !== small) options.push({ value: m.id, label: m.name || m.id, note: c.name, icon: c.icon, group: c.name });
   }
   b.onclick = (ev) => openPicker({ id: "", name: "", fields: [] }, { key: "searcher", label: "model", value: v, options,
     onPick: (id) => { if (id !== v) savePrefs({ ...keep, searcher: id }); } }, b, ev);
