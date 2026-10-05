@@ -1138,6 +1138,11 @@ func ForgetAccounts() {
 	loginsMu.Lock()
 	loginsSeenAt = time.Time{}
 	loginsMu.Unlock()
+	// an account asked for its list a moment ago is asked again: the
+	// accounts read afresh may be others under the same id
+	newFetches.Lock()
+	clear(newFetches.m)
+	newFetches.Unlock()
 	forgetAccountCaches()
 }
 
