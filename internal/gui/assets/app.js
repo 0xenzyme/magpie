@@ -15424,6 +15424,8 @@ function applyPrefs(s, rate) {
     }
   }
   applyPrefs.ready = true;
+  // accounts hidden while personal data is masked, until chosen otherwise
+  window.hideAccounts?.follow(!!s.redactPersonal);
   // this browser's choice from before it was a setting, carried over once
   let kept = null;
   try { kept = localStorage.getItem("magpie.quotaLeft"); localStorage.removeItem("magpie.quotaLeft"); } catch {}
@@ -16723,7 +16725,14 @@ function renderRedact(s, keep) {
   row(t("Mask secrets"), t("API keys, private keys, tokens and passwords go to vendors as placeholders, and come back as they were"),
     onOff(s.redact, (redact) => savePrefs({ ...keep, redact })));
   row(t("Mask personal data"), t("Emails, phone numbers, ID and bank card numbers too"),
-    onOff(s.redactPersonal, (redactPersonal) => savePrefs({ ...keep, redactPersonal })));
+    onOff(s.redactPersonal, (redactPersonal) => {
+      // turned on, the accounts on screen are hidden too
+      if (redactPersonal) window.hideAccounts?.set(true);
+      savePrefs({ ...keep, redactPersonal });
+    }));
+  // Routing's and Usage's Hide accounts, here too, where privacy is looked for
+  if (window.hideAccounts) row(t("Hide accounts"), t("Email addresses and account names on Usage and Routing are blurred, for a screenshot to share"),
+    onOff(window.hideAccounts.on(), (on) => { window.hideAccounts.set(on); renderSettings(); }));
   const words = (s.redactWords || []).join(", ");
   const i = input(words, t("names, codenames, hosts"));
   i.className = "words";
@@ -17851,8 +17860,12 @@ window.noteAccounts = noteAccounts;
   // itself watched, so it can't set itself off again
   const OBS = { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["title"] };
   const SKIP = new Set(["SCRIPT", "STYLE", "OPTION", "TEXTAREA"]);
-  let masked = false;
-  try { masked = localStorage.getItem("magpie.maskEmails") === "1"; } catch {}
+  // chosen is the Hide accounts choice made on this computer; until one is,
+  // the accounts are hidden while Privacy masks personal data, which is
+  // where one who wants them kept out of sight turns it on (inaction on
+  // Discord: another computer with it on still showed the addresses)
+  let masked = false, chosen = null;
+  try { chosen = localStorage.getItem("magpie.maskEmails"); masked = chosen === "1"; } catch {}
   // the pages it hides on: Routing's and Usage's, each with its button; in
   // the tray panel, the whole of it, as the window's setting says
   const targets = mode === "panel" ? [["#view-agents", null]] : [["#view-routing", "#rtMask"], ["#view-usage", "#usageMask"]];
@@ -17938,14 +17951,22 @@ window.noteAccounts = noteAccounts;
   });
   function setMasked(on, keep) {
     masked = on;
-    if (!keep) try { localStorage.setItem("magpie.maskEmails", on ? "1" : "0"); } catch {}
+    if (!keep) { chosen = on ? "1" : "0"; try { localStorage.setItem("magpie.maskEmails", chosen); } catch {} }
     for (const set of pages) set(on);
   }
+  // Settings' Privacy has the same switch, and the settings follow
+  window.hideAccounts = {
+    on: () => masked,
+    set: (on) => setMasked(on),
+    follow: (personal) => { if (chosen === null && personal !== masked) setMasked(personal, true); },
+  };
   // turned in the window: the tray panel (or another window) follows
   window.addEventListener("storage", (e) => {
-    if (e.key === "magpie.maskEmails" && (e.newValue === "1") !== masked) setMasked(e.newValue === "1", true);
+    if (e.key !== "magpie.maskEmails") return;
+    chosen = e.newValue;
+    if ((e.newValue === "1") !== masked) setMasked(e.newValue === "1", true);
   });
-  setMasked(masked);
+  setMasked(masked, true);
 })();
 
 // Opened on a magpie://import link: fetch what it describes (once — the

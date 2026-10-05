@@ -1754,3 +1754,11 @@ of its own (Cindy) on the Agents page: a line under its name says whether
 magpie is added (green once it is), its button stands where the other rows'
 model picker does, as wide and lined up with it at 960 and 700px, and a click
 opens the app's link. English and Chinese, Chromium and WebKit.
+
+`privacy-hides-accounts.test.cjs` checks that Privacy's Mask personal data
+hides the accounts on screen too (inaction on Discord): until Hide accounts is
+chosen on a computer it follows the setting, so Usage's email address is
+blurred and its button pressed; an address shown on purpose with the button
+stays shown; on Settings › Privacy, turning Mask personal data on turns Hide
+accounts on, and Privacy's own Hide accounts row says so and turns it off,
+without scrolling. English and Chinese, Chromium and WebKit.
