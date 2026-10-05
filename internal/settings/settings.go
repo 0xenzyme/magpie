@@ -253,6 +253,14 @@ type Settings struct {
 	// as Codex sends them, "off" answered by magpie with no title and sent
 	// nowhere, or a model's id (provider/model, group/<id>) that writes it.
 	CodexTitles string `json:"codexTitles,omitempty"`
+	// CodexAutoReview is the model Codex's auto-review (approvals_reviewer
+	// = "auto_review": the guardian that decides an approval in the user's
+	// place) runs on (#938): a model's id (provider/model, group/<id>) put
+	// in every entry of the list magpie hands Codex as
+	// auto_review_model_override, which Codex takes before its own
+	// codex-auto-review or the conversation's model at low effort. ""
+	// leaves the list as it was.
+	CodexAutoReview string `json:"codexAutoReview,omitempty"`
 	// FullContext has Codex and Claude Code told a model's whole context
 	// window. Off, a window above WorkingWindow is told as WorkingWindow,
 	// so they compact a long conversation there instead of sending ever
@@ -844,6 +852,10 @@ func Save(s Settings) error {
 	s.CodexTitles = strings.TrimSpace(s.CodexTitles)
 	if s.CodexTitles != "" && s.CodexTitles != "off" && !strings.Contains(s.CodexTitles, "/") {
 		return fmt.Errorf("the model for Codex's titles must be a model's id such as openai/gpt-5-mini, or off, not %q", s.CodexTitles)
+	}
+	s.CodexAutoReview = strings.TrimSpace(s.CodexAutoReview)
+	if s.CodexAutoReview != "" && !strings.Contains(s.CodexAutoReview, "/") {
+		return fmt.Errorf("the model for Codex's auto-review must be a model's id such as openai/gpt-5-mini, not %q", s.CodexAutoReview)
 	}
 	s.Searcher = strings.TrimSpace(s.Searcher)
 	if s.SearchFirst = strings.TrimSpace(s.SearchFirst); s.SearchFirst == SearchFirstModel {

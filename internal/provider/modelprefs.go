@@ -709,6 +709,22 @@ func SetCodexAgentsV1(on bool) error {
 	return nil
 }
 
+// SetCodexAutoReview sets settings.CodexAutoReview, the model Codex's
+// auto-review runs on ("" for Codex's own pick), and has Codex's lists
+// written and asked for again.
+func SetCodexAutoReview(id string) error {
+	s := settings.Load()
+	if s.CodexAutoReview == id {
+		return nil
+	}
+	s.CodexAutoReview = id
+	if err := settings.Save(s); err != nil {
+		return err
+	}
+	catalog.Touched()
+	return nil
+}
+
 // SetFullContext turns settings.FullContext on or off: Codex and Claude
 // Code are told a model's whole window, or the working one, again.
 func SetFullContext(on bool) error {
