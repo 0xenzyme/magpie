@@ -10899,7 +10899,7 @@ function renderQuotas() {
       // when the windows were read: "Updated 3 min ago", or the time of
       // ones standing in for a reading that failed just now (#802; a
       // balance alone says it in its row)
-      const read = !brief && sub.windows?.length && !sub.error && readWhen(sub);
+      const read = !brief && sub.windows?.length && !sub.error && readWhen(sub, true);
       if (read) card.append(read);
       if (!brief && sub.resets?.count) {
         const r = el("div", "quota-resets");
@@ -12229,7 +12229,7 @@ function balanceRow(sub, why, when = true) {
     if (p.percent != null) row.append(balanceMeter(p.percent));
     b.append(row);
   }
-  const read = when && readWhen(sub);
+  const read = when && readWhen(sub, when === "refresh");
   if (read) b.append(read);
   return b;
 }
@@ -12246,22 +12246,57 @@ function balanceMeter(percent) {
 
 // readWhen: when a card's figures were read, quietly under them: "As of
 // …" for one standing in for a reading that failed just now, else how
-// long ago, kept current.
-function readWhen(q) {
+// long ago, kept current. On the Usage page (refresh) the card's own
+// refresh is left of it.
+function readWhen(q, refresh = false) {
+  let s;
   if (q.asOf) {
-    const s = el("div", "quota-read stale", asOfText(q));
+    s = el("div", "quota-read stale", asOfText(q));
     s.title = asOfText(q);
-    return s;
-  }
-  if (!q.readAt) return null;
-  const s = el("div", "quota-read", t("Updated {when}", { when: ago(q.readAt) }));
-  s.dataset.ago = q.readAt;
-  s.title = new Date(q.readAt).toLocaleString();
+  } else if (q.readAt) {
+    s = el("div", "quota-read");
+    const when = el("span", "quota-ago", t("Updated {when}", { when: ago(q.readAt) }));
+    when.dataset.ago = q.readAt;
+    s.append(when);
+    s.title = new Date(q.readAt).toLocaleString();
+  } else return null;
+  if (refresh) s.prepend(quotaRefresh(q));
   return s;
 }
 setInterval(() => {
-  for (const s of document.querySelectorAll(".quota-read[data-ago]")) s.textContent = t("Updated {when}", { when: ago(s.dataset.ago) });
+  for (const s of document.querySelectorAll(".quota-ago[data-ago]")) s.textContent = t("Updated {when}", { when: ago(s.dataset.ago) });
 }, 30000);
+
+// quotaRefresh: a card's own refresh, shown as the card is hovered: that
+// account's or key's allowance alone is read again, the other cards left
+// as they were read (Hu9956, #840: 单独刷新某个套餐，而不用刷新全部). A
+// Claude account's is read by running Claude Code's own /usage, as the
+// page's Refresh does.
+const quotaRefreshing = new Set();
+function quotaRefresh(q) {
+  const key = usageAcctKey(q);
+  const b = el("button", "quota-refresh" + (quotaRefreshing.has(key) ? " busy" : ""));
+  b.type = "button";
+  b.title = t(q.provider === "claude" ? "Read this card again, by running Claude Code's own /usage" : "Read this card again");
+  b.setAttribute("aria-label", t("Refresh this card"));
+  b.innerHTML = '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>';
+  b.onclick = async (e) => {
+    e.stopPropagation();
+    if (quotaRefreshing.has(key)) return;
+    quotaRefreshing.add(key);
+    b.classList.add("busy");
+    try {
+      const qs = await api("usage/quotas/refresh?provider=" + encodeURIComponent(q.provider) + (q.user ? "&user=" + encodeURIComponent(q.user) : ""), {});
+      if (Array.isArray(qs)) { quotas = qs; quotasAt = Date.now(); }
+    } catch (err) {
+      status(err.message, "err");
+    } finally {
+      quotaRefreshing.delete(key);
+      renderQuotas();
+    }
+  };
+  return b;
+}
 
 // familyQuota: an account's windows one a model family where they name
 // one, and "Every model", for above them, turning to each window and back
@@ -12296,10 +12331,12 @@ function familyQuota(sub) {
 
 // quotaWindows: one account's allowance as meters, or why there are none.
 function quotaWindows(sub) {
-  if (sub.balance && !sub.windows?.length) return balanceRow(sub, "What is left on the account: the vendor tells only this, so Used / Left leaves it as it is");
+  if (sub.balance && !sub.windows?.length) return balanceRow(sub, "What is left on the account: the vendor tells only this, so Used / Left leaves it as it is", "refresh");
   if (sub.error) {
     const e = el("div", "subscription-error", quotaError(sub.error));
     e.title = sub.error;
+    // read again from here too: a failed reading is the one most wanted
+    e.prepend(quotaRefresh(sub));
     return e;
   }
   const windows = el("div", "quota-windows");

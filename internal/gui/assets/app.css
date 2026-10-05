@@ -668,6 +668,17 @@ body.window .field.solo { grid-column: auto; }
 .quota-read { flex-basis: 100%; margin-top: 2px; font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .quota-windows + .quota-read, .quota-balance + .quota-read { margin-top: 8px; }
 .quota-read.stale { color: var(--amber); }
+/* a card's own refresh, left of when it was read (or of why it couldn't
+   be), opening as the card is hovered: at rest the line starts where the
+   card's other lines do (#840) */
+.quota-refresh { display: inline-flex; align-items: center; justify-content: center; width: 0; height: 14px; margin: 0; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--faint); vertical-align: -3px; opacity: 0; overflow: hidden; cursor: pointer; transition: width .12s, margin .12s, opacity .12s; }
+.quota-refresh svg { flex: none; }
+.subscription-card:hover .quota-refresh, .quota-refresh:focus-visible, .quota-refresh.busy { width: 14px; margin: 0 3px 0 -2px; opacity: 1; }
+.quota-refresh:hover { color: var(--fg); background: var(--pill-hover); }
+.quota-refresh.busy { cursor: default; }
+.quota-refresh.busy svg { animation: spin .8s linear infinite; }
+@media (hover: none) { .quota-refresh { width: 14px; margin: 0 3px 0 -2px; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .quota-refresh { transition: none; } }
 .skeleton { display: block; border-radius: 5px; background: linear-gradient(90deg, var(--skel, var(--pill)) 25%, var(--skel-hi, var(--pill-hover)) 45%, var(--skel, var(--pill)) 65%); background-size: 240% 100%; animation: skeleton-shift 1.4s ease-in-out infinite; }
 @keyframes skeleton-shift { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 .sk-cost { width: 72px; height: 15px; }
