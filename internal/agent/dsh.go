@@ -141,7 +141,7 @@ func dshAt(at place) *Agent {
 			if err := dshMirrorHome(dir, nil, gw(), true); err != nil {
 				return err
 			}
-			return dshEnv(dir, false)
+			return dshEnv(dir, gw(), false)
 		},
 		Fields: []Field{{
 			Key: "model", Label: "model",
@@ -697,11 +697,11 @@ func dshCheck(dir, gw string) string {
 	}
 	env := filepath.Join(dir, ".env")
 	if off := wiringOff("DeepSeek Harness", env, func(k string) (string, bool) { return edit.GetEnvFile(env, k) },
-		dshKeyRef, gateway.Token); off != "" {
+		dshKeyRef, keyAt(gw)); off != "" {
 		return off
 	}
 	creds := filepath.Join(dir, ".credentials.yaml")
-	if v, ok := edit.GetYAML(creds, "refs."+dshKeyRef); ok && v != gateway.Token {
+	if v, ok := edit.GetYAML(creds, "refs."+dshKeyRef); ok && v != keyAt(gw) {
 		return "DeepSeek Harness's own key store (" + creds + ") holds another " + dshKeyRef + ", which it uses over magpie's; remove it there (dsh's Models page, Magpie's key) to go through magpie"
 	}
 	return ""
@@ -759,7 +759,7 @@ func dshSet(dir, v, gw string) error {
 			return err
 		}
 	}
-	if err := dshEnv(dir, viaGateway); err != nil {
+	if err := dshEnv(dir, gw, viaGateway); err != nil {
 		return err
 	}
 	// a model picked in dsh 0.1.x is saved in its settings and goes over
@@ -773,18 +773,18 @@ func dshSet(dir, v, gw string) error {
 
 // dshEnv puts the key for the gateway in $DSH_HOME/.env, or with on false
 // takes it out; the name magpie's llm-deepseek entry used goes either way.
-func dshEnv(dir string, on bool) error {
+func dshEnv(dir, gw string, on bool) error {
 	env := filepath.Join(dir, ".env")
 	if on {
-		if v, ok := edit.GetEnvFile(env, dshKeyRef); !ok || v != gateway.Token {
-			if err := edit.SetEnvFile(env, edit.KV{Path: dshKeyRef, Value: gateway.Token}); err != nil {
+		if v, ok := edit.GetEnvFile(env, dshKeyRef); !ok || v != keyAt(gw) {
+			if err := edit.SetEnvFile(env, edit.KV{Path: dshKeyRef, Value: keyAt(gw)}); err != nil {
 				return err
 			}
 		}
 	}
 	for _, k := range []string{dshKeyRef, dshOldKeyRef} {
 		// the old name only as magpie left it
-		if v, ok := edit.GetEnvFile(env, k); ok && !(k == dshKeyRef && on) && (k == dshKeyRef || v == gateway.Token) {
+		if v, ok := edit.GetEnvFile(env, k); ok && !(k == dshKeyRef && on) && (k == dshKeyRef || ourKey(v)) {
 			if err := edit.DelEnvFile(env, k); err != nil {
 				return err
 			}
@@ -1108,7 +1108,7 @@ func dshProviderLines(effort string, models []catalog.Model, gw string) []string
 	lines := []string{
 		"- id: llm-deepseek " + dshMark,
 		"  config:",
-		"    apiKey: " + yamlQuote(gateway.Token),
+		"    apiKey: " + yamlQuote(keyAt(gw)),
 		"    baseURL: " + yamlQuote(gw+"/v1"),
 		"    thinking: enabled",
 		"    reasoningEffort: " + effort,
@@ -1190,7 +1190,7 @@ func dshSync(dir, gw string) error {
 	defer func() {
 		// the key under the name the route gives it, moved from the old one
 		if _, items, err := dshRead(files[0]); err == nil && dshWired(items) {
-			dshEnv(dir, true)
+			dshEnv(dir, gw, true)
 		}
 	}()
 	for _, f := range files {

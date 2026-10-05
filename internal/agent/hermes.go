@@ -69,7 +69,7 @@ func hermesIn(at place) *Agent {
 				return ""
 			}
 			return wiringOff("Hermes", path, func(k string) (string, bool) { return edit.GetYAML(path, "providers."+magpieID+"."+k) },
-				"base_url", at.v1(), "api_key", gateway.Token)
+				"base_url", at.v1(), "api_key", at.gwKey())
 		},
 		Fields: []Field{{
 			Key: "model", Label: "model",
@@ -152,7 +152,7 @@ func hermesProviderAt(gw string) hermesProviderEntry {
 		ms = append(ms, m.ID)
 	}
 	return hermesProviderEntry{
-		Name: magpieID, BaseURL: gw + "/v1", APIKey: gateway.Token, APIMode: "chat_completions",
+		Name: magpieID, BaseURL: gw + "/v1", APIKey: keyAt(gw), APIMode: "chat_completions",
 		Headers: map[string]string{"User-Agent": "hermes-agent"}, Models: ms,
 	}
 }

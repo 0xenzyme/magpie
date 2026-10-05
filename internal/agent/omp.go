@@ -17,7 +17,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yetone/magpie/internal/access"
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/edit"
@@ -480,10 +479,8 @@ func ompProviderAt(gw, version string) ompProviderEntry {
 		Headers: map[string]string{"User-Agent": "omp"}, Models: ms}
 	// whqtian on Discord: a WSL omp under NAT asks Windows' address, where
 	// the gateway turns a request without a named key away
-	if onAnotherMachine(gw) {
-		if key := access.LANSecret(); key != "" {
-			e.Auth, e.APIKey = "", key
-		}
+	if key := keyAt(gw); key != gateway.Token {
+		e.Auth, e.APIKey = "", key
 	}
 	return e
 }

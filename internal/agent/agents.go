@@ -337,7 +337,7 @@ func magpieProviderJSONAt(shape, catalog, gw string) any {
 			ms[m.ID] = e
 		}
 		return map[string]any{"npm": "@ai-sdk/openai-compatible", "name": "magpie",
-			"options": map[string]any{"baseURL": gw + "/v1", "apiKey": gateway.Token}, "models": ms}
+			"options": map[string]any{"baseURL": gw + "/v1", "apiKey": keyAt(gw)}, "models": ms}
 	case "crush":
 		var ms []map[string]any
 		for _, m := range models {
@@ -359,7 +359,7 @@ func magpieProviderJSONAt(shape, catalog, gw string) any {
 		if ms == nil {
 			ms = []map[string]any{}
 		}
-		return map[string]any{"type": "openai", "name": "magpie", "base_url": gw + "/v1", "api_key": gateway.Token, "models": ms}
+		return map[string]any{"type": "openai", "name": "magpie", "base_url": gw + "/v1", "api_key": keyAt(gw), "models": ms}
 	case "pi":
 		var ms []map[string]any
 		for _, m := range models {
@@ -368,7 +368,7 @@ func magpieProviderJSONAt(shape, catalog, gw string) any {
 		if ms == nil {
 			ms = []map[string]any{}
 		}
-		return map[string]any{"name": "magpie", "baseUrl": gw + "/v1", "api": "openai-completions", "apiKey": gateway.Token, "models": ms}
+		return map[string]any{"name": "magpie", "baseUrl": gw + "/v1", "api": "openai-completions", "apiKey": keyAt(gw), "models": ms}
 	}
 	return nil
 }
@@ -613,7 +613,7 @@ func openCodeLike(at place, id, name, icon, bin, dir, auth string, ua []string, 
 				return ""
 			}
 			return wiringOff(name, path, func(k string) (string, bool) { return edit.GetJSON(path, "provider."+magpieID+".options."+k) },
-				"baseURL", at.v1(), "apiKey", gateway.Token)
+				"baseURL", at.v1(), "apiKey", at.gwKey())
 		},
 		Sync: func() error {
 			// a model of magpie's chosen, but its provider gone from the
@@ -802,7 +802,7 @@ func piLike(at place, id, name, dir string) *Agent {
 				return ""
 			}
 			return wiringOff(name, modelsPath, func(k string) (string, bool) { return edit.GetJSON(modelsPath, "providers."+magpieID+"."+k) },
-				"baseUrl", at.v1(), "apiKey", gateway.Token)
+				"baseUrl", at.v1(), "apiKey", at.gwKey())
 		},
 		Sync: func() error {
 			return syncJSON(modelsPath, "providers."+magpieID, func() any { return magpieProviderJSONAt("pi", id, at.gw()) })
@@ -1158,7 +1158,7 @@ func crushAt(at place, path, data string) *Agent {
 				return ""
 			}
 			return wiringOff("Crush", path, func(k string) (string, bool) { return get("providers." + magpieID + "." + k) },
-				"base_url", at.v1(), "api_key", gateway.Token)
+				"base_url", at.v1(), "api_key", at.gwKey())
 		},
 		Sync: func() error {
 			return syncJSON(path, "providers."+magpieID, provider)

@@ -148,7 +148,7 @@ func codexIn(at place) *Agent {
 			edit.KV{Path: "name", Value: "magpie"},
 			edit.KV{Path: "base_url", Value: at.v1()},
 			edit.KV{Path: "wire_api", Value: "responses"},
-			edit.KV{Path: "experimental_bearer_token", Value: gateway.Token},
+			edit.KV{Path: "experimental_bearer_token", Value: at.gwKey()},
 		)
 	}
 	hasProvider := func() bool {
@@ -739,7 +739,7 @@ func codexIn(at place) *Agent {
 				if err != nil {
 					return err.Error()
 				}
-				if t["base_url"] != at.v1() || t["experimental_bearer_token"] != gateway.Token || t["wire_api"] != "responses" {
+				if t["base_url"] != at.v1() || t["experimental_bearer_token"] != at.gwKey() || t["wire_api"] != "responses" {
 					return "Codex's [model_providers.magpie] no longer points at magpie's gateway (" + at.v1() + ")"
 				}
 				if c := get("model_catalog_json"); !ownCatalog(c) {
@@ -1057,7 +1057,7 @@ func codexKeptGateway(path string) string {
 	}
 	base, _ := edit.GetTOMLTop(path, "openai_base_url")
 	var table string
-	if t, _ := edit.GetTOMLTable(path, "model_providers."+magpieID); t["experimental_bearer_token"] == gateway.Token {
+	if t, _ := edit.GetTOMLTable(path, "model_providers."+magpieID); ourKey(t["experimental_bearer_token"]) {
 		table = kept(t["base_url"], "/v1")
 	}
 	// the one Codex is on first: magpie's table when it is the provider

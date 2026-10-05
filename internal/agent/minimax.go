@@ -102,7 +102,7 @@ func miniMaxAt(at place, dir string) *Agent {
 				return "MiniMax Code's " + mcodeEntry + " (config.yaml) is turned off, so it no longer reaches magpie"
 			}
 			return wiringOff("MiniMax Code", path, func(k string) (string, bool) { return edit.GetYAML(path, mcodeEntry+".options."+k) },
-				"baseURL", at.gw(), "apiKey", gateway.Token)
+				"baseURL", at.gw(), "apiKey", at.gwKey())
 		},
 		Fields: []Field{{
 			Key: "model", Label: "model",
@@ -183,7 +183,7 @@ func writeMiniMaxEntryAt(path, gw string) error {
 	// sends them; MiniMax Code's own API is that too
 	yamlSet(entry, "api", "anthropic-messages")
 	opts := yamlMap(entry, "options")
-	yamlSet(opts, "apiKey", gateway.Token)
+	yamlSet(opts, "apiKey", keyAt(gw))
 	yamlSet(opts, "baseURL", gw)
 	yamlSet(opts, "authMode", "api-key")
 	yamlSet(yamlMap(opts, "headers"), "User-Agent", mcodeUA)
