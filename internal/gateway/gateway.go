@@ -2485,7 +2485,12 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	if err := p.Sign(ctx, req, to, body); err != nil {
 		return nil, err
 	}
-	return p.Do(s.client, req)
+	res, err := p.Do(s.client, req)
+	if err != nil {
+		return res, err
+	}
+	// Cline's whole replies come in {success, data}
+	return clineUnwrapped(p, res), nil
 }
 
 // fromClaudeCode is a request Claude Code sent, by the User-Agent it gives
