@@ -492,14 +492,39 @@ func siwcFetchModels(ctx context.Context, user string) ([]catalog.Model, error) 
 		}
 		return nil, errors.New(msg)
 	}
-	ms := parseSIWCModels(b)
+	ms, hidden := parseSIWCModels(b)
+	ms = siwcWithCodex(ms, hidden)
 	if len(ms) == 0 {
 		return nil, errors.New("ChatGPT lists no models for this account")
 	}
 	return ms, nil
 }
 
-func parseSIWCModels(b []byte) []catalog.Model {
+// siwcWithCodex adds to the account's catalog the models Codex lists for a
+// ChatGPT plan: the token is served as Codex on the plan (a model it can't
+// run is "not supported when using Codex with a ChatGPT account"), and runs
+// Codex's newest models the catalog leaves out (#933: gpt-6-luna,
+// gpt-6-sol and gpt-6.1-sol ran, listed by neither). Codex's list is the
+// one magpie's Codex subscription last fetched, else Codex CLI's cache; a
+// model the catalog hides stays out.
+func siwcWithCodex(ms []catalog.Model, hidden []string) []catalog.Model {
+	codex, _, ok := catalog.Live("codex")
+	if !ok {
+		codex = catalog.Codex()
+	}
+	for _, m := range codex {
+		if m.ID == "" || strings.Contains(m.ID, "/") || slices.Contains(hidden, m.ID) || slices.ContainsFunc(ms, func(o catalog.Model) bool { return o.ID == m.ID }) {
+			continue
+		}
+		m.Provider, m.APIs = "openai", []string{string(Responses)}
+		ms = append(ms, m)
+	}
+	return ms
+}
+
+// parseSIWCModels gives the catalog's models to list, and the slugs of
+// those it hides.
+func parseSIWCModels(b []byte) (out []catalog.Model, hidden []string) {
 	var list struct {
 		Models []struct {
 			Slug        string   `json:"slug"`
@@ -514,11 +539,14 @@ func parseSIWCModels(b []byte) []catalog.Model {
 		} `json:"models"`
 	}
 	if json.Unmarshal(b, &list) != nil {
-		return nil
+		return nil, nil
 	}
-	var out []catalog.Model
 	for _, m := range list.Models {
-		if m.Slug == "" || m.Visibility != "" && m.Visibility != "list" {
+		if m.Slug == "" {
+			continue
+		}
+		if m.Visibility != "" && m.Visibility != "list" {
+			hidden = append(hidden, m.Slug)
 			continue
 		}
 		mm := catalog.Model{ID: m.Slug, Name: m.DisplayName, Provider: "openai", Context: m.Context, APIs: []string{string(Responses)}}
@@ -534,7 +562,7 @@ func parseSIWCModels(b []byte) []catalog.Model {
 		}
 		out = append(out, mm)
 	}
-	return out
+	return out, hidden
 }
 
 // siwcDropped are the Responses fields Sign in with ChatGPT refuses: the
