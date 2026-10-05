@@ -113,7 +113,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert(before > 0, "the settings list must be long enough to scroll");
         const tall = () => page.locator("#view-settings").evaluate((v) => v.getBoundingClientRect().height);
         const height = await tall();
-        await segs.nth(1).click();
+        // clicked where it is, as the reader's mouse does: in zh the wheel
+        // leaves the row a fraction of a pixel under the header, and
+        // Playwright's own scroll into view before its click moved the page
+        const seg = await segs.nth(1).boundingBox();
+        await page.mouse.click(seg.x + seg.width / 2, seg.y + seg.height / 2);
         await page.locator('#currencySegs .opt.on', { hasText: cny }).waitFor();
         await page.waitForTimeout(400);
         assert.equal(await view(page), before, "picking a currency must not scroll the settings page");
