@@ -1,13 +1,16 @@
 package gui
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/yetone/magpie/internal/agent"
 	"github.com/yetone/magpie/internal/gateway"
+	"github.com/yetone/magpie/internal/proc"
 	"github.com/yetone/magpie/internal/settings"
 )
 
@@ -29,6 +32,31 @@ var portFree = func(addr string) error {
 	return ln.Close()
 }
 
+// magpieOnPort says whether a magpie program of this user's listens on
+// port: the one serving the gateway is then this computer's, whose port is
+// set there. Not when the program listening is another one answering for
+// a magpie inside a container (OrbStack Helper, docker-proxy) or none this
+// user can see; when the processes can't be listed at all, it is taken to
+// be one.
+func magpieOnPort(port string) bool {
+	n, _ := strconv.Atoi(port)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pids, err := proc.ListeningOn(ctx, n)
+	if err != nil {
+		return true
+	}
+	for _, pid := range pids {
+		if pid == os.Getpid() {
+			continue
+		}
+		if path, err := proc.Executable(pid); err == nil && proc.IsMagpie(path) {
+			return true
+		}
+	}
+	return false
+}
+
 // errPortTaken is a port another program listens on.
 func errPortTaken(p int) error {
 	return fmt.Errorf("port %d is in use by another program: pick another one", p)
@@ -39,7 +67,11 @@ func errPortTaken(p int) error {
 // own is easier to tell apart): it checks nothing listens there, saves it,
 // moves the gateway this magpie serves (or starts it, when the port it was
 // on was taken), and then every agent connected to magpie, whose configs
-// have the gateway's URL in them.
+// have the gateway's URL in them. A magpie of this computer's serving the
+// gateway has it moved there; one out of this one's reach — in a container
+// (leslie_luo on Discord: an old magpie in OrbStack held 3425, so the port
+// could be changed neither there nor here), another user's — is left on
+// its port, and this one serves on the new one.
 func setPort(p int) (portJSON, error) {
 	if err := settings.CheckPort(p); err != nil {
 		return portJSON{}, err
@@ -63,7 +95,7 @@ func setPort(p int) (portJSON, error) {
 		return portJSON{Port: want}, nil
 	}
 	gw := served.Load()
-	if gw == nil && gateway.Running() {
+	if gw == nil && gateway.Running() && magpieOnPort(gateway.Port()) {
 		return portJSON{}, fmt.Errorf("another magpie serves the gateway at %s: set its port there, or quit it first", gateway.URL())
 	}
 	host := "127.0.0.1"

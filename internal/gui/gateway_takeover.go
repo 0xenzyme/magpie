@@ -25,7 +25,9 @@ import (
 // way by a reason the page says in its language, and the process it was.
 type gatewayFixJSON struct {
 	OK bool `json:"ok"`
-	// Reason: "not-magpie" (the port is another program's), "unseen" (no
+	// Reason: "not-magpie" (the port is another program's), "container"
+	// (a container's or a VM's: the magpie answering runs in it, which
+	// its own tools stop — docker stop, OrbStack's window), "unseen" (no
 	// process of this user's listens: another user's, an administrator's),
 	// "denied" (a magpie this user may not end), "stuck" (it didn't end),
 	// "respawned" (something started a magpie on the port again at once:
@@ -121,6 +123,8 @@ func startHere() gatewayFixJSON {
 			if proc.IsMagpie(out.Path) {
 				// a magpie took it back as soon as the other quit
 				out.Reason = "respawned"
+			} else if proc.IsForwarder(out.Path) {
+				out.Reason = "container"
 			}
 			break
 		}
@@ -157,6 +161,9 @@ func quitMagpieOnPort(version string) gatewayFixJSON {
 		}
 		if !proc.IsMagpie(path) {
 			out.Reason = "not-magpie"
+			if proc.IsForwarder(path) {
+				out.Reason = "container"
+			}
 			return out
 		}
 	}

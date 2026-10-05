@@ -59,3 +59,29 @@ func IsMagpie(path string) bool {
 	}
 	return false
 }
+
+// IsForwarder says whether the program at path holds a port for a container
+// or a VM, which serves on it from inside: OrbStack's helper, Docker
+// Desktop's backend and vpnkit, docker-proxy, Podman's gvproxy, Lima's
+// (Colima's, Rancher Desktop's) host agent, WSL's relay. A magpie answering
+// there runs in that container (leslie_luo on Discord: magpie v0.1.552 in
+// OrbStack held 3425, and its helper was named as the program to quit),
+// which only the container's own tools stop.
+func IsForwarder(path string) bool {
+	if path == "" {
+		return false
+	}
+	p := strings.ToLower(strings.ReplaceAll(path, `\`, "/"))
+	for _, app := range []string{"/orbstack.app/", "/docker.app/", "/rancher desktop.app/", "/podman desktop.app/", "/docker/resources/"} {
+		if strings.Contains(p, app) {
+			return true
+		}
+	}
+	n := strings.TrimSuffix(filepath.Base(filepath.Clean(p)), ".exe")
+	for _, name := range []string{"orbstack", "com.docker.", "docker-proxy", "dockerd", "vpnkit", "gvproxy", "podman", "limactl", "lima-", "wslrelay", "wslhost", "rootlesskit", "slirp4netns"} {
+		if strings.HasPrefix(n, name) {
+			return true
+		}
+	}
+	return false
+}

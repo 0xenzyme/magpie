@@ -61,3 +61,25 @@ func TestIsMagpie(t *testing.T) {
 		}
 	}
 }
+
+// The programs holding a port for a container are told apart from others:
+// a magpie answering there runs inside it, out of this one's reach.
+func TestIsForwarder(t *testing.T) {
+	for path, want := range map[string]bool{
+		"/Applications/OrbStack.app/Contents/Frameworks/OrbStack Helper.app/Contents/MacOS/OrbStack Helper": true,
+		"/Applications/Docker.app/Contents/MacOS/com.docker.backend":                                        true,
+		"/usr/bin/docker-proxy": true,
+		`C:\Program Files\Docker\Docker\resources\com.docker.backend.exe`: true,
+		`C:\Windows\System32\wslrelay.exe`:                                true,
+		"/opt/homebrew/bin/limactl":                                       true,
+		"/usr/libexec/podman/gvproxy":                                     true,
+		"/Applications/Magpie.app/Contents/MacOS/magpie":                  false,
+		"/usr/bin/python3":                                                false,
+		"/tmp/other-server":                                               false,
+		"":                                                                false,
+	} {
+		if IsForwarder(path) != want {
+			t.Errorf("IsForwarder(%q) = %v", path, !want)
+		}
+	}
+}

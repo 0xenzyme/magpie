@@ -15,12 +15,12 @@ const { chromium, webkit } = require("playwright");
 
 const assets = path.resolve(__dirname, "../assets");
 
-function fixture(lang, world) {
-  const state = { agents: [], profiles: [], settings: { lang, theme: "light" } };
+function fixture(lang, world, theme = "light") {
+  const state = { agents: [], profiles: [], settings: { lang, theme } };
   return async (route) => {
     const url = new URL(route.request().url());
     const json = (data) => route.fulfill({ json: data });
-    if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"light",web:true};` });
+    if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"${theme}",web:true};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (route.request().method() === "POST" && url.pathname.startsWith("/api/gateway/")) {
       world.posts.push(url.pathname);
@@ -52,10 +52,12 @@ const words = {
   en: {
     quit: "Quit magpie 0.1.550 and take over", restart: "Restart gateway", running: "running",
     notMagpie: /Port 3999 is held by \/usr\/bin\/python3 \(pid 4242\), which isn't magpie/,
+    container: /Port 3999 is forwarded by \/Applications\/OrbStack\.app\/.*OrbStack Helper \(pid 873\) to a container or a VM: the magpie 0\.1\.552 .*docker stop <name>.*another port in Settings/,
   },
   zh: {
     quit: "关闭 magpie 0.1.550 并接管网关", restart: "重启网关", running: "运行中",
     notMagpie: /端口 3999 被 \/usr\/bin\/python3（pid 4242）占用，它不是 magpie/,
+    container: /端口 3999 由 \/Applications\/OrbStack\.app\/.*OrbStack Helper（pid 873）转发到一个容器或虚拟机：在那里应答的 magpie 0\.1\.552 .*docker stop <名称>.*换到其他端口/,
   },
 };
 
@@ -67,18 +69,20 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch());
       t.after(() => browser.close());
       const errors = [];
-      const open = async (world) => {
+      const open = async (world, theme) => {
         const context = await browser.newContext({ viewport: { width: 420, height: 520 }, reducedMotion: "reduce" });
         const page = await context.newPage();
         page.setDefaultTimeout(5000);
         page.on("pageerror", (e) => errors.push(e.message));
-        await page.route("**/*", fixture(lang, world));
+        await page.route("**/*", fixture(lang, world, theme));
         await page.goto("http://magpie.test/?view=gateway");
         await page.locator("#gateway .state").waitFor();
         return { context, page };
       };
       const scrolls = (page) => page.evaluate(() => [...document.querySelectorAll(".view, html, body")].map((e) => e.scrollTop).join(","));
       const noLeftBorder = (loc) => loc.evaluate((e) => parseFloat(getComputedStyle(e).borderLeftWidth) === 0);
+      // a border all round, as a button's: no stripe down its left side
+      const noLeftAccent = (loc) => loc.evaluate((e) => { const s = getComputedStyle(e); return s.borderLeftWidth === s.borderRightWidth && s.borderLeftColor === s.borderRightColor; });
 
       // a program that isn't magpie holds the port: said, by its path and pid
       {
@@ -89,13 +93,38 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const { context, page } = await open(world);
         const fix = page.locator("#gateway .gw-fix");
         assert.equal((await fix.textContent()).trim(), w.quit);
-        assert(await noLeftBorder(fix), "the button has a left border");
+        assert(await noLeftAccent(fix), "the button has a left border");
         const before = await scrolls(page);
         await fix.click();
         await page.locator("#gateway .sub.err").waitFor();
         assert.deepEqual(world.posts, ["/api/gateway/take-over"]);
         assert.match(await page.locator("#gateway .sub.err").textContent(), w.notMagpie);
         assert(await noLeftBorder(page.locator("#gateway .sub.err")), "the error has a left border");
+        assert.equal(await scrolls(page), before, "the click scrolled the page");
+        assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "the page scrolls sideways");
+        await context.close();
+      }
+
+      // a magpie in a container (leslie_luo's OrbStack): said as a container's
+      // to stop, in dark mode, where the button is bordered to read as one
+      {
+        const world = {
+          posts: [], gateway: { mine: false, version: "0.1.552", older: true },
+          answer: () => ({ ok: false, reason: "container", port: "3999", pid: 873, path: "/Applications/OrbStack.app/Contents/Frameworks/OrbStack Helper.app/Contents/MacOS/OrbStack Helper", version: "0.1.552" }),
+        };
+        const { context, page } = await open(world, "dark");
+        assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "dark");
+        const fix = page.locator("#gateway .gw-fix");
+        const look = await fix.evaluate((b) => {
+          const s = getComputedStyle(b), card = getComputedStyle(b.closest(".gw") || document.body);
+          return { top: parseFloat(s.borderTopWidth), left: parseFloat(s.borderLeftWidth), color: s.borderTopColor, bg: s.backgroundColor, card: card.backgroundColor };
+        });
+        assert(look.top >= 1 && look.left >= 1, `the button has no border in dark mode: ${JSON.stringify(look)}`);
+        assert.notEqual(look.color, look.card, "the border is the card's colour");
+        const before = await scrolls(page);
+        await fix.click();
+        await page.locator("#gateway .sub.err").waitFor();
+        assert.match(await page.locator("#gateway .sub.err").textContent(), w.container);
         assert.equal(await scrolls(page), before, "the click scrolled the page");
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "the page scrolls sideways");
         await context.close();

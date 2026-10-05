@@ -4925,7 +4925,8 @@ let gatewayFix = { busy: false, err: "", when: "" };
 const gatewayFixWhen = (g) => [g.running, g.mine, g.version || ""].join("|");
 function gatewayFixButton(g, older) {
   if (g.running && !g.mine && !older) return null;
-  const b = el("button", "text gw-fix");
+  // bordered: a plain text button read as words on the card in dark mode
+  const b = el("button", "text action gw-fix");
   b.textContent = gatewayFix.busy
     ? (older ? t("Quitting magpie {v}…", { v: g.version }) : t(g.running ? "Restarting the gateway…" : "Starting the gateway…"))
     : (older ? t("Quit magpie {v} and take over", { v: g.version }) : t(g.running ? "Restart gateway" : "Start gateway"));
@@ -4948,6 +4949,9 @@ function gatewayFixSays(o) {
   const p = { port: o.port || "", pid: o.pid || "", path: o.path || "", v: o.version || "", error: o.error || "" };
   switch (o.reason) {
     case "not-magpie": return t("Port {port} is held by {path} (pid {pid}), which isn't magpie, so magpie leaves it alone. Quit it yourself, or move the gateway to another port in Settings.", p);
+    // leslie_luo on Discord: an old magpie in OrbStack, its helper named
+    // as the program to quit
+    case "container": return t("Port {port} is forwarded by {path} (pid {pid}) to a container or a VM: the magpie {v} answering there runs inside it, out of this magpie's reach. Stop that container (docker ps lists it, docker stop <name> stops it, or stop it in OrbStack or Docker Desktop), or move this magpie's gateway to another port in Settings.", p);
     case "unseen": return t("magpie can't see which process holds port {port}: it runs as another user or as administrator. Quit it there.", p);
     case "denied": return t("magpie {v} (pid {pid}, {path}) runs as another user or as administrator, so this magpie can't quit it. Quit it there.", p);
     case "stuck": return t("magpie {v} (pid {pid}) didn't quit. End it in your system's process list (Activity Monitor, Task Manager).", p);

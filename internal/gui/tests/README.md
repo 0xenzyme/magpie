@@ -26,8 +26,10 @@ magpie serving the gateway it reads "Quit magpie {v} and take over" and posts
 `/api/gateway/take-over`; once this magpie serves it is "Restart gateway" and
 posts `/api/gateway/restart`; a magpie of the same version gets no button. A
 refusal (a program that isn't magpie on the port) is said under it with the
-program's path and pid. No click scrolls, nothing has a left border, in
-Chinese and English.
+program's path and pid; a container's forwarder on the port (OrbStack
+Helper) is said as a container to stop, with `docker stop`, and in dark mode
+the button is bordered so it reads as one. No click scrolls, nothing has a
+left border, in Chinese and English.
 
 `gateway-key-limit.test.cjs` checks a gateway key's own limit (#585): each
 limited key's badge and line (used, limit, left, reset, requests in flight,
