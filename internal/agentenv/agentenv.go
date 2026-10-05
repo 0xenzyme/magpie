@@ -30,6 +30,8 @@ package agentenv
 var Vars = []string{
 	// Claude Code, Codex and Copilot CLI
 	"CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME",
+	// Claude Code's temp folder, the images its sessions were given
+	"CLAUDE_CODE_TMPDIR",
 	// Codex's state database, when it is kept apart from CODEX_HOME
 	"CODEX_SQLITE_HOME",
 	// Gemini CLI's session/config home

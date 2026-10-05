@@ -6,6 +6,7 @@ These pages describe current responsibilities, runtime paths, state, and contrac
 | --- | --- |
 | Built-in subscriptions moving to plugins | [Provider and plugin ownership](provider-plugins.md) |
 | Plugins that run on the gateway's requests and replies | [Gateway middleware](gateway-middleware.md) |
+| Claude subscription turns across Claude Code runs | [Claude subscription bridge](claude-subscription-bridge.md) |
 
 A subsystem can span several packages or repositories. Its reference describes the behavior those parts provide together; it does not need to list every function.
 
