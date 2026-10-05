@@ -1,4 +1,4 @@
-<!-- reviewed-through: 652e5e1ec538e9f21e78f16fe2e7bfd208797ee3 (2026-10-05 23:54 +0800) -->
+<!-- reviewed-through: 34bfb9ca (2026-10-06 03:48 +0800) -->
 # Lessons from merged work
 
 magpie's code is written, reviewed, merged and released by agents. Each night
@@ -55,6 +55,16 @@ content before you rest an account.**
 - Test that the same request fails the same way on a second account.
 - Seen 1× (2026-10-05).
 
+**Fix what the error is about, not only how it is worded.**
+- e63fbb0e (kkgg on Discord, "GLM 直接429了"): Zhipu answered a GLM Coding
+  Plan key sent to its pay-as-you-go endpoint with 429 1113 "余额不足". The
+  commit relabelled the 429 as out of credit, and nothing in magpie tells the
+  user the key belongs on the Coding Plan endpoint, which is what would make
+  their requests work.
+- When a report shows a wrong label, also ask why the request failed. Fix
+  that, or point the user to the fix in the message itself.
+- Seen 1× (2026-10-06).
+
 ## Fix the class, not the sample
 
 **When the bug is in shared logic or a repeated pattern, grep every sibling
@@ -72,7 +82,10 @@ guard of the same shape, every caller of a predicate.
 - ZCode's NAS-address fix (63f83bf1, 5daba301) was needed again in WorkBuddy.
 - bf9bd9c9 (#898) changed `Running()` on Windows, and Cline's if/else chain
   took the wrong branch (3fad3d21).
-- Seen 1× (2026-10-05), but six times that day.
+- #933: 7a926dd3 signed the ChatGPT API subscription in but listed only the
+  account catalog's models; the plan's Codex models followed an hour later
+  (b0607ef5).
+- Seen 2× (2026-10-05, six times; 2026-10-06).
 
 **Scope a vendor rule to that vendor.**
 - e950eb08 capped every model at 272K over one DeepSeek report. Claude [1m]
@@ -111,8 +124,10 @@ everything built on it.**
 "equal".**
 - relink's `fresh()` treated two unreadable folders as equal and deleted the
   copy (9fb9a8ab).
-- readLogins still returns an empty list on a parse error, which is written
-  back as "no accounts" (d5619d5a only retries for 15ms).
+- readLogins returned an empty list on a parse error, which the next add or
+  sign-out wrote back as "no accounts" (d5619d5a only retried for 15ms).
+  Fixed in b363327d: the accounts read before are kept, and a file that
+  doesn't parse is copied aside before it is written over.
 - Seen 1× (2026-10-05).
 
 **Before deleting or overwriting a live credential, find every record that
@@ -159,7 +174,10 @@ in every language.**
   4a87b306 left routing-served red for 8 releases.
 - Test the empty case: 6fc0afe8's price editor couldn't price a model with
   no list price (4c001cef).
-- Seen 1× (2026-10-05).
+- 10-06: 4c170cba's Japanese string had a third `{agent}`, and gui-ja was red
+  until 34bfb9ca. 29e6d148 (#929) kept a clicked chip in view in Chromium
+  only; c6e318e1 did WebKit 40 minutes later.
+- Seen 2× (2026-10-05, 2026-10-06).
 
 ## Red tests and releases
 
@@ -173,7 +191,11 @@ in every language.**
   TestCloudflareDecideModelsTested for 19h (a45b3e09).
 - Run `go test -race -count=20 -run X` before calling something a flake.
   Then fix it, or name the cause in an issue, in its own commit.
-- Seen 1× (2026-10-05), but in dozens of commits.
+- 10-06: 4c170cba, ab47042b, 76dc5aed and aab93f9f each shipped with tests
+  that "failed under the full run's load and pass on their own". Two of them
+  weren't load: TestProvidersAnswerWhileListsComeIn depended on test order
+  (bfe8bcaf), and Kiro's identity refresh had a data race (ccdd18e3).
+- Seen 2× (2026-10-05, dozens of commits; 2026-10-06).
 
 **Don't tag until a CI Test run on that commit, or one containing it, has
 finished green. A cancelled run is not a pass.**
@@ -210,5 +232,7 @@ it doesn't.**
 - 653cb8ee bundled ZCode sign-in with WSL session deletion.
 - 5464a362 capped six pages at 1200px when #860 asked for a speed display.
 - A fix found on the way goes in its own commit. 1e0829b1 hid the ja/de fix
-  inside a Usage change.
-- Seen 1× (2026-10-05).
+  inside a Usage change, beside two issues (#925, #928).
+- 76dc5aed bundled a Routing animation fix, a scrollbar fix and bringing the
+  GUI tests up to date.
+- Seen 2× (2026-10-05, 2026-10-06).
