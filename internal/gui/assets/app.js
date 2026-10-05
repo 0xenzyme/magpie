@@ -15732,6 +15732,60 @@ function renderCLI(r) {
   cliAsk?.then((v) => { if (r.isConnected) paint(v); }, () => { if (!cliView) sub.textContent = t("Couldn't tell"); });
 }
 
+// Settings' Download source (#893): where an update's file is downloaded
+// from — GitHub, or a GitHub download mirror put before its URL, the same
+// setting `magpie update mirror` writes. magpie names no mirror of its
+// own; the feed and each file's SHA-256 still come from usemagpie.ai, and a
+// file that doesn't match is never installed. A draft and its error are
+// kept across the page being drawn again.
+let mirrorEditing = false, mirrorDraft = "", mirrorErr = "";
+function setUpdateMirror(mirror) {
+  return writingPrefs(api("settings/update-mirror", { mirror }))
+    .then((ns) => { prefs = ns; mirrorEditing = false; mirrorDraft = mirrorErr = ""; renderSettings(); status(t("Saved"), "ok", 1500); return ns; });
+}
+function renderUpdateMirror(r, s) {
+  r.classList.add("update-mirror-row");
+  const who = r.querySelector(".who"), val = r.querySelector(".val");
+  who.querySelector(".sub")?.remove();
+  val.replaceChildren();
+  const sub = el("div", "sub");
+  who.append(sub);
+  const m = s.updateMirror || "";
+  sub.textContent = mirrorErr || (m ? t("Updates are downloaded through this mirror, each checked against usemagpie.ai's checksum")
+    : t("Updates are downloaded from GitHub; a mirror can be used where GitHub is slow"));
+  sub.classList.toggle("err", !!mirrorErr);
+  sub.title = t("The update and its checksum always come from usemagpie.ai; a file from the mirror that doesn't match it is not installed.");
+  if (!mirrorEditing) {
+    if (m) {
+      const official = el("button", "text", t("Use GitHub"));
+      official.onclick = () => setUpdateMirror("").catch((e) => status(t(e.message), "err"));
+      const change = el("button", "text", t("Change"));
+      change.onclick = () => { mirrorEditing = true; mirrorDraft = m; renderUpdateMirror(r, s); };
+      val.append(el("code", "", m), change, official);
+    } else {
+      const add = el("button", "text", t("Use a mirror…"));
+      add.onclick = () => { mirrorEditing = true; mirrorDraft = ""; renderUpdateMirror(r, s); };
+      val.append(el("code", "", "GitHub"), add);
+    }
+    return;
+  }
+  const i = input(mirrorDraft, "https://mirror.example/");
+  i.className = "words update-mirror-input";
+  i.setAttribute("aria-label", t("Mirror address"));
+  i.oninput = () => { mirrorDraft = i.value; };
+  const save = el("button", "text", t("Save"));
+  save.onclick = () => {
+    const v = i.value.trim();
+    if (!v) return i.focus({ preventScroll: true });
+    setUpdateMirror(v).catch((e) => { mirrorErr = t(e.message); status(t(e.message), "err"); renderSettings(); });
+  };
+  const cancel = el("button", "text", t("Cancel"));
+  cancel.onclick = () => { mirrorEditing = false; mirrorDraft = mirrorErr = ""; renderUpdateMirror(r, s); };
+  i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") save.onclick(); else if (e.key === "Escape") cancel.onclick(); };
+  val.append(i, cancel, save);
+  queueMicrotask(() => { if (i.isConnected && document.activeElement !== i) i.focus({ preventScroll: true }); });
+}
+
 function renderSettings() {
   const s = prefs;
   const keep = prefsKeep(s);
@@ -15859,6 +15913,7 @@ function renderSettings() {
   row(t("Check every"), s.noAutoUpdate ? t("While automatic updates are on") : t("How often magpie looks for a newer version"), "",
     segs(UPDATE_EVERY.map((m) => [m, m < 60 ? t("{n} min", { n: m }) : t("{n} h", { n: m / 60 })]), s.updateEvery || 360,
       (updateEvery) => savePrefs({ ...keep, updateEvery }))).classList.add("update-every-row", ...(s.noAutoUpdate ? ["off"] : []));
+  renderUpdateMirror(row(t("Download source"), "", ""), s);
   const open = el("button", "text", t("Open"));
   open.onclick = () => api("settings/reveal", {}).catch((e) => status(e.message, "err"));
   // portable (a data folder beside magpie, #508): everything is in there
@@ -17256,6 +17311,25 @@ async function renderUpdate(r, u) {
       sub.textContent = t(u.latest ? "Couldn't download {v}" : "Couldn't check for updates", { v: u.latest }) + (u.error ? " · " + u.error.replace(/^Get "[^"]*": /, "") : "");
       sub.title = u.error || "";
       if (u.error) sub.classList.add("wraps");
+      // through a mirror (#893): it's the mirror's failing — it didn't
+      // answer, or sent a file that isn't the release's, never installed —
+      // and GitHub itself is offered, which also takes the mirror away
+      if (u.mirror) {
+        sub.textContent = t("Couldn't download {v} through the mirror {mirror}; it may be down or sent a file that doesn't match the release, which isn't installed", { v: u.latest, mirror: u.mirror })
+          + (u.error ? " · " + u.error.replace("through the mirror " + u.mirror + ": ", "").replace(/^Get "[^"]*": /, "") : "");
+        btn(t("Download from GitHub"), async () => {
+          if (updateBusy) return;
+          for (const b of val.querySelectorAll("button")) { b.disabled = true; b.classList.add("busy"); }
+          try {
+            prefs = await writingPrefs(api("settings/update-mirror", { mirror: "" }));
+            await api(updatePath("update/install"), installFrom());
+            renderSettings(); // the source row says GitHub, this one the download
+          } catch (e) {
+            status(t(e.message), "err");
+            renderUpdate(r);
+          }
+        });
+      }
       btn(t("Check"), check);
       break;
     case "": // not asked yet: with automatic updates off, only this asks

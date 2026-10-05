@@ -1362,6 +1362,32 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		}
 		writeJSON(rw, settingsState())
 	})
+	// the GitHub download mirror updates come through (#893), the same
+	// setting `magpie update mirror` sets: a full https:// prefix, or ""
+	// for GitHub itself. The feed and its checksums are never the mirror's.
+	mux.HandleFunc("POST /api/settings/update-mirror", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Mirror string `json:"mirror"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		m := strings.TrimSpace(in.Mirror)
+		if m != "" {
+			if err := update.CheckMirrorURL(m); err != nil {
+				fail(rw, err)
+				return
+			}
+		}
+		s := settings.Load()
+		s.UpdateMirror = m
+		if err := settings.Save(s); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, settingsState())
+	})
 	// a web search API added, given a new key or address, or taken away
 	mux.HandleFunc("POST /api/settings/search-api", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct {
