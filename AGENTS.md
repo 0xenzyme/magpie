@@ -7,6 +7,10 @@ Before changing a documented subsystem, read its
 When preparing or reviewing a PR, follow the same page's documentation update,
 semantic change description, and review rules.
 
+## Code standards
+
+Write and review changes against the [code standards](docs/code-standards.md).
+
 ## Built-in subscriptions that a plugin serves
 
 Some built-in subscriptions are deprecated. Reaching them can break their
