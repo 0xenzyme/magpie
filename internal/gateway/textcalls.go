@@ -12,7 +12,9 @@ import (
 // A model deep into a long conversation may write its tool calls into its
 // text instead of making them (#823, Dazzle-sys: DeepSeek through a group,
 // in Pi, ~700k tokens in): Hermes' <tool_call>{"name": …, "arguments": …}
-// </tool_call>, or DeepSeek's own <｜DSML｜invoke name="…"> with its
+// </tool_call>, GLM's <tool_call>name<arg_key>…</arg_key><arg_value>…
+// </arg_value></tool_call> (#906), or DeepSeek's own <｜DSML｜invoke
+// name="…"> with its
 // parameters, often with the other's closing tags strewn after it. The
 // agent got it as text, ran nothing and ended the turn; told to go on, the
 // model read its own text-written call back and wrote the next one the
@@ -122,6 +124,10 @@ func parseTextCalls(s string, names map[string]bool) (calls []writtenCall, rest 
 				continue
 			}
 			c, n, good := hermesCall(s[h+len("<tool_call>"):], names)
+			if !good && !strings.HasPrefix(strings.TrimLeft(s[h+len("<tool_call>"):], " \t\r\n"), "{") {
+				// GLM's own: the name, then its arguments in pairs (#906)
+				c, n, good = glmCall(s[h+len("<tool_call>"):], names)
+			}
 			if !good {
 				return nil, "", false
 			}
@@ -201,6 +207,53 @@ func hermesCall(s string, names map[string]bool) (writtenCall, int, bool) {
 		n = len(s) - len(t) + len("</tool_call>")
 	}
 	return writtenCall{Name: v.Name, Args: args}, n, true
+}
+
+var (
+	glmPair = regexp.MustCompile(`(?s)^\s*<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>`)
+	glmName = regexp.MustCompile(`^\s*([^\s<>{}"]+)\s*`)
+)
+
+// glmCall reads GLM's own call (#906, nullburn: GLM-5.3-Flash through
+// vLLM wrote them into its text in Codex): the tool's name right after
+// <tool_call>, then <arg_key>…</arg_key><arg_value>…</arg_value> for
+// each argument, then </tool_call>. A value that is JSON (a number, an
+// object, a list, true) is taken as it, as GLM's template writes them;
+// else it is the string it says. It says how much of s it took.
+func glmCall(s string, names map[string]bool) (writtenCall, int, bool) {
+	m := glmName.FindStringSubmatchIndex(s)
+	if m == nil || !names[s[m[2]:m[3]]] {
+		return writtenCall{}, 0, false
+	}
+	name, n := s[m[2]:m[3]], m[1]
+	args := map[string]any{}
+	for {
+		p := glmPair.FindStringSubmatchIndex(s[n:])
+		if p == nil {
+			break
+		}
+		key, val := strings.TrimSpace(s[n+p[2]:n+p[3]]), s[n+p[4]:n+p[5]]
+		var v any
+		if json.Unmarshal([]byte(strings.TrimSpace(val)), &v) == nil {
+			args[key] = v
+		} else {
+			args[key] = val
+		}
+		n += p[1]
+	}
+	t := strings.TrimLeft(s[n:], " \t\r\n")
+	switch {
+	case strings.HasPrefix(t, "</tool_call>"):
+		n = len(s) - len(t) + len("</tool_call>")
+	case t != "" && !strings.HasPrefix(t, "<tool_call>"):
+		// something else follows the name: not a call of GLM's
+		return writtenCall{}, 0, false
+	}
+	b, err := json.Marshal(args)
+	if err != nil {
+		return writtenCall{}, 0, false
+	}
+	return writtenCall{Name: name, Args: b}, n, true
 }
 
 // dsmlCall reads DeepSeek's <｜DSML｜invoke name="…"> and its parameters,
