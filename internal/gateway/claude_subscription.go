@@ -2000,6 +2000,7 @@ const (
 	ambiguousCalls = "ambiguous"
 	runExpired     = "process expired"
 	noRunWaiting   = "no run waiting"
+	accountChanged = "account changed"
 )
 
 // match is findRun, and how the results found their run (byExactID,
@@ -2513,18 +2514,17 @@ func ownerAccount(owner string) (user string, own bool) {
 }
 
 func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request, from provider.Protocol, p provider.Provider, model string, body []byte, usage *Usage) (int, string) {
-	start := func(ctx context.Context, req *Request) (*subscriptionRun, <-chan Event, error) {
-		ctx = p.Via(ctx) // the account's own proxy, its CLI run's too
-		owner := p.ID + "\x00" + p.Account.User
+	owner := p.ID
+	if p.Account != nil {
+		owner += "\x00" + p.Account.User
 		if p.Account.AgentsOwn() {
-			// Claude Code's own sign-in, which a switch moves to another
-			// account: a run kept from before goes on as that one (it
-			// reads its keychain again), so the account, once saved and
-			// run in a config directory of its own, never resumes it
-			// (nil_1024: made first, a saved account's turns went on as
-			// the spent one in its Claude Code)
+			// A process in the agent's home reads that home's current sign-in.
+			// A saved account must not resume it after the sign-in moves.
 			owner += "\x00" + ownHome
 		}
+	}
+	start := func(ctx context.Context, req *Request) (*subscriptionRun, <-chan Event, error) {
+		ctx = p.Via(ctx) // the account's own proxy, its CLI run's too
 		if run, events := s.subscription.resume(req, owner); run != nil {
 			return run, events, nil
 		}
@@ -2546,13 +2546,13 @@ func (s *Server) serveClaudeSubscription(w http.ResponseWriter, r *http.Request,
 		}
 		return s.subscription.start(ctx, req, model, dir, owner, from)
 	}
-	return s.serveSubscription(w, r, from, "Claude Code", model, body, usage, start)
+	return s.serveSubscription(w, r, from, "Claude Code", model, owner, body, usage, start)
 }
 
 // serveSubscription answers a request through an agent's own binary: a new
 // turn starts it, a request carrying tool results resumes the turn waiting
 // on them.
-func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from provider.Protocol, name, model string, body []byte, usage *Usage,
+func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from provider.Protocol, name, model, owner string, body []byte, usage *Usage,
 	start func(ctx context.Context, req *Request) (*subscriptionRun, <-chan Event, error)) (int, string) {
 	req, err := parse(from, body)
 	if err != nil {
@@ -2581,6 +2581,13 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 	if run != nil && !run.claimResume() {
 		msg := "the agent's turn is already being resumed"
 		return writeError(w, from, http.StatusConflict, msg), msg
+	}
+	// Tool-call IDs find the process that made them, independently of the
+	// account routing selected. Continuing a different owner's process would
+	// spend its quota and report its reply or limit against the chosen account.
+	if run != nil && run.owner != owner {
+		run.abort()
+		run, how = nil, accountChanged
 	}
 	// the client rewrote the conversation since the run's last reply, as Pi
 	// does compacting it mid-turn: the run's agent holds the one from before,

@@ -205,7 +205,7 @@ func TestSubscriptionStreamErrorIsTheEnd(t *testing.T) {
 		body := `{"model":"m","max_tokens":10,"stream":true,"messages":[{"role":"user","content":"hi"}],"input":"hi"}`
 		rec := httptest.NewRecorder()
 		var u Usage
-		code, failed := s.serveSubscription(rec, httptest.NewRequest("POST", "/", strings.NewReader(body)), from, "Agent", "m", []byte(body), &u, start)
+		code, failed := s.serveSubscription(rec, httptest.NewRequest("POST", "/", strings.NewReader(body)), from, "Agent", "m", "", []byte(body), &u, start)
 		out := rec.Body.String()
 		if code != 200 || failed != "it died" || !strings.Contains(out, "it died") {
 			t.Fatalf("%s: %d %q\n%s", from, code, failed, out)

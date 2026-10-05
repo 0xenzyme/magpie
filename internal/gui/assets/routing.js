@@ -1626,16 +1626,24 @@
   // tried, answered and failed in them, and how the latest found it
   function renderActs(rs) {
     const by = new Map();
+    // The agent's current sign-in uses its provider's ID; after switching,
+    // that same account uses provider@user and the base ID names another.
+    // Group accounts by their identity, resolving each try in its own route.
+    const keyOf = (w) => w.kind === "account" && w.who
+      ? JSON.stringify([w.provider, w.who.trim().toLowerCase()]) : w.id;
     for (const r of [...rs].reverse()) { // oldest first, so the latest wins
+      const candidates = new Map();
       r.order.forEach((w, i) => {
-        const a = by.get(w.id) || { w, tried: 0, ok: 0, fails: {}, last: 0, rest: null, restAt: 0, seen: 0, pos: 0, models: new Set() };
+        const key = keyOf(w);
+        const a = by.get(key) || { w, tried: 0, ok: 0, fails: {}, last: 0, rest: null, restAt: 0, seen: 0, pos: 0, models: new Set() };
         a.w = w; a.seen++; a.pos = i; a.at = r.time;
         // a later request found it resting, or not
         if (at(r.time) >= a.restAt) { a.rest = w.rest || null; a.restAt = at(r.time); }
-        by.set(w.id, a);
+        by.set(key, a);
+        candidates.set(w.id, a);
       });
       for (const tr of r.tries) {
-        const a = by.get(tr.id);
+        const a = candidates.get(tr.id);
         if (!a || !tr.done || tr.fail === "canceled") continue; // the agent's doing, not its
         a.tried++;
         const end = at(tr.start) + (tr.ms || 0);
