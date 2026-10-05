@@ -138,9 +138,9 @@ type state struct {
 	ID          string            `json:"id,omitempty"`
 	Cwd         string            `json:"cwd,omitempty"`
 	Title       string            `json:"title,omitempty"`
-	Named       string            `json:"named,omitempty"` // the agent's own title for it
+	Named       string            `json:"named,omitempty"`  // the agent's own title for it
 	Custom      string            `json:"custom,omitempty"` // the name the user gave it
-	First       string            `json:"first,omitempty"` // the first message, when no prompt looked typed
+	First       string            `json:"first,omitempty"`  // the first message, when no prompt looked typed
 	Start       time.Time         `json:"start"`
 	Last        time.Time         `json:"last"`
 	Models      map[string]Tokens `json:"models,omitempty"`
