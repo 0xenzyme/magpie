@@ -2435,6 +2435,15 @@
   const fixedWords = (level) => t("{level} reasoning", { level });
   // a routing group among a group's members: group/<id>
   const subOf = (id) => id?.startsWith("group/") ? groups?.groups.find((x) => "group/" + x.id === id && !x.hidden) : null;
+  // a group's editor, its draft being the group as it is now. The group's own
+  // card opens it, and so does a group that is a member of another: such a
+  // member takes no reasoning of its own (provider.SaveGroup refuses
+  // "group/x:high"), so its row says where its reasoning is set and goes
+  // there, rather than leaving the slot empty.
+  const openGroupEditor = (g) => {
+    gEdit = { id: g.id, draft: { name: g.name, members: [...g.members], match: [...(g.match || [])], matched: [...(g.matched || [])], fast: [...(g.fast || [])], off: [...(g.off || [])], routing: g.routing || "", pick: g.pick || "", affinity: g.affinity || "", sink: !!g.sink, firstToken: g.firstToken || 0, context: g.context || 0, classifier: g.classifier || "", effort: g.effort || "", levels: [...(g.levels || [])], rules: (g.rules || []).map((r) => ({ ...r, intent: r.intent || "", agents: [...(r.agents || [])], time: r.time ? { ...r.time, days: [...(r.time.days || [])] } : null })) } };
+    renderGroups();
+  };
   const groupIcons = (g) => [...new Map((g.memberInfo || []).filter((i) => i.icon).map((i) => [i.provider || i.icon, i.icon])).values()];
   const memberIcon = (id) => { const s = subOf(id); return s ? stackIcon(groupIcons(s)) : icon(modelOf(id)?.icon || "generic"); };
   const memberName = (id) => { const s = subOf(id), m = modelOf(id); return s ? s.name : m ? m.name || m.id : id; };
@@ -2686,7 +2695,7 @@
     else if (!g.ready) tags.append(el("span", "tag bad", t("no member ready")));
     const edit = el("button", "text", t("Edit"));
     edit.onclick = (e) => { e.stopPropagation(); open(); };
-    const open = () => { gEdit = { id: g.id, draft: { name: g.name, members: [...g.members], match: [...(g.match || [])], matched: [...(g.matched || [])], fast: [...(g.fast || [])], off: [...(g.off || [])], routing: g.routing || "", pick: g.pick || "", affinity: g.affinity || "", sink: !!g.sink, firstToken: g.firstToken || 0, context: g.context || 0, classifier: g.classifier || "", effort: g.effort || "", levels: [...(g.levels || [])], rules: (g.rules || []).map((r) => ({ ...r, intent: r.intent || "", agents: [...(r.agents || [])], time: r.time ? { ...r.time, days: [...(r.time.days || [])] } : null })) } }; renderGroups(); };
+    const open = () => openGroupEditor(g);
     row.onclick = open;
     row.oncontextmenu = (e) => { e.preventDefault(); groupMenu(ics, g); };
     row.append(ics, main, tags, edit);
@@ -2951,6 +2960,12 @@
       list.replaceChildren();
       d.members.forEach((id, i) => {
         const m = modelOf(id), s = subOf(id);
+        // a member that is itself a group is in none of groups.models
+        // (groupsState leaves groups out of it), so it is read from its own
+        // memberInfo instead: without this its row carried no chips at all,
+        // and a group inside a group said nothing of what it takes
+        const info = infoOf(id);
+        const chips = m || (s ? info : undefined);
         const row = el("div", "fbrow");
         const n = el("span", "n");
         n.append(el("span", "", memberName(id)));
@@ -2979,7 +2994,7 @@
         // A member whose list says nothing of images is marked unknown rather
         // than text-only: magpie counts it text-only for a describer
         // (gateway.blindTo), which is not the same as its list saying so.
-        if (m) row.append(modelInfo({ ...m, images: infoOf(id)?.images ?? m.images, imagesUnknown: infoOf(id)?.imagesUnknown ?? m.imagesUnknown }));
+        if (chips) row.append(modelInfo({ ...chips, group: !!s, images: info?.images ?? chips.images, imagesUnknown: info?.imagesUnknown ?? chips.imagesUnknown }));
         // the reasoning the model is sent at in this group: the group's
         // (blank), or one of its own whatever the agent asks. A group in
         // it reasons as it says.
@@ -3015,6 +3030,23 @@
             fb.onclick = () => { d.fast = on ? d.fast.filter((x) => x !== id) : [...d.fast, id]; draw(); };
             row.append(fb);
           }
+        } else {
+          // a group in the group takes no reasoning of its own: its models
+          // reason as it says (provider.SaveGroup refuses "group/x:high", and
+          // the gateway has nowhere to put one). So the slot a model's own
+          // picker sits in says where it is set instead, and goes there.
+          const hx = el("button", "rt-cond rt-fixed rt-inner");
+          hx.type = "button";
+          // in a span, so a long group's name ellipsizes instead of widening
+          // the row: the desktop app's member row doesn't wrap
+          hx.append(el("span", "", t("Follows {name}", { name: s.name })));
+          hx.title = t("Its models reason as {name} says: set that up on {name}'s own card, not here", { name: s.name });
+          hx.onclick = (ev) => {
+            openGroupEditor(s);
+            const ed = gList.querySelector(".rt-gedit");
+            if (ed && window.scrollOnPurpose?.(ev)) ed.scrollIntoView({ block: "center", behavior: "smooth" });
+          };
+          row.append(hx);
         }
         if (s) row.title = s.members.map((x) => memberLabel(s, x)).join(s.routing === "order" ? " → " : " · ");
         if (!m && !s) { row.classList.add("off"); row.title = t("No provider serves {id} now; it is skipped", { id }); }

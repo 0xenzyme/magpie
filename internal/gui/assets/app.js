@@ -5453,7 +5453,11 @@ function modelInfo(m) {
   if (decideEntry(m)) lines.push(t("Decision model: routing groups ask it, agents never see it"));
   else if (levels.length) {
     box.append(el("span", "badge mi-effort", effortSpan(levels)));
-    lines.push(t("Reasoning: {levels}", { levels: levels.map((l) => t(l)).join(", ") }));
+    // a group's levels are not its own: they are the ones every model in it
+    // has, as its images are whichever member's and its window the largest's
+    lines.push(m.group
+      ? t("Reasoning: {levels} (the levels every model in it has)", { levels: levels.map((l) => t(l)).join(", ") })
+      : t("Reasoning: {levels}", { levels: levels.map((l) => t(l)).join(", ") }));
   } else lines.push(t("Reasoning levels: none known"));
   // nothing read of its images either way: magpie counts it text-only for a
   // describer (gateway.blindTo), which is not the same as its list saying so,
