@@ -63,4 +63,23 @@ normal review; the reviewer notes the PR here if it is low-value too.
 
 Blocked: none yet.
 
+### Reviewed with extra care
+
+The maintainer chose not to block these authors, so their PRs are still
+reviewed, but more strictly than others:
+
+- Read every line of the diff, not only the part the description talks
+  about. Compare the files it touches with its stated goal; anything outside
+  the goal is a reason to close it.
+- Run "Look for harm first" in full, even on a PR that looks like a typo
+  fix.
+- Run it yourself on current `main`; don't rely on the PR's claims or its
+  CI. Never merge it in the same tick it was opened, and use
+  `--match-head-commit`.
+- A PR that repeats one already closed is closed with a link to the first.
+
+| Author | Evidence |
+| --- | --- |
+| lunar-me | #233, #234, #235 opened within 12 seconds, all rewriting `codex_prompt.md`, which is kept byte for byte. #590 resubmitted after the rejection. #592 broke a path in AGENTS.md. #590, #592 and #593 opened within 51 seconds. The same template across many repositories. |
+
 Watched: none yet.
