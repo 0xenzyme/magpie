@@ -11,6 +11,12 @@ semantic change description, and review rules.
 
 Write and review changes against the [code standards](docs/code-standards.md).
 
+## Community PRs
+
+Before reviewing a community PR, read [contributors](docs/contributors.md):
+what stops a review for possible harm, what is closed unreviewed, and the
+authors whose PRs are closed on sight.
+
 ## Lessons
 
 Before changing code, read [LESSONS.md](LESSONS.md): what recent merged
