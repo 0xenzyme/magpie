@@ -788,6 +788,12 @@ at least 5em, at 420 wide the long names are shortened while no bar is under
 5em and nothing runs past its card, and wide again the names are whole; in
 Chromium and WebKit, English and Chinese.
 
+`usage-sessions-agents-fit.test.cjs` checks Usage › Sessions with 15 agents
+(#929): at 860 and 560 wide the page, its main and the Usage view never
+scroll sideways; the agent strip fits the window and scrolls in itself, and
+the last agent, clicked at the strip's end, stays in view as the strip is
+drawn again; in Chromium and WebKit, English and Chinese.
+
 `sessions-calendar-fill.test.cjs` checks that the Sessions overview's activity
 calendar fills its card: 118 days (17 weeks) at 1400 wide take over 90% of
 it, the weeks before the range coming in as empty cells without tooltips, the

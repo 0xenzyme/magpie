@@ -15214,12 +15214,26 @@ function renderSessions() {
   const agents = [...new Map([...all.map((s) => [s.agent, s.name]), ...Object.entries(st.agents || {})]).entries()];
   if (sessAgent !== "all" && !agents.some(([id]) => id === sessAgent)) sessAgent = "all";
   const seg = $("#sessAgent");
-  seg.replaceChildren();
   seg.hidden = agents.length < 2;
-  for (const [id, name] of [["all", t("All")], ...agents]) {
-    const b = el("button", "opt" + (id === sessAgent ? " on" : ""), name);
-    b.onclick = () => { sessAgent = id; renderSessions(); };
-    seg.append(b);
+  const opts = [["all", t("All")], ...agents];
+  // the same agents keep their buttons: drawn anew, a strip with more than
+  // fit (#929) would lose where it was scrolled to (WebKit)
+  const was = [...seg.querySelectorAll(":scope > .opt")];
+  if (was.length !== opts.length || was.some((b, i) => b.dataset.agent !== opts[i][0] || b.textContent !== opts[i][1])) {
+    seg.replaceChildren();
+    for (const [id, name] of opts) {
+      const b = el("button", "opt", name);
+      b.dataset.agent = id;
+      b.onclick = () => { sessAgent = id; renderSessions(); };
+      seg.append(b);
+    }
+  }
+  for (const b of seg.querySelectorAll(":scope > .opt")) b.classList.toggle("on", b.dataset.agent === sessAgent);
+  // and the agent picked is brought into the strip, the page left where it is
+  const picked = seg.querySelector(":scope > .on");
+  if (picked && seg.scrollWidth > seg.clientWidth) {
+    if (picked.offsetLeft < seg.scrollLeft) seg.scrollLeft = picked.offsetLeft;
+    else if (picked.offsetLeft + picked.offsetWidth > seg.scrollLeft + seg.clientWidth) seg.scrollLeft = picked.offsetLeft + picked.offsetWidth - seg.clientWidth;
   }
   slide(seg, "sessAgent");
 
