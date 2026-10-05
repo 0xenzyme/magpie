@@ -969,6 +969,16 @@ Trash lists what went and Restore posts its key; an agent whose sessions
 magpie can't delete (OpenCode) shows no delete. No left-border accent, every
 string in Chinese. Chromium and WebKit, English and Chinese, API faked.
 
+`sessions-talk.test.cjs` shows a session's conversation and carries a Pi
+session on in oh-my-pi (sxwedo, #845). Show conversation in a session's
+details reads sessions/transcript by agent and id, once, and lists the
+user's words, the model's, each tool call by name and its result, thinking
+folded; an agent magpie can't read (OpenCode) has no such button. Continue
+in is the app's menu, not a `<select>`: copy posts the `omp --fork` command,
+the terminal posts agent, id and `in: "omp"`; the details say the command.
+No click moves the page, no left-border accent, every string in Chinese,
+Japanese and German. Chromium and WebKit, English and Chinese, API faked.
+
 `sessions-usage-open.test.cjs` keeps one list of sessions (#752): each
 Sessions page row shows the tokens, cost and models Usage → Sessions showed,
 its details what each model spent and where magpie routed it, and its filter

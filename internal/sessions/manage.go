@@ -118,6 +118,10 @@ func ListAgent(agent string) []Managed {
 		if s.Resume == "" && !s.ReadOnly {
 			s.Resume = resumeCommand(s.WSL, s.Agent, s.ID, s.Cwd)
 		}
+		if s.Carry == nil {
+			s.Carry = carries(s)
+		}
+		s.Transcript = HasTranscript(s.Agent)
 		// a WSL distro's are listed and resumed, not deleted: magpie moves
 		// no files out of a distro
 		m := Managed{Session: s, Files: len(fs), Deletable: Deletable(agent) && !s.ReadOnly && s.WSL == ""}

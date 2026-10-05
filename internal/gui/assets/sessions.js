@@ -22,6 +22,8 @@
   const folderBoxes = new Map(); // each folder's box as drawn, by cwd
   let openedFor = "";         // the agent the folders were first unfolded for
   let detail = "";            // the session opened to its details
+  const talkOpen = new Set(); // sessions whose conversation is shown, by agent/id
+  const talks = new Map();    // what was said in them, as read, by agent/id
   let loading = 0;
   let fitObserver = null;
   let focus = null;           // { agent, id, until }: a session to bring into sight once drawn
@@ -39,6 +41,7 @@
       // models may be null for a session that spent nothing
       data = { ...d, agents: d?.agents || [], sessions: (d?.sessions || []).map((s) => ({ ...s, models: s.models || [] })), trash: d?.trash || [], agent: d?.agent || "" };
       failed = "";
+      talks.clear(); // read again when shown: a session may have gone on
       if (agent !== d.agent) { agent = d.agent; picked.clear(); }
     } catch (e) {
       if (n !== loading) return;
@@ -372,6 +375,7 @@
         r.append(term);
       }
     }
+    if (s.carry?.length) r.append(carryPick(s));
     if (a?.deletable && !s.read_only && !s.wsl) {
       const del = el("button", "copy sm-del");
       del.type = "button";
@@ -404,9 +408,90 @@
     if (s.cwd) line(t("Folder"), s.cwd);
     line(t("Session ID"), s.id, copyBtn(s.id, t("Session id")));
     if (s.resume) line(t("Resume"), el("code", "", s.resume), copyBtn(s.resume, t("Resume command")));
+    for (const c of s.carry || []) line(t("Continue in {agent}", { agent: agentOf(c.agent).name }), el("code", "", c.command), copyBtn(c.command, t("Command")));
     sessUsageDetail(d, s, line);
     if (s.path) line(t("File"), s.path + (s.files > 1 ? " " + t("+{n} more", { n: s.files - 1 }) : ""));
+    if (s.transcript) {
+      const box = el("div", "sess-talk");
+      const b = el("button", "text sess-talk-btn");
+      b.type = "button";
+      const show = () => {
+        const on = talkOpen.has(s.agent + "/" + s.id);
+        b.textContent = t(on ? "Hide conversation" : "Show conversation");
+        b.setAttribute("aria-expanded", String(on));
+        box.hidden = !on;
+        if (on) drawTalk(box, s);
+      };
+      b.onclick = (e) => {
+        e.stopPropagation();
+        const k = s.agent + "/" + s.id;
+        if (talkOpen.has(k)) talkOpen.delete(k); else talkOpen.add(k);
+        show();
+      };
+      line(t("Conversation"), b);
+      d.append(box);
+      show();
+    }
     return d;
+  }
+
+  // agentOf is an agent as the page names it: of those with sessions, else
+  // by its id
+  const agentOf = (id) => data?.agents.find((x) => x.agent === id) || { agent: id, name: id, icon: id };
+
+  // carryPick is the other agents that can carry a session on from its
+  // file as it is (#845; oh-my-pi forks a Pi session), in the app's menu:
+  // copy the command, or open it in the session terminal.
+  function carryPick(s) {
+    const b = el("button", "sess-pick sess-carry");
+    b.type = "button";
+    b.setAttribute("aria-haspopup", "menu");
+    b.setAttribute("aria-expanded", "false");
+    b.title = t("Continue this session in another agent");
+    b.append(el("span", "", t("Continue in")), svg(CHEV, 11, 1.6));
+    b.onclick = (e) => {
+      e.stopPropagation();
+      if (b.classList.contains("open")) return closeProtoMenu();
+      const opts = [];
+      for (const c of s.carry) {
+        const name = agentOf(c.agent).name;
+        opts.push({ v: "copy\x01" + c.agent, name, literalName: true, note: "Copy the command", title: c.command });
+        if (data.terminal) opts.push({ v: "term\x01" + c.agent, name, literalName: true, note: "Open in session terminal", title: c.command });
+      }
+      openProtoMenu(b, opts, "", (v) => {
+        b.focus({ preventScroll: true });
+        const [how, to] = v.split("\x01");
+        const c = s.carry.find((x) => x.agent === to);
+        if (!c) return;
+        if (how === "copy") copy(c.command, t("Command"));
+        else api("sessions/terminal", { agent: s.agent, id: s.id, in: to }).then(() => status(t("Opening in session terminal"), "ok"), (err) => status(err.message, "err"));
+      }, "Continue in another agent", "sess-carry-menu", "right");
+    };
+    return b;
+  }
+
+  // drawTalk fills box with what was said in a session, read from the
+  // agent's own file when it is first shown (only read, never written)
+  function drawTalk(box, s) {
+    const k = s.agent + "/" + s.id;
+    const got = talks.get(k);
+    if (!got) {
+      box.replaceChildren(el("p", "cx-none", t("Reading…")));
+      talks.set(k, { busy: true });
+      api("sessions/transcript?agent=" + encodeURIComponent(s.agent) + "&id=" + encodeURIComponent(s.id))
+        .then((tr) => talks.set(k, { tr }), (err) => talks.set(k, { err: err.message }))
+        .then(() => { if (box.isConnected && talkOpen.has(k)) drawTalk(box, s); });
+      return;
+    }
+    if (got.busy) return;
+    if (got.err) { box.replaceChildren(el("p", "cx-none", got.err)); talks.delete(k); return; }
+    const parts = got.tr?.parts || [];
+    const out = [];
+    if (!parts.length) out.push(el("p", "cx-none", t("Nothing was said here")));
+    for (const p of parts) out.push(ledSaid(p));
+    if (got.tr?.cut) out.push(el("p", "cx-none", t("There was more than is shown here")));
+    out.push(el("p", "cx-src", t("Read from the agent's session file; magpie keeps no copy")));
+    box.replaceChildren(...out);
   }
 
   // askDelete asks in magpie's dialog before the sessions go to its trash;
