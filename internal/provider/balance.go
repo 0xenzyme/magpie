@@ -794,7 +794,7 @@ func KeyBalances(ctx context.Context) []SubscriptionQuota {
 			continue
 		}
 		src, ok := balanceSourceOf(p)
-		if !ok {
+		if !ok && !clineKeyCard(p) {
 			continue
 		}
 		others := 0
@@ -838,6 +838,19 @@ func KeyBalances(ctx context.Context) []SubscriptionQuota {
 		go func() {
 			defer wg.Done()
 			q := SubscriptionQuota{Provider: j.p.ID, Name: j.p.Name, Icon: j.p.Icon, User: j.user, Windows: []QuotaWindow{}}
+			if clineKeyCard(j.p) {
+				// ClinePass's limits beside the credits (cline_usage.go)
+				if ws, amount, err := clineKeyUsage(ctx, j.p); err != nil {
+					q.Error = err.Error()
+				} else {
+					q.Windows = append(q.Windows, ws...)
+					q.Balance = amount
+					now := time.Now()
+					q.ReadAt = &now
+				}
+				out[i] = keepReading(ctx, q, keyTag("balance", j.p.Key))
+				return
+			}
 			amount, parts, _, err := balanceParts(ctx, j.p)
 			if err != nil {
 				q.Error = err.Error()
