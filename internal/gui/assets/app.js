@@ -1445,6 +1445,14 @@ const CLI_SPIN = "M13.5 8a5.5 5.5 0 1 1-5.5-5.5";
 
 function cliTag(a) {
   const box = el("span", "ag-cli");
+  // its settings are here, its CLI isn't: uninstalled, its folder left
+  // behind (#843); Install another agent has it again
+  if (a.cliMissing) {
+    const m = el("span", "ag-missing", t("CLI not found"));
+    m.title = t("{agent}'s settings are still here ({path}), but its command-line program isn't found: it may have been uninstalled. Install another agent, below the list, has its install command.", { agent: a.name, path: a.path });
+    box.append(m);
+    return box;
+  }
   const c = cliInfo[a.id];
   if (!c?.version) return box;
   const v = el("span", "ag-ver", c.version);
@@ -1637,7 +1645,9 @@ function paintInstalls() {
   if (mode === "panel" || !list) return;
   let box = $("#agentsInstall");
   const here = new Set((state?.agents || []).map((a) => a.id));
-  const items = installInfo.filter((x) => !here.has(x.id));
+  // one listed above by its settings alone, its CLI gone (#843), is
+  // offered again too
+  const items = installInfo.filter((x) => x.missing || !here.has(x.id));
   if (!items.length) { box?.remove(); return; }
   if (!box) {
     box = el("section", "ag-install");
@@ -1665,7 +1675,15 @@ function paintInstalls() {
       const r = el("div", "ag-install-row");
       r.dataset.id = x.id;
       const who = el("div", "ag-install-who");
-      who.append(icon(x.icon || x.id), el("b", "", x.name));
+      // one whose settings are left (#843) says so under its name
+      const name = el("span", "ag-install-name");
+      name.append(el("b", "", x.name));
+      if (x.missing) {
+        const m = el("span", "ag-install-missing", t("CLI not found"));
+        m.title = t("{agent}'s settings are still here, but its command-line program isn't found", { agent: x.name });
+        name.append(m);
+      }
+      who.append(icon(x.icon || x.id), name);
       const cmds = el("div", "ag-install-cmds");
       for (const c of x.commands) {
         const line = el("div", "ag-install-cmd");
