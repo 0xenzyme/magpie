@@ -216,6 +216,16 @@ function gatewayModelsBadge(k) {
     const opts = [{ v: "", name: "All models", note: "Any model, now and later" }];
     const seen = new Set();
     for (const m of models || []) {
+      // a routing group the key names is its with every member in it
+      // (Magic_zero on Discord); the groups come first
+      if (m.group) {
+        if (!seen.has("group")) {
+          seen.add("group");
+          opts.push({ v: "group/*", name: "Every routing group", note: "group/*" });
+        }
+        opts.push({ v: m.id, name: m.name, note: m.id, literalName: true });
+        continue;
+      }
       if (!seen.has(m.provider)) {
         seen.add(m.provider);
         opts.push({ v: m.provider + "/*", name: t("Every {provider} model", { provider: m.providerName }), note: m.provider + "/*", literalName: true });

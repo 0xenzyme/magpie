@@ -1180,9 +1180,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	g, ms, isGroup := provider.FindGroup(asked)
 	g = g.Live() // a manual group's rules wait
 	// a gateway key held to some models (#882) is refused another, or a
-	// group with one it may not use in it
+	// group it doesn't name with one it may not use in it
 	keyWho, keyHeld := keyHolds(r)
-	if keyHeld && (isGroup && !membersAllowed(keyWho, ms) || !isGroup && !modelAllowed(keyWho, p, model)) {
+	if keyHeld && (isGroup && !groupAllowed(keyWho, g, ms) || !isGroup && !modelAllowed(keyWho, p, model)) {
 		call.Status, call.Error = 403, "model not allowed for the gateway key"
 		writeError(w, from, 403, keyModelError(keyWho, call.Model))
 		turnedAway()
@@ -1308,7 +1308,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		cands, pl = sealedReaders(cands, pl)
 	}
 	if keyHeld {
-		cands = allowedCandidates(keyWho, cands)
+		var members map[string]bool
+		if isGroup {
+			members = groupKeeps(keyWho, g, ms)
+		}
+		cands = allowedCandidates(keyWho, cands, members)
 	}
 	if len(cands) == 0 && slices.ContainsFunc(pl.left, func(w Weighed) bool { return w.Capped > 0 }) &&
 		!slices.ContainsFunc(pl.left, func(w Weighed) bool { return !w.Barred && w.Capped == 0 }) {

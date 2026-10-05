@@ -150,3 +150,95 @@ func TestGatewayKeyModelsMatchTheServingProvider(t *testing.T) {
 		t.Fatal("an empty group")
 	}
 }
+
+// A key held to a routing group it names, "group/<id>" (Magic_zero on
+// Discord), is shown the group and may use it, every member of it going
+// through it — the next one too when the first fails — but not the
+// members asked by name, a group it doesn't name, or a fallback outside
+// the group; "group/*" names every group, and a group named inside one
+// it doesn't name counts for its own members.
+func TestGatewayKeyModelsNameAGroup(t *testing.T) {
+	fresh(t)
+	plan := &fake{t: t, ctype: "application/json", reply: `{"id":"from-plan","choices":[]}`}
+	spare := &fake{t: t, ctype: "application/json", reply: `{"id":"from-spare","choices":[]}`}
+	twoProviders(t, plan, spare)
+	keys, secrets := newCaller(t, "Group", "Every group", "Inner")
+	for i, ms := range [][]string{{"group/both"}, {"group/*"}, {"group/solo", "spare/m2"}} {
+		if _, err := access.Update("models-key", access.Change{Key: keys[i].ID, Models: ms}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, g := range []provider.Group{
+		{Name: "Both", Members: []string{"plan/m1", "spare/m2"}, Routing: provider.Ordered},
+		{Name: "Solo", Members: []string{"plan/m1"}, Routing: provider.Ordered},
+		{Name: "Outer", Members: []string{"group/solo", "spare/m2"}, Routing: provider.Ordered},
+	} {
+		if err := provider.SaveGroup(g); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := New().Handler()
+	do := func(secret, method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer "+secret)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	listed := func(secret string) []string {
+		var l struct{ Data []struct{ ID string } }
+		w := do(secret, "GET", "/v1/models", "")
+		if err := json.Unmarshal(w.Body.Bytes(), &l); err != nil {
+			t.Fatal(w.Body.String())
+		}
+		var ids []string
+		for _, m := range l.Data {
+			ids = append(ids, m.ID)
+		}
+		slices.Sort(ids)
+		return ids
+	}
+	if ids := listed(secrets[0]); !slices.Equal(ids, []string{"group/both"}) {
+		t.Fatalf("a key naming group/both lists %v", ids)
+	}
+	if ids := listed(secrets[1]); !slices.Equal(ids, []string{"group/both", "group/outer", "group/solo"}) {
+		t.Fatalf("a key naming group/* lists %v", ids)
+	}
+	if ids := listed(secrets[2]); !slices.Contains(ids, "group/outer") || !slices.Contains(ids, "group/solo") || slices.Contains(ids, "plan/m1") || slices.Contains(ids, "group/both") {
+		t.Fatalf("a key naming group/solo and spare/m2 lists %v", ids)
+	}
+	chat := func(secret, model string) *httptest.ResponseRecorder {
+		return do(secret, "POST", "/v1/chat/completions", `{"model":"`+model+`","messages":[{"role":"user","content":"hi"}]}`)
+	}
+	for _, c := range []struct {
+		key   int
+		model string
+		code  int
+		from  string
+	}{
+		{0, "group/both", 200, "from-plan"},
+		{0, "both", 200, "from-plan"},
+		{0, "plan/m1", 403, ""},
+		{0, "spare/m2", 403, ""},
+		{0, "group/solo", 403, ""},
+		{1, "group/solo", 200, "from-plan"},
+		{1, "plan/m1", 403, ""},
+		{2, "group/outer", 200, "from-plan"},
+		{2, "group/both", 403, ""},
+	} {
+		w := chat(secrets[c.key], c.model)
+		if w.Code != c.code || c.from != "" && !strings.Contains(w.Body.String(), c.from) {
+			t.Fatalf("key %d asking %s: %d %s", c.key, c.model, w.Code, w.Body.String())
+		}
+	}
+	// the group's first member out of quota: the next member, through it
+	plan.code, plan.reply = 429, `{"error":{"message":"slow down"}}`
+	if w := chat(secrets[0], "group/both"); w.Code != 200 || !strings.Contains(w.Body.String(), "from-spare") {
+		t.Fatal("a named group's next member", w.Code, w.Body.String())
+	}
+	// but plan's own fallback, spare/m2, isn't Solo's
+	spareCalls := spare.calls
+	if w := chat(secrets[1], "group/solo"); w.Code == 200 || spare.calls != spareCalls {
+		t.Fatal("a named group fell back outside itself", w.Code, w.Body.String())
+	}
+}

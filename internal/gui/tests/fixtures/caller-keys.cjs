@@ -83,6 +83,10 @@ function fixture(lang, theme, events, options = {}) {
     }
     if (url.pathname === "/api/caller-keys") return json({ keys });
     if (url.pathname === "/api/caller-keys/models") return json({ models: [
+      ...(options.groups ? [
+        { id: "group/coding", name: "Coding", group: true },
+        { id: "group/fast", name: "Fast", group: true },
+      ] : []),
       { id: "relay/m", name: "Model", provider: "relay", providerName: "Relay" },
       { id: "relay/m-mini", name: "Model mini", provider: "relay", providerName: "Relay" },
       { id: "openai/gpt-5", name: "GPT-5", provider: "openai", providerName: "OpenAI" },

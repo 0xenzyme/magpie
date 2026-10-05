@@ -244,11 +244,14 @@ A gateway key can also be held to some **models** (#882): pick them with the
 **All models** badge on the key's row, or run `magpie gateway-key models <id>
 openai/gpt-5 anthropic/*` (`all` takes the restriction off). A pattern is
 `<provider>/<model>` or `<provider>/*`, matched against the provider that
-serves the call, so a bare model name is resolved first. Such a key sees only
-its models in `/v1/models` and the Anthropic and Gemini lists, a routing group
-only when it may use every member, and is refused any other model with a 403
-in the API's error shape before a provider is asked; a fallback it may not
-use is skipped. A key with no models listed may use every model.
+serves the call, so a bare model name is resolved first, or a routing group,
+`group/<id>` (`group/*` for every group). A key that names a group may use
+the group with every member in it, though not those members asked for by
+name. Such a key sees only its models in `/v1/models` and the Anthropic and
+Gemini lists, a routing group it doesn't name only when it may use every
+member, and is refused any other model with a 403 in the API's error shape
+before a provider is asked; a fallback it may not use is skipped. A key with
+no models listed may use every model.
 
 While LAN sharing is enabled, remote requests require an enabled gateway key
 sent as Bearer, `x-api-key`, `x-goog-api-key` or `?key=`. Loopback remains

@@ -14,7 +14,10 @@ import (
 // is shown only those in the model lists, and a request of it for another
 // is refused before any provider is asked. A model is held to by its
 // provider's id and its own, "<provider>/<model>", whatever the agent
-// called it; a routing group passes only when every model in it does.
+// called it. A routing group passes when the key names it, "group/<id>"
+// (or "group/*", every group), and then every member of it does, through
+// it; else only when every model in it does. A group the key names inside
+// one it doesn't counts for its own members.
 
 // magpieChoseKey marks, in a request's context, a call magpie makes for a
 // model the user picked in its settings rather than the caller (a web
@@ -43,13 +46,34 @@ func modelAllowed(who access.Identity, p provider.Provider, model string) bool {
 	return who.Allows(p.ID + "/" + model)
 }
 
-// memberAllowed says the key may use a routing group's member.
+// memberAllowed says the key may use a routing group's member: the model,
+// or a group it is reached through that the key names.
 func memberAllowed(who access.Identity, m provider.Member) bool {
-	ids := []string{m.Provider.ID + "/" + m.Model}
-	if n := len(m.Path); n > 0 {
-		ids = append(ids, m.Path[n-1])
+	return who.Allows(append([]string{m.Provider.ID + "/" + m.Model}, m.Path...)...)
+}
+
+// groupNamed says the key names the routing group g itself.
+func groupNamed(who access.Identity, g provider.Group) bool {
+	return g.ID != "" && who.Allows(provider.GroupPrefix+g.ID)
+}
+
+// groupAllowed says the key may use the routing group g: it names it, or
+// may use every member of it.
+func groupAllowed(who access.Identity, g provider.Group, ms []provider.Member) bool {
+	return groupNamed(who, g) || membersAllowed(who, ms)
+}
+
+// groupKeeps is the members of g a request through it may go to for the
+// key: every one when it names g, else those it may use.
+func groupKeeps(who access.Identity, g provider.Group, ms []provider.Member) map[string]bool {
+	out := map[string]bool{}
+	named := groupNamed(who, g)
+	for _, m := range ms {
+		if named || memberAllowed(who, m) {
+			out[m.Provider.ID+"/"+m.Model] = true
+		}
 	}
-	return who.Allows(ids...)
+	return out
 }
 
 // membersAllowed says the key may use every member of a routing group:
@@ -72,8 +96,8 @@ func entryAllowed(who access.Identity, e provider.Entry) bool {
 		return true
 	}
 	if e.Group != "" {
-		_, ms, ok := provider.FindGroup(e.ID)
-		return ok && membersAllowed(who, ms)
+		g, ms, ok := provider.FindGroup(e.ID)
+		return ok && groupAllowed(who, g, ms)
 	}
 	return modelAllowed(who, e.Provider, e.Model)
 }
@@ -94,11 +118,12 @@ func keyAllowed(r *http.Request, es []provider.Entry) []provider.Entry {
 }
 
 // allowedCandidates leaves out of a plan the providers' models the key
-// may not use: a model's fallbacks are other models.
-func allowedCandidates(who access.Identity, cs []candidate) []candidate {
+// may not use: a model's fallbacks are other models. members are the
+// group's the key may go to through it (groupKeeps), nil for a model.
+func allowedCandidates(who access.Identity, cs []candidate, members map[string]bool) []candidate {
 	out := cs[:0:0]
 	for _, c := range cs {
-		if modelAllowed(who, c.p, c.model) {
+		if members[c.p.ID+"/"+c.model] || modelAllowed(who, c.p, c.model) {
 			out = append(out, c)
 		}
 	}

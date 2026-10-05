@@ -57,7 +57,7 @@ func (s *Server) retrieve(path, operation string) http.HandlerFunc {
 			return
 		}
 		g, ms, isGroup := provider.FindGroup(asked)
-		if keyWho, held := keyHolds(r); held && (isGroup && !membersAllowed(keyWho, ms) || !isGroup && !modelAllowed(keyWho, p, model)) {
+		if keyWho, held := keyHolds(r); held && (isGroup && !groupAllowed(keyWho, g, ms) || !isGroup && !modelAllowed(keyWho, p, model)) {
 			msg := keyModelError(keyWho, asked)
 			call.Status, call.Error = 403, msg
 			writeError(w, provider.Chat, 403, msg)
