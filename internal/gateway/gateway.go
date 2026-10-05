@@ -58,7 +58,16 @@ func agentOf(r *http.Request) string {
 	if isClaudeDesktop(r) {
 		return "claude-desktop"
 	}
-	return usage.AgentOf(r.Header.Get("User-Agent"))
+	ua := r.Header.Get("User-Agent")
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(ua)), "cursor") {
+		// cursor-agent talks to Cursor's backend alone, never to a
+		// gateway: a Cursor User-Agent here is Cursor Private Inference's
+		// ("Cursor-CLI/…") sent with a key other than its own, the one
+		// typed in its Open configuration or a model's settings ("magpie"),
+		// and it is shown its models as with its key (mamba on Discord)
+		return "cursor-local"
+	}
+	return usage.AgentOf(ua)
 }
 
 // StandIn is the model an agent is set to use in place of one it named that

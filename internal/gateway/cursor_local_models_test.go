@@ -29,10 +29,13 @@ func TestCursorLocalModels(t *testing.T) {
 	if err := catalog.SaveLive("or", "http://127.0.0.1:2/v1", []catalog.Model{{ID: "claude-opus-4-7", Efforts: []string{"low", "medium", "high"}}}); err != nil {
 		t.Fatal(err)
 	}
-	list := func(key string) map[string]map[string]any {
+	list := func(key string, ua ...string) map[string]map[string]any {
 		t.Helper()
 		req := httptest.NewRequest("GET", "/v1/models", nil)
 		req.Header.Set("Authorization", "Bearer "+key)
+		for _, v := range ua {
+			req.Header.Set("User-Agent", v)
+		}
 		rec := httptest.NewRecorder()
 		New().Handler().ServeHTTP(rec, req)
 		var out struct {
@@ -114,5 +117,18 @@ func TestCursorLocalModels(t *testing.T) {
 	}
 	if got := list(TokenFor("opencode")); got["ds/flash"] == nil {
 		t.Errorf("taken out of another agent's list: %v", got)
+	}
+
+	// asked with another key of magpie's, typed in its Open configuration,
+	// it still says who it is in its User-Agent and is shown its own list,
+	// with the fields its Reasoning control needs (mamba on Discord)
+	for _, ua := range []string{"Cursor-CLI/unknown", "Cursor/3.23.12"} {
+		got := list(Token, ua)
+		if got["ds/flash"] != nil || got["fake/m1"] == nil {
+			t.Errorf("%s with key %s: %v", ua, Token, got)
+		}
+		if c, _ := got["or/claude-opus-4-7"]["capabilities"].(map[string]any); c["supports_reasoning"] != true {
+			t.Errorf("%s with key %s: capabilities = %v", ua, Token, c)
+		}
 	}
 }
