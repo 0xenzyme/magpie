@@ -16326,6 +16326,7 @@ function setSetTab(tab, remember) {
 // own button, with the file it names. Asked once a load and again after
 // half a minute: each shell is run to read its PATH.
 let cliView = null, cliAt = 0, cliAsk = null;
+const exeName = (p) => String(p || "").split(/[\\/]/).pop();
 function renderCLI(r) {
   r.classList.add("cli-row");
   const sub = r.querySelector(".sub");
@@ -16341,18 +16342,22 @@ function renderCLI(r) {
       cliView = await api("cli", body);
       cliAt = Date.now();
       paint(cliView);
-      status(cliView.windows ? t("Added: open a new PowerShell or Command Prompt window to run magpie") : t("Added: open a new terminal window to run magpie"), "ok");
+      status(cliView.windows && cliView.shim ? t("Added: magpie.cmd beside {name} runs it as magpie; open a new PowerShell or Command Prompt window to run magpie", { name: exeName(cliView.exe) })
+        : cliView.windows ? t("Added: open a new PowerShell or Command Prompt window to run magpie") : t("Added: open a new terminal window to run magpie"), "ok");
     } catch (e) { status(t(e.message), "err"); } finally { btn.disabled = false; }
   };
   const paint = (v) => {
     sub.textContent = v.stuck === "translocated" ? t("macOS runs magpie from a temporary copy until it is moved to Applications: move it there first")
       : v.stuck === "read-only" ? t("magpie runs from its disk image: copy it to Applications first")
-      : v.ours ? t("In a new terminal, magpie runs this app: {path}", { path: v.command })
+      : v.ours ? t("In a new terminal, magpie runs this app: {path}", { path: v.command }) + (v.shim && v.command === v.shim ? " (" + t("which runs {name}", { name: exeName(v.exe) }) + ")" : "")
       : v.command ? t("In a new terminal, magpie runs another copy: {path}", { path: v.command }) + (v.version ? " (" + v.version + ")" : "")
       : t("A new terminal can't find the magpie command");
     add.hidden = v.ours || !v.dir || !!v.stuck;
     add.textContent = v.command ? t("Use this app") : t("Add to PATH");
-    add.title = v.windows ? t("Puts {dir} first in your user PATH", { dir: v.dir || "" }) : t("Links magpie in {dir}", { dir: v.dir || "" });
+    // an app not named magpie.exe (the site's magpie-windows-amd64.exe,
+    // #942) is given a magpie.cmd beside it that runs it
+    add.title = v.windows && v.shim ? t("Puts {dir} first in your user PATH and writes magpie.cmd there, which runs {name}", { dir: v.dir || "", name: exeName(v.exe) })
+      : v.windows ? t("Puts {dir} first in your user PATH", { dir: v.dir || "" }) : t("Links magpie in {dir}", { dir: v.dir || "" });
     shells.replaceChildren(...(v.shells || []).map((s) => {
       const line = el("div", "cli-shell" + (s.ours ? " on" : ""));
       line.dataset.shell = s.name;

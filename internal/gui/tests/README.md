@@ -1849,7 +1849,9 @@ it says what `magpie` in a new terminal runs, with a dot for each shell (no
 left border, no native select); Add to PATH posts `/api/cli` with no shell and
 the row turns green, a shell whose PATH lacks the folder has a button naming
 its profile that posts that shell alone, and no click scrolls. On Windows it
-lists PowerShell and cmd with no profile buttons; a translocated app gets no
+lists PowerShell and cmd with no profile buttons, and a program not named
+magpie.exe (the site's portable download, #942) is said to get a magpie.cmd
+that runs it, in Add's tooltip, the row and the status; a translocated app gets no
 button. Every string has zh, ja and de. English and Chinese, Chromium and
 WebKit; the API is faked, no shell profile is read or written.
 
