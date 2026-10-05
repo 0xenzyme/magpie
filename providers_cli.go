@@ -116,6 +116,9 @@ func providers() error {
 		if u := uses[p.ID]; len(u) > 0 {
 			r.uses = green.Render("← " + strings.Join(u, ", "))
 		}
+		if e := p.ListError(); e != "" {
+			r.uses += amber.Render("  ! couldn't list its models: " + e)
+		}
 		if len(p.Fallback) > 0 {
 			r.uses += muted.Render("  ⤷ " + strings.Join(p.Fallback, " → "))
 		}
