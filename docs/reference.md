@@ -358,6 +358,39 @@ export const LemonPlugin = async () => ({
 In TypeScript, `icon` and `placeholder` aren't in OpenCode's types: build
 the hook as a variable (or cast it), or put the icon in `package.json`.
 
+#### Gateway middleware
+
+A plugin can also be gateway middleware: `onRequest(body, ctx)` sees each
+request an agent sends before it is routed, `onEvent(event, ctx)` each
+event of a streamed reply and `onResponse(body, ctx)` a whole one, all in
+the agent's own API. A hook returns the changed object, or nothing to
+leave it; `onEvent` returns `null` to drop an event, and
+`ctx.reject(status, message)` turns a request away. Declare it with
+`"magpie": { "middleware": "./mw.js" }` in `package.json`, or add a single
+`*.middleware.js` file:
+
+```js
+// alias.middleware.js — magpie plugin add ./alias.middleware.js
+export const events = ["message_start"]
+export function onRequest(body, ctx) {
+  ctx.state.asked = body.model
+  if (body.model === "fast") body.model = "deepseek/deepseek-chat"
+  return body
+}
+export function onEvent(ev, ctx) {
+  ev.message.model = ctx.state.asked // the agent sees the name it asked for
+  return ev
+}
+```
+
+Middleware runs inside the gateway in [moejs](https://github.com/Calcium-Ion/moejs),
+a JavaScript engine written in Go (about a microsecond a streamed event),
+not on Bun: no timers, `fetch` or Node APIs, and imports only of files
+beside it. A hook that throws or takes too long (250 ms a request, 50 ms an
+event) leaves what it was given as it was. Settings → Plugins shows each
+middleware's calls, time and failures. The [plugin guide](https://usemagpie.ai/docs/plugins#middleware)
+has the rest.
+
 ### What a model costs
 
 A call is counted at its **effective price**: what you set for that provider

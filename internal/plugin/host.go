@@ -773,7 +773,9 @@ func startOn(ctx context.Context, bun string) (*host, bool, error) {
 	}
 	var items []item
 	for _, e := range l.Plugins {
-		if !e.Off {
+		// a plugin that is only gateway middleware runs in the gateway
+		// (internal/middleware), not here
+		if _, only := Middleware(Target(e.Spec)); !e.Off && !only {
 			items = append(items, item{e.Spec, Target(e.Spec), e.Options})
 		}
 	}

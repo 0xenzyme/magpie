@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yetone/magpie/internal/middleware"
 	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
@@ -79,6 +80,10 @@ type pluginEntryJSON struct {
 	Moved []string `json:"moved"`
 	// AutoUpdated is the update magpie made to it by itself lately
 	AutoUpdated *plugin.Updated `json:"autoUpdated,omitempty"`
+	// Middleware is the gateway middleware it has, run in the gateway
+	// rather than the host: its hooks, how often they ran and how long
+	// they took, and why it didn't load
+	Middleware *middleware.State `json:"middleware,omitempty"`
 }
 
 // autoUpdatedFor is how long a plugin's row says magpie updated it.
@@ -121,6 +126,7 @@ func pluginsState(ctx context.Context, w Windows) pluginsJSON {
 	}
 	// npm's newest, as it said last: asking it again is /api/plugins/npm's
 	known := plugin.InfoCached(npmNames(l.Plugins))
+	mws := middleware.States()
 	for _, e := range l.Plugins {
 		j := pluginEntryJSON{Entry: e, Error: errs[e.Spec], Providers: names[e.Spec], Version: plugin.Installed(e.Spec)}
 		if npmPlugin(e.Spec) {
@@ -134,6 +140,9 @@ func pluginsState(ctx context.Context, w Windows) pluginsJSON {
 		}
 		if u, ok := plugin.LastUpdated(plugin.Name(e.Spec), time.Now().Add(-autoUpdatedFor)); ok && !plugin.IsPath(e.Spec) {
 			j.AutoUpdated = &u
+		}
+		if m, ok := mws[e.Spec]; ok {
+			j.Middleware = &m
 		}
 		j.Moved = provider.MovedOnto(e.Spec)
 		if j.Moved == nil {

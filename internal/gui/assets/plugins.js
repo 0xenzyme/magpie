@@ -719,6 +719,14 @@
       c.title = t("{names} runs on this plugin in place of the built-in", { names });
       nm.append(c);
     }
+    // gateway middleware runs in magpie's gateway, not as a subscription:
+    // the row says so, and how it is doing, on a line of its own
+    const mw = e.middleware;
+    if (mw && !mw.error && !e.off) {
+      const c = el("span", "pm-chip soft", t("Middleware"));
+      c.title = t("Runs in magpie's gateway on the requests your agents send and on the replies");
+      nm.append(c);
+    }
     who.append(nm);
     const subs = subsOf(pkg);
     const sub = el("div", "sub");
@@ -743,8 +751,11 @@
         else if (!x.signedIn && subs.some((y) => y.signedIn)) s.title = t("{name} is a subscription of its own; {other} works without it", { name: x.name, other: subs.find((y) => y.signedIn).name });
         sub.append(s);
       }
+    } else if (mw && !e.providers.length) {
+      // only middleware: its own line says what it does
     } else sub.textContent = e.providers.length ? t("Signs in to {names}", { names: e.providers.join(t(", ")) }) : t("Signs in to nothing magpie can use");
-    who.append(sub);
+    if (sub.textContent) who.append(sub);
+    if (mw && !e.off && !ask) who.append(mwLine(mw));
     r.append(logo(l?.icon || subs[0]?.icon), who);
     const val = el("div", "val");
     const b = busy.get(pkg) || busy.get(e.spec);
@@ -808,6 +819,30 @@
     r.append(val);
     r.onclick = (ev) => { if (!ev.target.closest("button")) detail(l || (isGit(e.spec) ? { package: e.spec, name: e.package || e.spec, npm: { version: e.version, repository: gitWeb(e.spec) } } : { package: pkg, name: label(e.spec), npm: { version: e.latest } })); };
     return r;
+  }
+
+  // mwLine is a middleware's line in its plugin's row: its hooks, how many
+  // calls and how long each took, and the calls that failed (which went on
+  // as if it weren't there), or why it didn't load
+  function mwLine(m) {
+    const d = el("div", "sub pm-mw");
+    if (m.error) {
+      d.textContent = t("Middleware didn't load: {error}", { error: m.error });
+      d.classList.add("bad");
+      d.title = m.error;
+      return d;
+    }
+    const lang = document.documentElement.lang || undefined;
+    let s = t("Gateway middleware: {hooks}", { hooks: m.hooks.join(t(", ")) });
+    if (m.calls) s += " · " + t("{n} calls, {us} µs each", { n: m.calls.toLocaleString(lang), us: m.avgMicros < 10 ? m.avgMicros.toFixed(1) : Math.round(m.avgMicros).toLocaleString(lang) });
+    d.append(el("span", "", s));
+    if (m.events?.length) d.title = t("onEvent sees only {events} events", { events: m.events.join(t(", ")) });
+    if (m.failures) {
+      const f = el("span", "pm-mw-fail", t("{n} failed", { n: m.failures.toLocaleString(lang) }));
+      f.title = t("A failed call leaves the request or reply as it was") + (m.lastError ? "\n" + t("Last: {error}", { error: m.lastError }) : "");
+      d.append(el("span", "sep", " · "), f);
+    }
+    return d;
   }
 
   // the plugin's page: what it is, what npm says of it, and its README

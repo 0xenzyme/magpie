@@ -950,7 +950,7 @@ func (s *Server) handle(from provider.Protocol) http.HandlerFunc {
 				return
 			}
 		}
-		s.serve(w, r, from, body)
+		s.serveAgent(w, r, from, body)
 	}
 }
 
@@ -991,7 +991,7 @@ func (s *Server) gemini(w http.ResponseWriter, r *http.Request) {
 		writeError(w, provider.Gemini, 404, "unknown method "+method)
 		return
 	}
-	s.serve(w, r, provider.Gemini, withFields(body, map[string]any{"model": model, "stream": stream}))
+	s.serveAgent(w, r, provider.Gemini, withFields(body, map[string]any{"model": model, "stream": stream}))
 }
 
 // geminiCount unwraps generateContentRequest, if present, and estimates the

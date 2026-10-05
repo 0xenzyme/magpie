@@ -105,7 +105,7 @@ func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 				s.codexCompact(w, r, body)
 				return
 			}
-			s.serve(w, r, provider.Responses, body)
+			s.serveAgent(w, r, provider.Responses, body)
 			return
 		}
 		body = boundCallIDs(callItemIDs(body))
@@ -114,7 +114,7 @@ func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 		}
 		body, _ = codexInput(body, false)
 		if id, ok := codexAccounts(r.Header, model); ok {
-			s.serve(w, r, provider.Responses, withModel(body, id))
+			s.serveAgent(w, r, provider.Responses, withModel(body, id))
 			return
 		}
 		if r.Header.Get(AccountHeader) != "" {
