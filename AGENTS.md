@@ -11,6 +11,11 @@ semantic change description, and review rules.
 
 Write and review changes against the [code standards](docs/code-standards.md).
 
+## Lessons
+
+Before changing code, read [LESSONS.md](LESSONS.md): what recent merged
+work got wrong and the rule that would have caught it.
+
 ## Built-in subscriptions that a plugin serves
 
 Some built-in subscriptions are deprecated. Reaching them can break their

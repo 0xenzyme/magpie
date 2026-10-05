@@ -12,6 +12,7 @@ describe and review a change to a subsystem is in the
 | A change does only what its goal needs. | Every change in behavior has a reason. Unrelated refactors, extra features and policy changes go in a PR of their own. |
 | A fix covers exactly the cases it means to. | Which cases change, and which neighboring ones stay the same. Different errors are not handled as one. |
 | A change holds on the whole path. | Follow it from the user's input to the end result, through the callers, the state it changes and the side effects. One correct function doesn't make the whole operation correct. For example, an agent's model picks are saved under one id and read under another (#926). An update button doesn't update the binary that actually runs (#930). |
+| A fix reaches every sibling of the bug. | Grep for the same pattern: every agent, subcommand, guard of the same shape and caller of a changed predicate gets the fix in the same change. On 2026-10-05 six fixes needed a second release because they covered only the case in the report (see [LESSONS.md](../LESSONS.md)). |
 | Checks cover the edges the change touches. | For numbers, check the boundaries. For paths, check each platform (macOS, Linux, Windows). For concurrency, check races and stale state. Pick checks by risk. |
 
 ## Tests
@@ -71,6 +72,8 @@ review.
 
 A release counts only when all of these hold:
 
+- A CI Test run on the tagged commit, or a later one containing it, finished
+  green. A run cancelled by the next push is not a pass.
 - The tag `vX.Y.Z` is on `main`, an ancestor of `origin/main`.
 - The release in `yetone/magpie-releases` has all 16 assets.
 - That release is marked Latest, the highest version.
@@ -112,9 +115,11 @@ applies:
 - **Don't reverse deliberate decisions.** The scroll guard, the button
   cursor and other product decisions are the maintainer's to change (#820,
   #921). A PR that changes one is left for the maintainer.
-- **GUI suites.** Compare pass counts with `main`. Re-run a failure on its
-  own to tell a flake under load from a regression, and name the flake
-  (#807, #820, #859).
+- **GUI suites.** Compare pass counts with `main`. A test that fails on
+  `main` too is not a baseline: fix it, or open an issue naming its cause,
+  in a commit of its own. "Passes alone" is not a pass; run a Go test with
+  `-race -count=20` before calling it a flake (a45b3e09 found a data race
+  that was waved through for 19 hours).
 - **Docs match the source.** A reference is checked against the code it
   links, and every link must resolve (#889).
 - **Keep the PR to its goal.** Unrelated tests and refactors go in a PR of
