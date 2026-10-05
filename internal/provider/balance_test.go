@@ -152,6 +152,17 @@ func TestKeyBalances(t *testing.T) {
 	if got[0].Windows == nil {
 		t.Fatal("windows is null in the JSON")
 	}
+	// each key's balance is kept over time, a failed one not
+	bh := readBalanceHist()
+	if pts := bh[quotaHistKey("relay", "main")]; len(pts) != 1 || pts[0].Amount != 2 {
+		t.Fatalf("main's balance history = %+v", pts)
+	}
+	if pts := bh[quotaHistKey("relay", "spare")]; len(pts) != 1 || pts[0].Amount != 0.5 {
+		t.Fatalf("spare's balance history = %+v", pts)
+	}
+	if len(bh) != 2 {
+		t.Fatalf("balance history = %+v", bh)
+	}
 }
 
 func TestReadAiHubMix(t *testing.T) {

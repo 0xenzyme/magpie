@@ -1569,6 +1569,13 @@ line, the 2 days / Cycle control turning every card without moving the page,
 no curve without readings, the theme's chart colours in light and dark, and
 the tray card's thin current-cycle line, in Chinese and English.
 
+`balance-curve.test.cjs` checks a key's balance over time on the Usage page:
+its readings as a line, the least-squares line since the last top-up dashed
+on to zero, "Runs out in 3d at this pace" and the spend a day, a click (or
+Enter) enlarging the plot and another taking it back without moving the
+page, no curve for a key of one reading, and the allowances' Off taking it
+away, in Chinese and English, light and dark.
+
 With Node.js and Playwright available, `make test-ui` manually runs the whole suite:
 every `internal/gui/tests/*.test.cjs`, discovered automatically. Files are
 independent and run a few at a time (`UI_TEST_CONCURRENCY`, default 2); set

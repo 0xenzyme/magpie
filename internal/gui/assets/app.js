@@ -11918,6 +11918,9 @@ function renderQuotas() {
       if (!brief && sub.daily && !sub.error) card.append(creditDays(sub));
       // what is left besides the windows, under them
       if (sub.balance && sub.windows?.length && !sub.error) card.append(balanceRow(sub, "What is left on the account besides its windows", false));
+      // the balance over time, and when it runs out at that pace
+      const spend = !brief && !sub.error && balanceCurve(sub);
+      if (spend) card.append(spend);
       // when the windows were read: "Updated 3 min ago", or the time of
       // ones standing in for a reading that failed just now (#802; a
       // balance alone says it in its row)
@@ -12147,7 +12150,7 @@ addEventListener("storage", (e) => {
 function renderQuotaTrend() {
   const b = $("#quotaTrend");
   if (!b) return;
-  b.hidden = !quotas?.some((q) => !q.error && quotaLines(q).length);
+  b.hidden = !quotas?.some((q) => !q.error && (quotaLines(q).length || q.balanceTrend?.points?.length > 1));
   if (b.hidden) return;
   const cur = QUOTA_RANGES.find(([id]) => id === quotaRange);
   b.classList.toggle("set", quotaRange !== "off");
@@ -12276,6 +12279,7 @@ function quotaCurve(sub) {
   box.title = t("Solid: what was left. Dashed: an even pace, full at the cycle's start to empty at its reset; a line above its dashes lasts the cycle, one below runs out before the reset.");
   const W = 300, H = 60;
   const g = sv("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", class: "qc-plot", role: "img" });
+  curveZoom(box, g);
   const axis = el("div", "qc-axis");
   const legend = el("div", "qc-legend");
   lines.forEach((l, i) => {
@@ -12308,6 +12312,88 @@ function quotaCurve(sub) {
 function quotaReadings(l, now) {
   const pts = l.points.slice(-8);
   return pts.map((p, i) => (i > 0 && quotaCycleBreak(pts[i - 1], p) ? "↻ " : "") + Math.round(p.left) + "% · " + quotaTimeText(p.at, now)).reverse();
+}
+// curveZoom: a curve made larger on a click, or Enter, and back on the
+// next (TJHHHH on Discord); the page stays where it is
+function curveZoom(box, g) {
+  g.setAttribute("tabindex", "0");
+  g.setAttribute("aria-expanded", "false");
+  const flip = (e) => {
+    e.stopPropagation();
+    const big = box.classList.toggle("big");
+    g.setAttribute("aria-expanded", String(big));
+  };
+  g.addEventListener("click", flip);
+  g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(e); } });
+}
+// balanceAmount: v written as the card's balance writes its amount, "¥"
+// or "$" before it, "credits" after
+function balanceAmount(sub, v) {
+  const m = (sub.balance || "").match(/^(.*?)-?\d[\d,]*(?:\.\d+)?(.*)$/);
+  const n = v.toLocaleString(intlLang(), { minimumFractionDigits: Math.abs(v) < 100 ? 2 : 0, maximumFractionDigits: 2 });
+  return m ? m[1] + n + m[2] : n;
+}
+// balanceCurve: a key's balance over time, as magpie read it, under its
+// figure on the Usage page (TJHHHH on Discord): the line, the least-squares
+// line through it since the last top-up dashed on to where it meets zero
+// when that is near, and when it runs out at that pace in the head. The
+// range the allowances' curves have ("2 days", or all it has: two weeks);
+// none while they are off, or with one reading only.
+function balanceCurve(sub) {
+  if (quotaRange === "off") return null;
+  const tr = sub.balanceTrend;
+  if (!tr?.points?.length || tr.points.length < 2) return null;
+  const pts = tr.points.map((p) => ({ at: Date.parse(p.at), v: p.amount }));
+  const box = el("div", "quota-curve balance-curve");
+  const head = el("div", "qc-head");
+  const out = tr.runsOut ? Date.parse(tr.runsOut) : null;
+  const pace = el("span", "qc-range");
+  head.append(el("span", "", t("Balance over time")), pace);
+  box.title = t("Solid: the balance as magpie read it. Dashed: a straight line fitted through it since the last top-up, carried on to where it runs out. Click to enlarge.");
+  const W = 300, H = 60;
+  const g = sv("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", class: "qc-plot", role: "img" });
+  curveZoom(box, g);
+  const axis = el("div", "qc-axis");
+  const legend = el("div", "qc-legend");
+  const k = el("span", "qc-key");
+  const sw = el("i");
+  sw.style.background = "var(--c1)";
+  const last = pts[pts.length - 1];
+  k.append(sw, el("span", "", t("Balance")), el("b", "", balanceAmount(sub, last.v)));
+  k.title = [t("Latest readings:"), ...pts.slice(-8).reverse().map((p) => balanceAmount(sub, p.v) + " · " + quotaTimeText(p.at, Date.now()))].join("\n");
+  legend.append(k);
+  if (tr.perDay > 0) legend.append(el("span", "qc-key bc-pace", t("about {amount} a day", { amount: balanceAmount(sub, tr.perDay) })));
+  box.draw = () => {
+    const now = Date.now();
+    let x0 = quotaRange === "2d" ? now - 48 * 3600e3 : pts[0].at, x1 = now;
+    if (!(x0 < now)) x0 = now - 3600e3;
+    // the dashes reach zero when it is no further off than what is shown
+    if (out && out > now && out - now <= now - x0) x1 = out;
+    const top = Math.max(...pts.filter((p) => p.at >= x0).map((p) => p.v), last.v, tr.fitStart || 0) * 1.08 || 1;
+    const X = (at) => ((at - x0) / (x1 - x0)) * W, Y = (v) => H - (Math.max(0, Math.min(top, v)) / top) * H;
+    g.replaceChildren();
+    for (const f of [0, 0.5, 1]) g.append(sv("line", { x1: 0, x2: W, y1: H - f * H, y2: H - f * H, class: "qc-grid" }));
+    if (tr.fitFrom) {
+      const from = Date.parse(tr.fitFrom), slope = (tr.fitNow - tr.fitStart) / (now - from || 1);
+      const end = out && x1 === out ? out : now;
+      g.append(sv("line", { x1: X(from), y1: Y(tr.fitStart), x2: X(end), y2: Y(tr.fitStart + slope * (end - from)), class: "qc-even bc-fit" }, { stroke: "var(--c1)" }));
+    }
+    let d = "";
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], next = pts[i + 1];
+      if (p.at < x0 && next && next.at < x0) continue;
+      d += (d ? "L" : "M") + X(p.at).toFixed(1) + " " + Y(p.v).toFixed(1);
+    }
+    if (d) g.append(sv("path", { d, class: "qc-line" }, { stroke: "var(--c1)" }));
+    if (x1 > now) g.append(sv("line", { x1: X(now), x2: X(now), y1: 0, y2: H, class: "qc-now" }));
+    pace.textContent = out ? t("Runs out {in} at this pace", { in: untilText(Math.max(out, now + 60e3)) }) : "";
+    pace.title = out ? new Date(out).toLocaleString() : "";
+    g.setAttribute("aria-label", t("Balance over time") + (out ? " · " + pace.textContent : ""));
+    axis.replaceChildren(el("span", "", quotaTimeText(x0, now)), el("span", "", quotaTimeText(x1, now)));
+  };
+  box.append(head, g, axis, legend);
+  box.draw();
+  return box;
 }
 function setQuotaRange(id) {
   if (id === quotaRange) return;

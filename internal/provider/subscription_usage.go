@@ -87,6 +87,9 @@ type SubscriptionQuota struct {
 	// BalanceParts are the Balance's amounts each apart, when the balance
 	// field the user wrote has several or a percent (cardParts)
 	BalanceParts []BalancePart `json:"balanceParts,omitempty"`
+	// BalanceTrend is the Balance over time, as magpie read it, and when
+	// it runs out at that pace (balance_history.go)
+	BalanceTrend *BalanceTrend `json:"balanceTrend,omitempty"`
 	// Until is when the plan's paid time ends: it renews then when Renew
 	// is "auto", is over when "off", and either when "" (the vendor
 	// doesn't say which).

@@ -874,6 +874,8 @@ func KeyBalances(ctx context.Context) []SubscriptionQuota {
 	}
 	wg.Wait()
 	if ctx.Err() == nil {
+		// each balance kept, and drawn over time with its runs-out
+		noteBalanceHistory(out, time.Now())
 		c.Lock()
 		c.data = cacheCards(c.data, out, seq, again)
 		if !again {

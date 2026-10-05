@@ -626,6 +626,13 @@ body.window .field.solo { grid-column: auto; }
 .quota-curve .qc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 10.5px; color: var(--muted); }
 .quota-curve .qc-range { font-size: 10px; color: var(--faint); }
 .quota-curve .qc-plot { display: block; width: 100%; height: 52px; margin-top: 5px; overflow: hidden; }
+/* a click makes a curve larger, another back (TJHHHH on Discord) */
+.quota-curve .qc-plot { cursor: zoom-in; transition: height .15s ease; }
+.quota-curve.big .qc-plot { height: 168px; cursor: zoom-out; }
+.quota-curve .qc-plot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) { .quota-curve .qc-plot { transition: none; } }
+.balance-curve .qc-range { color: var(--muted); }
+.balance-curve .bc-pace { color: var(--faint); }
 .qc-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .qc-line { fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 /* a window far shorter than the span drawn (a 5-hour one over a week) is a
