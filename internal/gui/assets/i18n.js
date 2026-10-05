@@ -6349,7 +6349,7 @@ const I18N = {
     "RTK's plugin is written for OpenCode 1, and OpenCode 2 refuses to load it. Switch this off until RTK supports OpenCode 2.": "RTK のプラグインは OpenCode 1 向けに書かれており、OpenCode 2 は読み込みを拒否します。RTK が OpenCode 2 に対応するまでオフにしてください。",
     "RTK's plugin is written for OpenCode 1, and OpenCode 2 refuses to load it. It can be switched on once RTK supports OpenCode 2.": "RTK のプラグインは OpenCode 1 向けに書かれており、OpenCode 2 は読み込みを拒否します。RTK が OpenCode 2 に対応したらオンにできます。",
     "No RTK hook": "RTK 未対応",
-    "RTK can't be given to {agent} yet: RTK works by rewriting the shell command an agent is about to run, and {agent}'s hooks can only allow or deny a command, not change it. RTK's installer has no option for it either (github.com/rtk-ai/rtk/issues/3847).": "{agent} にはまだ RTK を使えません。RTK はエージェントが実行しようとするシェルコマンドを書き換えて動きますが、{agent} のフックはコマンドを許可・拒否できるだけで書き換えられません。RTK のインストーラーにも {agent} 用のオプションはありません（github.com/rtk-ai/rtk/issues/3847）。",
+    "RTK can't be given to {agent} yet: RTK works by rewriting the shell command an agent is about to run, and {agent}'s hooks can only allow or deny a command, not change it. RTK's installer has no option for it either (github.com/rtk-ai/rtk/issues/3847).": "{agent} にはまだ RTK を使えません。RTK はエージェントが実行しようとするシェルコマンドを書き換えて動きますが、{agent} のフックはコマンドを許可・拒否できるだけで書き換えられません。RTK のインストーラーにもそのためのオプションはありません（github.com/rtk-ai/rtk/issues/3847）。",
     "Get RTK": "RTK を入手",
     "Check again": "再確認",
     "restart an agent after switching it": "切り替え後はエージェントを再起動してください",
