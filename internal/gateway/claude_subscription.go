@@ -1671,12 +1671,6 @@ func (r *subscriptionRun) attach() chan Event {
 	return ch
 }
 
-func (r *subscriptionRun) attached() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.segment != nil
-}
-
 func (r *subscriptionRun) emit(ev Event) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

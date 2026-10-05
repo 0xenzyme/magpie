@@ -246,13 +246,6 @@ func readKiroAt(key, home string) (kiroCred, bool) {
 	return readKiroIDE()
 }
 
-// kiroSignedIn is whether there is a Kiro sign-in to use, without asking
-// anyone.
-func kiroSignedIn(key string) bool {
-	_, ok := readKiro(key)
-	return ok
-}
-
 // KiroAuth is what a call to Kiro's API is made with.
 type KiroAuth struct {
 	Token     string

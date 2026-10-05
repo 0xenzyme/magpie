@@ -372,8 +372,6 @@ func stat(f *file) bool {
 	return true
 }
 
-func claudeFiles() []file { return ccFiles("claude", ClaudeDir()) }
-
 // ccFiles are the session files of an agent that keeps them as Claude Code
 // does, under its folder's projects/: a session's own <id>.jsonl in its
 // project's folder, and its subagents' in <id>/subagents/.

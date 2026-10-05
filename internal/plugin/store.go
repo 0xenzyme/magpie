@@ -489,19 +489,6 @@ func ShortName(pkg string) string {
 	return strings.TrimSuffix(pkg, "-auth")
 }
 
-// SetConfig sets the OpenCode config the plugins are handed.
-func SetConfig(cfg map[string]any) error {
-	listMu.Lock()
-	defer listMu.Unlock()
-	l := Load()
-	l.Config = cfg
-	if err := save(l); err != nil {
-		return err
-	}
-	Restart()
-	return nil
-}
-
 // install puts an npm package into plugins/ with bun add, its scripts
 // left unrun as OpenCode leaves them.
 func install(ctx context.Context, spec string) error {

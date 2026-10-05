@@ -497,24 +497,6 @@ func Stale() bool {
 	return err != nil || time.Since(st.ModTime()) > staleAfter
 }
 
-// ProviderEnv lists the env vars that unlock a models.dev provider.
-func ProviderEnv(provider string) []string {
-	if p, ok := load()[provider]; ok {
-		return p.Env
-	}
-	return nil
-}
-
-// ProviderAvailable is true when any of the provider's API-key env vars is set.
-func ProviderAvailable(provider string) bool {
-	for _, e := range ProviderEnv(provider) {
-		if os.Getenv(e) != "" {
-			return true
-		}
-	}
-	return false
-}
-
 // PriceOf is the list price of a models.dev provider's model, if known.
 func PriceOf(providerID, modelID string) (Price, bool) {
 	if p, ok := load()[providerID]; ok {
