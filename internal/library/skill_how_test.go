@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -138,5 +139,44 @@ func TestSkillHow(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(cl, "SKILL.md")); err != nil {
 		t.Error("the user's own pdf went with the library's")
+	}
+}
+
+// Two failed hashes don't prove a copy is unchanged: switching back to a
+// link must keep the agent's edits even when neither folder can be read.
+func TestSkillRelinkKeepsUnreadableCopy(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("requires Unix read permissions without root")
+	}
+	h := sandbox(t)
+	src := filepath.Join(h, "src/skills")
+	skill(t, filepath.Join(src, "pdf"), "pdf", "Read PDFs")
+	write(t, filepath.Join(src, "pdf/blocked.txt"), "unchanged\n")
+	ok(t)(InstallSkills(src, []string{"pdf"}, []string{"claude"}))
+	ok(t)(SetSkillHow("", HowCopy))
+	p := filepath.Join(h, ".claude/skills/pdf")
+	write(t, filepath.Join(p, "notes.md"), "my notes\n")
+	for _, dir := range []string{filepath.Join(src, "pdf"), p} {
+		if err := os.Chmod(filepath.Join(dir, "blocked.txt"), 0); err != nil {
+			t.Fatal(err)
+		}
+		if hashDir(dir) != "" {
+			t.Fatal("the unreadable file didn't prevent hashing", dir)
+		}
+	}
+
+	ok(t)(SetSkillHow("", HowLink))
+	if !isLink(t, p) {
+		t.Fatal("claude's copy wasn't replaced by a link")
+	}
+	var kept []string
+	filepath.WalkDir(BackupDir(), func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.Name() == "notes.md" {
+			kept = append(kept, p)
+		}
+		return nil
+	})
+	if len(kept) != 1 || read(t, kept[0]) != "my notes\n" {
+		t.Fatalf("the unreadable copy's edits weren't kept: %v", kept)
 	}
 }

@@ -254,8 +254,12 @@ func isDigits(s string) bool {
 	return true
 }
 
-// fresh is whether the copy at p holds what the library's skill does.
-func fresh(p, name string) bool { return hashDir(p) == hashDir(realDir(skillDir(name))) }
+// fresh is whether both folders could be read and the copy at p holds
+// what the library's skill does. Failed hashes don't prove it can be discarded.
+func fresh(p, name string) bool {
+	h := hashDir(p)
+	return h != "" && h == hashDir(realDir(skillDir(name)))
+}
 
 func unlink(p string) error {
 	fi, err := os.Lstat(p)
