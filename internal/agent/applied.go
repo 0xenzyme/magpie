@@ -347,7 +347,7 @@ func (a *Agent) Wired() bool {
 	if a.Native != nil {
 		return a.Native.Read().Provider == "connected"
 	}
-	if a.Joined != nil && a.Joined() {
+	if a.Joined != nil && a.Joined() || a.Beside != nil && a.Beside() {
 		return true
 	}
 	vals := a.Values()
@@ -543,6 +543,12 @@ func (a *Agent) connect() (Connection, error) {
 		if sub == "" && o.sub {
 			sub = o.Value
 		}
+	}
+	// the model it is on, of its own, as magpie serves it on a sign-in of
+	// the user's, which its field lists as its own (Codex's on a ChatGPT
+	// account it can't join, #940)
+	if same == "" && alike == "" && cur != "" && a.OwnVia != nil {
+		same = a.OwnVia(cur)
 	}
 	how := "first"
 	switch {

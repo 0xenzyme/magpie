@@ -113,13 +113,20 @@ func codexIn(at place) *Agent {
 	// joined: connected by Join, on a model of Codex's own (its last pick)
 	// with magpie's beside it, by the base URL
 	joined := func() bool { return viaBase() && stashLoad()[at.key("codex.joined")] == "1" }
+	// beside: set on one of magpie's models beside the ChatGPT sign-in, by
+	// the base URL, Codex's own models in its list too: one of them written
+	// in by Codex (its /model, or a Codex app still running on its old
+	// pick) leaves it connected, its config still on magpie's gateway
+	// (#940: it read as not connected), the change told as drift. One
+	// picked on the Agents page still takes magpie out (set).
+	beside := func() bool { return viaBase() && stashLoad()[at.key("codex.beside")] == "1" }
 	// magpie is in Codex's config: on one of magpie's models, or joined;
 	// or, routed, on the model of the group magpie set it to as Codex
 	// spells it (gpt-6.1-sol for group/auto-gpt-6-1-sol, #750), which the
 	// gateway takes as that group
 	wired := func() bool {
 		m := get("model")
-		return isMagpie(m) || joined() || routed() && setAsGroup(cmp.Or(at.id, "codex"), "model", m)
+		return isMagpie(m) || joined() || beside() || routed() && setAsGroup(cmp.Or(at.id, "codex"), "model", m)
 	}
 	models := func() []catalog.Model {
 		switch {
@@ -476,7 +483,7 @@ func codexIn(at place) *Agent {
 	// provider, catalog and effort); it answers the model Codex was on
 	// then, for Unwire to go back to
 	unroute := func() (string, error) {
-		forget(at.key("codex.out"), at.key("codex.joined"))
+		forget(at.key("codex.out"), at.key("codex.joined"), at.key("codex.beside"))
 		if err := giveTables(); err != nil {
 			return "", err
 		}
@@ -529,7 +536,7 @@ func codexIn(at place) *Agent {
 				return err
 			}
 			os.Remove(catalogPath)
-			forget(at.key("codex.model"), at.key("codex.effort"), at.key("codex.provider"), at.key("codex.catalog"), at.key("codex.out"), at.key("codex.joined"))
+			forget(at.key("codex.model"), at.key("codex.effort"), at.key("codex.provider"), at.key("codex.catalog"), at.key("codex.out"), at.key("codex.joined"), at.key("codex.beside"))
 			return nil
 		}
 		// magpie API: magpie stays Codex's provider whichever model is the
@@ -577,6 +584,7 @@ func codexIn(at place) *Agent {
 				); err != nil {
 					return err
 				}
+				stash(map[string]string{at.key("codex.beside"): "1"})
 				if err := takeTables(); err != nil {
 					return err
 				}
@@ -587,6 +595,8 @@ func codexIn(at place) *Agent {
 			} else {
 				forget(at.key("codex.out"))
 			}
+			// magpie is its provider now, not beside the sign-in
+			forget(at.key("codex.beside"))
 			if err := putProvider(); err != nil {
 				return err
 			}
@@ -707,7 +717,9 @@ func codexIn(at place) *Agent {
 			return true, settle()
 		},
 		Joined: joined,
+		Beside: beside,
 		Routed: routed,
+		OwnVia: codexOwnViaMagpie,
 		Sync: func() error {
 			// model_provider = "magpie" left with its table gone (taken by
 			// another tool, or a hand edit), which keeps Codex from loading
