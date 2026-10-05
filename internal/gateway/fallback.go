@@ -1244,6 +1244,14 @@ func (h *holdWriter) failed() bool {
 	return !h.passing && h.code() >= 400 && retryable(h.code(), h.errBody())
 }
 
+// mayAskAgain tells whether a failure now is still held, for the request
+// to ask again or of another: nothing of the try has reached the agent.
+func (h *holdWriter) mayAskAgain() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.hold && !h.passing
+}
+
 // release sends a held reply after all: nobody else is left to try.
 func (h *holdWriter) release() {
 	if h.passing || h.status == 0 {
