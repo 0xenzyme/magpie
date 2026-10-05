@@ -70,3 +70,16 @@ func TestDshAndCodexAdviceOnWindows(t *testing.T) {
 		t.Fatalf("Codex says nothing about restarting: %q", n)
 	}
 }
+
+// Cline's desktop app and its CLI can't be told apart on Windows, where
+// Running says yes to both: its advice names both, not the desktop app's
+// alone, so one who uses the VS Code extension is still told to reload it.
+func TestDshClineAdviceOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("the Windows answer is only given there")
+	}
+	n := cline(t.TempDir()).Notice()
+	if !strings.Contains(n, "Reload VS Code") || !strings.Contains(n, "desktop app") {
+		t.Fatalf("Cline's advice on Windows leaves one out: %q", n)
+	}
+}
