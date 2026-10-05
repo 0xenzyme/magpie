@@ -146,16 +146,19 @@ type providerJSON struct {
 	// Groups are the routing groups ("group/<id>") each of its models is
 	// in, by model id: what an unlisted one is still used through, and the
 	// editor names those in none
-	Groups    map[string][]string `json:"groups,omitempty"`
-	Off       bool                `json:"off"`                // switched off: kept, but agents get none of its models
-	Contexts  map[string]int      `json:"contexts,omitempty"` // the windows the user set, "*" for all its models
-	Outputs   map[string]int      `json:"outputs,omitempty"`  // the reply limits the user set (provider.OutputsOf)
-	Compacts  map[string]int      `json:"compacts,omitempty"` // where Codex and Claude Code compact on its models (provider.CompactsOf)
-	Fetched   *time.Time          `json:"fetched,omitempty"`  // when the list came from the vendor; the page says how long ago in its language
-	Agents    []providerAgent     `json:"agents"`             // detected agents, current ones flagged
-	Sponsored bool                `json:"sponsored"`
-	KeyList   []provider.KeyInfo  `json:"keyList"`           // its keys, in the order requests try them
-	Account   *accountJSON        `json:"account,omitempty"` // a signed-in agent, see provider.Account
+	Groups   map[string][]string `json:"groups,omitempty"`
+	Off      bool                `json:"off"`                // switched off: kept, but agents get none of its models
+	Contexts map[string]int      `json:"contexts,omitempty"` // the windows the user set, "*" for all its models
+	Outputs  map[string]int      `json:"outputs,omitempty"`  // the reply limits the user set (provider.OutputsOf)
+	Compacts map[string]int      `json:"compacts,omitempty"` // where Codex and Claude Code compact on its models (provider.CompactsOf)
+	Fetched  *time.Time          `json:"fetched,omitempty"`  // when the list came from the vendor; the page says how long ago in its language
+	// ListError is why a plugin's account has only the plugin's defaults
+	// (provider.ListError): the editor says so under its models
+	ListError string             `json:"listError,omitempty"`
+	Agents    []providerAgent    `json:"agents"` // detected agents, current ones flagged
+	Sponsored bool               `json:"sponsored"`
+	KeyList   []provider.KeyInfo `json:"keyList"`           // its keys, in the order requests try them
+	Account   *accountJSON       `json:"account,omitempty"` // a signed-in agent, see provider.Account
 	// Move is where a built-in subscription stands with the community
 	// plugin that can run it (provider.Move): set for those that have one
 	Move *moveJSON `json:"move,omitempty"`
@@ -544,6 +547,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 	if t, ok := p.Listed(); ok {
 		out.Fetched = &t
 	}
+	out.ListError = p.ListError()
 	for _, a := range agents {
 		pa := providerAgent{ID: a.ID, Name: a.Name, Icon: a.Icon, Current: a.pid == p.ID, Model: a.model}
 		if a.inGroup {
