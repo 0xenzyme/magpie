@@ -253,6 +253,7 @@ func codexIn(at place) *Agent {
 	// signed in to ChatGPT
 	api := func() bool { return stashLoad()[at.key("codex.login")] == "api" }
 	dropBase := func() error {
+		forget(at.key("codex.failover"))
 		if !viaBase() {
 			return nil
 		}
@@ -344,10 +345,22 @@ func codexIn(at place) *Agent {
 			}
 			return nil
 		}
+		// the base URL failover wrote is marked (codex.failover), and only
+		// that one goes again: one the user wrote in config.toml by hand,
+		// to have Codex's own models go through magpie, stays (#856: it was
+		// gone again each time magpie started). One already there while
+		// failover is on is taken as failover's, as a magpie from before
+		// the mark wrote it.
+		owned := stashLoad()[at.key("codex.failover")] == "1"
 		switch {
 		case on && !viaBase():
-			return edit.SetTOMLTop(path, edit.KV{Path: "openai_base_url", Value: at.codexURL()})
-		case !on && viaBase():
+			if err := edit.SetTOMLTop(path, edit.KV{Path: "openai_base_url", Value: at.codexURL()}); err != nil {
+				return err
+			}
+			stash(map[string]string{at.key("codex.failover"): "1"})
+		case on && !owned:
+			stash(map[string]string{at.key("codex.failover"): "1"})
+		case !on && viaBase() && owned:
 			return dropBase()
 		}
 		return nil
