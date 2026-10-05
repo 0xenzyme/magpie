@@ -6870,6 +6870,17 @@ function drawEditor(p, presetID) {
     ed.append(...field("Base URL", urlWrap));
   }
 
+  // the Cline API serves a model from whichever host its AI gateway picks;
+  // pinned, its DeepSeek models are served by DeepSeek's own API alone,
+  // which keeps their prompt cache (White Immortal on Discord). ClinePass,
+  // or the Cline plugin's provider (ARNO on Discord)
+  const upstreamField = () => {
+    const [ptk, pcb] = tick(t("DeepSeek models only from DeepSeek's own API"), !!draft.pinUpstream);
+    ptk.classList.add("pin-upstream");
+    pcb.onchange = () => { draft.pinUpstream = pcb.checked; };
+    return field(t("Upstream"), ptk, t("Cline serves a model from any host its gateway picks; pinned, a request for a DeepSeek model goes only to DeepSeek, which keeps its prompt cache, and fails when DeepSeek can't take it"));
+  };
+
   if (p?.account) {
     // the sign-in belongs to the agent; magpie only borrows it
     const a = p.account;
@@ -6899,6 +6910,7 @@ function drawEditor(p, presetID) {
     ed.append(...field(t("Proxy"), proxies));
     ed.append(...concurrencyField(p));
     ed.append(...priceRateField());
+    if (p.cline) ed.append(...upstreamField());
     // a plugin's provider is reached inside magpie: its plugin:// URLs go
     // nowhere to show or test
     const urls = [p.chat, p.responses, p.anthropic].filter(Boolean);
@@ -6929,7 +6941,7 @@ function drawEditor(p, presetID) {
       if (maxConcurrency === undefined) return concurrencyError(ed);
       const priceRate = priceRateOfDraft();
       if (priceRate === undefined) return priceRateError(ed);
-      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, outputs: ox.map, proxy, accountProxies: own.map, maxConcurrency, priceRate, modelPrefs: modelPrefsOfDraft(), ...routingOfDraft(p) }, t("{name} saved", { name: p.name })); };
+      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, outputs: ox.map, proxy, accountProxies: own.map, maxConcurrency, priceRate, modelPrefs: modelPrefsOfDraft(), pinUpstream: !!draft.pinUpstream, ...routingOfDraft(p) }, t("{name} saved", { name: p.name })); };
     bar.append(cancel, saveBtn);
     ed.append(bar);
     return ed;
@@ -6996,15 +7008,7 @@ function drawEditor(p, presetID) {
   ed.append(...concurrencyField(p));
   ed.append(...priceRateField());
 
-  // the Cline API serves a model from whichever host its AI gateway picks;
-  // pinned, its DeepSeek models are served by DeepSeek's own API alone,
-  // which keeps their prompt cache (White Immortal on Discord)
-  if (p?.cline || (isNew && pr?.id === "clinepass")) {
-    const [ptk, pcb] = tick(t("DeepSeek models only from DeepSeek's own API"), !!draft.pinUpstream);
-    ptk.classList.add("pin-upstream");
-    pcb.onchange = () => { draft.pinUpstream = pcb.checked; };
-    ed.append(...field(t("Upstream"), ptk, t("Cline serves a model from any host its gateway picks; pinned, a request for a DeepSeek model goes only to DeepSeek, which keeps its prompt cache, and fails when DeepSeek can't take it")));
-  }
+  if (p?.cline || (isNew && pr?.id === "clinepass")) ed.append(...upstreamField());
 
   // a relay in front of Anthropic's or OpenAI's API searches the web as
   // they do, which magpie can't tell from its host (#359): a client's web
