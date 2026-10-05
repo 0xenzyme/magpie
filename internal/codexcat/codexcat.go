@@ -153,7 +153,12 @@ func Entries(ms []catalog.Model, after int) []any {
 			e.Modalities = append(e.Modalities, "image")
 		}
 		if c := m.Context; c > 0 {
+			// the model's or its provider's threshold, else the one for
+			// every model (#876); one at or above c is its whole window
 			w := work.Working(c)
+			if m.Compact > 0 {
+				w = min(c, m.Compact)
+			}
 			e.Context = &w
 			if w < c {
 				e.MaxContext = &c

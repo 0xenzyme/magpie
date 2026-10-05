@@ -22,6 +22,7 @@ import (
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/codexcat"
 	"github.com/yetone/magpie/internal/proc"
+	"github.com/yetone/magpie/internal/settings"
 )
 
 // codexClientVersion is the Codex CLI version the models list is asked for
@@ -426,6 +427,11 @@ func CodexListTag() string {
 		ms = append(ms, catalog.Model{ID: "^" + id})
 	}
 	ms = append(ms, codexWindowsTag()...)
+	// and where a model with no threshold of its own is compacted, when
+	// that isn't the working window
+	if n := settings.Load().Compact(); n != settings.WorkingWindow {
+		ms = append(ms, catalog.Model{ID: "~compact", Context: n})
+	}
 	return codexcat.PolicyTag(codexcat.Tag(ms))
 }
 
@@ -501,11 +507,14 @@ func codexListed(shown []Entry, members func(id string) []Member) []catalog.Mode
 	// are in Codex's picker beside these
 	labels := Labels(shown)
 	seen := described()
+	s := settings.Load()
+	find := func(id string) (Group, []Member, bool) { return Group{}, members(id), true }
 	for i, e := range shown {
 		if CodexOwn(e) {
 			continue
 		}
 		m := catalog.Model{ID: e.ID, Name: labels[i], Efforts: e.Efforts, Images: e.Images || seen, Context: e.Context, AgentsV2: e.AgentsV2}
+		m.Compact = compactSet(s, e.ID, find)
 		if e.Group != "" {
 			for _, mb := range members(e.ID) {
 				if a := mb.Provider.Account; a != nil && a.Agent == "codex" && strings.HasPrefix(mb.Model, "gpt-") {

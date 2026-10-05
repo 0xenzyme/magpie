@@ -246,6 +246,10 @@ type Settings struct {
 	// what OpenAI does with its own models, 272K though they can take
 	// more, and Anthropic with its, 200K unless a [1m] one is picked.
 	FullContext bool `json:"fullContext,omitempty"`
+	// CompactAt is the window told for a longer one when FullContext is
+	// off, in tokens: 0 is WorkingWindow (#876: 272K was the only one).
+	// A provider's or a model's own (ModelCompacts) comes before it.
+	CompactAt int `json:"compactAt,omitempty"`
 	// ChinaMirror is the Plugins page's 「国内镜像」 switch: the plugin list,
 	// npm (the plugins' packages and what npm says of them) and Bun's
 	// downloads are asked of mirrors in China first, and of their official
@@ -319,6 +323,12 @@ type Settings struct {
 	// provider's, and the agents' own files are told of either
 	// (see provider.SetModelOutput).
 	ModelOutputs map[string]int `json:"modelOutputs,omitempty"`
+	// ModelCompacts is where Codex and Claude Code compact a conversation
+	// on a model, by "<provider id>/<model id>", and "*" for every model
+	// of that provider (#876): the window they are told when the model's
+	// own is longer, over CompactAt and FullContext. One at or above the
+	// model's window is its whole window.
+	ModelCompacts map[string]int `json:"modelCompacts,omitempty"`
 	// ModelWires is the name to send a vendor for a model magpie knows by
 	// another, by "<provider id>/<model id>", and "*" for every model of that
 	// provider. A "*" in the name is the model itself, so one name covers a
@@ -541,10 +551,23 @@ const WorkingWindow = 272000
 // Working is the context window an agent is told for a model with one of
 // n tokens (see FullContext).
 func (s Settings) Working(n int) int {
-	if !s.FullContext && n > WorkingWindow {
-		return WorkingWindow
+	if w := s.Compact(); w > 0 && n > w {
+		return w
 	}
 	return n
+}
+
+// Compact is where a conversation on a longer window is compacted when
+// neither its model nor its provider says (ModelCompacts): CompactAt,
+// else WorkingWindow, and 0 under FullContext, the model's whole window.
+func (s Settings) Compact() int {
+	if s.FullContext {
+		return 0
+	}
+	if s.CompactAt > 0 {
+		return s.CompactAt
+	}
+	return WorkingWindow
 }
 
 // KeepOwn puts back cur's settings that are this computer's own, which a

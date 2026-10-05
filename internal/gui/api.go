@@ -932,6 +932,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		in.PlainNames, in.PlainOwnNames = cur.PlainNames, cur.PlainOwnNames
 		in.CodexAgentsV1 = cur.CodexAgentsV1
 		in.FullContext = cur.FullContext // set on its own (full-context below)
+		in.CompactAt = cur.CompactAt     // and so is the threshold
+
 		in.CodexTitles = cur.CodexTitles // set on its own (codex-titles below)
 		in.ChinaMirror = cur.ChinaMirror // the Plugins page's, set on its own
 		// which Codex accounts spend a reset by themselves, set on the Usage card
@@ -1075,12 +1077,21 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	// or the working one (settings.FullContext): their lists are written
 	// again
 	mux.HandleFunc("POST /api/settings/full-context", func(rw http.ResponseWriter, r *http.Request) {
-		var in struct{ On bool }
+		// At, when given, is a threshold to compact at instead, in
+		// tokens: 0 is the working window again (#876)
+		var in struct {
+			On bool
+			At *int
+		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			fail(rw, err)
 			return
 		}
-		if err := provider.SetFullContext(in.On); err != nil {
+		err := provider.SetFullContext(in.On)
+		if err == nil && !in.On && in.At != nil {
+			err = provider.SetCompactAt(*in.At)
+		}
+		if err != nil {
 			fail(rw, err)
 			return
 		}

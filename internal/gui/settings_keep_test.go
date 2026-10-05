@@ -117,6 +117,8 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		ModelEfforts:        map[string][]string{"p/m": {"low"}},
 		ModelImages:         map[string]bool{"p/m": true},
 		ModelOutputs:        map[string]int{"p/m": 131072},
+		ModelCompacts:       map[string]int{"p/*": 500000},
+		CompactAt:           400000,
 		ModelPrices:         map[string]settings.ModelPrice{"p/m": {Input: &one, Output: &two}},
 		ModelWires:          map[string]string{"p/m": "vendor-c/m"},
 		ModelAPIs:           map[string]string{"p/m": "anthropic"},

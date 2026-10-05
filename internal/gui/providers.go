@@ -150,6 +150,7 @@ type providerJSON struct {
 	Off       bool                `json:"off"`                // switched off: kept, but agents get none of its models
 	Contexts  map[string]int      `json:"contexts,omitempty"` // the windows the user set, "*" for all its models
 	Outputs   map[string]int      `json:"outputs,omitempty"`  // the reply limits the user set (provider.OutputsOf)
+	Compacts  map[string]int      `json:"compacts,omitempty"` // where Codex and Claude Code compact on its models (provider.CompactsOf)
 	Fetched   *time.Time          `json:"fetched,omitempty"`  // when the list came from the vendor; the page says how long ago in its language
 	Agents    []providerAgent     `json:"agents"`             // detected agents, current ones flagged
 	Sponsored bool                `json:"sponsored"`
@@ -385,7 +386,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 		Ready: p.Ready(), Chosen: p.Models, Models: []modelJSON{}, Agents: []providerAgent{},
 		Fallback: p.Fallback, Routing: p.Routing, Sink: p.Sink, Affinity: p.Affinity, KeepLogin: p.KeepLogin, KeepLoginAs: p.KeepLoginAs, Unlisted: p.Unlisted, Off: p.Off, Contexts: p.Contexts,
 		MaxConcurrency: p.MaxConcurrency, PluginConcurrency: p.PluginConcurrency(), PriceRate: p.PriceRate,
-		Outputs: provider.OutputsOf(p.ID),
+		Outputs: provider.OutputsOf(p.ID), Compacts: provider.CompactsOf(p.ID),
 	}
 	if out.Fallback == nil {
 		out.Fallback = []string{}
@@ -792,6 +793,10 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// says, by model id, "*" for all (provider.SetModelOutputs); a
 			// save that leaves it out keeps them
 			Outputs map[string]int `json:"outputs"`
+			// Compacts, for save: the thresholds the editor's Compact at
+			// says, by model id, "*" for all (provider.SetModelCompacts,
+			// #876); a save that leaves it out keeps them
+			Compacts map[string]int `json:"compacts"`
 			// Routing and Affinity, for route, affinity and save: how
 			// requests spread over its keys or accounts, and how long a
 			// conversation stays with the one that answered it. The
@@ -1042,6 +1047,12 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			// after the list is fetched: a limit has to name a model it has
 			if req.Outputs != nil {
 				if err := provider.SetModelOutputs(in.ID, req.Outputs); err != nil {
+					fail(rw, err)
+					return
+				}
+			}
+			if req.Compacts != nil {
+				if err := provider.SetModelCompacts(in.ID, req.Compacts); err != nil {
 					fail(rw, err)
 					return
 				}

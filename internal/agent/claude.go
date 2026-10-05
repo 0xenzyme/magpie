@@ -422,10 +422,18 @@ func claudeIn(at place) *Agent {
 			forget(compactKey)
 			return nil
 		}
-		if settings.Load().FullContext || claudeModel(mainModel()) {
+		// a threshold the user set on the main model or its provider comes
+		// first (#876), a Claude model's included; then the one for every
+		// model (settings.Compact), none under Full window
+		main := mainModel()
+		n := provider.CompactSet(main)
+		if n == 0 && !claudeModel(main) {
+			n = settings.Load().Compact()
+		}
+		if n == 0 {
 			return dropCompact()
 		}
-		w := strconv.Itoa(settings.WorkingWindow)
+		w := strconv.Itoa(n)
 		stash(map[string]string{compactKey: w})
 		if env(claudeCompactEnv) == w {
 			return nil
