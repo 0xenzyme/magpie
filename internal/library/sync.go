@@ -60,6 +60,9 @@ func (l *Library) sync() *Result {
 		l.syncInstructions(t, b, res)
 		l.syncMCP(t, b, res)
 	}
+	// an edit made in an agent's copy of a skill goes to the library first,
+	// for the others to get rather than be undone (takeEdits)
+	l.takeEdits(all, res)
 	// ~/.agents/skills first: an agent that reads it too gets no second
 	// link to what is there already
 	shared := realDir(sharedSkillsDir())
