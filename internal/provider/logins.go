@@ -593,6 +593,8 @@ func Logins(agent string) []Login {
 		return factoryLoginList()
 	case MiMoID:
 		return mimoLoginList()
+	case ChatGPTAPIID:
+		return siwcLoginList()
 	case "gemini", "antigravity":
 		return googleLoginList(agent)
 	case "":
@@ -617,7 +619,7 @@ func Logins(agent string) []Login {
 			{WorkBuddyAIID, func() []Login { return wbLoginList(wbAI) }}, {CommandCodePlanID, cmdLoginList},
 			{"qoder", func() []Login { return loginsOf(qoderLogins()) }},
 			{QoderCNID, func() []Login { return loginsOf(qoderLoginsOf(QoderCNID)) }}, {"zed", zedLoginList}, {"factory", factoryLoginList},
-			{MiMoID, mimoLoginList}, {"gemini", func() []Login { return googleLoginList("gemini") }},
+			{MiMoID, mimoLoginList}, {ChatGPTAPIID, siwcLoginList}, {"gemini", func() []Login { return googleLoginList("gemini") }},
 			{"antigravity", func() []Login { return googleLoginList("antigravity") }},
 		} {
 			if !Moved(b.id) {
@@ -805,6 +807,8 @@ func switchLogin(agent, user string) error {
 		return switchFactoryLogin(user)
 	case MiMoID:
 		return switchMiMoLogin(user)
+	case ChatGPTAPIID:
+		return switchSIWCLogin(user)
 	case "gemini", "antigravity":
 		return switchGoogleLogin(agent, user)
 	}
@@ -977,6 +981,8 @@ func ForgetLogin(agent, user string) error {
 		return forgetFactoryLogin(user)
 	case MiMoID:
 		return forgetMiMoLogin(user)
+	case ChatGPTAPIID:
+		return forgetSIWCLogin(user)
 	case "gemini", "antigravity":
 		return forgetGoogleLogin(agent, user)
 	}

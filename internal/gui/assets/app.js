@@ -4813,7 +4813,7 @@ function accountPlan(a) {
     }
     return name + " " + plan;
   };
-  if (agent === "codex") return named("ChatGPT", a.plan && cap(a.plan));
+  if (agent === "codex" || agent === "chatgpt-api") return named("ChatGPT", a.plan && cap(a.plan));
   if (agent === "copilot") return named("GitHub", a.plan && cap(a.plan));
   if (agent === "claude") return named("Claude", a.plan && cap(a.plan));
   if (agent === "cursor") return named("Cursor", a.plan && cap(a.plan));
@@ -9202,6 +9202,9 @@ const SUBS = [
   { agent: "claude", name: "Claude", icon: "claude-color", plans: "Pro · Max · Team", importable: true, risk: true,
     riskNote: "Anthropic may suspend or ban a Claude account it sees used outside its own apps. magpie sends requests through Claude Code, but Anthropic may still act on them; you use it at your own risk. Use an account you can afford to lose." },
   { agent: "codex", name: "ChatGPT", icon: "openai", plans: "Plus · Pro · Business", importable: true },
+  // OpenAI's Sign in with ChatGPT: the plan asked on api.openai.com, with the agent's own instructions (#933)
+  { agent: "chatgpt-api", name: "ChatGPT API", icon: "openai", plans: "Plus · Pro · Business", own: true,
+    hint: "Sign in with ChatGPT: your plan on OpenAI's own API, with your agent's own instructions rather than Codex's." },
   // cursor-agent keeps one account; signing in again replaces it
   { agent: "cursor", name: "Cursor", icon: "cursor", plans: "Pro · Ultra · Teams", single: true },
   // so does Grok Build

@@ -284,7 +284,7 @@ func fetchSubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 		for _, p := range load().Providers {
 			hidden[p.ID] = hidden[p.ID] || p.ID != r.provider
 		}
-		for _, id := range []string{"claude", "cursor", "grok", "codex", "copilot", "kiro", "zcode", wbCN.id, wbAI.id, CommandCodePlanID, "qoder", QoderCNID, "zed", "devin", "factory", MiMoID, "gemini", "antigravity"} {
+		for _, id := range []string{"claude", "cursor", "grok", "codex", "copilot", "kiro", "zcode", wbCN.id, wbAI.id, CommandCodePlanID, "qoder", QoderCNID, "zed", "devin", "factory", MiMoID, ChatGPTAPIID, "gemini", "antigravity"} {
 			hidden[id] = hidden[id] || id != r.provider
 		}
 		for _, pp := range plugin.Cached() {

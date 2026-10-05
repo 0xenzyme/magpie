@@ -81,6 +81,10 @@ type signInFlow struct {
 	site     string           // where to sign in, for an agent with more than one (ZCode: "zai" or "bigmodel")
 	plugin   string           // a plugin's sign-in session, finished with the code pasted back
 	claude   *claudeCLISignIn // Claude Code's own sign-in, run by magpie
+
+	// nonce and hostID are a ChatGPT API sign-in's: what its ID token must
+	// carry, and this machine's id it registers magpie for (chatgpt_api.go)
+	nonce, hostID string
 	// claimed is a callback being traded for the account: the browser's own
 	// or a pasted address, whichever came first
 	claimed bool
@@ -220,6 +224,19 @@ func (s *signInFlow) begin() error {
 		q.Set("state", s.state)
 		q.Set("originator", "codex_cli_rs")
 		s.st.URL = codexAuthorizeURL + "?" + q.Encode()
+	case ChatGPTAPIID:
+		// OpenAI's Sign in with ChatGPT, which registers magpie on the way
+		if s.hostID, err = siwcHostID(); err != nil {
+			return err
+		}
+		if ln, err = listenSIWCCallback(); err != nil {
+			return err
+		}
+		s.redirect = fmt.Sprintf("http://127.0.0.1:%d/auth/callback", ln.Addr().(*net.TCPAddr).Port)
+		s.nonce = randomToken(24)
+		s.mu.Lock()
+		s.st.URL = siwcAuthorize(s.redirect, s.state, s.nonce, challenge, s.hostID)
+		s.mu.Unlock()
 	case "cursor":
 		// Cursor has no sign-in of its own to borrow: its CLI signs in
 		if err := startCursorSignIn(s); err != nil {
@@ -602,6 +619,10 @@ func (s *signInFlow) callback(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	if app, ok := googleAppOf(s.st.Agent); ok {
 		s.googleDone(ctx, w, app, q.Get("code"))
+		return
+	}
+	if s.st.Agent == ChatGPTAPIID {
+		s.siwcDone(ctx, w, q)
 		return
 	}
 	l, err := s.exchange(ctx, q.Get("code"))
