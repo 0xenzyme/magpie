@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -112,21 +114,58 @@ var loginAgents = []string{"claude", "codex"}
 
 func loginsPath() string { return filepath.Join(filepath.Dir(Path()), "logins.json") }
 
+// lastLogins is the accounts last read from logins.json: a read that fails
+// (a file half there, one magpie can't open for a moment) is them, not no
+// accounts, which the next change of an account would write back over
+// every account.
+var (
+	lastLoginsMu sync.Mutex
+	lastLogins   []savedLogin
+)
+
 func readLogins() []savedLogin {
 	// parsed once until the file changes: a state of the page asks for it
 	// dozens of times (every agent's drift and models), and with the
 	// accounts' credentials in it the file is large — a Save of a profile
 	// waited seconds on it
-	ls, _ := filememo.Read("logins", loginsPath(), func(b []byte) ([]savedLogin, error) {
+	ls, err := filememo.Read("logins", loginsPath(), func(b []byte) ([]savedLogin, error) {
 		var out []savedLogin
-		_ = json.Unmarshal(b, &out)
+		if err := json.Unmarshal(b, &out); err != nil {
+			return nil, err
+		}
 		// DimAgent's accounts: magpie no longer signs in to it (DimAgent
 		// doesn't allow its subscription used outside its client), so one
 		// signed in before is left out, and gone from the file at its next write
 		out = slices.DeleteFunc(out, func(l savedLogin) bool { return l.Agent == "dimagent" })
 		return nameAlike(dedupeLogins(out)), nil
 	})
+	lastLoginsMu.Lock()
+	defer lastLoginsMu.Unlock()
+	switch {
+	case err == nil:
+		lastLogins = ls
+	case errors.Is(err, fs.ErrNotExist):
+		lastLogins = nil
+	default:
+		log.Printf("logins.json: %v; the accounts read before are kept", err)
+		ls = lastLogins
+	}
 	return slices.Clone(ls) // callers change theirs
+}
+
+// keepUnreadLogins copies a logins.json that doesn't parse aside before it
+// is written over, so the accounts in it can still be got back.
+func keepUnreadLogins(path string) {
+	b, err := os.ReadFile(path)
+	if err != nil || json.Valid(b) {
+		return
+	}
+	bad := path + ".bad-" + time.Now().Format("20060102-150405")
+	if err := os.WriteFile(bad, b, 0o600); err != nil {
+		log.Printf("logins.json doesn't parse and couldn't be kept: %v", err)
+		return
+	}
+	log.Printf("logins.json didn't parse; it is kept as %s", filepath.Base(bad))
 }
 
 func writeLogins(ls []savedLogin) error {
@@ -150,7 +189,14 @@ func writeLogins(ls []savedLogin) error {
 		return err
 	}
 	defer Changed() // an account added, switched or gone: All builds anew
-	return writePrivate(loginsPath(), append(b, '\n'))
+	keepUnreadLogins(loginsPath())
+	if err := writePrivate(loginsPath(), append(b, '\n')); err != nil {
+		return err
+	}
+	lastLoginsMu.Lock()
+	lastLogins = slices.Clone(ls)
+	lastLoginsMu.Unlock()
+	return nil
 }
 
 // writePrivate replaces a file readable by the user alone, atomically, so
