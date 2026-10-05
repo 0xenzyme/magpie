@@ -695,7 +695,9 @@ body.window .field.solo { grid-column: auto; }
    card's other lines do (#840) */
 .quota-refresh { display: inline-flex; align-items: center; justify-content: center; width: 0; height: 14px; margin: 0; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--faint); vertical-align: -3px; opacity: 0; overflow: hidden; cursor: pointer; transition: width .12s, margin .12s, opacity .12s; }
 .quota-refresh svg { flex: none; }
-.subscription-card:hover .quota-refresh, .quota-refresh:focus-visible, .quota-refresh.busy { width: 14px; margin: 0 3px 0 -2px; opacity: 1; }
+.subscription-card:hover .quota-refresh, .quota-refresh.busy { width: 14px; margin: 0 3px 0 -2px; opacity: 1; }
+/* apart: Safari before 15.4 drops a whole selector list with :focus-visible in it */
+.quota-refresh:focus-visible { width: 14px; margin: 0 3px 0 -2px; opacity: 1; }
 .quota-refresh:hover { color: var(--fg); background: var(--pill-hover); }
 .quota-refresh.busy { cursor: default; }
 .quota-refresh.busy svg { animation: spin .8s linear infinite; }
@@ -1126,7 +1128,9 @@ details.cx-part[open] > summary .cx-h { margin-bottom: 2px; }
 /* a row of the Usage page's list opens on the Sessions page (#752) */
 .row.sess.sess-link { cursor: pointer; }
 .row.sess .sess-go { flex: none; display: inline-flex; color: var(--faint); }
-.row.sess.sess-link:hover .sess-go, .row.sess.sess-link:focus-visible .sess-go { color: var(--fg-2); }
+.row.sess.sess-link:hover .sess-go { color: var(--fg-2); }
+/* apart: Safari before 15.4 drops a whole selector list with :focus-visible in it */
+.row.sess.sess-link:focus-visible .sess-go { color: var(--fg-2); }
 .sess-all { flex: none; white-space: nowrap; }
 .sess-resume { flex: none; height: 24px; padding: 0 10px; border-radius: 7px; border: 0; background: var(--pill); color: var(--fg); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 .sess-resume:hover { background: var(--pill-hover); }
@@ -1874,14 +1878,18 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .acc .amodels:hover, .acc .amodels.open { color: var(--fg); background: var(--pill-hover); }
 /* an account's usage cap: as the models pill, shown on hover till one is set */
 .acc .acap { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; font: inherit; font-size: 11px; color: var(--muted); border: 0; border-radius: 5px; background: none; box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; cursor: default; opacity: 0; transition: opacity .15s, background .12s, color .12s; }
-.acc:hover .acap, .acc .acap.open, .acc .acap:focus-visible, .acc .acap.set { opacity: 1; }
+.acc:hover .acap, .acc .acap.open, .acc .acap.set { opacity: 1; }
+/* apart: Safari before 15.4 drops a whole selector list with :focus-visible in it */
+.acc .acap:focus-visible { opacity: 1; }
 .acc .acap.set { color: var(--accent); background: var(--accent-soft); box-shadow: none; font-weight: 500; }
 .acc .acap:hover, .acc .acap.open { color: var(--fg); background: var(--pill-hover); }
 .acc .acap-in { width: 64px; }
 /* an account's or key's limit on requests at once (#892), and how many
    run and wait under it: shown on hover unless a limit applies */
 .acc .alane { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; font: inherit; font-size: 11px; color: var(--muted); border: 0; border-radius: 5px; background: none; box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; cursor: default; opacity: 0; transition: opacity .15s, background .12s, color .12s; font-variant-numeric: tabular-nums; }
-.acc:hover .alane, .acc .alane.open, .acc .alane:focus-visible, .acc .alane.set { opacity: 1; }
+.acc:hover .alane, .acc .alane.open, .acc .alane.set { opacity: 1; }
+/* apart: Safari before 15.4 drops a whole selector list with :focus-visible in it */
+.acc .alane:focus-visible { opacity: 1; }
 .acc .alane.set { color: var(--fg); background: var(--pill-hover); box-shadow: none; }
 .acc .alane.busy-lane { color: var(--accent); background: var(--accent-soft); font-weight: 500; }
 .acc .alane.queued { color: var(--amber); }
@@ -1903,14 +1911,22 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
    badge gives its own up first. First and Make first stay one line */
 .accts.keys .acc .plan { flex: 0 1 auto; min-width: 3em; overflow: hidden; text-overflow: ellipsis; }
 .accts.keys .acc > :is(.amodels:not(.set), .proto:not(.set), .alane:not(.set), .text.quiet) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.accts.keys .acc:not(:hover) > :is(.amodels:not(.set), .proto:not(.set), .alane:not(.set), .text.quiet):not(:focus-visible, .open) { max-width: 0; padding-left: 0; padding-right: 0; box-shadow: none; }
-.accts.keys .acc > :is(.amodels, .alane):not(.set):not(:focus-visible, .open) { flex-shrink: 10000; }
+.accts.keys .acc:not(:hover) > :is(.amodels:not(.set), .proto:not(.set), .alane:not(.set), .text.quiet):not(.open):not(:focus-visible) { max-width: 0; padding-left: 0; padding-right: 0; box-shadow: none; }
+.accts.keys .acc > :is(.amodels, .alane):not(.set):not(.open):not(:focus-visible) { flex-shrink: 10000; }
 /* the limit pill unset on a key's row is quiet text, as the row's other
    hover-only controls: no padding to keep, and hidden it takes back the
    gap before it too (#892) */
-.accts.keys .acc > .alane:not(.set):not(:focus-visible, .open) { padding: 0; box-shadow: none; background: none; }
-.accts.keys .acc:not(:hover) > .alane:not(.set):not(:focus-visible, .open) { margin-left: -9px; }
+.accts.keys .acc > .alane:not(.set):not(.open):not(:focus-visible) { padding: 0; box-shadow: none; background: none; }
+.accts.keys .acc:not(:hover) > .alane:not(.set):not(.open):not(:focus-visible) { margin-left: -9px; }
 .accts.keys .acc > :is(.proto, .text.quiet) { flex-shrink: 0; }
+/* Safari before 15.4 has no :focus-visible and drops the rules above
+   whole: there a focused control stays out on :focus instead */
+@supports not selector(:focus-visible) {
+  .accts.keys .acc:not(:hover) > :is(.amodels:not(.set), .proto:not(.set), .alane:not(.set), .text.quiet):not(.open):not(:focus) { max-width: 0; padding-left: 0; padding-right: 0; box-shadow: none; }
+  .accts.keys .acc > :is(.amodels, .alane):not(.set):not(.open):not(:focus) { flex-shrink: 10000; }
+  .accts.keys .acc > .alane:not(.set):not(.open):not(:focus) { padding: 0; box-shadow: none; background: none; }
+  .accts.keys .acc:not(:hover) > .alane:not(.set):not(.open):not(:focus) { margin-left: -9px; }
+}
 .accts.keys .acc .using, .accts.keys .acc > .text:not(.quiet) { flex: none; white-space: nowrap; }
 #gatewayKeys .acc { min-width: 0; }
 #gatewayKeys .acc .plan { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -2714,7 +2730,9 @@ body.panel .modal { padding: 16px 12px; }
    with 3.5px between them the right column was cut in half (Hu9956, #842) */
 .subscription-head .us-handle { position: relative; width: 24px; height: 24px; margin: -4px -3px; }
 .subscription-head .us-handle::before { content: ""; position: absolute; left: -8px; top: 50%; width: 6px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3px 3.75px; opacity: 0; transition: opacity .15s; }
-.subscription-card:is(:hover, .dragging) .us-handle::before, .us-handle:focus-visible::before { opacity: 1; }
+.subscription-card:is(:hover, .dragging) .us-handle::before { opacity: 1; }
+/* apart: Safari before 15.4 drops a whole selector list with :focus-visible in it */
+.us-handle:focus-visible::before { opacity: 1; }
 .subscription-usage.sorting { user-select: none; -webkit-user-select: none; }
 .subscription-usage.sorting > .subscription-card { transition: transform .22s cubic-bezier(.22, 1, .36, 1); }
 .subscription-usage.sorting .us-handle { cursor: grabbing; }
@@ -2904,7 +2922,9 @@ body.window .row.agent .who.with-models { flex-wrap: wrap; row-gap: 0; }
 .am-order { padding-top: 4px; }
 .am-rows.am-order .am-mr { padding-left: 14px; cursor: grab; user-select: none; -webkit-user-select: none; }
 .am-or .grip { flex: none; width: 6px; height: 11px; margin-right: -4px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3px 3.75px; opacity: 0; transition: opacity .15s; }
-.am-or:is(:hover, :focus-visible, .dragging) .grip { opacity: 1; }
+.am-or:is(:hover, .dragging) .grip { opacity: 1; }
+/* apart: Safari before 15.4 drops a whole selector list with :focus-visible in it */
+.am-or:focus-visible .grip { opacity: 1; }
 @media (hover: none) { .am-or .grip { opacity: 1; } }
 .am-or .ix { flex: none; min-width: 16px; font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; text-align: right; }
 .am-order.sorting .am-or { transition: transform .22s cubic-bezier(.22, 1, .36, 1); cursor: grabbing; }

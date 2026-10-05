@@ -201,8 +201,9 @@
 .rt-req .to .swap { flex: none; max-width: 70%; }
 .rt-req .to .routed, .pr-to .routed { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; line-height: 16px; color: var(--muted); white-space: nowrap; }
 .rt-steps li.swap::before { background: var(--amber); }
-/* short of room, where it went gives way down to the provider's name, then this does */
-.rt-req .to:has(.upstream) .said { min-width: min(10em, 45%); }
+/* short of room, where it went gives way down to the provider's name, then this does
+   (.upstreamed, set with the tag: Safari before 15.4 has no :has()) */
+.rt-req .to.upstreamed .said { min-width: min(10em, 45%); }
 .rt-req .to .upstream, .pr-to .upstream { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; line-height: 16px; color: var(--muted); white-space: nowrap; }
 .rt-req .meta { display: flex; align-items: baseline; justify-content: flex-end; flex-wrap: wrap; gap: 2px 0; color: var(--muted); font-variant-numeric: tabular-nums; }
 .rt-metric { display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; min-width: 0; }
@@ -310,7 +311,9 @@ button.rt-session { cursor: pointer; }
    on Discord) */
 .rt-group .rt-ghandle.ag-handle { position: relative; align-items: center; justify-content: center; width: auto; min-width: 24px; height: 24px; padding: 0 3px; }
 .rt-group .rt-ghandle::before { content: ""; position: absolute; left: -8px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; opacity: 0; transition: opacity .15s; }
-.rt-group:is(:hover, .dragging) .rt-ghandle::before, .rt-group .rt-ghandle.open::before, .rt-group .rt-ghandle:focus-visible::before { opacity: 1; }
+.rt-group:is(:hover, .dragging) .rt-ghandle::before, .rt-group .rt-ghandle.open::before { opacity: 1; }
+/* apart: Safari before 15.4 drops a whole selector list with :focus-visible in it */
+.rt-group .rt-ghandle:focus-visible::before { opacity: 1; }
 /* while a row is dragged the others slide out of its way */
 .rt-groups.sorting { user-select: none; -webkit-user-select: none; }
 .rt-groups.sorting > .rt-group { transition: transform .22s cubic-bezier(.22, 1, .36, 1); }
@@ -420,7 +423,9 @@ button.rt-session { cursor: pointer; }
    hover, dragged or from the keyboard only, as on the groups' cards */
 .rt-gedit .fbrow .rt-mhandle.ag-handle { position: relative; width: 18px; height: 22px; margin: 0 -2px; font: inherit; color: var(--muted); font-variant-numeric: tabular-nums; }
 .rt-gedit .fbrow .rt-mhandle::before { content: ""; position: absolute; left: -7px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; opacity: 0; transition: opacity .15s; }
-.rt-gedit .fbrow:is(:hover, .dragging) .rt-mhandle::before, .rt-gedit .fbrow .rt-mhandle:focus-visible::before { opacity: 1; }
+.rt-gedit .fbrow:is(:hover, .dragging) .rt-mhandle::before { opacity: 1; }
+/* apart: Safari before 15.4 drops a whole selector list with :focus-visible in it */
+.rt-gedit .fbrow .rt-mhandle:focus-visible::before { opacity: 1; }
 .rt-gedit .fbl.sorting { user-select: none; -webkit-user-select: none; }
 .rt-gedit .fbl.sorting > .fbrow { transition: transform .22s cubic-bezier(.22, 1, .36, 1); }
 .rt-gedit .fbl.sorting .rt-mhandle { cursor: grabbing; }

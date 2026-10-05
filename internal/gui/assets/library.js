@@ -223,6 +223,9 @@
     on ||= [];
     const box = el("div", "lib-agents");
     box.style.setProperty("--lib-agent-count", all.length);
+    // the row it is put in says so (.with-agents), for its name's room:
+    // Safari before 15.4 has no :has(). Every caller appends it at once.
+    queueMicrotask(() => box.parentElement?.classList.contains("lib-row") && box.parentElement.classList.add("with-agents"));
     for (const a of all) {
       const always = opts.always?.(a) || "";
       const has = on.includes(a.id) || !!always;
