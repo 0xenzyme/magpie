@@ -7,8 +7,15 @@ const { chromium, webkit } = require("playwright");
 const assets = path.resolve(__dirname, "../assets");
 const now = new Date();
 const day = [now.getFullYear(), now.getMonth() + 1, now.getDate()].map((n) => String(n).padStart(2, "0")).join("-");
+// a time as the gateway writes it: local, with its offset, so its date is
+// the local day its history keeps it under (a UTC time is a day off for
+// the hours between the two midnights)
+const stamp = (d) => {
+  const o = -d.getTimezoneOffset(), p = (n) => String(Math.floor(Math.abs(n))).padStart(2, "0");
+  return new Date(d.getTime() + o * 60e3).toISOString().slice(0, 19) + (o < 0 ? "-" : "+") + p(o / 60) + ":" + p(o % 60);
+};
 function req(id, agent, session, cost, priced = true) {
-  const time = new Date(now.getTime() - (10 - id) * 60e3).toISOString();
+  const time = stamp(new Date(now.getTime() - (10 - id) * 60e3));
   const seat = { id: "relay", provider: "relay", name: "Relay", who: "Test account", kind: "account", model: id === 1 ? "model-a" : "model-b" };
   return { id, seq: id, time, agent, session, model: `relay/${seat.model}`, provider: "relay", cost, priced,
     order: [seat], tries: [{ id: seat.id, model: seat.model, start: time, done: true, status: 200, ms: 4500, effort: "medium" }],
@@ -424,8 +431,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const page = await browser.newPage({ viewport: { width: 1100, height: 800 }, reducedMotion: "reduce" });
         page.setDefaultTimeout(10000);
         const errors = [], titleRequests = [];
-        const fixture = Array.from({ length: 2000 }, (_, i) => ({ ...req(i + 1, mixed && i < 800 ? "claude" : "codex", `chat-${i + 1}`, 0.01), time: now.toISOString() }));
-        const extra = { ...req(2001, "codex", "opened-chat", 0.01), time: now.toISOString() };
+        const fixture = Array.from({ length: 2000 }, (_, i) => ({ ...req(i + 1, mixed && i < 800 ? "claude" : "codex", `chat-${i + 1}`, 0.01), time: stamp(now) }));
+        const extra = { ...req(2001, "codex", "opened-chat", 0.01), time: stamp(now) };
         const feed = { titleRequests, route: extra, names: ({ ids }) => ({ names: Object.fromEntries(ids.map((id) => [id, `Applied ${id}`])) }) };
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", serve(lang, feed, fixture));

@@ -14408,14 +14408,17 @@ new ResizeObserver(() => {
   ledHScroll();
 }).observe($("#ledWrap"));
 // a table that grows past the window when its width didn't change (a font
-// arriving, a redraw while out of sight) leaves its columns out then too
+// arriving, a redraw while out of sight) leaves its columns out then too;
+// and its scrollbar goes once a table left without them has come to fit,
+// rather than staying under a table with nothing to scroll
 let ledGrowFrame = 0;
 const ledGrow = new ResizeObserver(() => {
   if (ledGrowFrame) return;
   ledGrowFrame = requestAnimationFrame(() => {
     ledGrowFrame = 0;
     const wrap = $("#ledWrap"), table = wrap.querySelector("table.led");
-    if (table && !table.classList.contains("tight") && wrap.clientWidth && wrap.scrollWidth > wrap.clientWidth + 1) { ledFit(); ledHScroll(); }
+    if (table && !table.classList.contains("tight") && wrap.clientWidth && wrap.scrollWidth > wrap.clientWidth + 1) ledFit();
+    ledHScroll();
   });
 });
 new ResizeObserver(() => {

@@ -2242,14 +2242,14 @@
   // stale: it ends, the stage is drawn as it is now, and only the requests
   // still under way fly (#302).
   const LIVE = 4;
+  const underWay = () => pinned || day ? [] : [...src().values()].filter((r) => !r.done && matchesPurpose(r)).sort((a, b) => a.id - b.id).slice(-LIVE);
   function resume() {
     stopPlays();
     if (!loaded) return;
     if (!pinned && !rp) cur = newest();
     if (cur) sync(true);
     else empty();
-    const live = pinned || day ? [] : [...src().values()].filter((r) => !r.done && matchesPurpose(r)).sort((a, b) => a.id - b.id).slice(-LIVE);
-    for (const r of live) play(r.id);
+    for (const r of underWay()) play(r.id);
     renderAll();
   }
   let seen = false, lastFrame = 0, ticking = 0;
@@ -2381,6 +2381,9 @@
           if (wanted) { wanted = 0; params.delete("req"); history.replaceState(null, "", params.size ? "?" + params : location.pathname); }
           if (asked && asked.id !== newest().id) pinned = asked;
           if (r) { cur = r; sync(true); say(affWhy(r, true) || ruleWhy(r, true) || firstWhy(r)); renderAll(); } else empty();
+          // the page's first frame came before the trace did, and found
+          // nothing to fly: the requests under way fly now, not never
+          if (seen && shown()) for (const u of underWay()) if (!playing.has(u.id)) play(u.id);
         } else {
           if (cur && routes.has(cur.id) && !rp) cur = routes.get(cur.id);
           if (pinned && routes.has(pinned.id)) pinned = routes.get(pinned.id);
