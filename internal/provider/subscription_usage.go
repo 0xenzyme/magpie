@@ -740,19 +740,6 @@ func claudeScopeModel(name string) string {
 	return strings.NewReplacer(" ", "-", ".", "-").Replace(strings.ToLower(name))
 }
 
-type quotaWire struct {
-	Utilization float64 `json:"utilization"`
-	ResetsAt    string  `json:"resets_at"`
-}
-
-func (w quotaWire) window(name string) QuotaWindow {
-	out := QuotaWindow{Name: name, Used: w.Utilization}
-	if t, err := time.Parse(time.RFC3339, w.ResetsAt); err == nil {
-		out.ResetsAt = &t
-	}
-	return out
-}
-
 func codexSubscriptionUsage(ctx context.Context, path string) SubscriptionQuota {
 	q := SubscriptionQuota{Provider: "codex", Name: "Codex", Icon: "codex-color", Windows: []QuotaWindow{}}
 	token, accountID, err := codexToken(ctx, path)
