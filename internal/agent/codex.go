@@ -1139,11 +1139,6 @@ func codexOwnOf(id string) string {
 // reach magpie.
 func codexGatewayURL() string { return gateway.URL() + gateway.CodexPath }
 
-// isCodexGateway reports whether an openai_base_url is magpie's, on
-// whichever port it listened on then.
-func isCodexGateway(u string) bool { return isCodexGatewayOn(u, "127.0.0.1") }
-
-// isCodexGatewayOn is isCodexGateway for a gateway reached at host.
 // codexKeptGateway is the gateway's URL for this machine's Codex: the
 // address its config names when that is magpie's gateway on a host other
 // than this one's loopback (openai_base_url at the Codex path, or
@@ -1175,6 +1170,8 @@ func codexKeptGateway(path string) string {
 	return cmp.Or(kept(base, gateway.CodexPath), table, gateway.URL())
 }
 
+// isCodexGatewayOn reports whether an openai_base_url is magpie's gateway
+// reached at host, on whichever port it listened on then.
 func isCodexGatewayOn(u, host string) bool {
 	return strings.HasPrefix(u, "http://"+host+":") && strings.HasSuffix(strings.TrimSuffix(u, "/"), gateway.CodexPath)
 }
