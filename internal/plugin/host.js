@@ -218,10 +218,32 @@ process.stdout.write = (chunk, enc, cb) => process.stderr.write(chunk, enc, cb)
 // "Login canceled"), and its stdout is the host's answers. It reads
 // nothing instead and writes to stderr. node:child_process starts every
 // program through Bun.spawn and Bun.spawnSync, so these see all of them.
+//
+// And it has the proxy the plugin's own fetches take, as a built-in's CLI
+// had magpie's (netproxy.Env): the host has its *_PROXY only as
+// MAGPIE_*_PROXY (see below), so `grok login`, which the Grok plugin runs,
+// went out with none and, where x.ai is reached only through one, printed
+// no link to open (𝕏 on Discord). One the plugin set itself is kept.
 const own = (v, fd) => v === "inherit" || v === fd || v === (fd ? process.stdout : process.stdin)
+const PROXY_VARS = ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"]
+function proxied(env) {
+  env = { ...(env ?? process.env) }
+  if (Object.keys(env).some((k) => PROXY_VARS.includes(k.toUpperCase()) && env[k])) return env
+  const mine = via.getStore()
+  if (mine === "direct") return env
+  const set = mine ? { HTTPS_PROXY: mine, HTTP_PROXY: mine } : { HTTPS_PROXY: globalProxy.https, HTTP_PROXY: globalProxy.http, NO_PROXY: proxyVar("NO_PROXY") }
+  for (const [k, v] of Object.entries(set)) {
+    if (!v || Object.keys(env).some((e) => e.toUpperCase() === k)) continue
+    env[k] = v
+    // Windows' names are one whatever their case
+    if (process.platform !== "win32") env[k.toLowerCase()] = v
+  }
+  return env
+}
 const guard = (o) => {
-  if (!o || typeof o !== "object") return o
+  if (o != null && typeof o !== "object") return o
   o = { ...o }
+  o.env = proxied(o.env)
   if (Array.isArray(o.stdio)) {
     o.stdio = [...o.stdio]
     if (own(o.stdio[0], 0)) o.stdio[0] = "ignore"

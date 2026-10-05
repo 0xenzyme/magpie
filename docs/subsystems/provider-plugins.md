@@ -59,6 +59,8 @@ For a plugin fix, publish the corrected community package and raise the owning m
 
 Keep the migration, host, and upstream behavior separate when investigating failures. A plugin bug can require a community change; a host, provider-card, sign-in orchestration, or migration bug can require a magpie change even for moved users.
 
+The host gets magpie's proxy only as `MAGPIE_*_PROXY` and applies it to each fetch itself. A program a plugin starts, such as the Grok plugin's `grok login`, gets it back as `HTTPS_PROXY`/`HTTP_PROXY` from the spawn wrapper in `host.js`, unless the plugin set one. A sign-in that works in the built-in and fails through the plugin may be a host difference like this one, not a plugin bug.
+
 The GUI's plugin integration includes `subOf`, `pluginSubs`, and `startPluginSignIn`. A change to sign-in or provider presentation must follow these paths as well as the built-in paths it affects.
 
 ## Verification
