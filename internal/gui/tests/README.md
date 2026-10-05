@@ -37,6 +37,13 @@ unsaved and sent only by Save; Cancel drops them, a bad amount disables Save,
 and No limit + Save sends `null`. No click scrolls the page, nothing has a
 left border, and the open editor fits a 560px window, in Chinese and English.
 
+`gateway-key-models.test.cjs` checks the models a gateway key may use
+(#882): the badge on each key's row ("All models", or how many), the app's
+own menu (no native select) that stays inside a short window, picks sent
+only when it closes, and "All models" taking the restriction off. No click
+scrolls the page, nothing has a left border, and the row fits a 560px
+window, in Chinese and English.
+
 `api-key-usage.test.cjs` exercises the existing provider key list: adding,
 enabling and disabling, choosing the first key, renaming and removing.
 The Usage page's Gateway key rows, request filter and CSV exports identify
@@ -58,7 +65,7 @@ The settings theme picker is also switched and reloaded in Chromium and
 WebKit. No separate colours are defined for gateway keys.
 
 ```sh
-node --test --test-concurrency=1 internal/gui/tests/gateway-caller-keys.test.cjs internal/gui/tests/gateway-connect-keys.test.cjs internal/gui/tests/gateway-key-limit.test.cjs internal/gui/tests/api-key-usage.test.cjs internal/gui/tests/api-key-theme.test.cjs
+node --test --test-concurrency=1 internal/gui/tests/gateway-caller-keys.test.cjs internal/gui/tests/gateway-connect-keys.test.cjs internal/gui/tests/gateway-key-limit.test.cjs internal/gui/tests/gateway-key-models.test.cjs internal/gui/tests/api-key-usage.test.cjs internal/gui/tests/api-key-theme.test.cjs
 ```
 
 ## Other Browser Regressions

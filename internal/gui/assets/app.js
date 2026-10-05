@@ -10819,7 +10819,14 @@ function openProtoMenu(anchor, opts, value, choose, head = "Protocol this key sp
   // under the pill, or above it when the window runs out
   const r = anchor.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight, pad = 8;
   let y = r.bottom + 5;
-  if (y + h > innerHeight - pad && r.top - 5 - h >= pad) { y = r.top - 5 - h; box.classList.add("up"); }
+  const below = innerHeight - pad - y, above = r.top - 5 - pad;
+  if (h > below && above >= h) { y = r.top - 5 - h; box.classList.add("up"); }
+  else if (h > below && above > below) {
+    // fits neither way: above, where there is more room, scrolling
+    box.style.maxHeight = above + "px";
+    y = pad;
+    box.classList.add("up");
+  } else if (h > below) box.style.maxHeight = Math.max(below, 0) + "px";
   const left = align === "right" ? r.right - w : r.left;
   box.style.left = Math.max(pad, Math.min(left, innerWidth - w - pad)) + "px";
   box.style.top = Math.max(pad, y) + "px";

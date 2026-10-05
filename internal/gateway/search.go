@@ -471,7 +471,7 @@ func (s *Server) searchWith(ctx context.Context, p provider.Provider, model, que
 		"messages": []map[string]any{{"role": "user", "content": "Search the web for: " + query}},
 		"tools":    []map[string]any{{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}},
 	})
-	r, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://magpie/v1/messages", nil)
+	r, err := http.NewRequestWithContext(magpieChose(ctx), http.MethodPost, "http://magpie/v1/messages", nil)
 	if err != nil {
 		return "", nil, err
 	}

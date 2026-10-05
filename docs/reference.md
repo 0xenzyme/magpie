@@ -210,6 +210,8 @@ magpie gateway-key remove <id>         # revokes remote access
 magpie gateway-key limit <id> week --tokens 2m --cost 5   # its own limit
 magpie gateway-key limit <id>          # limit, used, left and reset
 magpie gateway-key limit <id> off      # no limit
+magpie gateway-key models <id> openai/gpt-5 anthropic/*   # only these models
+magpie gateway-key models <id> all     # every model
 ```
 
 Each gateway key can have its own **limit**: a token total, an estimated
@@ -230,6 +232,16 @@ streamed reply is settled when it ends with the usage its vendor reported.
 A key can read its own status with `GET /v1/magpie/limit`. Requests from
 this computer that send no gateway key are not limited; a gateway key used
 from this computer is.
+
+A gateway key can also be held to some **models** (#882): pick them with the
+**All models** badge on the key's row, or run `magpie gateway-key models <id>
+openai/gpt-5 anthropic/*` (`all` takes the restriction off). A pattern is
+`<provider>/<model>` or `<provider>/*`, matched against the provider that
+serves the call, so a bare model name is resolved first. Such a key sees only
+its models in `/v1/models` and the Anthropic and Gemini lists, a routing group
+only when it may use every member, and is refused any other model with a 403
+in the API's error shape before a provider is asked; a fallback it may not
+use is skipped. A key with no models listed may use every model.
 
 While LAN sharing is enabled, remote requests require an enabled gateway key
 sent as Bearer, `x-api-key`, `x-goog-api-key` or `?key=`. Loopback remains

@@ -248,6 +248,7 @@ func (s *Server) images(edit bool) http.HandlerFunc {
 			writeError(w, provider.Chat, code, msg)
 			s.record(call)
 		}
+		named := d.Model != "" // a gateway key's models hold one the caller names (#882)
 		if d.Model == "" {
 			m, ok := drawer()
 			if !ok {
@@ -263,6 +264,10 @@ func (s *Server) images(edit bool) http.HandlerFunc {
 				return
 			}
 			fail(404, fmt.Sprintf("magpie knows no model %q to draw with", d.Model))
+			return
+		}
+		if keyWho, held := keyHolds(r); held && named && !modelAllowed(keyWho, p, model) {
+			fail(403, keyModelError(keyWho, d.Model))
 			return
 		}
 		var unmask func()
