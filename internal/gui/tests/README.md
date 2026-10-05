@@ -566,8 +566,11 @@ leaves it be; Ctrl/Cmd + = and − step through the sizes and 0 goes back to
 The zoom is the webview's, so here it is as a browser zooms: the smallest
 window at 150% (840×630 points) is 560×420 CSS pixels at a device scale of
 1.5, and no view (nor the panel at 150%) runs off to the side, the Mac
-header still 50 points tall for the traffic lights. English and Chinese,
-light and dark; ARTIFACT_DIR gets screenshots at 100% and 150%.
+header still 50 points tall for the traffic lights. At 150% in a 1440×900
+window scrolled down, a click on 100% (the window then 1440×900 CSS pixels)
+leaves no `.view-room` and no blank under the page, nor scrolls it beyond
+the browser's own fit (#911). English and Chinese, light and dark;
+ARTIFACT_DIR gets screenshots at 100% and 150%.
 
 `settings-groups.test.cjs` puts the Settings page's warm-ups and check-in
 under a tab per service (#124): Codex, Claude Code and WorkBuddy tabs where a

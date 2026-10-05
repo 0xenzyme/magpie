@@ -15903,9 +15903,18 @@ function applyZoom(n) {
   document.documentElement.style.setProperty("--zoom", web ? 1 : (n || 100) / 100);
 }
 let textSize = window.bootPrefs?.textSize || 100;
+// A new text size lays every page out anew: what was clicked (the size's
+// own button) isn't held where it was, nor any room kept for it, or the
+// page zoomed out at its foot was given a blank as tall as it shrank
+// (#911). Nothing is scrolled; the browser fits the page as it is.
+function newTextSize() {
+  held = null;
+  for (const v of document.querySelectorAll(".view")) setRoom(v, 0);
+}
 async function setTextSize(n) {
   if (web || n === textSize) return;
   textSize = n;
+  newTextSize();
   applyZoom(n);
   try {
     prefs = await writingPrefs(api("settings/text-size", { size: n }));
@@ -15987,7 +15996,7 @@ function applyPrefs(s, rate) {
     if (applyPrefs.painted) { renderCosts(); if (mode === "panel" && panelTab === "stats") renderPanelUse(); }
   }
   applyPrefs.painted = true;
-  if (!prefsBusy && (s.textSize || 100) !== textSize) { textSize = s.textSize || 100; applyZoom(textSize); }
+  if (!prefsBusy && (s.textSize || 100) !== textSize) { textSize = s.textSize || 100; newTextSize(); applyZoom(textSize); }
   const was = locale;
   setLocale(s.lang);
   if (was !== locale && mode === "window") queueMicrotask(() => slide($("#nav"), "nav"));
