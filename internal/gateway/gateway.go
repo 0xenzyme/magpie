@@ -1767,6 +1767,43 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 			continue
 		}
+		if !last && hw.failed() && hw.turnedAway {
+			// another member may answer what this account was turned away
+			// from, and this one isn't set aside: Antigravity refused the
+			// request, whatever quota the account has left, so nothing is
+			// wrong with it and no usage is asked again (#666). Its own
+			// mates are asked last, not first: they carry the same system
+			// prompt, so each is turned away just the same before the group
+			// reaches a member that answers
+			try.Fail = failRefused
+			s.trace.update(tr, func(t *Route) {
+				t.Tries[len(t.Tries)-1] = try
+				if call.To != "" {
+					t.Usage = append(t.Usage, routeUsage(call.Provider, c.model, call.Usage)...)
+				}
+			})
+			skipped = append(skipped, c.label()+": "+call.Error)
+			matesLast(cands[i+1:], c)
+			if call.To != "" {
+				rec := usage.Record{RouteID: tr.ID, Time: began, Agent: call.Agent, Via: call.Via, Provider: call.Provider, Host: where, Model: c.model,
+					ProviderKeyID: providerKeyID, ProviderKeyName: providerKeyName, ProviderAccount: providerAccount,
+					Requested: call.Model, Served: call.Usage.Served,
+					Input: call.Usage.Input, Output: call.Usage.Output, CacheRead: call.Usage.CacheRead,
+					CacheWrite: call.Usage.CacheWrite, Reasoning: call.Usage.Reasoning, Effort: sent, Millis: time.Since(began).Milliseconds(), Status: call.Status,
+					TTFT: try.TTFT, FirstText: try.FirstText, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind,
+					RequestID: call.Usage.RequestID, Endpoint: endpointOf(r, from, call.To), Archive: call.archiveName()}
+				failedWith(&rec, call.Status, call.Error, call.Usage.ErrType)
+				// what this account answered is its refusal, the reply
+				// captured so far being no one's yet
+				refusal := &Call{RequestBody: call.RequestBody, RequestTruncated: call.RequestTruncated, ResponseBody: string(hw.errBody())}
+				if call.otelIn != nil {
+					refusal.otelIn, refusal.otelOut = call.otelIn, hw.errBody()
+				}
+				withBodies(&rec, refusal)
+				appendUsage(r, rec)
+			}
+			continue
+		}
 		if c.p.Account != nil && !hw.passing && hw.code() >= 400 && hw.code() < 500 && modelTakes(c, sent) {
 			if takes, ok := effortRefused(hw.errBody(), sent); ok {
 				// the account's plan doesn't take the level, which the
@@ -2196,6 +2233,29 @@ func markOpenRouterSharedPool(w http.ResponseWriter) {
 	if h, ok := w.(*holdWriter); ok {
 		h.sharedPool = true
 	}
+}
+
+// markAntigravityTurnsAway keeps in the held attempt that the account was
+// asked with the system prompt Antigravity turns away, so a failure on it
+// isn't held against the account.
+func markAntigravityTurnsAway(w http.ResponseWriter) {
+	if h, ok := w.(*holdWriter); ok {
+		h.turnedAway = true
+	}
+}
+
+// markAntigravityRefused marks the attempt when what the account said is the
+// refusal Antigravity answers such a system prompt with. said is what the
+// failure said once the status is gone: the 429's body arrives with its 429,
+// and the reply's own error event arrives with 200 from translate and only
+// its message, the Code Assist decoder keeping neither its code nor its
+// status. An error event of any other kind says something else and marks
+// nothing.
+func markAntigravityRefused(w http.ResponseWriter, p provider.Provider, system, said string) {
+	if said == "" || !antigravityRefuses(said) || accountAgent(p) != "antigravity" || !antigravityTurnsAway(system) {
+		return
+	}
+	markAntigravityTurnsAway(w)
 }
 
 // forward sends a request to the provider. On Anthropic's messages, a
@@ -3276,6 +3336,7 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 		msg := p.Explain(p.Name+": "+provider.APIError(b, res.Status), res.StatusCode, b)
 		if res.StatusCode == http.StatusTooManyRequests && accountAgent(p) == "antigravity" && antigravityTurnsAway(request.System) {
 			msg += " — " + antigravityTurnedAwayHint
+			markAntigravityTurnsAway(w)
 		}
 		if p.Preset == "openrouter" && openRouterSharedPool(b) {
 			markOpenRouterSharedPool(w)
@@ -3356,6 +3417,10 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 			failed = p.Name + ": " + emptyReply
 			enc.event(Event{Kind: KError, Text: failed})
 		}
+		if failed != "" {
+			// the same refusal as the 429's, said inside the reply
+			markAntigravityRefused(w, p, request.System, failed)
+		}
 		if failed == "" {
 			for _, ev := range kept {
 				enc.event(ev)
@@ -3380,6 +3445,7 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 		return writeError(w, from, 502, msg), msg
 	}
 	if col.err != "" && !saidAnything(col.res.Parts) {
+		markAntigravityRefused(w, p, request.System, col.err)
 		return writeError(w, from, 502, p.Name+": "+col.err), col.err
 	}
 	if empty && !saidAnything(col.res.Parts) && answersNothing(col.res.Stop) {
