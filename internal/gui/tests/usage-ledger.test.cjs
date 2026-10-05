@@ -103,7 +103,7 @@ const L = {
     tabs: ["Overview", "Requests", "Sessions"],
     cols: ["Time", "Agent", "Requested", "Provider · account", "Sent", "Served", "Effort", "In", "Out", "Cache write", "Cache read", "Cost", "Duration", "Status"],
     sum: "130 requests", pager: "1–100 of 130", older: "Older", newer: "Newer", failed: "Failed", export: "Export CSV",
-    why: "The vendor was asked for gpt-6-sol, and its reply says gpt-6-luna answered it", saved: "Saved 130 requests to ~/Downloads/magpie-requests-30d-2026-09-29.csv",
+    why: "The vendor was asked for gpt-6-sol, but its reply says gpt-6-luna answered",saved: "Saved 130 requests to ~/Downloads/magpie-requests-30d-2026-09-29.csv",
     none: "No requests match these filters.", bad: "Failed: the agent was answered 429", via: "Codex · via office-mac",
   },
   zh: {
