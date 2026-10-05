@@ -795,6 +795,12 @@ func switchSavedLogin(agent, user string) (from string, _ error) {
 		}
 	}
 	want := *target
+	if agent == "claude" {
+		// the credentials as Claude Code has them this moment, not as last
+		// looked at: one it refreshed since has a new refresh token and the
+		// old one is dead (0xAncientTwo on X: signed out again and again)
+		forgetClaudeCredential()
+	}
 	if live, ok := liveLogin(agent); ok {
 		if strings.EqualFold(live.User, want.User) {
 			return "", nil
@@ -821,6 +827,7 @@ func switchSavedLogin(agent, user string) (from string, _ error) {
 		if err = putClaudeLogin(want); err == nil {
 			// Claude Code's own now: its only holder
 			forgetClaudeDir(want.User)
+			claudeHandedOver(want.User)
 		}
 	default:
 		err = fmt.Errorf("%s accounts can't be switched", agent)

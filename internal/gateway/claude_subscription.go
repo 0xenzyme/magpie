@@ -329,7 +329,43 @@ func evalSymlinks(path string) string {
 }
 
 func newSubscriptionBridge() *subscriptionBridge {
-	return &subscriptionBridge{runs: map[string]*subscriptionRun{}, calls: map[string]*subscriptionRun{}, idle: map[string]*subscriptionRun{}, shelf: map[string]*savedSession{}}
+	b := &subscriptionBridge{runs: map[string]*subscriptionRun{}, calls: map[string]*subscriptionRun{}, idle: map[string]*subscriptionRun{}, shelf: map[string]*savedSession{}}
+	bridges.Store(b, true)
+	return b
+}
+
+// bridges are the subscription bridges made, told when a saved Claude
+// account is handed over to Claude Code itself (handedOver).
+var bridges sync.Map
+
+func init() {
+	provider.ClaudeHandedOver = func(user string) {
+		bridges.Range(func(b, _ any) bool {
+			b.(*subscriptionBridge).handedOver(user)
+			return true
+		})
+	}
+}
+
+// handedOver lets go of the runs waiting for their next turn in the
+// directory of the saved Claude account user, now Claude Code's own sign-in
+// (provider.ClaudeHandedOver): each holds its refresh token, which a
+// refresh there would rotate under Claude Code's copy. Their conversations
+// go on in a new run, on the account the gateway picks then.
+func (b *subscriptionBridge) handedOver(user string) {
+	var drop []*subscriptionRun
+	b.mu.Lock()
+	for key, run := range b.idle {
+		if u, own := ownerAccount(run.owner); !own && strings.EqualFold(u, user) {
+			delete(b.idle, key)
+			run.idleKey = ""
+			drop = append(drop, run)
+		}
+	}
+	b.mu.Unlock()
+	for _, run := range drop {
+		run.abort()
+	}
 }
 
 func randomToken() string {
