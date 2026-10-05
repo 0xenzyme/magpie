@@ -779,6 +779,13 @@ request listed there is nothing; in English and Chinese, light and dark.
 The daily chart also checks selection, gray bars on other days, filtered rows
 and CSV, an empty day, clearing a selection, keyboard input and resizing.
 
+`usage-model-at-provider.test.cjs` splits the Requests tab's chart by "Model ·
+provider" (inaction on Discord): one model at two providers is two rows of the
+ranking, each named by both with the provider's icon and its own first token,
+the faster first by Speed though fewer requests went to it. A click lists that
+provider's requests of that model (provider and model both asked for), a click
+again all of them, and the page doesn't move. English and Chinese.
+
 `usage-chart-axis.test.cjs` checks the usage chart's side labels, in the
 window's Requests tab (1180 and 560 wide) and the tray panel's Usage tab (440
 and 340 wide): for tokens, cost in dollars and in yuan, and requests, small and

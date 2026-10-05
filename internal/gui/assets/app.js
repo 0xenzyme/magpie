@@ -13364,7 +13364,9 @@ function ledMoney(v) {
 const LED_METRICS = [["tokens", "Tokens"], ["cost", "Cost"], ["calls", "Requests"]];
 // the window's chart can also say how fast the replies came (#860)
 const LED_TREND = [...LED_METRICS, ["speed", "Speed"]];
-const LED_SPLITS = [["model", "Model"], ["provider", "Provider"], ["agent", "Agent"]];
+// "modelAt" is a model at the provider it went to, so one model's speed at
+// each provider is ranked side by side (inaction on Discord)
+const LED_SPLITS = [["model", "Model"], ["modelAt", "Model · provider"], ["provider", "Provider"], ["agent", "Agent"]];
 const LED_SHOWN = 7; // told apart in a chart; the rest are "Other"
 const allTokens = (x) => x.input + x.output + x.cache_read + x.cache_write;
 // how fast the timed replies of a point, a share or a part wrote, in tokens
@@ -13723,10 +13725,17 @@ function drawLedTrend() {
   });
   rank.chart = chart;
   if (!rank.rail) ledRail($("#ledRail"), rank);
-  const picked = ledSplit === "provider" ? ledProvider : ledSplit === "agent" ? ledAgent : ledModel;
+  const picked = ledSplit === "provider" ? ledProvider : ledSplit === "agent" ? ledAgent
+    : ledSplit === "modelAt" ? (ledProvider && ledModel ? ledProvider + "/" + ledModel : "") : ledModel;
   drawLedRank(rank, l, ledSplit, ledMetric, picked, (x) => {
     // a click lists only that one's requests; on the one listed, all again
-    if (ledSplit === "provider") ledProvider = ledProvider === x.id ? "" : x.id;
+    if (ledSplit === "modelAt") {
+      // provider/model: both filters, the provider's id has no "/"
+      const q = $("#ledQ"), cut = x.id.indexOf("/"), off = picked === x.id;
+      ledProvider = off ? "" : x.id.slice(0, cut);
+      ledModel = off ? "" : x.id.slice(cut + 1);
+      ledQuery = ledModel; q.value = ledQuery;
+    } else if (ledSplit === "provider") ledProvider = ledProvider === x.id ? "" : x.id;
     else if (ledSplit === "agent") ledAgent = ledAgent === x.id ? "" : x.id;
     else { const q = $("#ledQ"); ledModel = ledModel === x.id ? "" : x.id; ledQuery = ledModel; q.value = ledQuery; }
     ledOffset = 0;
