@@ -28,6 +28,8 @@ import (
 
 	"github.com/tidwall/gjson"
 
+	"github.com/yetone/magpie/internal/awake"
+
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/provider"
@@ -417,6 +419,11 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	// and keeps the community's plugins up to date, noting others' updates, and the Bun they run on
 	go plugin.KeepUpdated(ctx)
 	go plugin.KeepBunUpdated(ctx)
+	// and, when settings say to, keeps the computer awake while agents work
+	go awake.Keep(ctx, func() bool { return settings.Load().KeepAwake }, func() awake.State {
+		b := s.Busy()
+		return awake.State{Busy: b.Any(), Last: b.Last}
+	})
 	for _, f := range WhileServing {
 		go f(ctx)
 	}

@@ -198,6 +198,10 @@ type Settings struct {
 	// again when it is opened (#580): less memory, a moment's wait. This
 	// computer's own (KeepOwn).
 	Lightweight bool `json:"lightweight,omitempty"`
+	// KeepAwake keeps this computer from going to sleep by itself while
+	// agents work through the gateway and for a while after (xiao_wang24004
+	// on X; internal/awake). This computer's own (KeepOwn).
+	KeepAwake bool `json:"keepAwake,omitempty"`
 	// GatewayMode is whether `magpie web` shows only what a gateway serving
 	// other machines needs (Player on Discord): "on", "off", or "" to
 	// decide by itself — on for `magpie web --gateway`, or with no agents
@@ -582,6 +586,7 @@ func (s Settings) Compact() int {
 // Windows box that shows it).
 func (s *Settings) KeepOwn(cur Settings) {
 	s.Window, s.Proxy, s.Port, s.Dock, s.DockWindow, s.Lightweight = cur.Window, cur.Proxy, cur.Port, cur.Dock, cur.DockWindow, cur.Lightweight
+	s.KeepAwake = cur.KeepAwake
 	s.TrayUsages, s.TrayUsage, s.TrayUsageEvery, s.TrayNoLogos, s.TrayNoBird = cur.TrayUsages, cur.TrayUsage, cur.TrayUsageEvery, cur.TrayNoLogos, cur.TrayNoBird
 	s.GatewayMode = cur.GatewayMode
 }
