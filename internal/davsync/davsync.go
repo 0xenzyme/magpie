@@ -644,7 +644,7 @@ func take(to *backup.Bundle, from backup.Bundle, part string) {
 			ps = slices.Clone(ps)
 			for i, p := range ps {
 				if k, ok := keys[p.ID]; ok && p.Key == "" && len(p.Keys) == 0 {
-					ps[i].Key, ps[i].KeyName, ps[i].Keys, ps[i].KeyProtocol = k.Key, k.KeyName, k.Keys, k.KeyProtocol
+					ps[i].Key, ps[i].KeyName, ps[i].Keys, ps[i].KeyProtocol, ps[i].KeyWeight = k.Key, k.KeyName, k.Keys, k.KeyProtocol, k.KeyWeight
 					if p.BalanceToken == "" {
 						ps[i].BalanceToken = k.BalanceToken
 					}

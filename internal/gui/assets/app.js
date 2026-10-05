@@ -8261,7 +8261,10 @@ const ROUTINGS = [
   ["rotate", "In turn", "Each turn of a conversation goes to the next one, spreading the load evenly; the requests within a turn stay where it began, so the prompt cache holds, and one that fails is passed over while it rests."],
   ["usage", "Least used first", "Each request goes to the one used least: a subscription by the share of its allowance used, a key by the tokens it served in the last hours."],
   ["pace", "Weekly pace", "Each request goes to the subscription with the most of its week left per hour until it renews — the one with the most to lose at its reset — so less of each week is lost at its reset; one at 90% or more waits until the others can't answer. A key goes by the tokens it served in the last hours."],
+  ["weight", "By weight", "Requests spread over the keys by the weight set beside each: a key weighing 3 takes three requests for every one a key weighing 1 takes, evenly over a few requests. One that fails is passed over while it rests, and the others share its requests; a conversation stays with its key as Stays says."],
 ];
+// weight is a key's share: offered for a provider with keys only
+const routingsOf = (p) => p.account ? ROUTINGS.filter(([id]) => id !== "weight") : ROUTINGS;
 // as on the Routing page's list of these (routing.js AFF_OPTS)
 const STAYS = [
   ["", "Auto", "A conversation stays with the account or key that answered it while what the vendor cached of it is worth keeping — within a turn always, across turns while it's fresh."],
@@ -8315,10 +8318,12 @@ function renderRouting(p) {
     const cur = ROUTINGS.find(([id]) => id === routingNow()) || ROUTINGS[0];
     rHint.textContent = t(cur[2]) + own(cur[0]);
     rUnsaved.hidden = routingNow() === (p.routing || "");
-    // in turn goes round already
-    kLabel.hidden = kWrap.hidden = routingNow() === "rotate";
+    // in turn and by weight go round already
+    kLabel.hidden = kWrap.hidden = routingNow() === "rotate" || routingNow() === "weight";
+    // each key's weight shows beside it while the routing is by weight
+    for (const l of document.querySelectorAll(".accts.keys")) if (l.dataset.provider === p.id) l.classList.toggle("weighted", routingNow() === "weight");
   };
-  const rPick = segs(ROUTINGS.map(([id, name]) => [id, t(name)]), routingNow(), (routing) => { draft.routing = routing; drawRouting(); });
+  const rPick = segs(routingsOf(p).map(([id, name]) => [id, t(name)]), routingNow(), (routing) => { draft.routing = routing; drawRouting(); });
   const rRow = el("div", "route-pick");
   rRow.append(rPick, rUnsaved);
   const rWrap = el("div");
@@ -10013,12 +10018,45 @@ function accountModels(p, ref, isKey, name) {
   return [pill, box];
 }
 
+// keyWeight: a key's weight under By weight routing, and its share of the
+// requests; a click edits it in place, Enter or leaving it saves it.
+function keyWeight(p, k, w, total) {
+  const b = el("button", "key-weight", t("Weight {n} · {share}%", { n: w, share: Math.round(100 * w / total) }));
+  b.title = t("Its share of the requests: a key weighing 3 takes three for every one a key weighing 1 takes");
+  b.onclick = () => {
+    const i = input(String(w), "1");
+    i.type = "number";
+    i.min = "1";
+    i.max = "1000";
+    i.className = "key-weight-in";
+    let done = false;
+    const save = (keep) => {
+      if (done) return;
+      done = true;
+      const n = Math.round(Number(i.value));
+      if (keep && n >= 1 && n <= 1000 && n !== w) accountAction("keys/weight", { id: p.id, ref: k.id, weight: n }, t("{key} weighs {n}", { key: k.name || k.masked, n }));
+      else renderProviders();
+    };
+    i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") save(true); else if (e.key === "Escape") save(false); };
+    i.onblur = () => save(true);
+    b.replaceWith(i);
+    i.focus({ preventScroll: true });
+    i.select();
+  };
+  return b;
+}
+
 // renderKeyAccounts: a key provider's accounts, one per key, the same list
 // a subscription has. addingKey holds the half-typed new one.
 let addingKey = null;
 function renderKeyAccounts(p) {
-  const list = el("div", "accts");
+  const list = el("div", "accts keys");
+  list.dataset.provider = p.id;
+  list.classList.toggle("weighted", (draft?.routing ?? (p.routing || "")) === "weight");
   const several = p.keyList.filter((k) => k.on).length > 1;
+  // the weights of those on, for each one's share (#841)
+  const weightOf = (k) => Math.max(k.weight || 0, 1);
+  const weights = p.keyList.filter((k) => k.on).reduce((n, k) => n + weightOf(k), 0);
   for (const k of p.keyList) {
     const row = el("div", "acc" + (k.on ? " in-use" : " off") + (k.id === justAdded ? " new" : ""));
     row.dataset.accountId = k.id;
@@ -10049,6 +10087,7 @@ function renderKeyAccounts(p) {
       r.title = t("The gateway passes this key over until then, and tries the next one");
       row.append(r);
     }
+    if (k.on && several) row.append(keyWeight(p, k, weightOf(k), weights));
     const proto = protoPicker(p, k.protocol, (v) => accountAction("keys/protocol", { id: p.id, ref: k.id, protocol: v }));
     if (proto) row.append(proto);
     // its own models (#474), when there is another key to send the rest to

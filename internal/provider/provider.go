@@ -59,6 +59,8 @@ type Provider struct {
 	// for: a relay that hands out one key for Anthropic and another for
 	// OpenAI (see KeyAccount.Protocol).
 	KeyProtocol Protocol `json:"keyProtocol,omitempty"`
+	// KeyWeight is the first key's weight (see KeyAccount.Weight).
+	KeyWeight int `json:"keyWeight,omitempty"`
 
 	// Base URLs, one per protocol the vendor serves natively. magpie appends
 	// the usual paths: chat/responses bases end in /v1 (OpenAI style),
@@ -83,7 +85,8 @@ type Provider struct {
 	// can't take it; "rotate" each in turn; "usage" the least used first;
 	// "pace" the one with the most remaining allowance per hour until
 	// its window resets first, so less allowance is lost at reset.
-	// The window can be shorter than a week.
+	// The window can be shorter than a week. "weight" by each key's
+	// weight, a key with 3 taking three requests to one with 1's.
 	// Whichever it is, one out of credit, out of quota, rate limited or
 	// failing is passed over for as long as that lasts.
 	Routing string `json:"routing,omitempty"`
@@ -583,7 +586,7 @@ func AddCopy(p Provider, from string) (string, error) {
 		return "", fmt.Errorf("%s is a signed-in account, which can't be copied", src.Name)
 	}
 	if p.Key == "" {
-		p.Key, p.KeyName, p.KeyProtocol = src.Key, src.KeyName, src.KeyProtocol
+		p.Key, p.KeyName, p.KeyProtocol, p.KeyWeight = src.Key, src.KeyName, src.KeyProtocol, src.KeyWeight
 		p.Keys = slices.Clone(src.Keys)
 		p.Routing, p.Sink, p.Affinity = src.Routing, src.Sink, src.Affinity
 	}
@@ -835,7 +838,7 @@ func normalize(p Provider) Provider {
 			p.Decide = pr.Decide
 		}
 	}
-	if p.Routing != Ordered && p.Routing != Rotate && p.Routing != LeastUsed && p.Routing != Pace {
+	if p.Routing != Ordered && p.Routing != Rotate && p.Routing != LeastUsed && p.Routing != Pace && p.Routing != Weighted {
 		p.Routing = ""
 	}
 	if !slices.Contains(Affinities, p.Affinity) {

@@ -24,6 +24,10 @@ type KeyAccount struct {
 	// Protocol, when set, is the only one the key works with: some relays
 	// give out one key for Anthropic and another for OpenAI. Empty is any.
 	Protocol Protocol `json:"protocol,omitempty"`
+	// Weight is the key's share of the requests when the provider's
+	// routing is Weighted (#841): one with 3 takes three for every one a
+	// key with 1 takes. None, or 0, counts as 1.
+	Weight int `json:"weight,omitempty"`
 }
 
 // KeyInfo describes one of a provider's keys without giving it away.
@@ -35,6 +39,7 @@ type KeyInfo struct {
 	On     bool   `json:"on"`     // in use: the first, or next in line
 
 	Protocol Protocol `json:"protocol,omitempty"` // the only one it works with
+	Weight   int      `json:"weight,omitempty"`   // its share when routing is Weighted
 
 	// Rest is why the gateway passes it over now, after a failure, and
 	// until when; nil while it takes requests.
@@ -71,10 +76,10 @@ func KeyID(key string) string { return keyID(key) }
 func (p Provider) KeyList() []KeyInfo {
 	var out []KeyInfo
 	if p.Key != "" {
-		out = append(out, KeyInfo{ID: keyID(p.Key), Name: p.KeyName, Masked: Mask(p.Key), Active: true, On: true, Protocol: p.KeyProtocol})
+		out = append(out, KeyInfo{ID: keyID(p.Key), Name: p.KeyName, Masked: Mask(p.Key), Active: true, On: true, Protocol: p.KeyProtocol, Weight: p.KeyWeight})
 	}
 	for _, k := range p.Keys {
-		out = append(out, KeyInfo{ID: keyID(k.Key), Name: k.Name, Masked: Mask(k.Key), On: !k.Off, Protocol: k.Protocol})
+		out = append(out, KeyInfo{ID: keyID(k.Key), Name: k.Name, Masked: Mask(k.Key), On: !k.Off, Protocol: k.Protocol, Weight: k.Weight})
 	}
 	return out
 }
@@ -187,11 +192,11 @@ func AddKeys(id string, keys []string, proto Protocol) (added, had int, err erro
 
 // first is the first key as a KeyAccount, and setFirst makes k the first.
 func (p *Provider) first() KeyAccount {
-	return KeyAccount{Name: p.KeyName, Key: p.Key, Protocol: p.KeyProtocol}
+	return KeyAccount{Name: p.KeyName, Key: p.Key, Protocol: p.KeyProtocol, Weight: p.KeyWeight}
 }
 
 func (p *Provider) setFirst(k KeyAccount) {
-	p.Key, p.KeyName, p.KeyProtocol = k.Key, k.Name, k.Protocol
+	p.Key, p.KeyName, p.KeyProtocol, p.KeyWeight = k.Key, k.Name, k.Protocol, k.Weight
 }
 
 func keyProtocolOK(proto Protocol) error {
@@ -223,10 +228,41 @@ func SetKeyProtocol(id, keyRef string, proto Protocol) error {
 	return Save(*p)
 }
 
+// MaxKeyWeight is the most a key's weight can be.
+const MaxKeyWeight = 1000
+
+// SetKeyWeight sets a key's share of the requests under Weighted routing;
+// 0 takes it back to the default, 1.
+func SetKeyWeight(id, keyRef string, weight int) error {
+	if weight < 0 || weight > MaxKeyWeight {
+		return fmt.Errorf("a key's weight is 0 to %d", MaxKeyWeight)
+	}
+	p, err := Find(id)
+	if err != nil {
+		return err
+	}
+	i, ok := findKey(p, keyRef)
+	if !ok {
+		return fmt.Errorf("%s has no such key", p.Name)
+	}
+	if weight == 1 {
+		weight = 0 // the default: kept out of the file
+	}
+	if i < 0 {
+		p.KeyWeight = weight
+	} else {
+		p.Keys[i].Weight = weight
+	}
+	return Save(*p)
+}
+
+// WeightOf is the key's weight as Weighted routing counts it: 1 when none.
+func (k KeyAccount) WeightOf() int { return max(k.Weight, 1) }
+
 // WithKey is p using key k: its endpoints narrowed to k's protocol when k
 // has one. It has none left when p doesn't serve that protocol.
 func (p Provider) WithKey(k KeyAccount) Provider {
-	p.Key, p.KeyName, p.KeyProtocol = k.Key, k.Name, k.Protocol
+	p.Key, p.KeyName, p.KeyProtocol, p.KeyWeight = k.Key, k.Name, k.Protocol, k.Weight
 	if k.Protocol != "" {
 		for _, pr := range Protocols {
 			if pr != k.Protocol {

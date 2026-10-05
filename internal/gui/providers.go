@@ -987,7 +987,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 						in.Contexts = old.Contexts // a save that doesn't say
 					}
 					if in.Key == old.Key {
-						in.KeyName, in.KeyProtocol = old.KeyName, old.KeyProtocol
+						in.KeyName, in.KeyProtocol, in.KeyWeight = old.KeyName, old.KeyProtocol, old.KeyWeight
 					}
 				}
 				if in.Icon == "" && old != nil && in.Preset == "" {
@@ -1358,6 +1358,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 		var in struct {
 			ID, Key, Name, Ref string
 			Protocol           provider.Protocol
+			Weight             int
 		}
 		var added, had int
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -1374,6 +1375,8 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			added, had, err = provider.AddKeys(in.ID, provider.SplitKeys(in.Key), in.Protocol)
 		case "protocol":
 			err = provider.SetKeyProtocol(in.ID, in.Ref, in.Protocol)
+		case "weight":
+			err = provider.SetKeyWeight(in.ID, in.Ref, in.Weight)
 		case "use":
 			err = provider.UseKey(in.ID, in.Ref)
 		case "remove":
@@ -1543,7 +1546,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 // all) is the saved one's; the provider's other keys are kept.
 func typed(p, in provider.Provider, proxy *string) provider.Provider {
 	if k := strings.TrimSpace(in.Key); k != "" && k != p.Key {
-		p.Key, p.KeyName, p.KeyProtocol = k, "", ""
+		p.Key, p.KeyName, p.KeyProtocol, p.KeyWeight = k, "", "", 0
 	}
 	for _, f := range []struct {
 		to *string
