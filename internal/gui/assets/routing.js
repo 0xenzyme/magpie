@@ -1460,12 +1460,14 @@
         return s;
       }, { cost: 0, tokens: 0, priced: 0, unpriced: 0, running: 0 });
       setText(x.arrow, g.key ? open ? "▾" : "▸" : "");
-      // A memory worker has its own ID and can process earlier chats. Label
-      // memory-only groups without renaming a chat that also made memory calls.
+      // Background workers have their own IDs. Label groups made entirely
+      // for one purpose without renaming a chat that also made helper calls.
       const memory = g.r.agent === "codex" && g.rows.every((r) => ["memory_consolidation", "memgen", "memory"].includes(r.kind));
-      const name = g.rows.find((r) => r.sessionTitle)?.sessionTitle || (memory ? t("Background memory task") : "");
+      const suggestions = g.r.agent === "codex" && g.rows.every((r) => ["ambient_suggestions", "ambient_suggestion_safety"].includes(r.kind));
+      const name = g.rows.find((r) => r.sessionTitle)?.sessionTitle || (memory ? t("Background memory task") : suggestions ? t("Background prompt suggestions") : "");
       setText(x.name, g.key ? agentName(g.r.agent) + " · " + (name || groupSession(g.r)) : t("No session ID"));
       const purpose = memory ? t("Codex is organizing memories from earlier chats in the background. This can continue after a chat finishes.") + "\n"
+        : suggestions ? kindWhy(g.r) + "\n"
         : g.rows.some((r) => r.parentMatched) ? t("Title requests were automatically matched using the prompt and the applied chat title.") + "\n" : "";
       x.name.title = g.key ? (name ? name + "\n" : "") + purpose + t("Session id") + ": " + groupSession(g.r) : t("These requests did not provide a session ID; they are not treated as one conversation.");
       const bits = [t(g.rows.length === 1 ? "{n} request" : "{n} requests", { n: g.rows.length }), t("{n} tokens", { n: tokens(total.tokens) })];
