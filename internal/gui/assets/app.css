@@ -2887,6 +2887,7 @@ body.window .row.agent .who.with-models { flex-wrap: wrap; row-gap: 0; }
 .am-reset { border: 0; background: none; padding: 2px 4px; border-radius: 5px; color: var(--fg-2); font: inherit; font-size: 11.5px; cursor: pointer; }
 .am-reset:hover:not(:disabled) { color: var(--accent); }
 .am-reset:disabled { color: var(--faint); cursor: default; }
+.am-reset[data-armed] { color: var(--red); background: var(--red-soft); }
 .am-dot { color: var(--faint); }
 /* Codex's list in the order it shows it (#855): the whole list, dragged by
    any row; its grip shows only on the row under the pointer */

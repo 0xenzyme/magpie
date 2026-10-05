@@ -2251,6 +2251,8 @@ async function openAgentModels(a, anchor, ev) {
   const unorder = el("button", "am-reset", t("Default order"));
   unorder.type = "button";
   const footNote = el("span", "", t("New models are shown"));
+  // takes back a first click on Hide all or Show all (twice, below)
+  let disarm = () => {};
   foot.append(footNote, el("span", "sp"), hideAll, el("span", "am-dot", "·"), reset);
   // groups as the catalog has them, routing groups first; a long one
   // starts folded, unless the agent is set to a model in it
@@ -2467,6 +2469,8 @@ async function openAgentModels(a, anchor, ev) {
     }
     if (!list.childNodes.length) list.append(el("div", "am-none", t("No matches.")));
     list.scrollTop = top;
+    // anything else done in the list takes back a first click there
+    disarm();
     reset.disabled = !models.some((m) => m.hidden);
     hideAll.disabled = !models.some((m) => !m.hidden && !m.inUse);
   };
@@ -2502,16 +2506,40 @@ async function openAgentModels(a, anchor, ev) {
     }
     draw();
   };
-  reset.onclick = () => {
+  // every model of every provider at once is a lot to pick again by hand,
+  // and with one provider picked on the left it read as that one's (#920):
+  // a first click says how many, of every provider, and a second does it
+  const twice = (b, armed, go) => {
+    b.onclick = () => {
+      if (!b.dataset.armed) {
+        disarm();
+        b.dataset.armed = "1";
+        b.textContent = armed();
+        footNote.hidden = true;
+        b._t = setTimeout(disarm, 4000);
+        return;
+      }
+      disarm();
+      go();
+      save();
+      draw();
+    };
+  };
+  disarm = () => {
+    for (const [b, label] of [[hideAll, t("Hide all")], [reset, t("Show all")]]) {
+      clearTimeout(b._t);
+      if (!b.dataset.armed) continue;
+      delete b.dataset.armed;
+      b.textContent = label;
+    }
+    footNote.hidden = false;
+  };
+  twice(reset, () => t("Show {n} hidden, of every provider? Click again", { n: models.filter((m) => m.hidden).length }), () => {
     for (const m of models) m.hidden = false;
-    save();
-    draw();
-  };
-  hideAll.onclick = () => {
+  });
+  twice(hideAll, () => t("Hide {n}, of every provider? Click again", { n: models.filter((m) => !m.inUse && !m.hidden).length }), () => {
     for (const m of models) if (!m.inUse && !m.hidden) { m.hidden = true; kept.add(m.id); }
-    save();
-    draw();
-  };
+  });
   draw();
 
   document.body.append(box);
