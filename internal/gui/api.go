@@ -99,6 +99,27 @@ func cliBehindRoutes(mux *http.ServeMux) {
 		cliBehindMu.Unlock()
 		rw.WriteHeader(http.StatusNoContent)
 	})
+	// Settings' Command line: what `magpie` runs in each shell, and this
+	// app's put there when asked (update.AddCLI); shell names the one whose
+	// profile gets ~/.local/bin
+	mux.HandleFunc("GET /api/cli", func(rw http.ResponseWriter, r *http.Request) {
+		writeJSON(rw, update.ReadCLI())
+	})
+	mux.HandleFunc("POST /api/cli", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Shell string `json:"shell"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		v, err := update.AddCLI(in.Shell)
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, v)
+	})
 }
 
 var cliBehindOnce = new(sync.Once) // a var so tests can ask again
