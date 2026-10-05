@@ -182,6 +182,13 @@ its provider there (`Claude Sonnet 5 · Relay A · office`) — the ids stay ids
 (`office/relay-a/claude-sonnet-5`), only these labels carry the names — and its image
 models are listed under Settings → Images and draw through it.
 
+Codex's native image tool first asks the provider that served its conversation
+turn for the requested image model. If that provider does not list the model,
+or the turn cannot be identified, it uses Settings → Images → Image generation
+(including Automatic). Off disables this fallback, not a matching model on the
+turn's provider. An explicit `provider/model` keeps its destination; an upstream
+image error does not retry through the setting. Magpie Image MCP is not required.
+
 WorkBuddy (China)'s daily check-in (签到) is pressed from the app's Usage card
 (*Check in now*), `magpie accounts checkin`, or `c` on the TUI's Usage page,
 which checks in every account signed in on this computer at once; its

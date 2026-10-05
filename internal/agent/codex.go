@@ -149,6 +149,14 @@ func codexIn(at place) *Agent {
 			edit.KV{Path: "base_url", Value: at.v1()},
 			edit.KV{Path: "wire_api", Value: "responses"},
 			edit.KV{Path: "experimental_bearer_token", Value: at.gwKey()},
+			// Codex offers its built-in image tool (image_gen.imagegen) and
+			// the other OpenAI-provider tools only to a provider it reads as
+			// the OpenAI actor: one that does not require OpenAI auth but
+			// carries x-openai-actor-authorization. Without this header the
+			// model is never given the tool, so a Codex on magpie can't draw
+			// (the request that names model/draws never happens at all).
+			// uses_openai_actor_authorization() is exactly this check.
+			edit.KV{Path: "http_headers", Value: edit.Raw(`{ "x-openai-actor-authorization" = "magpie" }`)},
 		)
 	}
 	hasProvider := func() bool {
