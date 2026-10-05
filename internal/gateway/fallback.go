@@ -1150,7 +1150,9 @@ type keptAlive struct {
 // after it, its stream going on in the same response (pass).
 func (h *holdWriter) keepAlive() {
 	a := h.alive
-	if a == nil || time.Since(a.at) < keepaliveEvery {
+	// a Gemini stream has none, as geminiEncoder.keepalive: agy fails on
+	// the comment ("invalid stream chunk: : keepalive", #934)
+	if a == nil || a.proto == provider.Gemini || time.Since(a.at) < keepaliveEvery {
 		return
 	}
 	if !a.sent {

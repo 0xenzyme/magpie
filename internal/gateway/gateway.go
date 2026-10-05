@@ -981,6 +981,9 @@ func (s *Server) gemini(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// one spelling, for what reads the body after — the images a model
+	// that can't see is shown in words of (image_input.go) too (#934)
+	body = geminiCamel(body)
 	var err error
 	if err := decodeRequest(body, &struct{}{}); err != nil {
 		writeError(w, provider.Gemini, 400, err.Error())
