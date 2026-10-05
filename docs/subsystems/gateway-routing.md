@@ -44,12 +44,13 @@ served by a plugin are in [Provider and plugin ownership](provider-plugins.md).
 - Routing decides who goes first only when nobody has answered the conversation yet. Affinity keeps the answerer while its cache is worth it. Auto mode keeps it across turns while at least `cacheWorth` (1024) tokens were read from the cache and the cache isn't cold (`cacheCold`, 5 minutes).
 - In turn (`rotate`), a conversation nobody has answered yet goes to the key, account or model the fewest other conversations of the provider's model or the group answered in the last `heldFor` (30 minutes) are on (`leastHeld`, #946). Ties, resting ones and a group with a group in it keep routing's order. With session affinity, two sessions of one group so stay on different models.
 - Different failures are classified separately: out of credit, out of quota, rate limit and other errors rest for different lengths. A fix must not merge them into one bucket (see #873).
+- Codex offers its image tool (the `image_gen` namespace, #870) to every magpie provider. When a provider other than a ChatGPT sign-in or openai.com answers a bare 400, `attempt` asks it once more without the tool (`image_tool.go`). This happens both passed through and translated. If that works, the provider is marked unfit for the tool (`tool:image_gen`) and isn't offered it again. If it doesn't, the tool is restored and the 400 stands (#949).
 - Group members are `provider/model[:effort]`. A member with a fixed effort is asked for that effort, bounded by the group's levels (#671).
 
 ## Verification
 
 ```sh
-go test -tags nogui ./internal/gateway -run 'TestRotateSpreadsSessions|TestRouting|TestSmartRouting|TestFallback|TestNoFallbackForOtherErrors|TestLastFallbackErrorReachesTheAgent|TestRateLimitedSinksToTheBack|TestGroupRateLimitedSinks|TestAffinity|TestSeveralKeysOnTakeOverFromEachOther|TestSubscriptionAccountsTakeOver|TestGroup|TestTrace'
+go test -tags nogui ./internal/gateway -run 'TestRotateSpreadsSessions|TestRouting|TestSmartRouting|TestFallback|TestNoFallbackForOtherErrors|TestLastFallbackErrorReachesTheAgent|TestRateLimitedSinksToTheBack|TestGroupRateLimitedSinks|TestAffinity|TestSeveralKeysOnTakeOverFromEachOther|TestSubscriptionAccountsTakeOver|TestGroup|TestTrace|TestImageTool'
 go test -tags nogui ./internal/provider -run 'TestGroup'
 ```
 

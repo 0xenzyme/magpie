@@ -2654,6 +2654,12 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 	if proto != provider.Anthropic {
 		body = s.withoutRefused(p.ID, proto, body)
 	}
+	// Codex's image tool, which a vendor that knows no namespaces turned
+	// away before (#949)
+	dropImage := proto == provider.Responses && mayDropImageTool(p)
+	if dropImage && !s.fits(p.ID, imageToolRefused, proto) {
+		body, _ = withoutImageTool(body)
+	}
 	// a Grok subscription is given Codex's namespaced functions flat
 	// (grokBody), and Zed's plugin likewise (ZedBody); a call to one goes
 	// back under its namespace (#404)
@@ -2681,7 +2687,22 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			ms = refusedInMessages(res.StatusCode, b, body)
 		}
 		if len(fs) == 0 && len(ms) == 0 {
-			break
+			// and a bare 400 over Codex's image tool, which a vendor
+			// that knows no namespaces gives (#949): asked once more
+			// without it
+			if !dropImage {
+				break
+			}
+			nb, had := withoutImageTool(body)
+			if !had {
+				break
+			}
+			refused = append(refused, imageToolRefused)
+			body = nb
+			if res, err = s.forward(r.Context(), p, proto, path, p.Prepare(body), r.Header); err != nil {
+				return writeError(w, proto, 502, p.Name+": "+err.Error()), err.Error(), true
+			}
+			continue
 		}
 		refused = append(refused, fs...)
 		body = withoutFields(body, fs...)
@@ -3015,7 +3036,14 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 	web := req.WebSearch
 	// the cache key was left out to see if it was what the upstream refused
 	dropped := false
+	// Codex's image tool was left out to see if it was (#949), and the
+	// request with it, to go back to when it wasn't; tried once
+	var withImage *Request
+	imageTried := false
 	for {
+		if mayDropImageTool(p) && !s.fits(p.ID, imageToolRefused, to) {
+			req, _ = withoutImageToolReq(req)
+		}
 		// only a provider that searches by itself is asked to
 		if want := web && searchesFor(p, to, model, req); want != req.WebSearch {
 			r := *req
@@ -3077,6 +3105,10 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 				// it was the key: not sent there again
 				s.markUnfit(p.ID, cacheKeyField, to)
 			}
+			if withImage != nil && err == nil {
+				// it was the image tool: not offered there again
+				s.markUnfit(p.ID, imageToolRefused, to)
+			}
 			return res, to, err
 		}
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
@@ -3113,6 +3145,18 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 			r := *req
 			r.Effort, req = "none", &r
 			continue
+		}
+		if withImage != nil {
+			// not the image tool: offered again, and the next guess tried
+			req, withImage = withImage, nil
+		} else if !imageTried && mayDropImageTool(p) && badRequest(res.StatusCode) && !wrongEndpoint(res.StatusCode, b) && !provider.CopilotRefusal(b) {
+			// a bare 400 over Codex's image tool, which a vendor's API
+			// that can't take it gives (#949): asked again without it,
+			// and not offered it again once that works
+			if r, had := withoutImageToolReq(req); had {
+				withImage, req, imageTried = req, r, true
+				continue
+			}
 		}
 		if req.CacheKey != "" && badRequest(res.StatusCode) && !wrongEndpoint(res.StatusCode, b) && !provider.CopilotRefusal(b) {
 			// a vendor that turns away fields it doesn't know is asked again
