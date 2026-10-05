@@ -15271,6 +15271,7 @@ async function renderSync(v) {
     // the other kind's server, kept from before sync moved here
     if (v.other) status += " · " + t("{kind} settings kept", { kind: v.other.kind === "s3" ? "S3" : "WebDAV" });
     if (!v.error && v.usageError) status += " · " + t("Couldn't share usage: {error}", { error: v.usageError });
+    if (v.auto === 0) status += " · " + t("only when asked");
   }
   const sub = row(t(s3 ? "S3 sync" : v.on ? "WebDAV sync" : "WebDAV or S3 sync"), status, ...(v.on
     ? [btn(t("Sync now"), async (e) => { e.target.classList.add("busy"); renderSync(await api("davsync/now", {}).catch((x) => ({ ...v, error: x.message }))); }),
@@ -15280,23 +15281,82 @@ async function renderSync(v) {
   if (v.notice) {
     const n = v.notice, r = el("div", "row pref sync-note");
     const lines = [];
-    if (n.here?.length) lines.push(t("Replaced here by newer ones from another computer: {parts}", { parts: parts(n.here) }));
+    if (n.restored) lines.push(t("Restored from the server: {parts}", { parts: parts(n.here || []) }));
+    else if (n.here?.length) lines.push(t("Replaced here by newer ones from another computer: {parts}", { parts: parts(n.here) }));
     if (n.there?.length) lines.push(t("Replaced on the server by this computer's newer ones: {parts}", { parts: parts(n.there) }));
     const who = el("div", "who");
     for (const l of lines) who.append(el("div", "sub", l));
-    who.append(el("div", "sub", t("The copies replaced are kept in the sync folder.")));
+    who.append(el("div", "sub", t(n.restored ? "This computer's setup from before is kept in the sync folder." : "The copies replaced are kept in the sync folder.")));
     const val = el("div", "val");
+    if (n.restored && v.undo) val.append(btn(t("Undo"), async (e) => {
+      e.target.classList.add("busy");
+      try { renderSync(await api("davsync/undo", {})); refreshAfterSync(); } catch (x) { e.target.classList.remove("busy"); sub.textContent = x.message; sub.classList.add("bad"); }
+    }));
     val.append(btn(t("Show"), () => api("davsync/reveal", {}).catch((e) => status(e.message, "err"))), btn(t("OK"), async () => renderSync(await api("davsync/dismiss", {}))));
     r.append(who, val);
     box.append(r);
   }
   if (syncOpen === "dav") box.append(davForm(v));
+  if (v.on) {
+    // how often it syncs by itself, or never: a free 坚果云 account is
+    // allowed only so many requests (#847)
+    const every = v.auto ?? 3;
+    row(t("Sync by itself"), every ? t("Every {n} minutes while magpie runs", { n: every }) : t("Off: only Sync now syncs"),
+      segs([[0, t("Off")], [3, t("3 min")], [15, t("15 min")], [30, t("30 min")], [60, t("1 hour")]], every, async (m) => {
+        renderSync(await api("davsync/auto", { minutes: m || -1 }).catch((x) => ({ ...v, error: x.message })));
+      }));
+    row(t("Restore from the server"), t("This computer's setup becomes the one on the server. What is here now is kept first, to undo."),
+      btn(t("Restore…"), () => askRestore(v, parts)));
+  }
 
   // export and import
   row(t("Export"), t("Everything above in one file, sealed with a passphrase, to carry to another computer"), btn(t(syncOpen === "export" ? "Close" : "Export…"), toggle("export")));
   if (syncOpen === "export") box.append(exportForm());
   row(t("Import"), t("Bring in a file exported from magpie"), btn(t(syncOpen === "import" ? "Close" : "Import…"), toggle("import")));
   if (syncOpen === "import") box.append(importForm());
+}
+
+// askRestore asks before the server's setup replaces this computer's
+// (#847); what is here is kept, and the notice it leaves can undo it.
+function askRestore(v, parts) {
+  const ed = el("div", "editor restore-ask");
+  const head = el("div", "ehead");
+  head.append(el("b", "", t("Restore from the server?")));
+  ed.append(head);
+  const goes = ["providers", "settings", "profiles"];
+  if (v.agents !== false) goes.push("agents");
+  if (v.library !== false) goes.push("library");
+  ed.append(el("p", "lib-confirm", t("This computer's {parts} become the ones on the server, as your other computers last synced them. Whatever was changed here since is replaced.", { parts: parts(goes) })));
+  ed.append(el("p", "lib-confirm", t("What is here now is sealed into the sync folder first, and Undo puts it back.")));
+  const err = el("p", "editor-error", "");
+  ed.append(err);
+  const bar = el("div", "bar");
+  const go = el("button", "text primary danger-fill", t("Restore setup"));
+  go.onclick = async (e) => {
+    e.stopPropagation();
+    go.disabled = true;
+    go.classList.add("busy");
+    try {
+      const r = await api("davsync/restore", {});
+      closeConfirmAsk();
+      renderSync(r);
+      if (r.error) return;
+      if (r.brought?.length) refreshAfterSync();
+      else status(t("This computer's setup is already the server's: nothing to restore"), "ok");
+    } catch (x) {
+      go.disabled = false;
+      go.classList.remove("busy");
+      err.textContent = x.message;
+    }
+  };
+  const cancel = el("button", "text", t("Cancel"));
+  cancel.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); };
+  bar.append(el("span", "grow"), cancel, go);
+  ed.append(bar);
+  confirmAsk = ed;
+  openModal(ed);
+  $("#modal").classList.add("lib");
+  cancel.focus({ preventScroll: true });
 }
 
 // refreshAfterSync: what a sync or an import brought in reaches the other
