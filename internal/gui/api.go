@@ -665,6 +665,12 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	// the agents' CLIs: their versions and the newest (#202), as far as
 	// they're known within a moment — the rest are asked on meanwhile, and
 	// pending says to ask again soon
+	// the Agents page's refresh: looks for the agents on this machine again,
+	// the answers kept a while because asking was slow forgotten (#844)
+	mux.HandleFunc("POST /api/agents/rescan", func(rw http.ResponseWriter, r *http.Request) {
+		agent.Rescan()
+		writeJSON(rw, state())
+	})
 	mux.HandleFunc("GET /api/agents/cli", func(rw http.ResponseWriter, r *http.Request) {
 		clis, pending := agent.CLIs(3 * time.Second)
 		writeJSON(rw, map[string]any{"agents": clis, "pending": pending})

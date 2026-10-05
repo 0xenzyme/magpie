@@ -568,9 +568,12 @@ Update pill waits on its click and restarts at once on the next (not on a
 double click's second half). No click moves the page, no coloured left
 border. English and Chinese.
 
-`sync-update.test.cjs` checks the header's refresh button looks for a newer
-magpie too: one click, one check, and the Update pill shows what it found.
-Its tooltip says so. English and Chinese.
+`refresh-page.test.cjs` checks the header's refresh reads again what the
+page shown draws (#844): on Agents it looks for the agents again (one just
+installed shows, and leaves Install another agent), on Usage it reads the
+allowances afresh, on Providers it refreshes the model lists. It never looks
+for a newer magpie (Settings › About's Check does), its tooltip says what it
+reads, and no click moves the page. Window and panel, English and Chinese.
 
 `update-hide.test.cjs` keeps the header's Update pill away when asked (Wang
 Hsiaohi on Discord): its ×, shown with the pointer over the pill, hides it for
