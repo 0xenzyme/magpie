@@ -570,6 +570,14 @@ func modelObject(e provider.Entry) map[string]any {
 // keeps its thinking; any, for one translated anyway — and capabilities,
 // its window, output and whether it takes images, without which it falls
 // back to Chat and limits of its own.
+//
+// Its picker (cursor-agent-exec, 3.23.12) keeps a row's capabilities only
+// when they say it streams, calls tools and writes text (supports_tool_use,
+// supports_streaming, output_modalities); without them it shows the model
+// with no Reasoning control (mamba on Discord). Which levels it offers it
+// decides itself, from the id after its last "/" (claude-opus-4-7, gpt-5.5,
+// gemini-*, which needs supports_reasoning), and it sends a Claude's level
+// only on Anthropic Messages, so a Claude any API would do is asked there.
 func cursorLocalModel(m map[string]any, e provider.Entry) {
 	names := map[string]string{"/v1/chat/completions": "chat_completions", "/v1/responses": "responses", "/v1/messages": "anthropic_messages"}
 	types := []string{}
@@ -579,8 +587,16 @@ func cursorLocalModel(m map[string]any, e provider.Entry) {
 	if len(types) == 0 {
 		types = []string{"chat_completions", "responses", "anthropic_messages"}
 	}
+	bare := strings.ToLower(e.ID[strings.LastIndex(e.ID, "/")+1:])
+	if strings.HasPrefix(bare, "claude-") && slices.Contains(types, "anthropic_messages") {
+		types = []string{"anthropic_messages"}
+	}
 	m["api_types"] = types
-	c := map[string]any{}
+	c := map[string]any{"supports_tool_use": true, "supports_streaming": true, "output_modalities": []string{"text"},
+		"supports_reasoning": e.Reasoning || len(e.Efforts) > 0}
+	if len(e.Efforts) > 0 {
+		c["reasoning_effort"] = e.Efforts
+	}
 	if e.Context > 0 {
 		c["context_length"] = e.Context
 	}
