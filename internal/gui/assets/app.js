@@ -11905,7 +11905,19 @@ function renderQuotas() {
     head.append(groups.length > 1 ? usageHandle(first, card) : icon(first.icon), el("b", "", first.name));
     if (!first.user && (first.plan || first.until)) head.append(planSpan(first));
     card.append(head);
+    // a provider's keys, each its balance: past a few, the rest folded
+    // behind a button at the card's foot, and the sum in its head (361 on
+    // Discord: an OpenRouter card listed every key's balance, very long)
+    const keys = several && subs.every((q) => !q.windows?.length && !q.plan) && subs.some((q) => q.balance);
+    const sum = keys && keysSum(subs);
+    if (sum) {
+      const s = el("span", "quota-sum", t("{sum} in all", { sum }));
+      s.title = t("The {n} keys' balances added up", { n: subs.length });
+      head.append(s);
+    }
+    const folded = keys ? keysFolded(subs) : new Set();
     for (const sub of subs) {
+      if (folded.has(sub)) continue;
       // "Every model" by the account, or the card's name: where the click
       // was, whichever way the meters under it grow or shrink
       const [meters, every] = familyQuota(sub);
@@ -11965,7 +11977,9 @@ function renderQuotas() {
       if (policy) card.append(policy);
     }
     // in the card's head, beside its name: no line of its own
-    if (several) head.append(usageMore(subs, "text quota-more"));
+    // (of the keys in sight: the ones folded away are the foot's button's)
+    if (several) head.append(usageMore(folded.size ? subs.filter((q) => !folded.has(q)) : subs, "text quota-more"));
+    if (keys && (folded.size || usageKeysAll.has(first.provider))) card.append(keysMore(first.provider, folded.size));
     subscriptions.append(card);
   }
   restoreFlash();
@@ -12006,6 +12020,46 @@ function setUsageAccts(list, open) {
   for (const q of list) usageAccts[usageAcctKey(q)] = typeof open === "function" ? open(q) : open;
   try { localStorage.setItem("magpie.usageAccounts", JSON.stringify(usageAccts)); } catch {}
   renderQuotas();
+}
+// A card of a provider's keys shows the first three, and any in full,
+// the rest behind "Show N more keys" at its foot, which opens them in
+// place; remembered by provider (magpie.usageKeysAll). One more alone
+// isn't folded: the button would take the room the key does.
+const KEYS_SHOWN = 3;
+let usageKeysAll = new Set();
+try { usageKeysAll = new Set(JSON.parse(localStorage.getItem("magpie.usageKeysAll") || "[]")); } catch {}
+function keysFolded(subs) {
+  if (usageKeysAll.has(subs[0].provider)) return new Set();
+  const shown = new Set(subs.filter((q) => usageAcctOpen(q, subs)));
+  for (const q of subs) if (shown.size < KEYS_SHOWN) shown.add(q);
+  const rest = subs.filter((q) => !shown.has(q));
+  return new Set(rest.length > 1 ? rest : []);
+}
+function keysMore(provider, n) {
+  const b = el("button", "text quota-keys-more", n ? t("Show {n} more keys", { n }) : t("Show fewer keys"));
+  b.type = "button";
+  b.setAttribute("aria-expanded", String(!n));
+  b.onclick = () => {
+    if (n) usageKeysAll.add(provider); else usageKeysAll.delete(provider);
+    try { localStorage.setItem("magpie.usageKeysAll", JSON.stringify([...usageKeysAll])); } catch {}
+    renderQuotas();
+    backToReader($("#view-usage"));
+  };
+  return b;
+}
+// keysSum: the keys' balances added up, written as theirs are ("$12.50"),
+// when each is one amount in the same currency; "" otherwise
+function keysSum(subs) {
+  let total = 0, unit = null;
+  for (const q of subs) {
+    const m = !q.error && !q.balanceParts?.length && (q.balance || "").match(/^([^\d-]*)(-?\d[\d,]*(?:\.\d+)?)(\D*)$/);
+    if (!m) return "";
+    const u = m[1] + "|" + m[3];
+    if (unit != null && u !== unit) return "";
+    unit = u;
+    total += Number(m[2].replace(/,/g, ""));
+  }
+  return balanceAmount(subs[0], total);
 }
 // the card's button: the accounts in brief (or, in the panel, left out) in
 // full, or every one but the one in sight back in brief

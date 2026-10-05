@@ -808,6 +808,15 @@ recorded tokens under no model name (tony on Discord: the cost's note read
 and its models name it "a model with no name", with no blank where a name
 goes; in Chromium and WebKit, English and Chinese.
 
+`usage-keys-fold.test.cjs` checks the Usage page's card of a provider with
+many keys, each its balance (361 on Discord: an OpenRouter card listed every
+key's): the first three are in sight, the rest behind "Show N more keys" at
+its foot, the keys' sum in its head; the button opens them in place and
+folds them again without moving the page, and is remembered across a
+reload; DeepSeek's keys fold too, four keys aren't folded, a subscription's
+accounts aren't keys, an unread key leaves the sum out, and at 440px nothing
+is cut; in Chromium and WebKit, English and Chinese.
+
 `sessions-calendar-fill.test.cjs` checks that the Sessions overview's activity
 calendar fills its card: 118 days (17 weeks) at 1400 wide take over 90% of
 it, the weeks before the range coming in as empty cells without tooltips, the
