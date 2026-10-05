@@ -96,7 +96,7 @@ func TestList(t *testing.T) {
 	}
 
 	// Claude Code: a message's blocks counted once, the subagent's calls in
-	if cc.ID != "11111111-2222-3333-4444-555555555555" || cc.Cwd != "/work/app" || cc.Title != "Fix the login bug in auth.go" {
+	if cc.ID != "11111111-2222-3333-4444-555555555555" || cc.Cwd != "/work/app" || cc.Title != "Fix login bug" {
 		t.Fatalf("claude: %+v", cc)
 	}
 	if o := model(cc, "claude-opus-5-5"); o.Tokens != (Tokens{100, 50, 5000, 1000, 0}) || !o.Priced {

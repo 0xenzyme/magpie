@@ -24,7 +24,7 @@ func TestGrok(t *testing.T) {
 	}
 	g := find(t, ss, "grok", grokMain)
 	// the first prompt typed, its chunks put together, before the title Grok made
-	if g.Cwd != "/work/grok" || g.Title != "Port the parser" {
+	if g.Cwd != "/work/grok" || g.Title != "Parser port" {
 		t.Fatalf("grok: %+v", g)
 	}
 	// the cache out of the input, the subagent's turn in once
@@ -45,7 +45,7 @@ func TestGrok(t *testing.T) {
 	}
 	// the fork: what it copied counted in the session it came from
 	f := find(t, ss, "grok", grokFork)
-	if f.Tokens != (Tokens{100, 30, 300, 0, 0}) || f.Title != "Try another way" {
+	if f.Tokens != (Tokens{100, 30, 300, 0, 0}) || f.Title != "Parser port, another way" {
 		t.Fatalf("fork: %+v", f)
 	}
 	if !f.Start.Equal(at("2026-09-27T09:00:00.25Z")) || !f.Last.Equal(at("2026-09-27T09:00:30Z")) {

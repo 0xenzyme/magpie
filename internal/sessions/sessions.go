@@ -14,6 +14,7 @@ package sessions
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io"
@@ -96,7 +97,7 @@ type Session struct {
 	Agent    string    `json:"agent"` // magpie agent id: claude, codex, opencode, pi, omp, zcode, dsh, cline, qoder, qoder-cn, grok, workbuddy, droid, cursor, hermes, alma
 	ID       string    `json:"id"`
 	Cwd      string    `json:"cwd"`
-	Title    string    `json:"title"` // the first prompt, else the agent's own title
+	Title    string    `json:"title"` // the name it was given, else the agent's own title, else the first prompt
 	Start    time.Time `json:"start"`
 	Last     time.Time `json:"last"`
 	Models   []Model   `json:"models"`
@@ -138,6 +139,7 @@ type state struct {
 	Cwd         string            `json:"cwd,omitempty"`
 	Title       string            `json:"title,omitempty"`
 	Named       string            `json:"named,omitempty"` // the agent's own title for it
+	Custom      string            `json:"custom,omitempty"` // the name the user gave it
 	First       string            `json:"first,omitempty"` // the first message, when no prompt looked typed
 	Start       time.Time         `json:"start"`
 	Last        time.Time         `json:"last"`
@@ -530,7 +532,8 @@ func CachePath() string { return filepath.Join(filepath.Dir(catalog.CachePath())
 // 16: count Codex response records and compaction usage.
 // 17: reconcile recent Claude message revisions.
 // 18: Claude Code's 1-hour cache writes apart from its 5-minute ones.
-const cacheVersion = 18
+// 19: the names the user gave Claude Code's and WorkBuddy's (custom-title).
+const cacheVersion = 19
 
 type cacheFile struct {
 	Version int               `json:"version"`
@@ -903,7 +906,7 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 		s.ReadOnly = s.ReadOnly || f.readOnly
 	}
 	s.ID = strings.TrimPrefix(fs[0].key, s.Agent+":")
-	var named, first string
+	var custom, named, first string
 	models := map[string]*Model{}
 	for _, f := range fs {
 		st := cache[f.path]
@@ -919,6 +922,9 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 			}
 			if st.Named != "" {
 				named = st.Named
+			}
+			if st.Custom != "" {
+				custom = st.Custom
 			}
 			if first == "" {
 				first = st.First
@@ -942,12 +948,13 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 			m.add(t)
 		}
 	}
-	if s.Title == "" {
-		s.Title = named
+	// the name the session goes by in its agent: one the user gave it, else
+	// Codex's thread name (session_index.jsonl), else the title the agent
+	// made, else the first prompt, else the first message
+	if s.Agent == "codex" && s.WSL == "" && custom == "" {
+		custom = CodexTitles([]string{s.ID})[s.ID]
 	}
-	if s.Title == "" {
-		s.Title = first
-	}
+	s.Title = cmp.Or(custom, named, s.Title, first)
 	for _, m := range models {
 		if p := price(m.Model); p != nil {
 			// a sum of the session's calls of the model, at its base price:

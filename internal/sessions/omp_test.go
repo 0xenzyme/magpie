@@ -23,7 +23,7 @@ func TestOmp(t *testing.T) {
 		t.Fatalf("want 3 omp sessions (the subagents and advisor in theirs), got %d", n)
 	}
 	m := find(t, ss, "omp", ompMain)
-	if m.Cwd != "/work/omp" || m.Title != "Port the parser" {
+	if m.Cwd != "/work/omp" || m.Title != "Port the parser to omp" {
 		t.Fatalf("omp: %+v", m)
 	}
 	// the task tool's summed usage not counted again

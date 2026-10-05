@@ -61,7 +61,7 @@ func checkOpenCode(t *testing.T, ss []Session) {
 		t.Fatalf("want 1 OpenCode session (the child in its parent, the empty one out), got %d: %+v", n, ss)
 	}
 	oc := find(t, ss, "opencode", ocMain)
-	if oc.Cwd != "/work/oc" || oc.Title != "Why does the login test flake?" {
+	if oc.Cwd != "/work/oc" || oc.Title != "Flaky test hunt" {
 		t.Fatalf("opencode: %+v", oc)
 	}
 	if a := model(oc, "gpt-6-astra"); a.Tokens != (Tokens{1000, 120, 5000, 0, 0}) || !a.Priced {
@@ -210,7 +210,7 @@ func TestPi(t *testing.T) {
 	setupMore(t)
 	ss := List(0)
 	p := find(t, ss, "pi", piFirst)
-	if p.Cwd != "/work/pi" || p.Title != "Refactor the parser" {
+	if p.Cwd != "/work/pi" || p.Title != "Parser refactor" {
 		t.Fatalf("pi: %+v", p)
 	}
 	// a tool's model work and a compaction on the model in use, a usage

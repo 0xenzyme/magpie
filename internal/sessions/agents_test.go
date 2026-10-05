@@ -89,7 +89,7 @@ func TestZCode(t *testing.T) {
 		t.Fatalf("want 2 ZCode sessions (the subagent in its parent), got %d", n)
 	}
 	z := find(t, ss, "zcode", "ses_zcA")
-	if z.Cwd != "/work/zc" || z.Title != "Port the parser" || z.Resume != "" {
+	if z.Cwd != "/work/zc" || z.Title != "Port the parser to Go" || z.Resume != "" {
 		t.Fatalf("zcode: %+v", z)
 	}
 	// input without the cache, output with its reasoning already
@@ -117,7 +117,7 @@ func checkDsh(t *testing.T, ss []Session) {
 		t.Fatalf("want 3 dsh sessions (the subagent in its parent), got %d", n)
 	}
 	a := find(t, ss, "dsh", "dsh-a")
-	if a.Cwd != "/work/dsh" || a.Title != "Tidy the build script" || a.Resume != "" {
+	if a.Cwd != "/work/dsh" || a.Title != "Build script tidy" || a.Resume != "" {
 		t.Fatalf("dsh: %+v", a)
 	}
 	// the format 3 file, not the one left behind
@@ -200,7 +200,7 @@ func TestCline(t *testing.T) {
 	}
 	c := find(t, ss, "cline", clineMain)
 	// the prompt typed, out of Cline's tags, before its title
-	if c.Cwd != "/work/cline" || c.Title != "Speed up the importer" {
+	if c.Cwd != "/work/cline" || c.Title != "Importer speed-up" {
 		t.Fatalf("cline: %+v", c)
 	}
 	if m := model(c, "claude-opus-5-5"); m.Tokens != (Tokens{100, 50, 1000, 500, 0}) || !m.Priced {
