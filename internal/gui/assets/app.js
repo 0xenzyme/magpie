@@ -13093,7 +13093,9 @@ function renderLedgerLoading() {
 }
 
 const ledNum = (n) => (n || 0).toLocaleString(intlLang() || "en");
-const ledTook = (ms = 0) => ms < 1000 ? t("{n} ms", { n: ms }) : t("{n} s", { n: (ms / 1000).toFixed(ms < 10e3 ? 1 : 0) });
+// an average first token is a fraction of a millisecond: whole ones under a
+// second, rounded first so 999.6 reads 1.0 s rather than 1000 ms
+const ledTook = (ms = 0) => (ms = Math.round(ms) || 0) < 1000 ? t("{n} ms", { n: ms }) : t("{n} s", { n: (ms / 1000).toFixed(ms < 10e3 ? 1 : 0) });
 function ledTime(when) {
   const d = new Date(when), now = new Date();
   const opts = { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false };
