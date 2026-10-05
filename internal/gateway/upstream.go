@@ -38,3 +38,51 @@ func upstreamOf(b []byte) string {
 	}
 	return ""
 }
+
+// upstreamStop is why a reply (a JSON body, or one event of its stream)
+// says it ended, in the upstream's own words: an Anthropic stop_reason, a
+// Chat finish_reason, a Responses reply's status and the reason it was
+// incomplete. Kept with the request, so a reply that ended too soon shows
+// what the upstream said of it — a relay's "end_turn" after a few words,
+// or nothing at all (蓝猫 on Discord). "" when this one says none.
+func upstreamStop(b []byte) string {
+	if !bytes.Contains(b, []byte(`stop_reason"`)) && !bytes.Contains(b, []byte(`finish_reason"`)) && !bytes.Contains(b, []byte(`"response.`)) {
+		return ""
+	}
+	var v struct {
+		Type       string `json:"type"`
+		StopReason string `json:"stop_reason"`
+		Delta      struct {
+			StopReason string `json:"stop_reason"`
+		} `json:"delta"`
+		Choices []struct {
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Response struct {
+			Status            string `json:"status"`
+			IncompleteDetails *struct {
+				Reason string `json:"reason"`
+			} `json:"incomplete_details"`
+		} `json:"response"`
+	}
+	if json.Unmarshal(b, &v) != nil {
+		return ""
+	}
+	switch {
+	case v.Delta.StopReason != "":
+		return v.Delta.StopReason
+	case v.StopReason != "":
+		return v.StopReason
+	case strings.HasPrefix(v.Type, "response.") && v.Response.Status != "" && v.Response.Status != "in_progress" && v.Response.Status != "queued":
+		if d := v.Response.IncompleteDetails; d != nil && d.Reason != "" {
+			return v.Response.Status + ": " + d.Reason
+		}
+		return v.Response.Status
+	}
+	for _, c := range v.Choices {
+		if c.FinishReason != "" {
+			return c.FinishReason
+		}
+	}
+	return ""
+}

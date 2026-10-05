@@ -95,6 +95,11 @@ type Record struct {
 	// ResponseID is the response object ID actually sent to the client.
 	ResponseID string `json:"response_id,omitempty"`
 	Endpoint   string `json:"ep,omitempty"`
+	// Stop is why the upstream said its reply ended, in its own words
+	// (stop_reason, finish_reason …): "" when it said none, a stream that
+	// just stopped. Told apart by it, a reply that ended too soon is the
+	// upstream's own end_turn or a cut (蓝猫 on Discord).
+	Stop string `json:"stop,omitempty"`
 	// Session is the conversation the call was part of, as its agent names
 	// it (X-Magpie-Session, or the session header Claude Code, Codex or
 	// OpenCode sends): several sessions on one model told apart

@@ -914,6 +914,7 @@ body.window .field.solo { grid-column: auto; }
 .led .src.official::before { content: ""; width: 6px; height: 3.5px; border-left: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-1px) rotate(-45deg); }
 .led .src.access-api { --badge-ink: var(--tk-f); }
 .led .src.access-subscription { --badge-ink: var(--tk-k); }
+.led .src.proto { --badge-ink: var(--muted); font-weight: 500; }
 .led .duration { font-weight: 550; }
 .led .duration-fast { color: var(--tk-s); }
 .led .duration-slow { color: var(--amber); }

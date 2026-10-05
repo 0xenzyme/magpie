@@ -1851,3 +1851,15 @@ string has zh, ja and de. English and Chinese, Chromium and WebKit.
 ```sh
 node --test internal/gui/tests/lane-limit.test.cjs
 ```
+
+`ledger-protocol.test.cjs` checks the protocol each request was sent
+upstream in, on Usage › Requests (蓝猫 on Discord): a row translated from
+its agent's protocol is tagged "Chat → Anthropic", one sent as it came
+"Anthropic" or "Responses", one read from a session file nothing. A
+request's details say Protocol and the upstream's own stop reason, when it
+gave one. A click opens the details and moves nothing; no left border;
+every string has zh, ja and de. English and Chinese, Chromium and WebKit.
+
+```sh
+node --test internal/gui/tests/ledger-protocol.test.cjs
+```

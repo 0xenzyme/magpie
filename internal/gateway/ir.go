@@ -220,6 +220,10 @@ type Usage struct {
 	// ResponseID is the final client response ID, independent of request headers.
 	ResponseID string `json:"response_id,omitempty"`
 	ErrType    string `json:"err_type,omitempty"`
+	// Stop is why the upstream said its reply ended, in its own words
+	// (stop_reason, finish_reason, a Responses status): "" when it said
+	// none, as a stream that just stops does (upstreamStop)
+	Stop string `json:"stop,omitempty"`
 }
 
 // prompt is every token the prompt came to, as OpenAI's and Gemini's
@@ -262,6 +266,9 @@ func (u *Usage) add(v Usage) {
 	}
 	if v.ErrType != "" {
 		u.ErrType = v.ErrType
+	}
+	if v.Stop != "" {
+		u.Stop = v.Stop
 	}
 }
 
@@ -354,7 +361,10 @@ func (c *collector) add(ev Event) {
 
 func (c *collector) finish() Result {
 	c.closeTool()
-	if c.res.Stop == "" {
+	// a reply of tool calls ended "stop" (a relay's end_turn beside its
+	// tool_use blocks, 蓝猫 on Discord) is the client's to run the calls
+	// of: told it stopped, an agent ends its turn there
+	if c.res.Stop == "" || c.res.Stop == "stop" {
 		c.res.Stop = "stop"
 		for _, p := range c.res.Parts {
 			if p.Kind == ToolCall {

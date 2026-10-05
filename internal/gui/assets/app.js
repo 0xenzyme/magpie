@@ -13622,6 +13622,28 @@ function ledServed(r) {
   return k;
 }
 
+// the protocol a request was sent upstream in, told by the path it went
+// out on, and the one its agent spoke when that was another: the
+// endpoint reads "/v1/chat/completions → /v1/messages" for a request
+// translated, the agent's own path alone for one sent as it came (蓝猫 on
+// Discord). null for a request with no path kept, a session file's.
+const ledProtoOf = (path) => /\/messages\b/.test(path) ? "Anthropic" : /\/responses\b/.test(path) ? "Responses"
+  : /\/chat\/completions\b/.test(path) ? "Chat" : /generateContent|\/generate\b/.test(path) ? "Gemini" : "";
+function ledProtos(r) {
+  if (!r.ep || r.source === "log") return null;
+  const [a, b] = String(r.ep).split(" → ");
+  const from = ledProtoOf(a), to = b ? ledProtoOf(b) : from;
+  if (!to) return null;
+  return { from: from || to, to };
+}
+function ledProtoBadge(r) {
+  const p = ledProtos(r);
+  if (!p) return null;
+  const k = el("span", "src proto proto-" + p.to.toLowerCase(), p.from !== p.to ? p.from + " → " + p.to : p.to);
+  k.title = p.from !== p.to ? t("The agent spoke {from}; sent upstream as {to}", p) : t("Sent upstream as {to}, as the agent spoke it", p);
+  return k;
+}
+
 // a request that failed: told by its status, or, for one read from a
 // session file, which records none, by the error that ended it
 const ledFailed_ = (r) => r.status >= 400 || !!r.err;
@@ -13669,6 +13691,11 @@ function ledDetail(r, cols) {
   if (ledRowSpeed(r)) add("Speed", t("{n} tok/s", { n: ledNum(Math.round(ledRowSpeed(r))) }));
   add("Request ID", r.rid);
   add("Endpoint", r.ep);
+  const protos = ledProtos(r);
+  if (protos) add("Protocol", protos.from !== protos.to ? protos.from + " → " + protos.to : protos.to);
+  // why the upstream said its reply ended, in its own words: a reply that
+  // ended too soon is told apart by it (蓝猫 on Discord)
+  add("Upstream stop reason", r.stop);
   // the provider an aggregator (OpenRouter …) said answered behind it
   add("Upstream provider", r.upstream);
   add("Session ID", r.session);
@@ -14424,6 +14451,8 @@ function renderLedger() {
       badge.title = t(access);
       badges.append(badge);
     }
+    const proto = ledProtoBadge(r);
+    if (proto) badges.append(proto);
     if (local && r.session_account) {
       const k = el("span", "src local", t("Local session"));
       k.title = t("Read from the agent's session file. The account is shown only when local metadata identifies it; no service provider is inferred.");

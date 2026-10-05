@@ -127,6 +127,9 @@ func (s *usageSniffer) parse(b []byte) {
 	if up := upstreamOf(b); up != "" {
 		s.u.Upstream = up
 	}
+	if st := upstreamStop(b); st != "" {
+		s.u.Stop = st
+	}
 	switch s.proto {
 	case provider.Gemini:
 		// Factory's generateContent chunks, the same usageMetadata Code
