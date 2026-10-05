@@ -84,6 +84,9 @@ func record(id, key, v string) {
 // which read as changed outside magpie, and the drift kept the row up
 // among the connected ones while it said Not connected (#834).
 func (a *Agent) Apply(key, v string) error {
+	if a.Native != nil {
+		return a.Native.Apply(key, v)
+	}
 	f := a.Field(key)
 	if f == nil {
 		return nil
@@ -128,6 +131,13 @@ var started = time.Now()
 // A field moved from one magpie model to another (the agent's own picker)
 // isn't drift; one moved off magpie is.
 func (a *Agent) Drift() *Drift {
+	if a.Native != nil {
+		s := a.Native.Read()
+		if s.Provider == "invalid" {
+			return &Drift{Kind: "unwired", Field: "model", Detail: s.Detail}
+		}
+		return nil
+	}
 	if len(a.Fields) == 0 || a.theInstalled() {
 		return nil
 	}
@@ -287,6 +297,9 @@ func orDefault(v string) string {
 // catches. A replaced field brings back the others magpie set with it.
 // Either way the record is renewed, so a use before now no longer counts.
 func (a *Agent) Reapply() error {
+	if a.Native != nil {
+		return a.Native.Connect()
+	}
 	d := a.Drift()
 	if d != nil && d.Kind == "replaced" {
 		rec := appliedOf(a.ID)
@@ -331,6 +344,9 @@ func (a *Agent) Keep() {
 // magpie's models, or on magpie itself (an app whose one setting is magpie
 // as its provider).
 func (a *Agent) Wired() bool {
+	if a.Native != nil {
+		return a.Native.Read().Provider == "connected"
+	}
 	if a.Joined != nil && a.Joined() {
 		return true
 	}
@@ -349,6 +365,13 @@ func (a *Agent) Wired() bool {
 // model picked in magpie in one click, both): the agent gets magpie's whole
 // list, and Disconnect puts back what it had before.
 func (a *Agent) Pick(key, v string) error {
+	if a.Native != nil {
+		value, err := a.Spell(key, v)
+		if err != nil {
+			return err
+		}
+		return a.Apply(key, value)
+	}
 	if f := a.Field(key); f != nil && !a.Wired() {
 		vals := a.Values()
 		vals[key] = v
@@ -401,6 +424,9 @@ type Connection struct {
 
 // ConnectHow is Connect, saying how the model was chosen.
 func (a *Agent) ConnectHow() (Connection, error) {
+	if a.Native != nil {
+		return Connection{How: "joined"}, a.Native.Connect()
+	}
 	if len(a.Fields) == 0 || a.Wired() {
 		return Connection{How: "kept"}, nil
 	}
@@ -547,6 +573,13 @@ func connectWas(v string, opts []Option) string {
 // each one magpie set that reads as magpie set it (an effort). What magpie
 // remembered setting is forgotten.
 func (a *Agent) Disconnect() error {
+	if a.Native != nil {
+		plan, err := a.Native.Disconnect()
+		if err != nil {
+			return err
+		}
+		return a.Native.Execute(plan)
+	}
 	if !a.Wired() {
 		return nil
 	}
@@ -594,6 +627,19 @@ func (a *Agent) Disconnect() error {
 	stash(map[string]string{a.ID + ".reconnect": string(b)})
 	a.Keep()
 	return nil
+}
+
+// DisconnectOffline restores a native agent's saved files only after an
+// explicit offline choice. Legacy callers of Disconnect keep live semantics.
+func (a *Agent) DisconnectOffline() error {
+	if a.Native == nil || a.Native.ExecuteOffline == nil {
+		return fmt.Errorf("%s does not support offline disconnect", a.Name)
+	}
+	plan, err := a.Native.Disconnect()
+	if err != nil {
+		return err
+	}
+	return a.Native.ExecuteOffline(plan)
 }
 
 // reconnection is what Disconnect took an agent off: the values of its

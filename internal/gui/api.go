@@ -12,6 +12,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"mime"
@@ -177,7 +178,8 @@ type agentJSON struct {
 	Joined bool `json:"joined,omitempty"`
 	// CLIMissing: its settings are here, its CLI isn't (#843), which
 	// the row says, and Install another agent offers it again
-	CLIMissing bool `json:"cliMissing,omitempty"`
+	CLIMissing bool               `json:"cliMissing,omitempty"`
+	Native     *agent.NativeState `json:"native,omitempty"`
 }
 
 // clientJSON is an agent, or another client the gateway knows, as a
@@ -683,6 +685,33 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	mux.HandleFunc("GET /api/agents/install", func(rw http.ResponseWriter, r *http.Request) {
 		writeJSON(rw, agent.Installs())
 	})
+	// Aside's explicit offline model write. Normal model changes require its runtime.
+	mux.HandleFunc("POST /api/agents/stage/{id}", func(rw http.ResponseWriter, r *http.Request) {
+		a, err := agent.Find(r.PathValue("id"))
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		var in struct{ Field, Value string }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		if a.Native == nil || a.Native.Stage == nil {
+			fail(rw, fmt.Errorf("this agent does not support staged model settings"))
+			return
+		}
+		value, err := a.Spell(in.Field, in.Value)
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		if err := a.Native.Stage(in.Field, value); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, state())
+	})
 	// updates one the way it was installed; what it is afterwards comes
 	// back with an error too
 	mux.HandleFunc("POST /api/agents/cli/{id}", func(rw http.ResponseWriter, r *http.Request) {
@@ -712,12 +741,55 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 			fail(rw, err)
 			return
 		}
+		if a.Native != nil {
+			plan, err := a.Native.Disconnect()
+			if err != nil {
+				writeJSON(rw, map[string]any{"error": err.Error()})
+				return
+			}
+			writeJSON(rw, map[string]any{"changes": plan.Preview(), "revision": plan.Revision(a.ID)})
+			return
+		}
 		changes, err := agent.DisconnectPreview(a, exe)
 		out := map[string]any{"changes": changes}
 		if err != nil {
 			out["error"] = err.Error()
 		}
 		writeJSON(rw, out)
+	})
+	mux.HandleFunc("POST /api/agents/disconnect-offline/{id}", func(rw http.ResponseWriter, r *http.Request) {
+		a, err := agent.Find(r.PathValue("id"))
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		if a.Native == nil || a.Native.ExecuteOffline == nil {
+			fail(rw, fmt.Errorf("this agent does not support offline disconnect"))
+			return
+		}
+		var in struct {
+			Revision string `json:"revision"`
+		}
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		plan, err := a.Native.Disconnect()
+		if err != nil {
+			fail(rw, err)
+			return
+		}
+		if in.Revision == "" || in.Revision != plan.Revision(a.ID) {
+			fail(rw, fmt.Errorf("Disconnect preview changed; preview it again"))
+			return
+		}
+		if err := a.Native.ExecuteOffline(plan); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, state())
 	})
 	mux.HandleFunc("POST /api/agents/{action}/{id}", func(rw http.ResponseWriter, r *http.Request) {
 		a, err := agent.Find(r.PathValue("id"))
@@ -847,7 +919,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		settings.CarryPerModel(&in, &cur)
 		in.LAN, in.LANKey = cur.LAN, cur.LANKey
 		in.LANKeyID = cur.LANKeyID
-		in.Port = cur.Port // set on its own (port below), which moves the gateway
+		in.Port = cur.Port                               // set on its own (port below), which moves the gateway
 		in.GitHubToken = cur.GitHubToken                 // set on its own (github-token below), never sent to the page
 		in.RequestArchive = cur.RequestArchive           // the Gateway page's, set on its own
 		in.RequestArchiveMaxMB = cur.RequestArchiveMaxMB // in settings.json only
@@ -1366,6 +1438,10 @@ func state() stateJSON {
 			aj.Launch = a.Launch()
 		}
 		aj.CLIMissing = a.CLIMissing()
+		if a.Native != nil {
+			native := a.Native.Read()
+			aj.Native = &native
+		}
 		s.Agents = append(s.Agents, aj)
 	}
 	if ps, err := profile.Load(); err == nil {
@@ -1389,7 +1465,13 @@ func writeJSON(rw http.ResponseWriter, v any) {
 func fail(rw http.ResponseWriter, err error) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusBadRequest)
-	_ = json.NewEncoder(rw).Encode(map[string]string{"error": err.Error()})
+	out := map[string]string{"error": err.Error()}
+	var unavailable *agent.RuntimeUnavailableError
+	if errors.As(err, &unavailable) {
+		out["code"] = "runtime_unavailable"
+		out["offline"] = string(unavailable.Offline)
+	}
+	_ = json.NewEncoder(rw).Encode(out)
 }
 
 func tilde(p string) string {
