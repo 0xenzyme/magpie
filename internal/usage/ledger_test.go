@@ -325,6 +325,36 @@ func TestLedgerSeries(t *testing.T) {
 	}
 }
 
+// A point's part of each model says how fast that model's replies came,
+// as the point's own sums do, for a chart of speed to tell the models
+// apart (#860): a failed call and one too fast to time count in neither.
+func TestLedgerSeriesSpeed(t *testing.T) {
+	now := time.Now()
+	at := time.Date(now.Year(), now.Month(), now.Day(), 0, 10, 0, 0, now.Location())
+	row := func(model string, out int, ms, ttft int64, status int) Row {
+		return Row{Record: Record{Time: at, Provider: "p", Model: model, Output: out, Millis: ms, TTFT: ttft, Status: status}}
+	}
+	rows := []Row{
+		row("fast", 1000, 2500, 500, 200), // 1000 tokens in 2 s
+		row("fast", 300, 1500, 500, 200),  // 300 in 1 s
+		row("slow", 100, 6000, 1000, 200), // 100 in 5 s
+		row("slow", 900, 9000, 2000, 500), // failed
+		row("slow", 50, 1001, 1000, 200),  // 1 ms: no speed, its TTFT counts
+	}
+	_, pts := LedgerSeries(Today, rows)
+	h := pts[0]
+	fast, slow := h.By["model"]["fast"], h.By["model"]["slow"]
+	if fast.Timed != 2 || fast.TTFT != 1000 || fast.DecodeMs != 3000 || fast.DecodeOut != 1300 {
+		t.Fatalf("fast: %+v", fast)
+	}
+	if slow.Calls != 3 || slow.Timed != 2 || slow.TTFT != 2000 || slow.DecodeMs != 5000 || slow.DecodeOut != 100 {
+		t.Fatalf("slow: %+v", slow)
+	}
+	if h.DecodeMs != fast.DecodeMs+slow.DecodeMs || h.DecodeOut != fast.DecodeOut+slow.DecodeOut || h.Timed != 4 {
+		t.Fatalf("the point's own: %+v", h.Totals)
+	}
+}
+
 // Calls are told apart by provider, agent and model: a filter to one
 // provider, the providers that had calls (whatever the filter), the sums of
 // each with the most tokens first, and the parts of each point of the

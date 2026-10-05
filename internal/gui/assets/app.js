@@ -12777,7 +12777,7 @@ const LED_PAGE = 100;
 let ledMetric = "tokens", ledSplit = "model";
 try {
   const m = localStorage.getItem("magpie.ledMetric");
-  if (["tokens", "cost", "calls"].includes(m)) ledMetric = m;
+  if (["tokens", "cost", "calls", "speed"].includes(m)) ledMetric = m;
 } catch {}
 
 let ledRouteInfo = null, ledBeforeRoute = null;
@@ -12899,6 +12899,17 @@ function ledDetail(r, cols) {
     dl.append(el("dt", "", t("Routing")), dd);
   }
   if (r.computerName) add("Computer", r.computerName);
+  // the columns a narrow window leaves out, shown only while it does (#860)
+  const opt = (name, value) => {
+    if (!value) return;
+    add(name, value);
+    dl.lastChild.classList.add("lc-opt");
+    dl.lastChild.previousSibling.classList.add("lc-opt");
+  };
+  opt("Sent", r.model);
+  opt("Effort", r.effort);
+  if (r.cache_write || r.cache_read) opt("Cache", t("{w} written · {r} read", { w: ledNum(r.cache_write || 0), r: ledNum(r.cache_read || 0) }));
+  if (ledRowSpeed(r)) add("Speed", t("{n} tok/s", { n: ledNum(Math.round(ledRowSpeed(r))) }));
   add("Request ID", r.rid);
   add("Endpoint", r.ep);
   add("Session ID", r.session);
@@ -13052,16 +13063,23 @@ function ledMoney(v) {
 }
 
 const LED_METRICS = [["tokens", "Tokens"], ["cost", "Cost"], ["calls", "Requests"]];
+// the window's chart can also say how fast the replies came (#860)
+const LED_TREND = [...LED_METRICS, ["speed", "Speed"]];
 const LED_SPLITS = [["model", "Model"], ["provider", "Provider"], ["agent", "Agent"]];
 const LED_SHOWN = 7; // told apart in a chart; the rest are "Other"
 const allTokens = (x) => x.input + x.output + x.cache_read + x.cache_write;
+// how fast the timed replies of a point, a share or a part wrote, in tokens
+// a second after their first (usage.Totals.Speed): 0 for none timed
+const ledSpeed = (x) => x?.decode_ms > 0 ? (1000 * x.decode_out) / x.decode_ms : 0;
+// their mean wait for the first token, 0 for none
+const ledTTFT = (x) => x?.timed > 0 ? x.ttft_ms / x.timed : 0;
 // a metric's value of a point or a share, as the chart counts it
-const ledValue = (m, x) => m === "cost" ? +x.cost || 0 : m === "calls" ? +x.calls || 0 : allTokens(x);
-// of a point's part, which has only its calls, tokens and cost
-const ledPart = (m, x) => m === "cost" ? +x.cost || 0 : m === "calls" ? +x.calls || 0 : +x.tokens || 0;
+const ledValue = (m, x) => m === "speed" ? ledSpeed(x) : m === "cost" ? +x.cost || 0 : m === "calls" ? +x.calls || 0 : allTokens(x);
+// of a point's part, which has its calls, tokens, cost and speed
+const ledPart = (m, x) => m === "speed" ? ledSpeed(x) : m === "cost" ? +x.cost || 0 : m === "calls" ? +x.calls || 0 : +x.tokens || 0;
 // a metric as its axis and its values say it
-const ledFormat = (m, v) => m === "cost" ? ledMoney(v) : m === "calls" ? ledNum(Math.round(v)) : fmtN(Math.round(v));
-const ledFormatLong = (m, v) => m === "cost" ? (fmtCost({ cost: v, unpriced: 0 }) || "—") : ledNum(Math.round(v));
+const ledFormat = (m, v) => m === "cost" ? ledMoney(v) : m === "calls" || m === "speed" ? ledNum(Math.round(v)) : fmtN(Math.round(v));
+const ledFormatLong = (m, v) => m === "speed" ? (v > 0 ? t("{n} tok/s", { n: ledNum(Math.round(v)) }) : "—") : m === "cost" ? (fmtCost({ cost: v, unpriced: 0 }) || "—") : ledNum(Math.round(v));
 
 // an axis's top with four steps under it: round numbers, the top at least the largest value
 function ledAxis(max) {
@@ -13113,9 +13131,12 @@ function drawLedColumns(box, l, split, metric, compact, chooseDay, focusDay) {
   if (W < 100 || !n) return;
   const { top } = ledCategories(l.chartBy ? { by: l.chartBy } : l, split, metric);
   const totals = pts.map((p) => ledValue(metric, p));
-  const max = Math.max(0, ...totals);
+  // speeds don't add up: a point's column is how fast all its replies
+  // wrote, and each one told apart is a mark at its own speed on it (#860)
+  const speed = metric === "speed";
+  const max = Math.max(0, ...totals, ...(speed ? pts.flatMap((p) => top.map((c) => ledSpeed(p.by?.[split]?.[c.id]))) : []));
   if (!(max > 0)) {
-    plot.append(el("div", "none", t(metric === "cost" ? "No known price for these requests" : "Nothing in this period")));
+    plot.append(el("div", "none", t(metric === "cost" ? "No known price for these requests" : speed ? "No streamed replies timed in this period" : "Nothing in this period")));
     return;
   }
   const topV = ledAxis(max);
@@ -13167,6 +13188,17 @@ function drawLedColumns(box, l, split, metric, compact, chooseDay, focusDay) {
       y0 += v;
     };
     const by = p.by?.[split] || {};
+    if (speed) {
+      if (totals[i] > 0) { draw("\0all", "var(--faint)", totals[i]); segs.at(-1).classList.add("all"); }
+      for (const c of top) {
+        const v = ledSpeed(by[c.id]);
+        if (!(v > 0)) continue;
+        const r = sv("rect", { x, width: bw, y: Y(v) - 1.5, height: 3, rx: 1.5, class: "col mark", "data-k": c.id, "data-day": p.time.slice(0, 10), "data-color": c.color }, { fill: c.color });
+        g.append(r);
+        segs.push(r);
+      }
+      return;
+    }
     let stacked = 0;
     for (const c of top) { const v = ledPart(metric, by[c.id] || {}); stacked += v; draw(c.id, c.color, v); }
     draw("\0other", "var(--faint)", Math.max(0, totals[i] - stacked));
@@ -13192,17 +13224,20 @@ function drawLedColumns(box, l, split, metric, compact, chooseDay, focusDay) {
     hot.style.display = "";
     tip.replaceChildren(el("b", "", ledWhen(p, l.bucket)));
     const by = p.by?.[split] || {};
-    const rows = top.map((c) => [name(c), c.color, ledPart(metric, by[c.id] || {})]);
-    rows.push([t("Other"), "var(--faint)", Math.max(0, totals[i] - rows.reduce((a, x) => a + x[2], 0))]);
-    for (const [nm, color, v] of rows.filter((x) => x[2] > 0).sort((a, b) => b[2] - a[2])) {
+    const rows = top.map((c) => [name(c), c.color, ledPart(metric, by[c.id] || {}), by[c.id]]);
+    if (!speed) rows.push([t("Other"), "var(--faint)", Math.max(0, totals[i] - rows.reduce((a, x) => a + x[2], 0))]);
+    for (const [nm, color, v, part] of rows.filter((x) => x[2] > 0).sort((a, b) => b[2] - a[2])) {
       const row = el("div");
       const sw = el("i");
       sw.style.background = color;
-      row.append(sw, el("span", "", nm), el("em", "", ledFormatLong(metric, v)));
+      const said = el("em", "", ledFormatLong(metric, v));
+      if (speed && ledTTFT(part)) said.append(" · " + t("TTFT {ms}", { ms: ledTook(ledTTFT(part)) }));
+      row.append(sw, el("span", "", nm), said);
       tip.append(row);
     }
     const sum = el("div", "sum");
-    sum.append(el("span", "", t("Total")), el("em", "", ledFormatLong(metric, totals[i])));
+    sum.append(el("span", "", t(speed ? "All" : "Total")), el("em", "", ledFormatLong(metric, totals[i])));
+    if (speed && ledTTFT(p)) sum.lastChild.append(" · " + t("TTFT {ms}", { ms: ledTook(ledTTFT(p)) }));
     if (metric !== "calls" && p.calls) sum.lastChild.append(" · " + t(p.calls === 1 ? "{n} request" : "{n} requests", { n: ledNum(p.calls) }));
     tip.append(sum);
     tip.hidden = false;
@@ -13261,9 +13296,13 @@ function drawLedRank(box, l, split, metric, picked, choose, compact) {
     if (metric !== "calls") more.push(t(x.calls === 1 ? "{n} request" : "{n} requests", { n: ledNum(x.calls) }));
     if (metric !== "tokens") more.push(t("{n} tokens", { n: fmtN(allTokens(x)) }));
     if (metric !== "cost" && x.cost) more.push("≈" + fmtCost(x));
+    // how fast its replies came, beside what they cost (#860)
+    if (metric !== "speed" && ledSpeed(x)) more.push(t("{n} tok/s", { n: ledNum(Math.round(ledSpeed(x))) }));
+    if (ledTTFT(x)) more.push(t("TTFT {ms}", { ms: ledTook(ledTTFT(x)) }));
     const prompt = x.input + x.cache_write + x.cache_read;
     if (prompt && !compact) more.push(t("hit rate {p}", { p: Math.round((100 * x.cache_read) / prompt) + "%" }));
-    more.push(Math.round((100 * v) / sum) + "%");
+    // a speed is no one's share of all
+    if (metric !== "speed") more.push(Math.round((100 * v) / sum) + "%");
     const l2 = el("div", "rk-b");
     l2.append(more.join(" · "));
     if (x.errors) l2.append(" · ", Object.assign(el("span", "rk-bad"), { textContent: t("{n} failed", { n: x.errors }) }));
@@ -13276,7 +13315,7 @@ function drawLedRank(box, l, split, metric, picked, choose, compact) {
   for (const x of top) box.append(one(x, x.color));
   if (rest.length) {
     const tot = rest.reduce((acc, x) => {
-      for (const k of ["calls", "errors", "input", "output", "cache_read", "cache_write", "cost"]) acc[k] = (acc[k] || 0) + (x[k] || 0);
+      for (const k of ["calls", "errors", "input", "output", "cache_read", "cache_write", "cost", "timed", "ttft_ms", "decode_ms", "decode_out"]) acc[k] = (acc[k] || 0) + (x[k] || 0);
       return acc;
     }, { id: "\0other", name: t("Other ({n})", { n: rest.length }) });
     box.append(one(tot, "var(--faint)", true));
@@ -13354,6 +13393,11 @@ function renderLedgerDash(l) {
   fill.style.width = (100 * rate).toFixed(1) + "%";
   meter.append(fill);
   hit.append(meter);
+  // how fast the streamed replies wrote, and how long they took to begin (#860)
+  const speed = ledSpeed(l);
+  block("Output speed", speed ? t("{n} tok/s", { n: ledNum(Math.round(speed)) }) : "—",
+    line(ledTTFT(l) ? t("first token in {ms} on average", { ms: ledTook(ledTTFT(l)) }) : t("no streamed replies timed")),
+    "", t("Output tokens a second after the first, over the streamed replies"));
   drawLedTrend();
 }
 
@@ -13370,7 +13414,7 @@ function drawLedTrend() {
     }
     slide(host, key);
   };
-  pill($("#ledMetric"), "ledMetric", LED_METRICS, ledMetric, (id) => { ledMetric = id; try { localStorage.setItem("magpie.ledMetric", id); } catch {} drawLedTrend(); });
+  pill($("#ledMetric"), "ledMetric", LED_TREND, ledMetric, (id) => { ledMetric = id; try { localStorage.setItem("magpie.ledMetric", id); } catch {} drawLedTrend(); });
   pill($("#ledSplit"), "ledSplit", LED_SPLITS, ledSplit, (id) => { ledSplit = id; drawLedTrend(); });
   const chart = $("#ledChart"), rank = $("#ledRank");
   drawLedColumns(chart, l, ledSplit, ledMetric, false, (day) => {
@@ -13403,17 +13447,60 @@ function ledHScroll() {
 $("#ledWrap").addEventListener("scroll", () => { const bar = $("#ledHScroll"); if (bar.scrollLeft !== $("#ledWrap").scrollLeft) bar.scrollLeft = $("#ledWrap").scrollLeft; }, { passive: true });
 $("#ledHScroll").addEventListener("scroll", () => { const wrap = $("#ledWrap"); if (wrap.scrollLeft !== $("#ledHScroll").scrollLeft) wrap.scrollLeft = $("#ledHScroll").scrollLeft; }, { passive: true });
 // a window that changes size redraws the chart at its new width
-new ResizeObserver(() => { $("#ledWrap").style.setProperty("--ledw", $("#ledWrap").clientWidth + "px"); ledHScroll(); }).observe($("#ledWrap"));
+// a new width fits the table again, on the next frame: leaving columns out
+// changes the table's height, which this would be told of in its own call
+let ledFitW = 0, ledFitFrame = 0;
+new ResizeObserver(() => {
+  const wrap = $("#ledWrap");
+  wrap.style.setProperty("--ledw", wrap.clientWidth + "px");
+  if (wrap.clientWidth !== ledFitW && !ledFitFrame) ledFitFrame = requestAnimationFrame(() => { ledFitFrame = 0; ledFitW = wrap.clientWidth; ledFit(); ledHScroll(); });
+  ledHScroll();
+}).observe($("#ledWrap"));
+// a table that grows past the window when its width didn't change (a font
+// arriving, a redraw while out of sight) leaves its columns out then too
+let ledGrowFrame = 0;
+const ledGrow = new ResizeObserver(() => {
+  if (ledGrowFrame) return;
+  ledGrowFrame = requestAnimationFrame(() => {
+    ledGrowFrame = 0;
+    const wrap = $("#ledWrap"), table = wrap.querySelector("table.led");
+    if (table && !table.classList.contains("tight") && wrap.clientWidth && wrap.scrollWidth > wrap.clientWidth + 1) { ledFit(); ledHScroll(); }
+  });
+});
 new ResizeObserver(() => {
   if (!ledger || usageTab !== "requests" || view !== "usage" || $("#ledDash").hidden) return;
   drawLedColumns($("#ledChart"), ledger, ledSplit, ledMetric, false);
   ledRankEdges($("#ledRank"));
 }).observe($("#ledChart"));
 
+// the third: a column a narrow window leaves out, its value in the row's
+// details (#860)
 const LED_COLS = [
-  ["Time"], ["Agent"], ["Requested"], ["Provider · account"], ["Sent"], ["Served"], ["Effort"],
-  ["In", "n"], ["Out", "n"], ["Cache write", "n"], ["Cache read", "n"], ["Cost", "n"], ["Duration", "n"], ["Status"],
+  ["Time"], ["Agent"], ["Requested"], ["Provider · account"], ["Sent", "", true], ["Served"], ["Effort", "", true],
+  ["In", "n"], ["Out", "n"], ["Cache write", "n", true], ["Cache read", "n", true], ["Cost", "n"], ["Duration", "n"], ["Speed", "n"], ["Status"],
 ];
+
+// how fast a reply wrote, in tokens a second after its first: as
+// usage.DecodeWindow and routing.js's speedOf tell it, 0 when it can't
+const ledRowSpeed = (r) => !ledFailed_(r) && r.out > 0 && r.ttft_ms > 0 && r.ms - r.ttft_ms >= 100 && r.out * 1000 <= 10000 * (r.ms - r.ttft_ms) ? r.out / ((r.ms - r.ttft_ms) / 1000) : 0;
+
+// the table as wide as the window, when leaving out what the row's details
+// say anyway makes it so: else it scrolls sideways (#799)
+function ledFit() {
+  const wrap = $("#ledWrap"), table = wrap.querySelector("table.led");
+  let hint = $("#ledTight");
+  if (!table) { if (hint) hint.hidden = true; return; }
+  table.classList.remove("tight");
+  const tight = wrap.scrollWidth > wrap.clientWidth + 1;
+  table.classList.toggle("tight", tight);
+  if (!hint) {
+    hint = el("span", "led-tight");
+    hint.id = "ledTight";
+    $("#ledSum").after(hint);
+  }
+  hint.textContent = t("Sent, Effort and the cache are in each row's details");
+  hint.hidden = !tight;
+}
 
 function renderLedger() {
   const l = ledger;
@@ -13505,6 +13592,7 @@ function renderLedger() {
     const filtered = ledPurpose || ledDay || ledRoute || ledAgent || ledProvider || ledAccount || ledComputer || ledCallerKey || ledModel || ledFailed || ledQuery.trim();
     const none = { today: "No calls today.", "7d": "No calls in the last 7 days.", "30d": "No calls in the last 30 days.", all: "No calls yet." }[period];
     wrap.replaceChildren(el("div", "led-none", filtered ? t("No requests match these filters.") : t(none)));
+    ledFit();
     ledHScroll();
     pager.hidden = true;
     $("#ledNote").textContent = "";
@@ -13513,7 +13601,7 @@ function renderLedger() {
   wrap.classList.remove("none");
   const table = el("table", "led");
   const head = el("tr");
-  for (const [name, cls] of LED_COLS) head.append(el("th", cls || "", t(name)));
+  for (const [name, cls, opt] of LED_COLS) head.append(el("th", (cls || "") + (opt ? " lc-opt" : ""), t(name)));
   table.append(el("thead"), el("tbody"));
   table.tHead.append(head);
   for (const r of l.rows) {
@@ -13523,7 +13611,7 @@ function renderLedger() {
     tr.tabIndex = 0;
     tr.setAttribute("aria-expanded", ledOpen.has(key) ? "true" : "false");
     const td = (child, cls, title) => {
-      const c = el("td", cls || "");
+      const c = el("td", (cls || "") + (LED_COLS[tr.childElementCount]?.[2] ? " lc-opt" : ""));
       if (typeof child === "string") c.textContent = child; else c.append(child);
       if (title) c.title = title;
       tr.append(c);
@@ -13589,6 +13677,11 @@ function renderLedger() {
     const durationBand = untimed ? "" : r.ms <= 10000 ? "fast" : r.ms <= 30000 ? "slow" : "long";
     td(untimed ? "—" : (timed ? "≈" : "") + ledTook(r.ms), "n duration " + (untimed ? "faint" : "duration-" + durationBand),
       [!untimed ? t("{n} ms", { n: ledNum(r.ms) }) : "", !untimed ? t("Duration colors: ≤10 s green · 10–30 s amber · >30 s red") : "", timed && !untimed ? t("About: told from the session file's times, a little more or less than it took") : "", r.ttft_ms ? t("TTFT {ms}", { ms: ledTook(r.ttft_ms) }) : ""].filter(Boolean).join(" · "));
+    // how fast it wrote once it began, as CC Switch's log has it (#860)
+    const v = ledRowSpeed(r);
+    td(v ? t("{n} tok/s", { n: ledNum(Math.round(v)) }) : "—", "n speed" + (v ? "" : " faint"),
+      v ? t("{n} output tokens in {ms} after the first", { n: ledNum(r.out), ms: ledTook(r.ms - r.ttft_ms) }) + " · " + t("TTFT {ms}", { ms: ledTook(r.ttft_ms) })
+        : r.ttft_ms || untimed || ledFailed_(r) ? "" : t("Not streamed: no first token to time a speed from"));
     const st = el("span", "st");
     // a status when the gateway logged the call; a session file has none,
     // and says only whether it went well
@@ -13612,7 +13705,10 @@ function renderLedger() {
   }
   wrap.replaceChildren(table);
   wrap.style.setProperty("--ledw", wrap.clientWidth + "px");
+  ledFit();
   ledHScroll();
+  ledGrow.disconnect();
+  ledGrow.observe(table);
 
   // a page at a time: the newest first
   pager.hidden = l.total <= LED_PAGE;

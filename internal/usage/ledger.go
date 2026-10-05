@@ -582,6 +582,29 @@ type Part struct {
 	Calls  int     `json:"calls"`
 	Tokens int     `json:"tokens"`
 	Cost   float64 `json:"cost"`
+	// how fast its replies came, as Totals has it: a chart of speed says
+	// each one's at each point (#860)
+	Timed     int   `json:"timed,omitempty"`
+	TTFT      int64 `json:"ttft_ms,omitempty"`
+	DecodeMs  int64 `json:"decode_ms,omitempty"`
+	DecodeOut int   `json:"decode_out,omitempty"`
+}
+
+// add counts a row in the part.
+func (p *Part) add(r Row) {
+	p.Calls++
+	p.Tokens += r.Input + r.Output + r.CacheRead + r.CacheWrite
+	if r.Priced {
+		p.Cost += r.Cost
+	}
+	if r.TTFT > 0 && !r.Failed() {
+		p.Timed++
+		p.TTFT += r.TTFT
+		if w := DecodeWindow(r.Output, r.Millis, r.TTFT); w > 0 {
+			p.DecodeMs += w
+			p.DecodeOut += r.Output
+		}
+	}
 }
 
 // SeriesPoint is a point of the timeline with its calls told apart, by each
@@ -640,15 +663,10 @@ func LedgerSeries(p Period, rows []Row) (bucket string, pts []SeriesPoint) {
 			continue
 		}
 		pts[i].addRow(r)
-		tokens := r.Input + r.Output + r.CacheRead + r.CacheWrite
 		for _, d := range Dimensions {
 			if k := r.key(d); kept[d][k] {
 				part := pts[i].By[d][k]
-				part.Calls++
-				part.Tokens += tokens
-				if r.Priced {
-					part.Cost += r.Cost
-				}
+				part.add(r)
 				pts[i].By[d][k] = part
 			}
 		}

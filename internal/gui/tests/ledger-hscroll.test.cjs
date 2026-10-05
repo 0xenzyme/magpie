@@ -57,7 +57,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const w = L[lang];
       await t.test(lang, async () => {
         const errors = [], asked = [];
-        const ctx = await browser.newContext({ viewport: { width: 900, height: 640 }, reducedMotion: "reduce" });
+        // narrower than the table even with the columns a narrow window
+        // leaves out (#860)
+        const ctx = await browser.newContext({ viewport: { width: 700, height: 640 }, reducedMotion: "reduce" });
         const p = await ctx.newPage();
         p.setDefaultTimeout(5000);
         p.on("pageerror", (e) => errors.push(e.message));

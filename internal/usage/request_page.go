@@ -911,11 +911,7 @@ func buildRequestBlocks(p Period, f Filter, offset, limit int, gateways, chunks,
 		for _, d := range Dimensions {
 			k := r.key(d)
 			part := pt.By[d][k]
-			part.Calls++
-			part.Tokens += r.Input + r.Output + r.CacheRead + r.CacheWrite
-			if r.Priced {
-				part.Cost += r.Cost
-			}
+			part.add(r)
 			pt.By[d][k] = part
 		}
 	})
