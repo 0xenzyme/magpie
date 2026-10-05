@@ -1863,6 +1863,16 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .acc .acct-models .acm-foot .grow { flex: 0 0 0; }
 .acc .n, .acc .rename { flex: 0 1 auto; }
 .acc .plan { flex: none; }
+/* a key's row (#841): what shows only on hover takes no room till then,
+   so a key's weight never squeezes its name away; the room it takes on
+   hover is the row's free room, else the masked key's, and the models
+   badge gives its own up first. First and Make first stay one line */
+.accts.keys .acc .plan { flex: 0 1 auto; min-width: 3em; overflow: hidden; text-overflow: ellipsis; }
+.accts.keys .acc > :is(.amodels:not(.set), .proto:not(.set), .text.quiet) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.accts.keys .acc:not(:hover) > :is(.amodels:not(.set), .proto:not(.set), .text.quiet):not(:focus-visible, .open) { max-width: 0; padding-left: 0; padding-right: 0; box-shadow: none; }
+.accts.keys .acc > .amodels:not(.set):not(:focus-visible, .open) { flex-shrink: 10000; }
+.accts.keys .acc > :is(.proto, .text.quiet) { flex-shrink: 0; }
+.accts.keys .acc .using, .accts.keys .acc > .text:not(.quiet) { flex: none; white-space: nowrap; }
 #gatewayKeys .acc { min-width: 0; }
 #gatewayKeys .acc .plan { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* a gateway key's own limit (#585): the badge, what it used under the
