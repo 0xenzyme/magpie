@@ -6262,7 +6262,24 @@ function concurrencyField(p) {
   box.step = "1";
   box.inputMode = "numeric";
   box.oninput = () => { draft.concurrency = box.value; };
-  return field(t("Concurrency"), box, plugin ? t("Over it, requests queue and go out in order; empty takes the plugin's {n}, 0 is no limit", { n: plugin }) : t("Over it, requests queue and go out in order; 0 or empty is no limit"));
+  // the queue each key or account has past it (#892): how many may wait,
+  // and how long; past either, a request is turned away with a 429
+  const queue = input(draft.queueLimit ?? "", t("No bound"), "number");
+  queue.classList.add("queue-limit");
+  const wait = input(draft.queueWait ?? "", t("As long as it takes"), "number");
+  wait.classList.add("queue-wait");
+  for (const [b, max, k] of [[queue, 10000, "queueLimit"], [wait, 3600, "queueWait"]]) {
+    b.min = "0";
+    b.max = String(max);
+    b.step = "1";
+    b.inputMode = "numeric";
+    b.oninput = () => { draft[k] = b.value; };
+  }
+  return [
+    ...field(t("Concurrency"), box, (plugin ? t("Over it, requests queue and go out in order; empty takes the plugin's {n}, 0 is no limit", { n: plugin }) : t("Over it, requests queue and go out in order; 0 or empty is no limit"))),
+    ...field(t("Queue size"), queue, t("How many requests may wait for each key or account; one more is turned away at once. 0 or empty is no bound")),
+    ...field(t("Queue wait"), wait, t("Seconds a request waits for a free slot before it is turned away. 0 or empty waits as long as it takes")),
+  ];
 }
 // priceRateField: what the provider charges against the official price
 // (ITea312, #819), as a relay bills 0.8× or 1.5× of it: the Usage page's
@@ -6292,7 +6309,24 @@ function priceRateError(ed) {
   return editorError(t("Price rate: a number from 0 to 1000, at most three decimals"), "warn");
 }
 function concurrencyDraft(p) {
-  return { concurrency: p?.maxConcurrency == null ? "" : String(p.maxConcurrency), priceRate: p?.priceRate ? String(p.priceRate) : "" };
+  return { concurrency: p?.maxConcurrency == null ? "" : String(p.maxConcurrency), priceRate: p?.priceRate ? String(p.priceRate) : "",
+    queueLimit: p?.queueLimit ? String(p.queueLimit) : "", queueWait: p?.queueWait ? String(p.queueWait) : "" };
+}
+// queueOfDraft is the draft's queue as it is saved, { queueLimit,
+// queueWait } with 0 for none, or { bad } naming the field typed wrong.
+function queueOfDraft() {
+  const out = {};
+  for (const [k, max] of [["queueLimit", 10000], ["queueWait", 3600]]) {
+    const v = String(draft[k] ?? "").trim();
+    if (!v) { out[k] = 0; continue; }
+    if (!/^\d+$/.test(v) || +v > max) return { bad: k };
+    out[k] = +v;
+  }
+  return out;
+}
+function queueError(ed, bad) {
+  ed.querySelector(bad === "queueLimit" ? "input.queue-limit" : "input.queue-wait")?.focus({ preventScroll: true });
+  return editorError(bad === "queueLimit" ? t("Queue size: a whole number from 0 to 10000") : t("Queue wait: a whole number of seconds from 0 to 3600"), "warn");
 }
 // concurrencyOfDraft is the draft's limit as it is saved — null for none
 // set, else the number — or undefined when what is typed isn't one.
@@ -7091,10 +7125,12 @@ function drawEditor(p, presetID) {
       }
       const maxConcurrency = concurrencyOfDraft();
       if (maxConcurrency === undefined) return concurrencyError(ed);
+      const queue = queueOfDraft();
+      if (queue.bad) return queueError(ed, queue.bad);
       const priceRate = priceRateOfDraft();
       if (priceRate === undefined) return priceRateError(ed);
       if (priceTypedError(ed)) return;
-      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, outputs: ox.map, compacts: cpx.map, proxy, accountProxies: own.map, maxConcurrency, priceRate, modelPrefs: modelPrefsOfDraft(), pinUpstream: !!draft.pinUpstream, ...routingOfDraft(p) }, t("{name} saved", { name: p.name })); };
+      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, outputs: ox.map, compacts: cpx.map, proxy, accountProxies: own.map, maxConcurrency, ...queue, priceRate, modelPrefs: modelPrefsOfDraft(), pinUpstream: !!draft.pinUpstream, ...routingOfDraft(p) }, t("{name} saved", { name: p.name })); };
     bar.append(cancel, saveBtn);
     ed.append(bar);
     return ed;
@@ -7432,6 +7468,9 @@ function drawEditor(p, presetID) {
     if (body.proxy === null) { ed.querySelector(".proxy-url")?.focus(); return editorError(t("Proxy: type its address, like http://127.0.0.1:7890"), "warn"); }
     body.maxConcurrency = concurrencyOfDraft();
     if (body.maxConcurrency === undefined) return concurrencyError(ed);
+    const queue = queueOfDraft();
+    if (queue.bad) return queueError(ed, queue.bad);
+    Object.assign(body, queue);
     body.priceRate = priceRateOfDraft();
     if (body.priceRate === undefined) return priceRateError(ed);
     if (p && priceTypedError(ed)) return;
@@ -9767,6 +9806,8 @@ function renderAccounts(a, p) {
     // and the five hours run to 100%)
     const direct = l.active && !several && (a.agent === "claude" || a.agent === "codex") ? a.agentName : "";
     if (p) row.append(accountCapPill(p, l.user, cap, direct));
+    // how many requests it has out at once, and waiting (#892)
+    if (p) row.append(laneLimitPill(p, l.user, p.id + "@" + String(l.user).toLowerCase(), l.user));
     const held = capHeldOf(quota?.[l.user], cap);
     if (held) row.append(capHeldNote(held, cap, several, direct));
     row.append(el("span", "grow"));
@@ -10341,6 +10382,101 @@ function accountCapPill(p, user, cap, direct) {
   return pill;
 }
 
+// An account's or key's limit on requests at once (#892): its own, else
+// the provider's Concurrency. The pill says it, and while requests are out
+// under it how many run and wait — the gateway's lanes, read again every
+// two seconds while a pill is shown (refreshLanes) — and opens the app's
+// menu: the provider's, none, a number, or one of the user's own.
+const LANE_LIMITS = [1, 2, 3, 5, 10];
+let lanesNow = {}, lanesRead = false;
+function laneOwnOf(p, ref) {
+  const m = p?.accountConcurrency || {};
+  const k = String(ref).toLowerCase();
+  return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null;
+}
+function laneLimitOf(p, ref) {
+  const own = laneOwnOf(p, ref);
+  return own != null ? own : p?.maxConcurrency != null ? p.maxConcurrency : p?.pluginConcurrency || 0;
+}
+// laneText sets the pill's words and marks for the lane as it stands
+function laneText(pill) {
+  const p = providers?.providers?.find((x) => x.id === pill.dataset.provider);
+  const own = laneOwnOf(p, pill.dataset.ref), limit = laneLimitOf(p, pill.dataset.ref);
+  const lane = (lanesRead ? lanesNow : providers?.gateway?.lanes || {})[pill.dataset.who];
+  const busy = lane?.busy || 0, waiting = lane?.waiting || 0;
+  let text;
+  if (limit && (busy || waiting)) text = waiting ? t("{n}/{max} running · {q} queued", { n: busy, max: limit, q: waiting }) : t("{n}/{max} running", { n: busy, max: limit });
+  else if (limit) text = t("{n} at once", { n: limit });
+  else text = t("No limit at once");
+  if (pill.textContent !== text) pill.textContent = text;
+  pill.classList.toggle("set", own != null || limit > 0);
+  pill.classList.toggle("busy-lane", !!(limit && busy >= limit));
+  pill.classList.toggle("queued", !!waiting);
+  const whose = own != null ? t("its own") : t("the provider's");
+  pill.title = (limit ? t("At most {n} requests out at once on this one, {whose}; more wait in a queue and go in order. Counted across every model, routing group and agent", { n: limit, whose })
+    : t("No limit on requests at once on this one, {whose}", { whose }))
+    + (busy || waiting ? "\n" + t("{n} running, {q} queued now", { n: busy, q: waiting }) : "")
+    + "\n" + t("Click to change");
+}
+function laneLimitPill(p, ref, who, name) {
+  const pill = el("button", "alane");
+  pill.type = "button";
+  pill.dataset.provider = p.id;
+  pill.dataset.ref = ref;
+  pill.dataset.who = who;
+  pill.setAttribute("aria-haspopup", "menu");
+  pill.setAttribute("aria-expanded", "false");
+  laneText(pill);
+  const own = laneOwnOf(p, ref);
+  const set = (v) => accountAction("provider/accountconcurrency", { id: p.id, account: ref, limit: v },
+    v == null ? t("{who} takes the provider's limit", { who: name }) : v ? t("{who}: at most {n} requests at once", { who: name, n: v }) : t("{who}: no limit on requests at once", { who: name }));
+  const other = () => {
+    const i = input(own ? String(own) : "", "1–1000", "text");
+    i.className = "rename-in alane-in";
+    i.inputMode = "numeric";
+    i.setAttribute("aria-label", t("Requests at once"));
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      const v = i.value.trim();
+      if (save && v && !(/^\d+$/.test(v) && +v <= 1000)) { status(t("Concurrency: a whole number from 0 to 1000"), "err"); renderProviders(); return; }
+      if (save && v && +v !== own) set(+v);
+      else renderProviders();
+    };
+    i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") finish(true); else if (e.key === "Escape") finish(false); };
+    i.onblur = () => finish(true);
+    pill.replaceWith(i);
+    i.focus({ preventScroll: true });
+  };
+  pill.onclick = (e) => {
+    e.stopPropagation();
+    if (pill.classList.contains("open")) return closeProtoMenu();
+    const base = p.maxConcurrency != null ? p.maxConcurrency : p.pluginConcurrency || 0;
+    const opts = [{ v: "default", name: "Provider's", note: base ? t("{n} at once", { n: base }) : t("No limit") }, { v: 0, name: "No limit", note: "Any number at once" }];
+    const nums = own == null || own === 0 || LANE_LIMITS.includes(own) ? LANE_LIMITS : [...LANE_LIMITS, own].sort((a, b) => a - b);
+    for (const n of nums) opts.push({ v: n, name: String(n), note: "", literalName: true });
+    opts.push({ v: -1, name: "Other…", note: "A number of your own, up to 1000" });
+    openProtoMenu(pill, opts, own == null ? "default" : own, (v) => {
+      if (v === -1) return other();
+      const want = v === "default" ? null : v;
+      if (want !== own) set(want);
+    }, "Requests at once", "sess-menu");
+  };
+  return pill;
+}
+// refreshLanes reads the gateway's lanes again and rewrites the pills in
+// place: nothing is redrawn, so nothing moves under the reader.
+async function refreshLanes() {
+  if (document.hidden || view !== "providers" || !document.querySelector(".alane")) return;
+  let lanes;
+  try { lanes = await api("lanes"); } catch { return; }
+  lanesNow = lanes || {};
+  lanesRead = true;
+  for (const pill of document.querySelectorAll(".alane")) laneText(pill);
+}
+setInterval(refreshLanes, 2000);
+
 // A window reads as how much of it is used, or — as the vendors' own apps
 // show it — how much is left, the bar filling with that; one choice for
 // every meter and the menu bar, kept in the settings (#122). The vendor's
@@ -10638,6 +10774,8 @@ function renderKeyAccounts(p) {
     // its own models (#474), when there is another key to send the rest to
     const [amPill, amBox] = p.keyList.length > 1 || accountModelsOf(p, k.id).length ? accountModels(p, k.id, true, k.name || k.masked) : [];
     if (amPill) row.append(amPill);
+    // how many requests it has out at once, and waiting (#892)
+    row.append(laneLimitPill(p, k.id, p.id + "#" + k.id, k.name || k.masked));
     row.append(el("span", "grow"));
     if (!k.active || several) {
       const rm = el("button", "text quiet", t("Remove"));

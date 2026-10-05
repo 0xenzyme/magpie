@@ -1816,3 +1816,18 @@ is faked.
 ```sh
 node --test internal/gui/tests/update-mirror.test.cjs
 ```
+
+`lane-limit.test.cjs` checks each key's and account's own limit on requests
+at once (#892): its row's pill says what runs and waits under it while
+requests are out ("1/1 running · 2 queued"), read again from `/api/lanes`
+every two seconds and written into the same pill, else its limit (its own or
+the provider's); a row with none shows it on hover only. A click opens the
+app's menu (no native select, no scroll): a number, the provider's (null) or
+Other… typed in place, each posted to `provider/accountconcurrency`. The
+editor's Queue size and Queue wait sit under Concurrency, as narrow, labels
+on one line, saved with it and refused out of range. No left border; every
+string has zh, ja and de. English and Chinese, Chromium and WebKit.
+
+```sh
+node --test internal/gui/tests/lane-limit.test.cjs
+```

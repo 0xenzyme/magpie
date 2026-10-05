@@ -1469,8 +1469,19 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 	if from == provider.Gemini {
 		streams = strings.Contains(r.URL.Path, "streamGenerateContent")
 	}
+	gaveWay := map[string]bool{} // keys and accounts that gave way, full, to one free (laneMate)
 	for i := 0; i < len(cands); i++ {
 		c := cands[i]
+		if j := s.laneMate(cands, i, isGroup, gaveWay); j > i {
+			// its key or account is full, and another of its provider's,
+			// or of its group, has a slot free: that one is asked first,
+			// this one keeps its place after it (#892)
+			gaveWay[c.who()] = true
+			cs := slices.Clone(cands)
+			cands = slices.Insert(slices.Delete(cs, i, i+1), j, c)
+			i--
+			continue
+		}
 		last := i == len(cands)-1
 		// the last one's failure is held too when an earlier one failed,
 		// for its allowance running out to be told as that one's error
@@ -1596,8 +1607,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			t.imageProvider = c.p.ID
 			t.Tries = append(t.Tries, Try{ID: c.rest, Model: c.model, Effort: sent, Picked: picked, Fixed: fixed, Fast: fast, Start: began})
 		})
-		held := false    // answered as its vendor did a moment ago, without asking
-		var queued int64 // ms it waited for a slot of its key's or account's
+		held := false     // answered as its vendor did a moment ago, without asking
+		var queued int64  // ms it waited for a slot of its key's or account's
+		var laneErr error // turned away by its key's or account's queue
 		// the models Copilot's Auto picked for it, where from, and which
 		// were refused (#256)
 		autoPicked := func() []provider.AutoPick { return nil }
@@ -1630,10 +1642,15 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// a key or account with a MaxConcurrency is asked once one of
 			// its slots is free, in turn; the agent gone while it waits,
 			// nothing is sent (the 499 below)
+			// its queue full, or waited out (QueueLimit, QueueWait), it is
+			// turned away below
 			waited := time.Now()
-			release, ok := s.lanes.acquire(ctx, c.who(), c.p.Concurrency())
+			release, err := s.lanes.take(ctx, c.who(), c.p.LaneLimit(), c.p.QueueLimit, time.Duration(c.p.QueueWait)*time.Second)
 			queued = time.Since(waited).Milliseconds()
-			if ok {
+			if errors.Is(err, errQueueFull) || errors.Is(err, errQueueWait) {
+				laneErr = err
+			}
+			if err == nil {
 				if queued > 0 {
 					s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1].Queued = queued })
 				}
@@ -1646,6 +1663,25 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				}()
 			}
 			stop()
+		}
+		if laneErr != nil {
+			// its key's or account's queue was full, or it waited as long
+			// as it may: nobody failed, and nobody rests; the next is
+			// asked, else the agent is told (#892)
+			call.Status, call.Error = http.StatusTooManyRequests, laneMessage(c, laneErr, queued)
+			s.trace.update(tr, func(t *Route) {
+				tt := &t.Tries[len(t.Tries)-1]
+				tt.Done, tt.Status, tt.Error, tt.Queued, tt.Millis = true, call.Status, call.Error, queued, time.Since(began).Milliseconds()
+			})
+			if !last {
+				skipped = append(skipped, c.label()+": "+call.Error)
+				continue
+			}
+			if !kept.sent {
+				w.Header().Set("Retry-After", "1")
+			}
+			failTo(w, kept, from, call.Status, call.Error)
+			break
 		}
 		hw.settle()
 		if hw.passing {
