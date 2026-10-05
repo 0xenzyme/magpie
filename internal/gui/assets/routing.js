@@ -800,8 +800,16 @@
   // group's models on one provider go over the same keys, and are two seats
   // — as is one model a group has twice, each at an effort of its own
   const seat = (x) => x.id + "\u0000" + (x.model || "") + (x.fixed ? ":" + x.fixed : "");
-  // tried is the seat a try went to
-  const tried = (r, tr) => r.order.find((x) => seat(x) === seat(tr)) || r.order.find((x) => x.id === tr.id);
+  // tried is the seat a try went to. A try's fixed is the effort it was
+  // sent at by force — the member's own, or one its agent asked in the
+  // model's id (a Claude Code tier at high) — where its seat's is the
+  // member's own only, so a member following the group's effort is found by
+  // its key and model (#865)
+  const tried = (r, tr) => r.order.find((x) => seat(x) === seat(tr))
+    || r.order.find((x) => x.id === tr.id && (x.model || "") === (tr.model || ""))
+    || r.order.find((x) => x.id === tr.id);
+  // tryseat is the seat of the row a try went to: its row is keyed by it
+  const tryseat = (r, tr) => seat(tried(r, tr) || tr);
   const setOf = (r) => r.order.map(seat).sort().join("\n");
   // whole fills in the lists a route's JSON can leave null: a route the
   // gateway weighed no seats for has "order": null, and the page reads
@@ -1025,7 +1033,7 @@
     hubText();
     const n = now(), rs = staged();
     const trying = new Set(), busy = new Set();
-    for (const r of rs) for (const tr of r.tries) if (!tr.done) { trying.add(seat(tr)); busy.add(r.agent); }
+    for (const r of rs) for (const tr of r.tries) if (!tr.done) { trying.add(tryseat(r, tr)); busy.add(r.agent); }
     const onWire = new Set();
     for (const f of flying.values()) { onWire.add(f.id); busy.add(f.agent); }
     for (const [id, row] of rows) {
@@ -1033,8 +1041,8 @@
       const r = src().get(row.rid) || pinned || cur, answered = new Set(), rests = new Map(), gave = new Map();
       for (const w of r.order) if (w.rest) rests.set(w.id, w.rest);
       for (const tr of r.tries) {
-        if (tr.done && tryOk(tr)) answered.add(seat(tr));
-        else if (tr.done && !tr.rest && !tr.again) gave.set(seat(tr), tr); // the error the agent got
+        if (tr.done && tryOk(tr)) answered.add(tryseat(r, tr));
+        else if (tr.done && !tr.rest && !tr.again) gave.set(tryseat(r, tr), tr); // the error the agent got
         if (tr.rest) rests.set(tr.id, tr.rest);
       }
       for (const tr of r.tries) if (tr.done && tryOk(tr)) rests.delete(tr.id); // it answered: whatever rest it began in is over
@@ -1828,9 +1836,9 @@
           await until(() => g !== gen || rt().tries.length > i || rt().done);
           continue;
         }
-        const row = rows.get(seat(r.tries[i]));
+        const row = rows.get(tryseat(r, r.tries[i]));
         if (!row) { i++; continue; }
-        flying.set(dot, { id: seat(r.tries[i]), agent: r.agent });
+        flying.set(dot, { id: tryseat(r, r.tries[i]), agent: r.agent });
         if (!carrier) carrier = bird("req");
         if (from) tick(hub);
         const ws = wiresTo(row);
