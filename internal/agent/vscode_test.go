@@ -165,6 +165,68 @@ func TestVSCodeRoundTrip(t *testing.T) {
 	}
 }
 
+// a window on one of VS Code's own profiles reads that profile's
+// chatLanguageModels.json and settings.json, not the default's: magpie's
+// group and default model go in each profile's too, a profile that uses the
+// default's is left alone, and switched off every file is as it was
+// (TJHHHH on Discord: the Agents window listed magpie, the side Chat didn't)
+func TestVSCodeProfiles(t *testing.T) {
+	home := syncHome(t)
+	dir := filepath.Join(home, "vscode", "User")
+	a := vscodeAt(dir)
+	work := filepath.Join(dir, "profiles", "-5f1c2a")
+	shared := filepath.Join(dir, "profiles", "3b9e")
+	writeFile(t, filepath.Join(dir, "globalStorage", "storage.json"), `{
+	"userDataProfiles": [
+		{"location": "-5f1c2a", "name": "Work", "icon": "briefcase"},
+		{"location": "3b9e", "name": "Shared", "useDefaultFlags": {"settings": true, "languageModels": true}},
+		{"location": "gone", "name": "Removed"}
+	]
+}`)
+	workSettings := "{\n\t// work\n\t\"chat.defaultModel\": \"gpt-4.1\"\n}\n"
+	workGroups := "[\n\t{\n\t\t\"name\": \"Ollama\",\n\t\t\"vendor\": \"ollama\"\n\t}\n]\n"
+	writeFile(t, filepath.Join(work, "settings.json"), workSettings)
+	writeFile(t, filepath.Join(work, "chatLanguageModels.json"), workGroups)
+	writeFile(t, filepath.Join(shared, "keybindings.json"), "[]\n")
+
+	if err := a.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	wlm := filepath.Join(work, "chatLanguageModels.json")
+	g, ok := edit.GetJSONItem(wlm, vscodeGroup)
+	if !ok || gjson.Get(g, "models.0.id").String() != "relay/glm-4.6" || !strings.Contains(readFile(wlm), `"ollama"`) {
+		t.Fatalf("work profile's models:\n%s", readFile(wlm))
+	}
+	if v, _ := edit.GetJSON(filepath.Join(work, "settings.json"), vscodeDefault); v != "relay/glm-4.6" {
+		t.Fatalf("work profile's chat.defaultModel %q", v)
+	}
+	for _, f := range []string{"settings.json", "chatLanguageModels.json"} {
+		if isFile(filepath.Join(shared, f)) || isFile(filepath.Join(dir, "profiles", "gone", f)) {
+			t.Fatalf("wrote %s of a profile that uses the default's, or of none", f)
+		}
+	}
+
+	// a profile made after: given the group when synced
+	writeFile(t, filepath.Join(dir, "globalStorage", "storage.json"), `{"userDataProfiles": [{"location": "-5f1c2a", "name": "Work"}, {"location": "new1", "name": "New"}]}`)
+	writeFile(t, filepath.Join(dir, "profiles", "new1", "keybindings.json"), "[]\n")
+	if err := a.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := edit.GetJSONItem(filepath.Join(dir, "profiles", "new1", "chatLanguageModels.json"), vscodeGroup); !ok {
+		t.Fatal("new profile not given magpie's group")
+	}
+
+	if err := a.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	if readFile(filepath.Join(work, "settings.json")) != workSettings || readFile(wlm) != workGroups {
+		t.Fatalf("work profile not as it was:\n%s\n%s", readFile(filepath.Join(work, "settings.json")), readFile(wlm))
+	}
+	if _, ok := edit.GetJSONItem(filepath.Join(dir, "profiles", "new1", "chatLanguageModels.json"), vscodeGroup); ok {
+		t.Fatal("new profile kept magpie's group")
+	}
+}
+
 // its requests come with GitHubCopilotChat/<version>
 func TestVSCodeUA(t *testing.T) {
 	if got := usage.AgentOf("GitHubCopilotChat/0.69.0"); got != "vscode" {

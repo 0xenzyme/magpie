@@ -4,8 +4,9 @@ package agent
 // of other vendors through its Custom Endpoint provider, in VS Code Stable
 // since 1.122, with no GitHub sign-in or Copilot plan needed: groups of
 // models in chatLanguageModels.json beside its settings.json (the default
-// profile's, in its User folder), a JSONC array VS Code watches and reads
-// again when it changes. magpie adds a group of its own there,
+// profile's, in its User folder, and each other profile's in its own:
+// vscodeProfiles), a JSONC array VS Code watches and reads again when it
+// changes. magpie adds a group of its own there,
 // {"vendor": "customendpoint", "name": "magpie"}, listing the catalog: each
 // model at the gateway's /v1/chat/completions with tool calling on (agent
 // mode lists only models that call tools). A group's apiKey can't be
@@ -17,6 +18,7 @@ package agent
 // Chat's model picker, a model is kept in VS Code's storage, not here.
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -57,8 +59,9 @@ func vscode(home, cfg string) *Agent {
 func vscodeAt(dir string) *Agent {
 	path := filepath.Join(dir, "settings.json")
 	models := filepath.Join(dir, "chatLanguageModels.json")
-	key := "vscode:" + path + ":"
-	get := func() string { v, _ := edit.GetJSON(path, vscodeDefault); return v }
+	key := func(p string) string { return "vscode:" + p + ":model" }
+	getAt := func(p string) string { v, _ := edit.GetJSON(p, vscodeDefault); return v }
+	get := func() string { return getAt(path) }
 	ours := func() (string, bool) { return edit.GetJSONItem(models, vscodeGroup) }
 	joined := func() bool { _, ok := ours(); return ok }
 	// inGroup: a model id is one of those magpie's group lists
@@ -81,12 +84,32 @@ func vscodeAt(dir string) *Agent {
 		}
 		return v
 	}
-	// restore puts back the chat.defaultModel the user had before magpie's
-	restore := func() error {
-		if was := unstash(key + "model"); was != "" {
-			return edit.SetJSON(path, edit.KV{Path: vscodeDefault, Value: was})
+	// restore puts back the chat.defaultModel a settings.json had before
+	// magpie's
+	restore := func(p string) error {
+		if was := unstash(key(p)); was != "" {
+			return edit.SetJSON(p, edit.KV{Path: vscodeDefault, Value: was})
 		}
-		return edit.DelJSON(path, vscodeDefault)
+		return edit.DelJSON(p, vscodeDefault)
+	}
+	// profiles runs fn on the files of the profiles VS Code has now, put
+	// back as they were if it fails, as atomic does the default's
+	profiles := func(fn func(settings, models []string) error) error {
+		s, m := vscodeProfiles(dir)
+		return edit.Atomically(func() error { return fn(s, m) }, append(s, m...)...)
+	}
+	// setGroup writes magpie's group in the default's and each profile's
+	setGroup := func(lms []string) error {
+		v := vscodeGroupJSON()
+		for _, lm := range append([]string{models}, lms...) {
+			if cur, ok := edit.GetJSONItem(lm, vscodeGroup); ok && sameJSON(cur, v) {
+				continue
+			}
+			if err := edit.SetJSONItem(lm, vscodeGroup, v); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	return atomic(&Agent{
 		ID: "vscode", Name: "VS Code", Icon: "vscode", Aliases: []string{"vs-code", "copilot-chat", "vscode-chat"}, Spelled: prefixed,
@@ -94,7 +117,7 @@ func vscodeAt(dir string) *Agent {
 		UA: []string{vscodeUA},
 		Notice: func() string {
 			if joined() {
-				return "magpie's models are in VS Code's Chat model picker, under magpie (VS Code 1.122 or later). If they don't show, run Developer: Reload Window in VS Code."
+				return "magpie's models are in VS Code's Chat model picker, under magpie, in each of its profiles (VS Code 1.122 or later). If they don't show, run Developer: Reload Window in VS Code."
 			}
 			return ""
 		},
@@ -102,24 +125,29 @@ func vscodeAt(dir string) *Agent {
 		// Code's in magpie keeps it, and only switching off takes it out
 		Joined: joined,
 		Unwire: func() error {
-			if inGroup(get()) {
-				if err := restore(); err != nil {
-					return err
+			return profiles(func(settings, lms []string) error {
+				for _, p := range append([]string{path}, settings...) {
+					if inGroup(getAt(p)) {
+						if err := restore(p); err != nil {
+							return err
+						}
+					}
+					forget(key(p))
 				}
-			}
-			forget(key + "model")
-			return edit.DelJSONItem(models, vscodeGroup)
+				for _, lm := range append([]string{models}, lms...) {
+					if err := edit.DelJSONItem(lm, vscodeGroup); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
 		},
+		// a profile made since is given the group too
 		Sync: func() error {
-			cur, ok := ours()
-			if !ok {
+			if !joined() {
 				return nil
 			}
-			v := vscodeGroupJSON()
-			if sameJSON(cur, v) {
-				return nil
-			}
-			return edit.SetJSONItem(models, vscodeGroup, v)
+			return profiles(func(_, lms []string) error { return setGroup(lms) })
 		},
 		Check: func() string {
 			g, ok := ours()
@@ -134,24 +162,40 @@ func vscodeAt(dir string) *Agent {
 		Fields: []Field{{
 			Key: "model", Label: "model", Get: model,
 			Set: func(v string) error {
-				if ref, ok := strings.CutPrefix(v, magpieID+"/"); ok && isMagpie(ref) {
-					if !inGroup(get()) {
-						stash(map[string]string{key + "model": get()})
+				return profiles(func(settings, lms []string) error {
+					if ref, ok := strings.CutPrefix(v, magpieID+"/"); ok && isMagpie(ref) {
+						if err := setGroup(lms); err != nil {
+							return err
+						}
+						// a new chat in each profile starts on it
+						for _, p := range append([]string{path}, settings...) {
+							if !inGroup(getAt(p)) {
+								stash(map[string]string{key(p): getAt(p)})
+							}
+							if err := edit.SetJSON(p, edit.KV{Path: vscodeDefault, Value: ref}); err != nil {
+								return err
+							}
+						}
+						return nil
 					}
-					if err := edit.SetJSONItem(models, vscodeGroup, vscodeGroupJSON()); err != nil {
-						return err
+					// one of VS Code's own: the profiles go back to theirs
+					for _, p := range settings {
+						if inGroup(getAt(p)) {
+							if err := restore(p); err != nil {
+								return err
+							}
+						}
 					}
-					return edit.SetJSON(path, edit.KV{Path: vscodeDefault, Value: ref})
-				}
-				// VS Code's own: its default, where magpie's group stays
-				if v == "" {
-					if inGroup(get()) {
-						return restore()
+					// VS Code's own: its default, where magpie's group stays
+					if v == "" {
+						if inGroup(get()) {
+							return restore(path)
+						}
+						return edit.DelJSON(path, vscodeDefault)
 					}
-					return edit.DelJSON(path, vscodeDefault)
-				}
-				forget(key + "model")
-				return edit.SetJSON(path, edit.KV{Path: vscodeDefault, Value: v})
+					forget(key(path))
+					return edit.SetJSON(path, edit.KV{Path: vscodeDefault, Value: v})
+				})
 			},
 			Options: func(cur map[string]string) []Option {
 				// auto: Copilot's Auto, for one signed in to it
@@ -163,6 +207,48 @@ func vscodeAt(dir string) *Agent {
 			},
 		}},
 	}, path, models, stashPath())
+}
+
+// vscodeProfiles are the settings.json and chatLanguageModels.json of the
+// profiles made in VS Code besides its default (whose are in dir): a window
+// opened on one reads that profile's own, so a group only in the default's
+// is in the Agents window (which uses the default's) and not in the Chat of
+// a window on another profile (TJHHHH on Discord). VS Code lists them in
+// globalStorage/storage.json's userDataProfiles, each location a folder
+// under dir/profiles; a profile set to use the default's settings or
+// models (useDefaultFlags) has none of that kind, and one whose folder is
+// gone none at all.
+func vscodeProfiles(dir string) (settings, models []string) {
+	b, err := os.ReadFile(filepath.Join(dir, "globalStorage", "storage.json"))
+	if err != nil {
+		return nil, nil
+	}
+	for _, p := range gjson.GetBytes(b, "userDataProfiles").Array() {
+		loc := p.Get("location")
+		at := loc.String()
+		if loc.IsObject() {
+			// a URI: its fsPath when kept, else its path (/c:/… on Windows)
+			if at = loc.Get("fsPath").String(); at == "" {
+				at = loc.Get("path").String()
+				if len(at) > 2 && at[0] == '/' && at[2] == ':' {
+					at = at[1:]
+				}
+				at = filepath.FromSlash(at)
+			}
+		} else if at != "" {
+			at = filepath.Join(dir, "profiles", at)
+		}
+		if at == "" || !isDir(at) {
+			continue
+		}
+		if !p.Get("useDefaultFlags.settings").Bool() {
+			settings = append(settings, filepath.Join(at, "settings.json"))
+		}
+		if !p.Get("useDefaultFlags.languageModels").Bool() {
+			models = append(models, filepath.Join(at, "chatLanguageModels.json"))
+		}
+	}
+	return settings, models
 }
 
 // vscodeURL is the gateway's Chat Completions URL: a Custom Endpoint model's
