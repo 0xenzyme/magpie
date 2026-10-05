@@ -58,6 +58,7 @@ func pluginCmd(args []string) error {
 		if len(rest) != 1 {
 			return errors.New(pluginUsage)
 		}
+		rest[0] = installedName(rest[0])
 		back := provider.MovedOnto(rest[0])
 		if err := provider.RemovePlugin(ctx, rest[0]); err != nil {
 			return err
@@ -78,6 +79,7 @@ func pluginCmd(args []string) error {
 		if len(rest) != 1 {
 			return errors.New(pluginUsage)
 		}
+		rest[0] = installedName(rest[0])
 		var back []string
 		if sub == "off" {
 			back = provider.MovedOnto(rest[0])
@@ -227,6 +229,25 @@ func listPlugins(ctx context.Context, asJSON bool) error {
 // pluginOptions prints a plugin's options, or sets them from a JSON
 // object; off takes them away. With none set, it prints what its
 // package suggests.
+// installedName is the package name of the plugin a short name, as the
+// community's READMEs write it (think-tags for
+// @magpie-community/middleware-think-tags), stands for; a name a plugin
+// has itself, or one no plugin has, is kept as it is.
+func installedName(name string) string {
+	ps := plugin.Load().Plugins
+	for _, x := range ps {
+		if plugin.Name(x.Spec) == name || x.Spec == name {
+			return name
+		}
+	}
+	for _, x := range ps {
+		if plugin.ShortName(plugin.Name(x.Spec)) == name {
+			return plugin.Name(x.Spec)
+		}
+	}
+	return name
+}
+
 func pluginOptions(name string, set []string) error {
 	var e *plugin.Entry
 	ps := plugin.Load().Plugins

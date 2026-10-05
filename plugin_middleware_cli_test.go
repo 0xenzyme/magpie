@@ -42,3 +42,29 @@ func TestPluginListSaysMiddleware(t *testing.T) {
 		t.Errorf("--json has no middleware:\n%s", js)
 	}
 }
+
+// magpie plugin off, on and rm take a plugin's short name, as options
+// does: `magpie plugin off think-tags` said there was no such plugin.
+func TestPluginOnOffRmShortName(t *testing.T) {
+	groupsHome(t)
+	dir := filepath.Join(t.TempDir(), "middleware-zz-tags")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name": "@magpie-community/middleware-zz-tags", "magpie": {"middleware": "./zz.middleware.js"}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "zz.middleware.js"), []byte("export function onRequest(b) {}\n"), 0o644)
+	if _, err := plugin.Add(context.Background(), dir); err != nil {
+		t.Fatal(err)
+	}
+	off := func() bool { return plugin.Load().Plugins[0].Off }
+	if _, err := stdoutOf(t, func() error { return pluginCmd([]string{"plugin", "off", "zz-tags"}) }); err != nil || !off() {
+		t.Fatalf("off by short name: err %v, off %v", err, off())
+	}
+	if _, err := stdoutOf(t, func() error { return pluginCmd([]string{"plugin", "on", "zz-tags"}) }); err != nil || off() {
+		t.Fatalf("on by short name: err %v, off %v", err, off())
+	}
+	if _, err := stdoutOf(t, func() error { return pluginCmd([]string{"plugin", "rm", "zz-tags"}) }); err != nil || len(plugin.Load().Plugins) != 0 {
+		t.Fatalf("rm by short name: err %v, left %v", err, plugin.Load().Plugins)
+	}
+	if err := pluginCmd([]string{"plugin", "off", "nothing-here"}); err == nil {
+		t.Error("a name no plugin has was taken")
+	}
+}
