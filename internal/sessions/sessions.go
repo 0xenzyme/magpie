@@ -1248,6 +1248,7 @@ func priceOf(s settings.Settings, model string) (catalog.Price, bool) {
 	// from them
 	if p, ok := s.ModelPrices[provider.AnyPriceKey(bare)]; ok {
 		if pr, bad := p.Price(); bad == "" {
+			catalog.OneHourFor(bare, &pr)
 			return pr, true
 		}
 	}

@@ -456,8 +456,10 @@ write kept for 5 minutes at 1.25× input and one kept for an hour at 2× input,
 and its usage says which were which (`cache_creation.ephemeral_5m_input_tokens`
 / `ephemeral_1h_input_tokens`, from the API and from Claude Code's
 transcripts). The fourth number is the 5-minute price; the fifth, when not
-given, is 2× input — Anthropic's rule, and only Anthropic reports 1-hour
-writes, so for any other model it never comes into play. A call recorded
+given, is 2× input for a Claude model — Anthropic's rule. Any other model has
+no 1-hour price unless you give one: a 1-hour write it reports is counted at
+the 5-minute price, and neither `magpie model price` nor the app's boxes show
+a 1-hour price for it. A call recorded
 before magpie kept the split counts all its writes at the 5-minute price, as
 it did.
 

@@ -374,7 +374,8 @@ type ModelPrice struct {
 	CacheRead  *float64 `json:"cache_read,omitempty"`
 	CacheWrite *float64 `json:"cache_write,omitempty"`
 	// CacheWrite1h is a 1-hour cache write's price, absent where none is
-	// given: such a write is then counted at 2× input (catalog.Price).
+	// given: such a write is then counted at 2× input for a Claude model,
+	// else at the 5-minute price (catalog.OneHourFor).
 	CacheWrite1h *float64 `json:"cache_write_1h,omitempty"`
 	// Tiers are the prices of a request whose input is over a size, each
 	// whole: "magpie model price … --tier 272k …" (PAMI on Discord).

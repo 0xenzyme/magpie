@@ -8619,7 +8619,9 @@ function renderModels(p) {
       // Usage page counts it (#819: only `magpie model price` set it):
       // each box shows its list price until a price is given, a part left
       // empty is the list's, and every part empty is its list price again
-      // the 1-hour cache write, empty, is 2× input as Anthropic bills it;
+      // the 1-hour cache write, empty, is 2× input as Anthropic bills it,
+      // and only a Claude model (or one priced with one) has the box: no
+      // other vendor has 1-hour writes (PAMI on Discord);
       // a long-context price (OpenAI's over 272K) is what the whole request
       // costs when its input is over its size, empty parts its list's
       const parts = [["input", "Input"], ["output", "Output"], ["cache_read", "Cache read"], ["cache_write", "Cache write"], ["cache_write_1h", "Cache write 1h"]];
@@ -8647,7 +8649,10 @@ function renderModels(p) {
         const value = typed ? typed[n] : !pr ? "" : k === "cache_write_1h" ? pr.cache_write_1h ? shown(pr.cache_write_1h) : "" : shown(pr[k]);
         const placeholder = !m.list ? "" : k === "cache_write_1h" ? shown(oneHour(m.list)) : shown(m.list[k]);
         const i = cell(value, placeholder, k, t(l));
-        if (k === "cache_write_1h") box.title = t("A cache write kept for an hour, as Anthropic bills it; empty: 2× input");
+        if (k === "cache_write_1h") {
+          box.title = t("A cache write kept for an hour, as Anthropic bills it; empty: 2× input");
+          box.hidden = !/claude/i.test(m.id) && !m.list?.cache_write_1h && !pr?.cache_write_1h && !(typed && typed[n]);
+        }
         box.append(el("span", "", t(l)), i);
         priceBox.append(box);
         return i;

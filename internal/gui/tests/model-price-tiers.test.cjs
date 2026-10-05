@@ -80,7 +80,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.deepEqual(await tier("gpt-6-astra").evaluateAll((is) => is.map((i) => [i.value, i.placeholder])), [["", "272K"], ["", "20"], ["", "75"], ["", "2"], ["", "25"]]);
       // the 1-hour box shows the list's, else 2× its input
       assert.deepEqual(await base("claude-opus-5-5").evaluateAll((is) => is.map((i) => i.placeholder)), ["5", "25", "0.5", "6.25", "10"]);
-      assert.deepEqual(await base("gpt-6-astra").evaluateAll((is) => is.at(-1).placeholder), "20");
+      // only a Claude model has a 1-hour box: gpt-6-astra has no such write
+      // to price, so no 2× input one is shown for it (PAMI on Discord)
+      assert(await row("claude-opus-5-5").getByRole("textbox", { name: L.oneHour, exact: true }).isVisible());
+      assert(!(await row("gpt-6-astra").getByRole("textbox", { name: L.oneHour, exact: true }).isVisible()));
+      assert(!(await row("plain-1").getByRole("textbox", { name: L.oneHour, exact: true }).isVisible()));
       // where there is none, the row waits behind a link
       assert(!(await row("plain-1").locator(".mtier").isVisible()));
       assert(await row("plain-1").locator(".mtier-add").isVisible());
