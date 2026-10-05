@@ -312,6 +312,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 	kind := requestCallKind(r.Header, metadata)
 	var titleReply capturedBody // bounded; ordinary streams incur no copy
 	captureTitle := false
+	effort := "" // the reasoning Codex asked for, which goes on as it is
 	end := func(status int, msg string, tokens, out int) {}
 	if rest == "/responses" {
 		who := "Codex's own sign-in"
@@ -319,11 +320,12 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 			who = "Codex's API key"
 		}
 		model := modelOf(body)
+		effort = requestEffort(provider.Responses, body)
 		seat := Weighed{ID: "codex", Provider: "openai", Name: "OpenAI", Icon: "openai", Who: who, Kind: "account", Agent: "codex", Model: model}
 		link := s.titlePrompts.observe(r, body, metadata, kind, start)
 		captureTitle = link != nil && isTitleKind(kind)
-		tr = s.trace.begin(Route{TitleLink: link, Time: start, Agent: agentOf(r), Session: sessionOf(r.Header), ParentSession: titleParentSession(r.Header, metadata, kind), Kind: kind, Model: model, Provider: "openai",
-			Order: []Weighed{seat}, Tries: []Try{{ID: seat.ID, Model: model, Start: start}}})
+		tr = s.trace.begin(Route{TitleLink: link, Time: start, Agent: agentOf(r), Session: sessionOf(r.Header), ParentSession: titleParentSession(r.Header, metadata, kind), Kind: kind, Model: model, Effort: effort, Provider: "openai",
+			Order: []Weighed{seat}, Tries: []Try{{ID: seat.ID, Model: model, Effort: effort, Start: start}}})
 		end = func(status int, msg string, tokens, out int) {
 			ms := time.Since(start).Milliseconds()
 			ttft, text := first.ms()
@@ -492,7 +494,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 	rec := usage.Record{RouteID: tr.ID, Time: start, Agent: call.Agent, Provider: call.Provider, Host: provider.HostOf(base), Model: call.Model,
 		Requested: call.Model, Served: served,
 		Input: uu.Input, Output: uu.Output, CacheRead: uu.CacheRead, CacheWrite: uu.CacheWrite,
-		Reasoning: uu.Reasoning, Millis: call.Millis, TTFT: call.TTFT, FirstText: call.FirstText, Status: call.Status, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind,
+		Reasoning: uu.Reasoning, Effort: effort, Millis: call.Millis, TTFT: call.TTFT, FirstText: call.FirstText, Status: call.Status, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind,
 		RequestID: requestID(res.Header), ResponseID: uu.ResponseID, Endpoint: r.URL.Path}
 	failedWith(&rec, call.Status, call.Error, errType)
 	appendUsage(r, rec)
