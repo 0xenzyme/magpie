@@ -190,6 +190,9 @@ func run(args []string) error {
 		// (agent.DisconnectPreview)
 		return agent.DryRun(args[1])
 	}
+	// started by an update, the magpie it replaces goes first: the moves
+	// below write the files it may still be writing
+	update.AwaitPredecessor()
 	makeDirs()
 	settings.Migrate()
 	// the providers and settings read once for every agent's fields, which
