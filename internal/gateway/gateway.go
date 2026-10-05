@@ -695,8 +695,16 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 		data = desktopModels(shown)
 	} else {
 		labels := provider.Labels(shown)
+		// for another magpie: how it searches the web for each model
+		magpie := r.Header.Get(provider.DrawersHeader) != ""
+		searches := magpie && canSearch()
 		for i, e := range shown {
 			m := modelObject(e)
+			if magpie {
+				if how := webSearchOf(e, searches); how != "" {
+					m["web_search"] = how
+				}
+			}
 			// for another magpie: its name as the agents' lists here call
 			// it, with its provider's after it unless the user wants it
 			// plain, so two providers' models of one name are told apart
@@ -2161,7 +2169,7 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	relay := slices.Contains(s.usable(p, model), from) && (p.Account == nil || !p.Account.Stream || streamOf(body))
 	// a web search offered is done by the provider, or by magpie for it,
 	// which a relayed request can't
-	if relay && searchAsked(from, body) && (from == provider.Chat || !searchesItself(p, from)) {
+	if relay && searchAsked(from, body) && (from == provider.Chat && !p.IsRemoteMagpie() || !searchesModel(p, from, model)) {
 		relay = false
 	}
 	// Zen's free models are asked as OpenCode asks them (zenfree.go)
@@ -2395,6 +2403,7 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	}
 	if p.IsRemoteMagpie() {
 		passOnCaller(ctx, req)
+		markSearching(ctx, req)
 	}
 	if err := p.Sign(ctx, req, to, body); err != nil {
 		return nil, err
@@ -2925,6 +2934,10 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 		}
 		if to == provider.Chat && (p.IsBedrock() || p.IsAzure()) {
 			body = asCompletionTokens(body)
+		}
+		if to == provider.Chat && req.WebSearch && p.IsRemoteMagpie() {
+			// the other magpie searches for it (search_remote.go)
+			body = withFields(body, map[string]any{"web_search_options": map[string]any{}})
 		}
 		if to == provider.CodeAssist && p.Account != nil {
 			// the envelope is named in there, where the id it carries is
