@@ -354,10 +354,32 @@ func codexIn(at place) *Agent {
 	}
 	modelOptions := func(withMagpie bool) []Option {
 		var own []Option
-		if p := get("model_provider"); p != "" && p != magpieID && !isCCSwitchMirror(p) {
-			own = group(p, options(catalog.Codex(), ""))
+		// each of Codex's own says which way it goes, as Claude Code's do:
+		// to its provider directly, or through magpie while routed by the
+		// base URL or with magpie its provider (EZN7L2C3, #834: Codex 下拉
+		// 选项中没有 via magpie)
+		p := get("model_provider")
+		to, through := "OpenAI", routed()
+		if p != "" && p != magpieID && p != "openai" {
+			// a provider of the user's own, or CC Switch's, pointed at
+			// magpie or not
+			t, _ := edit.GetTOMLTable(path, "model_providers."+p)
+			to, through = p, t["base_url"] == at.codexURL() || t["base_url"] == at.v1()
+		}
+		say := func(own []Option) []Option {
+			for i := range own {
+				if through {
+					own[i].Via = true
+				} else {
+					own[i].Direct = to
+				}
+			}
+			return own
+		}
+		if p != "" && p != magpieID && !isCCSwitchMirror(p) {
+			own = say(group(p, options(catalog.Codex(), "")))
 		} else {
-			own = group("OpenAI", options(ownCodex(), ""))
+			own = say(group("OpenAI", options(ownCodex(), "")))
 			// on magpie API, Codex's own models are reached through magpie,
 			// on its ChatGPT account there: picked so, set so (#701)
 			if api() {

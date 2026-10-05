@@ -348,8 +348,8 @@ body.window .ag-handle { width: 28px; height: 28px; }
    what the logo does, and it takes no room from the row; the logo stays the
    logo. Hide is in the handle's menu and the row's right-click menu. */
 #agents > .row .ag-handle { position: relative; }
-#agents > .row .ag-handle::before { content: ""; position: absolute; left: -6px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; opacity: 0; transition: opacity .15s; }
-body.panel #agents > .row .ag-handle::before { left: -9px; }
+#agents > .row .ag-handle::before { content: ""; position: absolute; left: -7px; top: 50%; width: 6px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3px 3.75px; opacity: 0; transition: opacity .15s; }
+body.panel #agents > .row .ag-handle::before { left: -10px; }
 #agents > .row:is(:hover, .dragging) .ag-handle::before, #agents > .row .ag-handle.open::before { opacity: 1; }
 #agents > .row .ag-handle:focus-visible::before { opacity: 1; }
 /* one hidden by hand reads as put away, with its way back beside its name */
@@ -453,7 +453,7 @@ body.window .agent-fold-cap { padding: 10px 14px 3px; }
 /* a provider on is moved as an agent is (#499): its logo is the handle,
    the grip in its margin drawn only with the pointer on the row */
 #providers > .row .pv-handle { position: relative; }
-#providers > .row .pv-handle::before { content: ""; position: absolute; left: -6px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; opacity: 0; transition: opacity .15s; }
+#providers > .row .pv-handle::before { content: ""; position: absolute; left: -7px; top: 50%; width: 6px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3px 3.75px; opacity: 0; transition: opacity .15s; }
 #providers > .row:is(:hover, .dragging) .pv-handle::before { opacity: 1; }
 /* apart: Safari before 15.4 drops a whole selector list with :focus-visible in it */
 #providers > .row .pv-handle:focus-visible::before { opacity: 1; }
@@ -2588,9 +2588,11 @@ body.panel .modal { padding: 16px 12px; }
 .accts.sorting > [data-account-id] { animation: none; transition: transform .16s cubic-bezier(.22, 1, .36, 1); }
 .accts.sorting > .dragging { position: relative; z-index: 2; background: var(--card-2); box-shadow: 0 0 0 1px var(--line); cursor: grabbing; transition: none; will-change: transform; }
 .accts[aria-busy=true] > [data-account-id] { cursor: progress; }
-/* the Usage page's cards, dragged by their logos: a grip by the logo on hover */
+/* the Usage page's cards, dragged by their logos: a grip by the logo on hover.
+   A grip's box holds both its columns of dots whole, 3px apart: at 5px wide
+   with 3.5px between them the right column was cut in half (Hu9956, #842) */
 .subscription-head .us-handle { position: relative; width: 24px; height: 24px; margin: -4px -3px; }
-.subscription-head .us-handle::before { content: ""; position: absolute; left: -7px; top: 50%; width: 5px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3.5px 3.75px; opacity: 0; transition: opacity .15s; }
+.subscription-head .us-handle::before { content: ""; position: absolute; left: -8px; top: 50%; width: 6px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3px 3.75px; opacity: 0; transition: opacity .15s; }
 .subscription-card:is(:hover, .dragging) .us-handle::before, .us-handle:focus-visible::before { opacity: 1; }
 .subscription-usage.sorting { user-select: none; -webkit-user-select: none; }
 .subscription-usage.sorting > .subscription-card { transition: transform .22s cubic-bezier(.22, 1, .36, 1); }
@@ -2818,6 +2820,8 @@ body.window .row + .row.agent.conn > .who { min-height: 41px; } /* the line abov
 .ag-quiet.accent { color: var(--accent); }
 .ag-link:focus-visible, .ag-quiet:focus-visible, .ag-add:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
 .row.agent.conn > .ag-link { margin-left: auto; }
+.row.agent.conn > .ag-show { margin-left: auto; align-self: center; }
+.row.agent.conn > .ag-show + .ag-link { margin-left: 8px; }
 .row.agent.conn > .fields + .ag-link { margin-left: 0; }
 .row.agent.conn > .ag-conn { margin-left: 4px; align-self: center; cursor: pointer; }
 .row.agent.conn > .ag-link + .ag-conn { margin-left: 4px; }

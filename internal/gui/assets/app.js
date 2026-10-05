@@ -1077,6 +1077,11 @@ function connectRow(a, row, who, { fields, extras, fieldBtn, sw, kind }) {
   row.classList.toggle("unplugged", kind === "ok" && !a.wired);
   who.classList.add("with-models");
   who.append(connectLine(a, kind));
+  // a hidden one's Show stands in the row, centred as its picker and switch
+  // are, not up on the name's line above its middle (Hu9956, #842: 其余里
+  // 的显示歪了偏上了)
+  const back = who.querySelector(":scope > .ag-show");
+  if (back) row.append(back);
   // the model it starts on, one click away beside the switch (the owner:
   // both ways at once): picked here, it is connected first if it wasn't
   const start = kind === "ok" && !MENU_FROM_LIST.has(a.id) ? startField(a) : null;
@@ -3603,11 +3608,13 @@ function contextTag(n, name) {
 // own sign-in), and its Default, while it is connected, that it takes the
 // agent off magpie. Every agent's picker says it so, in one tag the note's
 // ellipsis can't cut off: the others' "· via magpie" ended their notes,
-// where Claude Code's was a tag (EZN7L2C3, #834)
+// where Claude Code's was a tag (EZN7L2C3, #834). Codex's own models,
+// through magpie while it is routed, say so too (via); Codex's, Grok
+// Build's and Antigravity CLI's own said nothing at all
 function pathTag(o) {
   if (!pick?.agent || o.custom || o.run) return null;
   let tag = null;
-  if (o.ref) {
+  if (o.ref || o.via) {
     tag = el("span", "badge path via", t("via magpie"));
     tag.title = t("{agent} asks magpie for it", { agent: pick.agent.name });
   } else if (o.direct) {

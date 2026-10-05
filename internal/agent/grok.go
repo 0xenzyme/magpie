@@ -16,9 +16,12 @@ package agent
 // gives them back.
 
 import (
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/tidwall/gjson"
 
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/edit"
@@ -201,7 +204,7 @@ func grokIn(at place) *Agent {
 					for i := range opts {
 						opts[i].Same = opts[i].own
 					}
-					return append(grokOwnOptions(cur["model"]), opts...)
+					return append(grokOwnOptions(dir, path, cur["model"]), opts...)
 				},
 			},
 			{
@@ -226,18 +229,59 @@ func grokIn(at place) *Agent {
 	}, path)
 }
 
-// grokOwnOptions are the models Grok Build offers its signed-in account, as
-// magpie last listed them for a Grok subscription, and the current one.
-func grokOwnOptions(cur string) []Option {
-	ms, _, _ := catalog.Live("grok")
+// grokOwnOptions are the models Grok Build offers its signed-in account: as
+// it last listed them itself (models_cache.json in its home), and as magpie
+// last listed them for a Grok subscription; then the models of the user's
+// own config.toml tables, and the current one. Grok asks for them itself,
+// on its sign-in or their own key, so each says so (Direct): a row not
+// connected listed nothing of Grok's own, only magpie's, unless a Grok
+// subscription was signed in in magpie (EZN7L2C3, #834).
+func grokOwnOptions(dir, path, cur string) []Option {
 	seen := map[string]bool{}
 	var out []Option
+	add := func(id, name, direct string) {
+		if id == "" || seen[id] || strings.HasPrefix(id, magpieID+"/") {
+			return
+		}
+		seen[id] = true
+		o := Option{Value: id, Icon: "xai", Direct: direct}
+		if name != "" && name != id {
+			o.Label = name
+		}
+		out = append(out, o)
+	}
+	if raw, err := os.ReadFile(filepath.Join(dir, "models_cache.json")); err == nil {
+		gjson.GetBytes(raw, "models").ForEach(func(k, v gjson.Result) bool {
+			if !v.Get("info.hidden").Bool() {
+				add(k.String(), v.Get("info.name").String(), "xAI")
+			}
+			return true
+		})
+	}
+	ms, _, _ := catalog.Live("grok")
 	for _, m := range ms {
-		seen[m.ID] = true
-		out = append(out, Option{Value: m.ID, Icon: "xai"})
+		add(m.ID, "", "xAI")
+	}
+	// the user's own [model."<id>"] tables, each on its own endpoint
+	if tables, err := edit.TOMLTables(path); err == nil {
+		for _, t := range tables {
+			id, ok := strings.CutPrefix(t, "model.")
+			if !ok {
+				continue
+			}
+			if u, err := strconv.Unquote(id); err == nil {
+				id = u
+			}
+			kv, _ := edit.GetTOMLTable(path, t)
+			direct := "xAI"
+			if h := hostOf(kv["base_url"]); h != "" {
+				direct = h
+			}
+			add(id, kv["name"], direct)
+		}
 	}
 	if cur != "" && !seen[cur] && !strings.HasPrefix(cur, magpieID+"/") {
-		out = append([]Option{{Value: cur, Icon: modelIcon("", cur)}}, out...)
+		out = append([]Option{{Value: cur, Icon: modelIcon("", cur), Direct: "xAI"}}, out...)
 	}
 	return group("Grok Build", out)
 }

@@ -44,6 +44,10 @@ type Option struct {
 	// sign-in or key, with magpie not in the way ("Anthropic"): its config
 	// then names no magpie endpoint, which is right, not a failed setup
 	Direct string `json:"direct,omitempty"`
+	// Via is a model of the agent's own it asks through magpie's gateway,
+	// on its own sign-in all the same (Codex's while routed by its base
+	// URL): the picker says via magpie by it, as by a catalog model's
+	Via bool `json:"via,omitempty"`
 	// Same is a model magpie serves on the very account the agent is
 	// signed in to itself, so the agent reaches it on its own too: the
 	// picker folds these into one row a click opens (Claude Code, #496)
