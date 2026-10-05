@@ -7313,9 +7313,9 @@ function drawEditor(p, presetID) {
     inner.append(...field(t("Catalog"), cat, t("Display names and reasoning levels for the models; for a gateway that serves several vendors, list them all, first match wins")));
     const bal = input(draft.balanceURL, "https://…/api/usage/token", "url");
     bal.classList.add("bal-url");
-    bal.oninput = () => { draft.balanceURL = bal.value; };
+    bal.oninput = () => { draft.balanceURL = bal.value; balPath.placeholder = balanceFieldOf(bal.value); };
     inner.append(...field(t("Balance URL"), bal, t("Where the vendor tells what is left on the key, asked with it like a chat request; {key} in it or in a header is each key's own, for a vendor that takes the key in the URL (…?key={key}); shown on the Usage page")));
-    const balPath = input(draft.balancePath, "data.balance");
+    const balPath = input(draft.balancePath, balanceFieldOf(draft.balanceURL));
     balPath.classList.add("bal-path");
     balPath.oninput = () => { draft.balancePath = balPath.value; };
     // asked as the form has it, before a Save: what the Usage page would show
@@ -10002,6 +10002,18 @@ function quotaError(err) {
   if (/access token is invalid or expired|didn't take the access token/.test(err)) return t("AiHubMix didn't take the access token — paste a new one in the provider's settings");
   if (/this key has no limit/.test(err)) return t("This key has no limit — add the account's access token in the provider's settings to see its balance");
   return balanceError(err) || t("Allowance unavailable");
+}
+
+// the Balance field magpie reads, left empty, from a query whose reply it
+// knows (balancePathOf in balance.go), shown as the field's placeholder
+function balanceFieldOf(raw) {
+  let path = "";
+  try { path = new URL((raw || "").trim()).pathname.replace(/\/+$/, ""); } catch { return "data.balance"; }
+  if (path === "/api/user/self") return "$data.quota / 500000";
+  if (path === "/api/usage/token") return "$data.total_available / 500000";
+  if (path === "/api/v1/user/profile") return "$data.balance";
+  if (path.endsWith("/dashboard/billing/credit_grants")) return "$total_available";
+  return "data.balance";
 }
 
 // balanceError: a balance that couldn't be read, said plainly where magpie

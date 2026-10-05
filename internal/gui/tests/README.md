@@ -431,6 +431,12 @@ with the quota as its field, the New-Api-User header is asked for until it
 is typed, Check balance asks as the form has it and says the fix plainly,
 and the Usage page's card does too.
 
+`balance-field-default.test.cjs` leaves a custom provider's Balance field
+empty (#881): its placeholder is the field magpie reads from a Balance URL
+whose reply it knows (new-api's `/api/usage/token` and `/api/user/self`, a
+sub2api panel's `/api/v1/user/profile`, OpenAI's `credit_grants`), following
+the URL as it is typed; any other URL keeps the example.
+
 `cli-update.test.cjs` draws the agents' CLI versions on the Agents page
 (#202) from a faked API: the version after each name, "Update to x.y.z" only
 where magpie knows how the CLI was installed, the rows' height kept, an
