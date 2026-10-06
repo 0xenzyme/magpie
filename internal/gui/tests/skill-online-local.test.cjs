@@ -1,11 +1,13 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
-// A repository's skills are one group however each came in (White Immortal
-// on Discord: the skills of github.com/mattpocock/skills together). One
-// installed from GitHub, one the skills CLI installed and one linked from a
-// clone, each with the repository magpie traced (repo), are one group, its
-// name's case aside; one from a git host other than GitHub is a group
-// opened at that host; the rest are On this computer. English and Chinese;
-// the API is faked here.
+// Skills installed from GitHub are above, this computer's below, and one
+// author's repositories above are one group (#1031, mintonight: two skills
+// of oil-oil, a repository each, installed from the Library's search, were
+// a group each among the local ones, and a group of local skills she made
+// sat above them all). A skill only traced to a repository and a group of
+// the user's with a local skill in it are with On this computer; a group
+// of the user's of skills from GitHub alone is above. An author's many
+// skills are in parts by repository. Chromium and WebKit, en, zh, ja and
+// de, at 1100px and 440px; the API is faked here.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -36,33 +38,44 @@ function server(lang, state) {
   };
 }
 
+const gh = (name, repo) => ({ name, kind: "github", source: `https://github.com/${repo}/tree/main/${name}`, repo, description: "d", agents: ["claude"] });
 const SKILLS = [
-  { name: "tdd", kind: "github", source: "https://github.com/mattpocock/skills/tree/main/skills/tdd", repo: "mattpocock/skills", description: "d", agents: ["claude"] },
-  { name: "grill-me", kind: "folder", source: `${HOME}/.agents/skills/grill-me`, repo: "mattpocock/skills", description: "d", agents: ["claude"] },
-  { name: "write-a-prd", kind: "folder", source: `${HOME}/code/skills/skills/write-a-prd`, repo: "MattPocock/skills", description: "d", agents: [] },
-  { name: "review", kind: "", source: "", repo: "gitlab.com/me/review", description: "d", agents: ["claude"] },
+  gh("oil-cover", "oil-oil/oil-cover"),
+  gh("oil-ppt", "oil-oil/oil-ppt"),
+  gh("tdd", "mattpocock/skills"),
+  gh("grill-me", "mattpocock/skills"),
+  { name: "humanizer-zh", kind: "folder", source: `${HOME}/.agents/skills/humanizer-zh`, repo: "op7418/Humanizer-zh", description: "d", agents: ["claude"] },
+  { name: "lark-doc", kind: "", source: "", description: "d", agents: ["claude"] },
+  { name: "lark-im", kind: "", source: "", description: "d", agents: [] },
   { name: "notes", kind: "", source: "", description: "d", agents: ["claude"] },
 ];
-const L = { en: { here: "On this computer", open: "Open gitlab.com/me/review", gh: "Open mattpocock/skills on GitHub" },
-  zh: { here: "本机", open: "打开 gitlab.com/me/review", gh: "在 GitHub 上打开 mattpocock/skills" } };
+const GROUPS = [{ name: "Lark", skills: ["lark-doc", "lark-im"] }, { name: "Daily", skills: ["grill-me"] }];
+// one author with many skills, for its parts
+const MANY = Array.from({ length: 10 }, (_, i) => gh("acme-" + i, "acme/" + (i < 6 ? "one" : "two")));
+const L = {
+  en: { here: "On this computer", gh: "Open oil-oil on GitHub" },
+  zh: { here: "本机", gh: "在 GitHub 上打开 oil-oil" },
+  ja: { here: "このコンピュータ", gh: "GitHub で oil-oil を開く" },
+  de: { here: "Auf diesem Computer", gh: "oil-oil auf GitHub öffnen" },
+};
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
-  test(engine + ": a repository's skills are one group however each came in", async (t) => {
+  test(engine + ": GitHub's skills above, this computer's below, an author's one group", async (t) => {
     assert(["chromium", "webkit"].includes(engine), "BROWSER must be chromium or webkit");
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || "chromium" }));
     t.after(() => browser.close());
-    for (const lang of ["en", "zh"]) {
-      await t.test(lang, async () => {
+    for (const lang of ["en", "zh", "ja", "de"]) for (const width of [1100, 440]) {
+      await t.test(lang + " " + width, async () => {
         const w = L[lang];
         const state = {
           lib: {
             dir: `${HOME}/.magpie/library`, backups: `${HOME}/.magpie/backups`, home: HOME,
             agents: [agent("claude", "Claude Code", "claudecode-color"), agent("codex", "Codex", "openai")],
             instructions: { agents: [], sets: [] }, servers: [], foundServers: [], projects: [], foundSkills: [], problems: [],
-            skills: structuredClone(SKILLS),
+            skills: structuredClone([...SKILLS, ...MANY]), skillGroups: structuredClone(GROUPS),
           },
         };
-        const ctx = await browser.newContext({ viewport: { width: 1100, height: 760 }, reducedMotion: "reduce" });
+        const ctx = await browser.newContext({ viewport: { width, height: 760 }, reducedMotion: "reduce" });
         await ctx.addInitScript(() => {
           try { localStorage.setItem("magpie.libTab", "skills"); } catch {}
           window.__opened = [];
@@ -78,20 +91,23 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const v = page.locator("#view-library");
         await v.locator(".lib-grouphead").first().waitFor();
         const heads = await v.locator(".lib-grouphead").evaluateAll((hs) => hs.map((h) => [h.querySelector(".name").textContent, h.querySelector(".sub").textContent.replace(/\D+/g, "")]));
-        // the first spelling met names the group; one only traced to a
-        // repository is with this computer's, below those from GitHub (#1031)
-        assert.deepEqual(heads, [["mattpocock/skills", "3"], ["gitlab.com/me/review", "1"], [w.here, "1"]]);
-        const card = (name) => v.locator(".lib-group").filter({ has: page.locator(".lib-grouphead .name", { hasText: name }) });
-        assert.equal(await card("mattpocock/skills").locator(".lib-grouphead .lib-icon").getAttribute("title"), w.gh);
-        const gl = card("gitlab.com/me/review").locator(".lib-grouphead .lib-icon");
-        assert.equal(await gl.getAttribute("title"), w.open);
-        // the page in a browser opens it in a tab of its own
-        await gl.click();
-        assert.deepEqual(await page.evaluate(() => window.__opened), ["https://gitlab.com/me/review"]);
-        // its three skills under it, none in a part of a folder
-        const names = await card("mattpocock/skills").locator(".lib-row:not(.lib-grouphead) .name").allTextContents();
-        assert.deepEqual(names.map((n) => n.trim()).filter((n) => SKILLS.some((s) => s.name === n)).sort(), ["grill-me", "tdd", "write-a-prd"]);
-        assert.equal(await card("mattpocock/skills").locator(".lib-subhead").count(), 0);
+        assert.deepEqual(heads, [
+          ["Daily", "1"], ["acme", "10"], ["mattpocock/skills", "1"], ["oil-oil", "2"],
+          ["Lark", "2"], ["op7418/Humanizer-zh", "1"], [w.here, "1"],
+        ]);
+        const card = (name) => v.locator(".lib-group").filter({ has: page.locator(".lib-grouphead .name", { hasText: new RegExp("^" + name + "$") }) });
+        const names = async (name) => (await card(name).locator(".lib-row:not(.lib-grouphead):not(.lib-subhead) .name").allTextContents()).map((n) => n.trim());
+        assert.deepEqual((await names("oil-oil")).filter((n) => n.startsWith("oil-")), ["oil-cover", "oil-ppt"]);
+        // an author's many skills, a part for each repository
+        const subs = await card("acme").locator(".lib-subhead .name").allTextContents();
+        assert.deepEqual(subs.map((s) => s.trim()), ["acme/one", "acme/two"]);
+        const o = card("oil-oil").locator(".lib-grouphead .lib-icon");
+        assert.equal(await o.getAttribute("title"), w.gh);
+        // an author's group opens the author on GitHub
+        await o.evaluate((b) => b.click());
+        assert.deepEqual(await page.evaluate(() => window.__opened), ["https://github.com/oil-oil"]);
+        // nothing wider than the window
+        assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "no sideways scroll");
         assert.deepEqual(errors, []);
         await ctx.close();
       });

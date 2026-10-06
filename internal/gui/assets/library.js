@@ -1866,11 +1866,36 @@
       if (!g) by.set(key, (g = { key, repo, skills: [] }));
       g.skills.push(s);
     }
-    const groups = [...mine.filter((g) => g.skills.length),
-      ...[...by.values()].sort((a, b) => (a.key === "local") - (b.key === "local") || a.repo.localeCompare(b.repo))];
+    // Installed from GitHub (in the Library's search, Install, or by CC
+    // Switch) above, this computer's below (#1031, mintonight): a
+    // repository traced for skills only found here, and a group of the
+    // user's with any of those in it, are with On this computer. One
+    // author's repositories above are one group, each a part when many
+    // (oil-oil/oil-ui, oil-oil/oil-ppt…): skills.sh lists many authors'
+    // skills a repository each.
+    const online = (s) => s.kind === "github" || !!s.origin;
+    const repos = [...by.values()].filter((g) => g.key !== "local");
+    const up = repos.filter((g) => g.skills.some(online)), down = repos.filter((g) => !g.skills.some(online));
+    const owners = new Map();
+    for (const g of up) {
+      if (/^[^/]+\.[^/]+\//.test(g.repo)) continue; // another git host's
+      const o = g.repo.split("/")[0].toLowerCase();
+      if (!owners.has(o)) owners.set(o, []);
+      owners.get(o).push(g);
+    }
+    for (const [o, gs] of owners) {
+      if (gs.length < 2) continue;
+      const all = { key: "owner:" + o, repo: gs[0].repo.split("/")[0], owner: true, skills: gs.flatMap((g) => g.skills) };
+      up.splice(up.indexOf(gs[0]), 1, all);
+      for (const g of gs.slice(1)) up.splice(up.indexOf(g), 1);
+    }
+    const byRepo = (a, b) => a.repo.localeCompare(b.repo);
+    const mineHere = (g) => !g.skills.every(online);
+    const groups = [...mine.filter((g) => g.skills.length && !mineHere(g)), ...up.sort(byRepo),
+      ...mine.filter((g) => g.skills.length && mineHere(g)), ...down.sort(byRepo), ...(by.has("local") ? [by.get("local")] : [])];
     for (const g of groups) {
       g.skills.sort((a, b) => a.name.localeCompare(b.name));
-      g.text = new Map(g.skills.map((s) => [s, (s.name + " " + (s.description || "") + " " + (g.mine || g.repo)).toLowerCase()]));
+      g.text = new Map(g.skills.map((s) => [s, (s.name + " " + (s.description || "") + " " + (g.mine || (g.owner ? skillRepo(s) : g.repo))).toLowerCase()]));
       g.parts = g.mine ? null : partsOf(g);
     }
     grouped = { lib, pick, groups };
@@ -1917,6 +1942,11 @@
     };
     const label = (key, mono) => key || (mono ? (g.repo ? t("At the top of the repository") : t("Kept in the library")) : t("Others"));
     const order = (a, b) => (!a.key) - (!b.key) || a.mono - b.mono || a.key.localeCompare(b.key);
+    // an author's: by repository
+    if (g.owner) {
+      return [...split(g.skills, (s) => skillRepo(s).toLowerCase())]
+        .map(([key, skills]) => ({ key: "repo:" + key, skills, mono: true, label: skillRepo(skills[0]) })).sort(order);
+    }
     if (g.repo) {
       // the folder in the repository is known of those installed from it
       // only: one traced to it goes by its name with the rest
