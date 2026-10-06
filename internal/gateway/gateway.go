@@ -1120,17 +1120,25 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			}
 		}
 	}
+	// the usage row of a request turned away before any provider was asked:
+	// the ledger says it failed and why. The recent-calls entry is the
+	// usual one at the end of serve, so a caller that only wants the row
+	// (a lane refusal, which returns to serve's end) does not call
+	// turnedAway and record twice.
+	logged := func() {
+		rec := usage.Record{Time: start, Agent: call.Agent, Via: call.Via, Provider: call.Provider, Model: call.Model, Requested: call.Model,
+			Millis: call.Millis, Status: call.Status, Rejected: true, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind, Endpoint: endpointOf(r, from, ""), Archive: call.archiveName()}
+		failedWith(&rec, call.Status, call.Error, "")
+		withBodies(&rec, &call)
+		appendUsage(r, rec)
+	}
 	// a request turned away before any provider was asked is in the log
 	// as the failure it was, with the reason
 	turnedAway := func() {
 		finishCapture()
 		call.Millis = time.Since(start).Milliseconds()
 		s.record(call)
-		rec := usage.Record{Time: start, Agent: call.Agent, Via: call.Via, Provider: call.Provider, Model: call.Model, Requested: call.Model,
-			Millis: call.Millis, Status: call.Status, Rejected: true, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header), Kind: call.Kind, Endpoint: endpointOf(r, from, ""), Archive: call.archiveName()}
-		failedWith(&rec, call.Status, call.Error, "")
-		withBodies(&rec, &call)
-		appendUsage(r, rec)
+		logged()
 	}
 	// a model's id without a provider in it that names a routing group is
 	// the group's, as "group/<id>" is, rather than one provider's that
@@ -1732,6 +1740,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				w.Header().Set("Retry-After", "1")
 			}
 			failTo(w, kept, from, call.Status, call.Error)
+			// nobody was asked, and the agent is told: the ledger gets
+			// the row, as any other turn-away leaves one, and the usual
+			// entry in Recent calls is the one serve writes at its end
+			call.Millis = time.Since(start).Milliseconds()
+			logged()
 			break
 		}
 		hw.settle()
