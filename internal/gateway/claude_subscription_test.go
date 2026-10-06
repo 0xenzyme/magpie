@@ -624,3 +624,52 @@ done
 		t.Fatalf("turns: %s", b)
 	}
 }
+
+// A run's Claude Code has the caller's tools only as mcp__magpie__<Name>:
+// its built-ins are off. A run started anew on a long conversation was told
+// every past call by its bare name ([tool call Bash …]), so the model
+// called Bash, Claude Code answered "Bash is disabled for this session, in
+// subagents as well as here." and the turn ended with no call (#958). The
+// past calls of the tools the caller offers are told under the run's names;
+// a call of one it doesn't offer (its framework's own) keeps its name.
+func TestClaudePromptTellsPastCallsByTheRunsNames(t *testing.T) {
+	msgs := []Message{
+		{Role: "user", Parts: []Part{{Kind: Text, Text: "run the tests"}}},
+		{Role: "assistant", Parts: []Part{
+			{Kind: ToolCall, ID: "toolu_1", Name: "Bash", Args: json.RawMessage(`{"command":"go test ./..."}`)},
+			{Kind: ToolCall, ID: "toolu_2", Name: "team_sync", Args: json.RawMessage(`{}`)},
+		}},
+		{Role: "user", Parts: []Part{{Kind: ToolResult, CallID: "toolu_1", Text: "ok"}, {Kind: ToolResult, CallID: "toolu_2", Text: "synced"}}},
+		{Role: "assistant", Parts: []Part{{Kind: Text, Text: "All pass."}}},
+		{Role: "user", Parts: []Part{{Kind: Text, Text: "and lint?"}}},
+	}
+	tools := []Tool{{Name: "Bash"}, {Name: "Read"}}
+	text := func(blocks []map[string]any) string {
+		var b strings.Builder
+		for _, block := range blocks {
+			s, _ := block["text"].(string)
+			b.WriteString(s)
+		}
+		return b.String()
+	}
+	check := func(what, got string) {
+		t.Helper()
+		if !strings.Contains(got, "[tool call mcp__magpie__Bash id=toolu_1 ") || strings.Contains(got, "[tool call Bash ") {
+			t.Errorf("%s: a call of the caller's Bash isn't told as the run's mcp__magpie__Bash: %q", what, got)
+		}
+		if !strings.Contains(got, "[tool call team_sync id=toolu_2 ") {
+			t.Errorf("%s: a call of a tool the caller doesn't offer lost its name: %q", what, got)
+		}
+	}
+	blocks, err := renderClaudePrompt(&Request{Messages: msgs, Tools: tools})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("started anew", text(blocks))
+	check("next turn", text(renderClaudeTurn(msgs[1:], tools)))
+
+	blocks, _ = renderClaudePrompt(&Request{Messages: msgs[:1], Tools: tools, ToolChoice: "name:Read"})
+	if got := text(blocks); !strings.Contains(got, "You must call the mcp__magpie__Read tool.") {
+		t.Errorf("a forced tool is named as the caller has it, not as the run can call it: %q", got)
+	}
+}

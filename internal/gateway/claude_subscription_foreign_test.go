@@ -72,7 +72,7 @@ func TestClaudeRunKeptAfterTheClientsOwnToolCall(t *testing.T) {
 func TestClaudeTurnLabelsTheClientsOwnCall(t *testing.T) {
 	text := func(msgs []Message) string {
 		var b strings.Builder
-		for _, block := range renderClaudeTurn(msgs) {
+		for _, block := range renderClaudeTurn(msgs, nil) {
 			s, _ := block["text"].(string)
 			b.WriteString(s)
 		}
