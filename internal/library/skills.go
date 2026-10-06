@@ -134,7 +134,7 @@ func ours(p, name string) bool {
 	if err != nil {
 		return false
 	}
-	if fi.Mode()&fs.ModeSymlink != 0 {
+	if linkEntry(fi) {
 		to, err := os.Readlink(p)
 		return err == nil && filepath.Clean(to) == filepath.Clean(skillDir(name))
 	}
@@ -149,7 +149,7 @@ func link(p, name string) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
-	err := os.Symlink(skillDir(name), p)
+	err := dirLink(skillDir(name), p)
 	if err == nil || runtime.GOOS != "windows" {
 		return err
 	}
@@ -269,7 +269,7 @@ func unlink(p string) error {
 	if err != nil {
 		return nil
 	}
-	if fi.Mode()&fs.ModeSymlink != 0 {
+	if linkEntry(fi) {
 		return os.Remove(p)
 	}
 	return os.RemoveAll(p)
@@ -346,7 +346,7 @@ func linkTarget(p string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	if fi.Mode()&fs.ModeSymlink == 0 && (runtime.GOOS != "windows" || fi.Mode()&fs.ModeIrregular == 0) {
+	if !linkEntry(fi) {
 		return "", false
 	}
 	to, err := os.Readlink(p)
@@ -354,6 +354,14 @@ func linkTarget(p string) (string, bool) {
 		return "", false
 	}
 	return to, true
+}
+
+// linkEntry is whether the entry is a link rather than a folder of its own:
+// a symlink, or on Windows a junction (which Go reports as irregular).
+// Taking one away is os.Remove, which leaves what it points at, even when
+// where it points can't be read.
+func linkEntry(fi fs.FileInfo) bool {
+	return fi.Mode()&fs.ModeSymlink != 0 || runtime.GOOS == "windows" && fi.Mode()&fs.ModeIrregular != 0
 }
 
 // linked is whether the entry at p is a link to a folder elsewhere rather
@@ -829,7 +837,7 @@ func InstallSkills(input string, paths, agents []string) (*Result, error) {
 			}
 			if src.Kind == "folder" {
 				src.Dir = from
-				if err := os.Symlink(from, skillDir(c.Name)); err != nil {
+				if err := dirLink(from, skillDir(c.Name)); err != nil {
 					if errors.Is(err, fs.ErrExist) {
 						return fmt.Errorf("the library already has a skill called %s", c.Name)
 					}
@@ -1061,7 +1069,7 @@ func (up *skillUpdate) apply(l *Library) error {
 		return err
 	}
 	hash := hashDir(next)
-	if fi, err := os.Lstat(skillDir(name)); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+	if fi, err := os.Lstat(skillDir(name)); err == nil && linkEntry(fi) {
 		// a link to CC Switch's folder: only the link goes
 		if err := os.Remove(skillDir(name)); err != nil {
 			os.RemoveAll(next)
@@ -1444,7 +1452,7 @@ func importSkill(l *Library, found []FoundSkill, name string) error {
 			src = nil
 		}
 	case f.Link != "" || shared:
-		if err := os.Symlink(f.real, skillDir(name)); err != nil {
+		if err := dirLink(f.real, skillDir(name)); err != nil {
 			return err
 		}
 	default:

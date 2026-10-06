@@ -94,9 +94,10 @@ func TestWSLSkillsCopied(t *testing.T) {
 		}
 	}
 	// Windows without the right to make symlinks (Developer Mode off, not
-	// elevated) gives copies: the library's is a copy of the folder, and
-	// this machine's Claude Code a marked copy of that (#973)
-	links := os.Symlink(t.TempDir(), filepath.Join(t.TempDir(), "link")) == nil
+	// elevated) links with junctions (#973); only where neither can be
+	// made is the library's a copy of the folder, and this machine's Claude
+	// Code a marked copy of that
+	links := dirLink(t.TempDir(), filepath.Join(t.TempDir(), "link")) == nil
 	if local := filepath.Join(home(), ".claude/skills/pdf"); linked(local) != links || !ours(local, "pdf") {
 		t.Errorf("this machine's Claude Code: linked %v, symlinks here %v", linked(local), links)
 	}

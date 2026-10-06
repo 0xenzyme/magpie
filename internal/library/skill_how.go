@@ -89,7 +89,7 @@ func SetSkillHow(agent, how string) (*Result, error) {
 func relink(agent, p, name string) (bool, error) {
 	next := filepath.Join(filepath.Dir(p), "."+name+".magpie-link")
 	os.Remove(next)
-	if err := os.Symlink(skillDir(name), next); err != nil {
+	if err := dirLink(skillDir(name), next); err != nil {
 		return false, nil
 	}
 	var err error
