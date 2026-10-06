@@ -2692,8 +2692,9 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	if err != nil {
 		return res, err
 	}
-	// Cline's whole replies come in {success, data}
-	return clineUnwrapped(p, res), nil
+	// Cline's whole replies come in {success, data}; a web page or
+	// nothing at all, served 200, is the 502 it stands for (#1012)
+	return notAnAPIReply(clineUnwrapped(p, res), ""), nil
 }
 
 // fromClaudeCode is a request Claude Code sent, by the User-Agent it gives

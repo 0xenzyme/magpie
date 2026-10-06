@@ -470,6 +470,11 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 		}
 		body = b
 	}
+	if rest == "/responses" {
+		// a web page or nothing at all, served 200, is the 502 it stands
+		// for (#1012)
+		res = notAnAPIReply(res, "OpenAI: ")
+	}
 	defer res.Body.Close()
 	if base == codexAPIBase && res.StatusCode == http.StatusUnauthorized {
 		// Codex signed in with an API key OpenAI refuses — often one a
