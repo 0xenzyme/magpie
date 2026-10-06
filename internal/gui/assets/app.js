@@ -15964,7 +15964,13 @@ const SESS_WEEK = 20, SESS_WEEK_MAX = 24;
 // wide card and left the rest empty. The weeks before the range come in as
 // empty cells, GitHub's way, up to a year in all, and the cells grow a little
 // to take what is left; a narrow card gets none and its cells shrink.
-const sessCalWidth = new ResizeObserver((es) => { for (const e of es) e.target.fitCal?.(); });
+// It fits on the next frame: a calendar put again changes the card's height,
+// which this would be told of in the same call, a ResizeObserver loop.
+const sessCalWidth = new ResizeObserver((es) => {
+  for (const { target: chart } of es) {
+    if (!chart.fitFrame) chart.fitFrame = requestAnimationFrame(() => { chart.fitFrame = 0; chart.fitCal?.(); });
+  }
+});
 function sessCalFit(chart, days, value, tip) {
   const wrap = chart.querySelector(".sess-cal-wrap"), cal = wrap?.querySelector(".sess-cal");
   if (!cal || !wrap.clientWidth) return;
