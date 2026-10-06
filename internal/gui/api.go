@@ -981,6 +981,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// used or left is the Usage page's toggle as much as Settings', set on its own
 		in.QuotaLeft = cur.QuotaLeft
 		in.UsageOrder = cur.UsageOrder // the Usage page's, dragged there
+		// and what the tray panel's Allowances tab leaves out, set there
+		in.PanelUsageHidden = cur.PanelUsageHidden
 		// how agents' lists name models, set on its own for the agents to be told
 		in.PlainNames, in.PlainOwnNames = cur.PlainNames, cur.PlainOwnNames
 		in.CodexAgentsV1 = cur.CodexAgentsV1
@@ -1383,15 +1385,25 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		}
 		writeJSON(rw, settingsState())
 	})
-	// the Usage page's order of its cards, in magpie's settings
+	// the Usage page's order of its cards, which the tray panel's Allowances
+	// tab follows, and what that tab leaves out, in magpie's settings; one
+	// not sent stays as it is
 	mux.HandleFunc("POST /api/usage/arrange", func(rw http.ResponseWriter, r *http.Request) {
-		var in struct{ Order []string }
+		var in struct {
+			Order       *[]string
+			PanelHidden *[]string
+		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			fail(rw, err)
 			return
 		}
 		s := settings.Load()
-		s.UsageOrder = in.Order
+		if in.Order != nil {
+			s.UsageOrder = *in.Order
+		}
+		if in.PanelHidden != nil {
+			s.PanelUsageHidden = *in.PanelHidden
+		}
 		if err := settings.Save(s); err != nil {
 			fail(rw, err)
 			return

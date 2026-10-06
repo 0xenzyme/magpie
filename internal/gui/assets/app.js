@@ -12608,7 +12608,9 @@ function usageHandle(sub, card) {
   return b;
 }
 
-const usageKeys = () => [...new Set([...$("#subscriptionUsage").children].map((c) => c.dataset.key))];
+// the subscriptions in the order on the page: the Usage page's cards, or
+// in the panel the rows of its Allowances tab's arranging
+const usageKeys = () => [...new Set([...(mode === "panel" ? $$("#panelQuota .pq-arow") : $("#subscriptionUsage").children)].map((c) => c.dataset.key))];
 
 // moveUsage puts the card at index `to` among those on the page; what the
 // order named that isn't on it now (an account signed out) keeps its place
@@ -12986,6 +12988,14 @@ function planSpan(q) {
   return s;
 }
 
+// panelArranging: the Allowances tab lists its subscriptions to hide and
+// move (panelArrange); panelPeek: the card a menu bar cell asked for, shown
+// though the tab hides it, until the panel is put away or the tab left.
+let panelArranging = false, panelPeek = "";
+if (mode === "panel") document.addEventListener("visibilitychange", () => {
+  if (document.hidden && (panelPeek || panelArranging)) { panelPeek = ""; panelArranging = false; renderPanelQuota(); }
+});
+
 // The tray panel is four tabs over the one page: the agents, the allowances
 // of every subscription and key (the "usage" tab, as it was named before),
 // what the requests add up to (the "stats" tab, the window's Requests made
@@ -13031,6 +13041,7 @@ function setPanelTab(tab) {
   const b = tabs.querySelector(`[data-ptab="${tab}"]`);
   if (!b || b.hidden) tab = "agents";
   closeProfiles();
+  if (tab !== "usage") panelPeek = "";
   panelTab = tab;
   try { localStorage.setItem("magpie.panelTab", tab); } catch {}
   document.body.dataset.ptab = tab;
@@ -13119,7 +13130,11 @@ function panelQuotaFocus(id) {
   if (mode !== "panel") return;
   quotaFocus = id;
   quotaFocusUntil = performance.now() + 5000;
+  // a cell for a subscription the tab hides shows its card all the same
+  panelPeek = id;
+  panelArranging = false;
   setPanelTab("usage");
+  renderPanelQuota();
   requestAnimationFrame(focusQuotaCard);
 }
 
@@ -13354,9 +13369,12 @@ function renderPanelQuota() {
   }
   if (none && panelTab === "usage") setPanelTab("agents");
   box.hidden = none;
+  // a row held in the arranging: drawn when it's let go
+  if (usageArranging && box.querySelector(".pq-arow")) { usageRenderPending = true; return; }
+  const view = box.closest(".view"), keep = view?.scrollTop;
   const restoreFlash = keepQuotaFlash(box);
   box.replaceChildren();
-  if (none) { quotaFocus = ""; fit(); return; }
+  if (none) { quotaFocus = ""; panelArranging = false; fit(); return; }
   if (!quotas) {
     for (let i = 0; i < 2; i++) {
       const card = el("div", "pq-card");
@@ -13366,9 +13384,21 @@ function renderPanelQuota() {
     fit();
     return;
   }
+  if (panelArranging) {
+    box.append(panelArrange(subs));
+    if (view && view.scrollTop !== keep) view.scrollTop = keep;
+    fit();
+    return;
+  }
+  // what the arranging hid is left out, but for the one a menu bar cell
+  // was clicked for
+  const hidden = new Set(state.settings?.panelUsageHidden || []);
+  const peek = (q) => !!panelPeek && (trayCardID(q) === panelPeek || q.provider === panelPeek);
+  const away = new Set(subs.filter((q) => hidden.has(q.provider) && !peek(q)).map((q) => q.provider));
   const groups = new Map();
   const bals = [];
   for (const q of subs) {
+    if (away.has(q.provider)) continue;
     // a balance with windows (Command Code's credits beside its 5-hour and
     // weekly windows) is the windows' card; a balance alone, a figure
     if (q.balance && !q.windows?.length) { bals.push(q); continue; }
@@ -13445,10 +13475,95 @@ function renderPanelQuota() {
     g.append(grid);
     box.append(g);
   }
+  // the way to hide some and move them, and how many are hidden
+  const foot = el("div", "pq-foot");
+  const arrange = el("button", "pq-more pq-arrange", t("Arrange"));
+  arrange.type = "button";
+  arrange.title = t("Choose which subscriptions this tab shows, and their order");
+  arrange.onclick = () => { panelArranging = true; panelPeek = ""; renderPanelQuota(); $("#panelQuota .pq-arow .pq-ahandle")?.focus({ preventScroll: true }); };
+  foot.append(arrange);
+  if (away.size) foot.append(el("span", "pq-hidden", t("{n} hidden", { n: away.size })));
+  box.append(foot);
   restoreFlash();
+  if (view && view.scrollTop !== keep && !box.querySelector(".pq-card.flash")) view.scrollTop = keep;
   panelAge();
   fit();
   requestAnimationFrame(focusQuotaCard);
+}
+
+// The Allowances tab's arranging (H20 on Discord): a row a subscription,
+// in the order the Usage page's cards have, its logo the handle to move it
+// (drag, or Alt+arrows) and a pill to hide it from this tab or show it
+// again. Hiding is the panel's alone; routing and the rest still use it.
+function panelArrange(subs) {
+  const g = el("div", "pq-group pq-arranging");
+  const head = el("div", "pq-gh");
+  head.append(el("span", "pq-gn", t("Arrange")));
+  const done = el("button", "pq-mode pq-done", t("Done"));
+  done.type = "button";
+  done.onclick = () => { panelArranging = false; renderPanelQuota(); };
+  head.append(done);
+  g.append(head, el("p", "pq-anote", t("Hiding is for this panel only: routing, the Usage page and the menu bar still use what's hidden. The order is the Usage page's too.")));
+  const hidden = new Set(state.settings?.panelUsageHidden || []);
+  const list = el("div", "pq-alist");
+  const seen = new Set();
+  for (const q of subs) {
+    if (seen.has(q.provider)) continue;
+    seen.add(q.provider);
+    const off = hidden.has(q.provider);
+    const row = el("div", "pq-arow" + (off ? " put-away" : ""));
+    row.dataset.key = q.provider;
+    const h = el("button", "ag-handle pq-ahandle");
+    h.type = "button";
+    h.setAttribute("aria-label", t("Arrange {agent}", { agent: q.name }));
+    h.title = t("Drag to reorder · Alt+arrow keys to move");
+    h.append(icon(q.icon || "generic"));
+    h.onkeydown = (e) => {
+      const step = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 }[e.key];
+      if (!e.altKey || !step) return;
+      e.preventDefault();
+      moveUsage(q.provider, usageKeys().indexOf(q.provider) + step);
+      $(`#panelQuota .pq-arow[data-key="${CSS.escape(q.provider)}"] .pq-ahandle`)?.focus({ preventScroll: true });
+    };
+    h.onpointerdown = (e) => {
+      if (usageArranging) return;
+      usageArranging = dragCards(e, h, row, list, [...list.children], (to) => moveUsage(q.provider, to), () => {
+        usageArranging = false;
+        if (usageRenderPending) { usageRenderPending = false; renderQuotas(); }
+      });
+    };
+    const pill = el("button", "pq-more pq-show", t(off ? "Show" : "Hide"));
+    pill.type = "button";
+    pill.setAttribute("aria-pressed", String(!off));
+    pill.title = t(off ? "Show {name} in this panel" : "Hide {name} from this panel", { name: q.name });
+    pill.onclick = () => hidePanelUsage(q.provider, !off);
+    row.append(h, el("span", "pq-aname", q.name), off ? el("span", "pq-hidden", t("Hidden")) : "", pill);
+    list.append(row);
+  }
+  g.append(list);
+  return g;
+}
+
+// hidePanelUsage hides a subscription from the panel's Allowances tab, or
+// shows it again: drawn at once, put back if the save fails.
+async function hidePanelUsage(key, hide) {
+  const prev = state.settings;
+  const cur = (prev.panelUsageHidden || []).filter((k) => k !== key);
+  const panelHidden = hide ? [...cur, key] : cur;
+  state.settings = { ...prev, panelUsageHidden: panelHidden };
+  const again = () => {
+    renderPanelQuota();
+    $(`#panelQuota .pq-arow[data-key="${CSS.escape(key)}"] .pq-show`)?.focus({ preventScroll: true });
+  };
+  again();
+  try {
+    const s = await api("usage/arrange", { panelHidden });
+    state.settings = { ...state.settings, panelUsageHidden: s.panelUsageHidden || [] };
+  } catch (e) {
+    state.settings = prev;
+    again();
+    status(e.message, "err");
+  }
 }
 
 // asOfText: an allowance standing in for one that couldn't be read just

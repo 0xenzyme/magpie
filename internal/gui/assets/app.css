@@ -1302,6 +1302,27 @@ body.panel .profiles #save { height: 25px; } /* the field's: the line keeps its 
 .pq-mode { flex: none; margin-left: auto; height: 15px; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--muted); font-size: 9.5px; font-weight: 600; line-height: 15px; letter-spacing: .04em; text-transform: uppercase; transition: background .12s, color .12s; }
 .pq-more { align-self: flex-start; height: 20px; padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--muted); font-size: 11px; transition: background .12s, color .12s; }
 .pq-more:hover { background: color-mix(in srgb, var(--fg) 12%, transparent); color: var(--fg); }
+/* the tab's foot: Arrange, and how many it hides (H20 on Discord) */
+.pq-foot { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pq-hidden { flex: 0 1 auto; min-width: 0; color: var(--faint); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* arranging: a row a subscription, its logo the handle (the grip by it on
+   hover), a pill to hide or show it */
+.pq-anote { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.pq-alist { display: flex; flex-direction: column; gap: 6px; }
+.pq-arow { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px 10px 7px 14px; border-radius: 10px; background: var(--card); box-shadow: var(--card-edge); }
+.pq-arow .pq-ahandle { position: relative; width: 22px; height: 22px; margin: -2px; }
+.pq-arow .pq-ahandle .ic { width: 16px; height: 16px; }
+.pq-arow .pq-ahandle::before { content: ""; position: absolute; left: -9px; top: 50%; width: 6px; height: 11px; margin-top: -5.5px; background: radial-gradient(circle, var(--muted) .9px, transparent 1.2px) 0 0 / 3px 3.75px; opacity: 0; transition: opacity .15s; }
+.pq-arow:is(:hover, .dragging) .pq-ahandle::before { opacity: 1; }
+.pq-arow .pq-ahandle:focus-visible::before { opacity: 1; }
+.pq-aname { flex: 1 1 auto; min-width: 0; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pq-arow .pq-hidden { flex: none; }
+.pq-arow .pq-show { flex: none; align-self: center; }
+.pq-arow.put-away .pq-ahandle > .ic, .pq-arow.put-away .pq-aname { opacity: .5; }
+.pq-alist.sorting { user-select: none; -webkit-user-select: none; }
+.pq-alist.sorting > .pq-arow { transition: transform .22s cubic-bezier(.22, 1, .36, 1); }
+.pq-alist.sorting .pq-ahandle { cursor: grabbing; }
+.pq-alist > .pq-arow.dragging { position: relative; z-index: 2; box-shadow: 0 8px 22px rgba(20, 22, 30, .14), 0 0 0 1px var(--line); transition: none; }
 .pq-mode:hover { background: color-mix(in srgb, var(--fg) 12%, transparent); color: var(--fg); }
 .pq-gnote + .pq-mode { margin-left: 0; }
 .pq-mode.flash { animation: pq-mode-flash .9s ease-out; }

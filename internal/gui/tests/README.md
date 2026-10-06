@@ -587,6 +587,18 @@ and cancels navigation after five seconds or a purposeful user scroll.
 It runs in English and Chinese on Chromium and WebKit, with a mocked API. Run with
 `node --test internal/gui/tests/tray-cell-click.test.cjs`.
 
+`panel-arrange.test.cjs` opens the tray panel's Allowances tab at 440px with a
+subscription hidden in the settings: it has no card and the foot says one is
+hidden. *Arrange* keeps the page where the reader scrolled it and lists a row
+a subscription in the shared order, with the note that hiding is the panel's
+only; the grip by a logo shows on hover only, and no row has a left stripe or
+runs off sideways. *Show* and *Hide* post `panelHidden` without moving the
+page, a failed save is put back, Alt+arrow and a drag by the logo post the
+`order`, and *Done* draws the cards in it. A menu bar cell for a hidden
+subscription still opens its card until the panel is put away, and the Usage
+page keeps the hidden card in the same order. It runs in English, Chinese,
+Japanese and German on Chromium and WebKit, with a mocked API.
+
 `TestTrayCellClickReleasedPanel` (darwin, cgo, GUI) runs a separate AppKit
 process with an isolated config and a minimal page: a quota click recreates
 the released panel, queued ExecJS selects the account once Wails is ready,

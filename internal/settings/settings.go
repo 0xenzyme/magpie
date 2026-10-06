@@ -318,6 +318,11 @@ type Settings struct {
 	// own order. Only the page's: the order providers are tried in is the
 	// Providers page's.
 	UsageOrder []string `json:"usageOrder,omitempty"`
+	// PanelUsageHidden are the subscriptions, by provider id, that the tray
+	// panel's Allowances tab leaves out (H20 on Discord). It is what the
+	// panel shows, nothing more: routing, caps, the Usage page and the menu
+	// bar's cells still have them. The panel's order is UsageOrder.
+	PanelUsageHidden []string `json:"panelUsageHidden,omitempty"`
 	// Visible narrows the models an agent is shown, by agent id: the
 	// families (the tag a provider or group is given), provider ids and
 	// group ids its lists hold. An agent it doesn't name is shown them all.
@@ -919,6 +924,7 @@ func Save(s Settings) error {
 	s.RedactRules = rules
 	s.AgentOrder, s.AgentsHidden, s.AgentsShown = ids(s.AgentOrder), ids(s.AgentsHidden), ids(s.AgentsShown)
 	s.UsageOrder = ids(s.UsageOrder)
+	s.PanelUsageHidden = ids(s.PanelUsageHidden)
 	s.TrayUsages = ids(s.TrayUsages)
 	for i, u := range s.CodexAutoReset {
 		s.CodexAutoReset[i] = strings.ToLower(u)

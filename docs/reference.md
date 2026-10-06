@@ -882,6 +882,16 @@ It changes the gateway's routing only, never the account Codex is signed in
 to. The credits an account holds show beside its windows in `magpie quota`,
 `magpie accounts`, the Usage page and the menu bar panel.
 
+The Usage page's cards and the menu bar panel's *Allowances* tab are in one
+order: drag a card's logo on the Usage page (or Alt+arrow keys on it), or
+press *Arrange* at the foot of the panel's tab and move the rows there. The
+same *Arrange* hides a subscription from the panel's tab (*Hide*, *Show*
+puts it back), and the tab's foot says how many are hidden. Hiding is the
+panel's only: routing, caps, the Usage page and the menu bar's own cells
+still have it, and a menu bar cell for it still opens its card. Both are
+kept in magpie's settings (`usageOrder`, `panelUsageHidden`). Which
+allowances the menu bar itself shows beside its icon is picked in Settings.
+
 The *Gateway* tab in the app has this as copy buttons and ready-made
 snippets (shell, curl, Python, Node) for each API, the list of model ids,
 and the recent calls; `MAGPIE_DEBUG=1` logs every call to the terminal.
