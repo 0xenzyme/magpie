@@ -117,3 +117,46 @@ func TestCORSOrigins(t *testing.T) {
 		t.Fatalf("agent: %d %v", w.Code, w.Header())
 	}
 }
+
+// On the real server lanGuard sits in front of Handler and, for a gateway
+// key sent from this computer, records who called and puts magpie's own
+// token in the key's place; a listed page's keyed call is still answered.
+func TestCORSKeyThroughTheServer(t *testing.T) {
+	fresh(t)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1}}`)
+	}))
+	defer up.Close()
+	if err := provider.Save(provider.Provider{ID: "plan", Name: "Plan", Key: "upstream-secret", Chat: up.URL + "/v1", Models: []string{"m1"}}); err != nil {
+		t.Fatal(err)
+	}
+	secret, err := access.Update("add-key", access.Change{Name: "Web app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := settings.Load()
+	s.CORSOrigins = []string{"http://localhost:3000"}
+	if err := settings.Save(s); err != nil {
+		t.Fatal(err)
+	}
+	srv := lanGuard(New().Handler())
+	for _, key := range []string{secret, ""} {
+		r := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(chatReq))
+		r.RemoteAddr = "127.0.0.1:50123"
+		r.Header.Set("Origin", "http://localhost:3000")
+		r.Header.Set("Content-Type", "application/json")
+		if key != "" {
+			r.Header.Set("Authorization", "Bearer "+key)
+		}
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, r)
+		want := http.StatusOK
+		if key == "" {
+			want = http.StatusUnauthorized
+		}
+		if w.Code != want || w.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" {
+			t.Errorf("key %q: %d %v %s", key, w.Code, w.Header(), w.Body)
+		}
+	}
+}

@@ -42,7 +42,11 @@ func corsGuard(next http.Handler) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if !slices.ContainsFunc(callerKeys(r), func(k string) bool { _, ok := access.Authenticate(k); return ok }) {
+		// lanGuard, in front of Handler on the real server, has already
+		// taken the key and put magpie's own token in its place
+		keyed := access.Caller(r.Context()).KeyID != "" ||
+			slices.ContainsFunc(callerKeys(r), func(k string) bool { _, ok := access.Authenticate(k); return ok })
+		if !keyed {
 			writeError(w, provider.Chat, http.StatusUnauthorized, "a web page calls magpie with a gateway key: create one in magpie's Gateway page and send it as Authorization: Bearer <key> (or x-api-key)")
 			return
 		}
