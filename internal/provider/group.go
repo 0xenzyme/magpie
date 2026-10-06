@@ -23,6 +23,7 @@ package provider
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -306,6 +307,20 @@ func SetAutoGroups(on bool) error {
 // AutoGroupID is the id of the group magpie finds for a model, however a
 // vendor spells it: "auto-claude-opus-5-5" for claude-opus-5.5.
 func AutoGroupID(model string) string { return "auto-" + Slug(sameModel(model)) }
+
+var groupDots = regexp.MustCompile(`\.{2,}`)
+
+// GroupSlug derives a group's own id from a name as Slug does, the dots
+// kept: "GPT 6.1 Sol" → "gpt-6.1-sol", so an agent sending group/<id> sends
+// the model's name as harnesses that price or tune by it read it (#968). A
+// run of dots is one, and none starts or ends it. The ids magpie finds
+// (auto-…) stay Slug's, so no id saved before changes.
+func GroupSlug(name string) string {
+	s := strings.Join(strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '.'
+	}), "-")
+	return strings.Trim(groupDots.ReplaceAllString(s, "."), "-.")
+}
 
 // AutoGroupOf is the id of the group magpie finds for a provider's model:
 // AutoGroupID of the model the user said it is the same as (settings'
@@ -703,10 +718,10 @@ func SaveGroup(g Group) error {
 	g.ID = strings.ToLower(strings.TrimSpace(g.ID))
 	g.Name = strings.TrimSpace(g.Name)
 	if g.ID == "" {
-		g.ID = Slug(g.Name)
+		g.ID = GroupSlug(g.Name)
 	}
-	if g.ID == "" || g.ID != Slug(g.ID) {
-		return fmt.Errorf("a group's id must be lowercase letters, digits and dashes, not %q", g.ID)
+	if g.ID == "" || g.ID != GroupSlug(g.ID) {
+		return fmt.Errorf("a group's id must be lowercase letters, digits, dots and dashes, not %q", g.ID)
 	}
 	if g.Name == "" {
 		g.Name = g.ID
@@ -1093,8 +1108,8 @@ func ShowGroup(id string) error {
 func RenameGroup(from, to string) error {
 	from = strings.ToLower(strings.TrimSpace(from))
 	to = strings.ToLower(strings.TrimSpace(to))
-	if to == "" || to != Slug(to) {
-		return fmt.Errorf("a group's id must be lowercase letters, digits and dashes, not %q", to)
+	if to == "" || to != GroupSlug(to) {
+		return fmt.Errorf("a group's id must be lowercase letters, digits, dots and dashes, not %q", to)
 	}
 	if to == from {
 		return nil

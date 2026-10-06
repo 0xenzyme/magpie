@@ -3040,8 +3040,8 @@
     }
     const idIn = g ? keys(input(d.id, g.id)) : null;
     const idOf = () => {
-      if (g) return slug(d.id) || g.id;
-      let id = slug(d.name) || "group", n = 1;
+      if (g) return groupSlug(d.id) || g.id;
+      let id = groupSlug(d.name) || "group", n = 1;
       const base = id;
       while (groups.groups.some((x) => x.id === id)) id = `${base}-${++n}`;
       return id;

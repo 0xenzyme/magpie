@@ -384,6 +384,11 @@ and the status line says which agent was moved to the model from one provider;
 clicked on, the found group is back. Neither click moves the page, the switch
 has no left-border accent, and every string has its Chinese.
 
+`group-id-dots.test.cjs` checks that a routing group's id keeps the dots of a
+model's name (#968): a new group named "GPT 6.1 Sol" is said and sent as
+`group/gpt-6.1-sol`, and `groupSlug` folds a run of dots and trims them at the
+ends as `provider.GroupSlug` does, in English and Chinese, Chromium and WebKit.
+
 `group-new-head.test.cjs` checks that a routing group of any models can be
 made from the top of the Routing page, in Chromium and WebKit, English and
 Chinese (mintonight, #944: the groups' New group sat below the requests, so
