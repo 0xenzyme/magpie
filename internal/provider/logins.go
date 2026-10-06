@@ -186,23 +186,28 @@ func readLogins() []savedLogin {
 }
 
 // keepUnreadLogins copies a logins.json that doesn't parse aside before it
-// is written over, so the accounts in it can still be got back.
-func keepUnreadLogins(path string) {
+// is written over, so the accounts in it can still be got back. A failure
+// to read or keep an existing file stops the write.
+func keepUnreadLogins(path string) error {
 	b, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
-		return
+		return err
 	}
 	// Match readLogins: valid JSON can still have unreadable field types.
 	var ls []savedLogin
 	if json.Unmarshal(b, &ls) == nil {
-		return
+		return nil
 	}
 	bad := path + ".bad-" + time.Now().Format("20060102-150405")
 	if err := os.WriteFile(bad, b, 0o600); err != nil {
 		log.Printf("logins.json doesn't parse and couldn't be kept: %v", err)
-		return
+		return err
 	}
 	log.Printf("logins.json didn't parse; it is kept as %s", filepath.Base(bad))
+	return nil
 }
 
 func writeLogins(ls []savedLogin) error {
@@ -231,7 +236,9 @@ func writeLogins(ls []savedLogin) error {
 		return err
 	}
 	defer Changed() // an account added, switched or gone: All builds anew
-	keepUnreadLogins(loginsPath())
+	if err := keepUnreadLogins(loginsPath()); err != nil {
+		return err
+	}
 	if err := writePrivate(loginsPath(), append(b, '\n')); err != nil {
 		return err
 	}
