@@ -2402,6 +2402,13 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	if relay && searchAsked(from, body) && (from == provider.Chat && !p.IsRemoteMagpie() || !searchesModel(p, from, model)) {
 		relay = false
 	}
+	// a Claude model is asked on Messages whatever API the client spoke,
+	// for the cache breakpoints the translation adds: OpenCode speaks Chat
+	// for every model, and a relay drops cache_control on Chat, so every
+	// turn was billed uncached (ReturnTrue on Discord, after #997)
+	if relay && from != provider.Anthropic && p.OnMessages(model) && slices.Contains(s.usable(p, model), provider.Anthropic) {
+		relay = false
+	}
 	// Zen's free models are asked as OpenCode asks them (zenfree.go)
 	if p.OpenCodeFree(model) {
 		relay = false
