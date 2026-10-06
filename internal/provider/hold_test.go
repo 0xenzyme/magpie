@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/yetone/magpie/internal/settings"
+	"github.com/yetone/magpie/internal/testenv"
 )
 
 // A request that only reads builds the catalog once for all its look-ups
@@ -146,9 +147,7 @@ func TestCursorKeychainReadOnce(t *testing.T) {
 	dir := t.TempDir()
 	log := filepath.Join(dir, "runs")
 	script := "#!/bin/sh\necho run >> " + log + "\necho tok-$(wc -l < " + log + " | tr -d ' ')\n"
-	if err := os.WriteFile(filepath.Join(dir, "security"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testenv.Program(t, filepath.Join(dir, "security"), script)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	forgetCursorStatus()
 	t.Cleanup(forgetCursorStatus)

@@ -52,11 +52,10 @@ func isolatedTests(m *testing.M) (int, error) {
 	// Finding an inert CLI also prevents discovery from falling back to
 	// one installed at an absolute system path. Tests can prepend their
 	// own fakes, as fakeClaude does, and still use ordinary shell tools.
-	for _, name := range []string{"security", "secret-tool", "claude", "codex", "cursor-agent", "devin", "grok", "kiro-cli"} {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
-			return 1, err
-		}
+	if err := testenv.StandIns(bin, []string{"security", "secret-tool", "claude", "codex", "cursor-agent", "devin", "grok", "kiro-cli"}); err != nil {
+		return 1, err
 	}
+	defer testenv.RemovePrograms()
 	if err := os.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH")); err != nil {
 		return 1, err
 	}

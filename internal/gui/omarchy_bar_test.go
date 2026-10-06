@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/yetone/magpie/internal/testenv"
 )
 
 // barWin is the desktop app as a Windows; the Bar icon routes reach no
@@ -25,9 +27,7 @@ func TestBarIconTellsTheTray(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	bin := t.TempDir()
 	for _, name := range []string{"omarchy", "omarchy-shell"} {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		testenv.Program(t, filepath.Join(bin, name), "#!/bin/sh\nexit 0\n")
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	priorOm, priorHypr, priorHook := onOmarchy, hyprland, onBarIcon

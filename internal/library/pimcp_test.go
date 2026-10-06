@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/tidwall/jsonc"
+
+	"github.com/yetone/magpie/internal/testenv"
 )
 
 func piDoc(t *testing.T, p string) map[string]any {
@@ -184,10 +186,7 @@ func fakePi(t *testing.T, bin, out string) {
 		t.Skip("a shell script for pi")
 	}
 	p := filepath.Join(bin, "pi")
-	write(t, p, "#!/bin/sh\necho '"+out+"'\n")
-	if err := os.Chmod(p, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testenv.Program(t, p, "#!/bin/sh\necho '"+out+"'\n")
 	t.Setenv("PATH", bin)
 }
 

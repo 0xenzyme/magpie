@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/plugin"
+	"github.com/yetone/magpie/internal/testenv"
 )
 
 // magpie in Docker (xugui on Discord: "docker版登不上grok和command code"):
@@ -260,7 +261,7 @@ export const P = async () => ({
 	runInstaller = func(ctx context.Context, c agentCLI) ([]byte, error) {
 		ran = c.Name
 		os.MkdirAll(filepath.Dir(exe), 0o755)
-		return nil, os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755)
+		return nil, testenv.WriteProgram(exe, "#!/bin/sh\n")
 	}
 	t.Cleanup(func() { runInstaller = oldRun })
 
