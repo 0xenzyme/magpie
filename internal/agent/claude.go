@@ -360,14 +360,16 @@ func claudeIn(at place) *Agent {
 	// it go with it when magpie next looks (Follow).
 	mainKey := at.key("claude.main")
 	wroteMain := func() string { return cmp.Or(stashLoad()[mainKey], env("ANTHROPIC_MODEL")) }
-	// a tier the user gave a model of their own, though it is the one it
-	// would follow: it stays when the main model changes
+	// a tier (or the subagents, "subagent") the user gave a model of their
+	// own, though it is the one it would follow: it stays when the main
+	// model changes
 	ownKey := func(t string) string { return at.key("claude.tier_own." + t) }
+	own := func(t string) bool { return stashLoad()[ownKey(t)] != "" }
 	// follows says a tier on model m (its effort apart) follows the main
 	// model: on none, on the main model magpie last wrote, or on the model
 	// it takes after that one (follow)
 	follows := func(t, m string) bool {
-		if stashLoad()[ownKey(t)] != "" {
+		if own(t) {
 			return false
 		}
 		was := strings.TrimSuffix(wroteMain(), "[1m]")
@@ -533,7 +535,7 @@ func claudeIn(at place) *Agent {
 	// while it follows the main model, as magpie writes it by itself.
 	subagentOwn := func() string {
 		w := env("CLAUDE_CODE_SUBAGENT_MODEL")
-		if m, e := tierAt(w); routed() && w != wroteMain() && isMagpie(m) && (e != "" || m != wroteMain()) {
+		if m, e := tierAt(w); routed() && isMagpie(m) && (own("subagent") || w != wroteMain() && (e != "" || m != wroteMain())) {
 			return w
 		}
 		return ""
@@ -542,7 +544,7 @@ func claudeIn(at place) *Agent {
 	// it follows the main model
 	subagentAt := func() (string, string) {
 		m, e := tierAt(subagentOwn())
-		if m == wroteMain() {
+		if m == wroteMain() && !own("subagent") {
 			m = ""
 		}
 		return m, e
@@ -635,7 +637,18 @@ func claudeIn(at place) *Agent {
 				})
 			}
 			// tiers that followed the old model follow the new one; the
-			// ones given a model of their own keep it
+			// ones given a model of their own keep it, the one the new
+			// main model is too, so it stays when the main model moves
+			// on again (#1050: a sonnet tier on Sonnet went to Opus with
+			// the main model's next move)
+			same := func(t, m string) bool {
+				return strings.TrimSuffix(m, "[1m]") == strings.TrimSuffix(follow(t, v), "[1m]")
+			}
+			if !routed() {
+				forget(ownKey("subagent"))
+			} else if m, _ := subagentAt(); m != "" && same("subagent", m) {
+				stash(map[string]string{ownKey("subagent"): "1"})
+			}
 			tiers := map[string]string{}
 			for _, t := range claudeTiers {
 				tiers[t] = follow(t, v)
@@ -646,6 +659,9 @@ func claudeIn(at place) *Agent {
 					// at an effort of its own, it keeps that on the new model
 					if m, e := tierAt(w); !follows(t, m) && isMagpie(m) {
 						tiers[t] = w
+						if same(t, m) {
+							stash(map[string]string{ownKey(t): "1"})
+						}
 					} else if e != "" {
 						tiers[t] = tierWith(follow(t, v), e)
 					}
@@ -895,7 +911,7 @@ func claudeIn(at place) *Agent {
 			Key: tier, Label: tier, Quiet: true, Follows: "model",
 			// empty while the tier follows the main model
 			Get: func() string {
-				if w, _ := tierAt(env(tierEnv(tier))); routed() && w != wroteMain() {
+				if w, _ := tierAt(env(tierEnv(tier))); routed() && w != "" && (w != wroteMain() || own(tier)) {
 					return w
 				}
 				return ""
@@ -960,6 +976,8 @@ func claudeIn(at place) *Agent {
 				return fmt.Errorf("subagents: %q is not a model magpie serves", v)
 			}
 			_, e := subagentAt()
+			// a pick of its own is the user's anew
+			forget(ownKey("subagent"))
 			return setSubagent(v, e)
 		},
 		Options: func(map[string]string) []Option {
