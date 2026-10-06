@@ -235,6 +235,9 @@ func TestReasoningReplyTimedByItsAnswer(t *testing.T) {
 	var lr []Row
 	for _, r := range recs {
 		rows.addRow(Row{Record: r})
+		// LedgerSeries buckets today by the clock, so the timeline's rows
+		// are made now
+		r.Time = time.Now()
 		lr = append(lr, Row{Record: r})
 	}
 	if rows.Timed != 6 || rows.DecodeMs != ms || rows.DecodeOut != out {
