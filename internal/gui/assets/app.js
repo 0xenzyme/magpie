@@ -293,6 +293,7 @@ function renderAgents() {
       const shown = f.menu ? f.summary : effort ? effortName(opt || { value: f.value }) : (opt?.label || f.value || t(FOLLOWS_MODEL.includes(f.label) ? "same as model" : "default"));
       if (f.menu) b.title = f.options.map((o) => `${o.label}: ${o.note}`).join("\n");
       b.append(el("span", "v" + (f.value || f.custom ? "" : " empty"), shown));
+      if (f.value && opt?.fast) b.append(fastTag());
       const c = el("span", "chev");
       c.append(svg(CHEV, 11, 1.7));
       b.append(c);
@@ -3934,6 +3935,7 @@ function renderList() {
       };
       li.append(star);
     }
+    if (o.fastFor && o.ref && !o.run) li.append(fastToggle(o));
     const ck = el("span", "check");
     ck.append(svg(CHECK, 12, 1.8));
     li.append(ck);
@@ -3943,6 +3945,57 @@ function renderList() {
   });
   for (const m of pick.kept || []) list.append(keptNote(m));
   list.querySelector(`li[data-i="${pick.cursor}"]`)?.scrollIntoView({ block: "nearest" });
+}
+
+// fastToggle: a model with a fast mode (a ChatGPT account's GPT, Cursor's
+// -fast, …) is sent in it, or not, for the agent the picker is of (#954),
+// switched by the model as a routing group's member is; the pick itself
+// stays as it is
+const BOLT = "M9.25 1.75 3.75 9h4l-1 5.25L12.25 7h-4z";
+function fastToggle(o) {
+  const b = el("button", "fast" + (o.fast ? " on" : ""));
+  const name = o.label || o.value;
+  const agent = pick.agent.name || o.fastFor;
+  b.title = o.fast ? t("{model} is sent fast for {agent}: quicker, at a higher price. Click to send it at the usual speed", { model: name, agent })
+    : t("Send {model} fast for {agent}: quicker, at a higher price", { model: name, agent });
+  b.setAttribute("aria-pressed", String(!!o.fast));
+  b.setAttribute("aria-label", t("Fast"));
+  b.append(svg(BOLT, 14, 1.4));
+  b.onclick = async (ev) => {
+    ev.stopPropagation();
+    const fast = !o.fast;
+    setFast(o, fast);
+    try {
+      await api("agent-fast", { for: o.fastFor, ref: o.ref, fast });
+      status(t(fast ? "{model} is sent fast for {agent}" : "{model} is sent at the usual speed for {agent}", { model: name, agent }), "ok");
+    } catch (e) {
+      setFast(o, !fast);
+      status(e.message, "err");
+    }
+  };
+  return b;
+}
+// setFast marks the model fast or not in every list it is in for the agent:
+// the open picker's, and the agent's fields (its tiers pick the same model)
+function setFast(o, fast) {
+  const same = (x) => x.ref === o.ref && x.fastFor === o.fastFor;
+  for (const a of state.agents) for (const f of a.fields) for (const x of f.options || []) if (same(x)) x.fast = fast;
+  for (const x of [...(pick?.options || []), ...(pick?.items || [])]) if (same(x)) x.fast = fast;
+  o.fast = fast;
+  // the field's button says it of the model it has
+  const anchor = pick?.anchor;
+  if (anchor?.classList.contains("field") && optionFor(pick.field, pick.field.value)?.ref === o.ref) {
+    anchor.querySelector(".fast-tag")?.remove();
+    if (fast) anchor.querySelector(".v")?.after(fastTag());
+  }
+  if (pick) renderList();
+}
+// fastTag: the bolt after a field's model that is sent fast
+function fastTag() {
+  const s = el("span", "fast-tag");
+  s.title = t("Fast");
+  s.append(svg(BOLT, 11, 1.4));
+  return s;
 }
 
 // foldRow: the one row the models on the agent's own account through

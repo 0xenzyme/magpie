@@ -1533,6 +1533,16 @@ body.window .foot { padding-left: 18px; }
 .pop li .favorite.on { color: var(--amber); }
 /* not a favourite: an outline star, on hover; a favourite: a filled one, always */
 .pop li .favorite.on path { fill: currentColor; }
+/* a model sent fast for the agent (#954): a bolt, filled when on; shown
+   on the row under the pointer or the keys, the current one, and when on */
+.pop li .fast { display: none; align-items: center; justify-content: center; color: var(--faint); width: 24px; height: 24px; border-radius: 6px; flex: none; }
+.pop li:hover .fast, .pop li.sel .fast, .pop li.cur .fast, .pop li .fast.on { display: inline-flex; }
+.pop li .fast:hover { color: var(--accent); background: var(--pill-hover); }
+.pop li .fast.on { color: var(--accent); }
+.pop li .fast.on path { fill: currentColor; }
+.field .fast-tag { display: inline-flex; flex: none; color: var(--accent); }
+.field .fast-tag path { fill: currentColor; }
+.ag-open .field .fast-tag { order: 1; }
 .pop.explained li { height: auto; padding: 7px 8px; white-space: normal; align-items: flex-start; }
 .pop.explained li .option-words { flex-direction: column; align-items: flex-start; gap: 2px; }
 .pop.explained li .n { flex: none; overflow: visible; line-height: 1.4; }

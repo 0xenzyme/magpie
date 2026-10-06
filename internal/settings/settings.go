@@ -307,6 +307,11 @@ type Settings struct {
 	// agent id and then entry id, as the user dragged them on the Agents
 	// page (Codex's, #855): the ones named first, any other after them.
 	OrderedModels map[string][]string `json:"orderedModels,omitempty"`
+	// FastPicks are the catalog entries ("<provider>/<model>") an agent's
+	// picks of are sent in their vendor's fast mode, by agent id (#954):
+	// switched by the model in the agent's picker, as a routing group's
+	// member is (Group.Fast), without making a group of it.
+	FastPicks map[string][]string `json:"fastPicks,omitempty"`
 
 	// The three maps below, and every one added beside them, are the
 	// per-model ones: a field named Model* whose type is a map[string]X,

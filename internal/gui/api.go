@@ -954,6 +954,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// agent, not by "<provider>/<model>" — so they are not among them,
 		// and belong to the Agents page.
 		in.Visible, in.HiddenModels, in.OrderedModels = cur.Visible, cur.HiddenModels, cur.OrderedModels
+		in.FastPicks = cur.FastPicks // switched in the agents' pickers (#954)
 		settings.CarryPerModel(&in, &cur)
 		in.LAN, in.LANKey = cur.LAN, cur.LANKey
 		in.LANKeyID = cur.LANKeyID

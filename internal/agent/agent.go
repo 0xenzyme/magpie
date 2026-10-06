@@ -56,6 +56,12 @@ type Option struct {
 	// (claude-opus-4-5-20251101 → claude-opus-4-5): the picker shows one
 	// row for the two, the alias, unless the dated one is the value set
 	Alias string `json:"alias,omitempty"`
+	// FastFor is the agent a catalog model with a fast mode (provider.
+	// CanFast) is switched fast or not for, by the model in the picker
+	// (#954): the one whose requests the gateway sends it on; Fast is
+	// whether it is now (provider.IsFastPick)
+	FastFor string `json:"fastFor,omitempty"`
+	Fast    bool   `json:"fast,omitempty"`
 
 	// own: served on the agent's own sign-in (viaMagpie), for Same
 	own bool

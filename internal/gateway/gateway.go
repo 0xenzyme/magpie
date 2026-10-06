@@ -1331,6 +1331,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		}
 	} else {
 		cands, pl = s.plan(p, model, from)
+		if provider.IsFastPick(agent, p.ID+"/"+model) {
+			// the agent's pick of it is sent in its vendor's fast mode
+			// (#954), as a group's member may be; its fallbacks, other
+			// models, go as they are
+			fastPick(cands, pl, p.ID, model)
+		}
 	}
 	if sealedTask {
 		cands, pl = sealedReaders(cands, pl)
