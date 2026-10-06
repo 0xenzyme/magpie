@@ -2397,17 +2397,21 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	// a backend that only streams gets a non-streaming request translated
 	// (the provider is always streamed on that path) rather than relayed
 	relay := slices.Contains(s.usable(p, model), from) && (p.Account == nil || !p.Account.Stream || streamOf(body))
-	// a web search offered is done by the provider, or by magpie for it,
-	// which a relayed request can't
-	if relay && searchAsked(from, body) && (from == provider.Chat && !p.IsRemoteMagpie() || !searchesModel(p, from, model)) {
-		relay = false
-	}
 	// a Claude model is asked on Messages whatever API the client spoke,
 	// for the cache breakpoints the translation adds: OpenCode speaks Chat
 	// for every model, and a relay drops cache_control on Chat, so every
 	// turn was billed uncached (ReturnTrue on Discord, after #997)
 	if relay && from != provider.Anthropic && p.OnMessages(model) && slices.Contains(s.usable(p, model), provider.Anthropic) {
 		relay = false
+	}
+	// a web search offered is done by the provider, or by magpie for it,
+	// which a relayed request can't. The request is translated on the
+	// client's own API all the same, not on Chat: Codex offers web_search
+	// on every turn, and on a provider serving Responses each went out as
+	// Chat (#997, Xiaomi MiMo)
+	ownAPI := false
+	if relay && searchAsked(from, body) && (from == provider.Chat && !p.IsRemoteMagpie() || !searchesModel(p, from, model)) {
+		relay, ownAPI = false, true
 	}
 	// Zen's free models are asked as OpenCode asks them (zenfree.go)
 	if p.OpenCodeFree(model) {
@@ -2435,8 +2439,18 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 		msg := p.Name + " has no endpoint configured"
 		return writeError(w, from, 502, msg), msg
 	}
+	if ownAPI && slices.Contains(to, from) && !firstElsewhere(p, model, from) {
+		to = []provider.Protocol{from}
+	}
 	call.To = to[0]
 	return s.translate(w, r, p, from, to[0], model, body, &call.Usage)
+}
+
+// firstElsewhere is whether model is best asked on an API other than
+// from at p, which usable puts first: Responses for an OpenAI model on
+// OpenAI's API, Messages for a Claude model where it is served.
+func firstElsewhere(p provider.Provider, model string, from provider.Protocol) bool {
+	return p.ResponsesFirst(model) && from != provider.Responses || p.MessagesFirst(model) && from != provider.Anthropic
 }
 
 // autoPicks is whether c is Copilot's Auto, which picks the model itself.
