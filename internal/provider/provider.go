@@ -72,6 +72,12 @@ type Provider struct {
 	// Jev answers), for routing groups' choices of model and effort. The
 	// provider may also serve conversations on the other endpoints.
 	Decide string `json:"decide,omitempty"`
+	// BaseAPI is the API the user gave a custom provider's Base URL as,
+	// in its editor: "chat", "responses", "anthropic" or "decide". The
+	// editor shows that pick again, where it would otherwise show the
+	// first API with a URL (01huadalang: Responses picked and saved came
+	// back as OpenAI compatible). Requests go by which URLs are set.
+	BaseAPI string `json:"baseAPI,omitempty"`
 
 	// Fallback is where a request goes when this provider can't take it —
 	// out of quota, rate limited, overloaded or down — before any of the
@@ -856,6 +862,10 @@ func normalize(p Provider) Provider {
 			break
 		}
 	}
+	// a pick whose URL is gone (cleared from the CLI) is no pick
+	if p.BaseAPI != "" && p.baseOf(p.BaseAPI) == "" {
+		p.BaseAPI = ""
+	}
 	p.Models = cleanList(p.Models)
 	p.Fallback = cleanList(p.Fallback)
 	// a provider saved under an id a preset carried before (presetAliases:
@@ -974,6 +984,22 @@ func contains(xs []string, x string) bool {
 		}
 	}
 	return false
+}
+
+// baseOf is the URL saved for one of the editor's Base URL APIs (BaseAPI),
+// "" for an API it doesn't know.
+func (p Provider) baseOf(api string) string {
+	switch api {
+	case "chat":
+		return p.Chat
+	case "responses":
+		return p.Responses
+	case "anthropic":
+		return p.Anthropic
+	case "decide":
+		return p.Decide
+	}
+	return ""
 }
 
 // Base returns the base URL for a protocol, or "" when the vendor lacks it.
