@@ -180,6 +180,17 @@ columns, `cache_write_5m_tokens` and `cache_write_1h_tokens`, split it by how
 long Anthropic keeps it (a record from before the split is all 5-minute).
 The app shows the split on a request's Cache and the usage tiles' tooltips.
 
+**Output speed** (tok/s on the Usage and Routing pages, `magpie usage`) is
+output tokens over the time after the first token, summed per request: the
+tokens of every timed request over the sum of their windows, so concurrent
+subagents never add up. A reply that reasoned counts only its answer, from its
+first text (`usage.DecodeOf`): hidden reasoning is written before the stream
+shows anything, so counting it in a window that starts after it read
+gpt-6.1-sol at hundreds of tok/s. A reply that reasoned and then wrote only
+tool calls, one not streamed, and a burst (under 100 ms, or over 10,000 tok/s)
+tell no speed. History is read the same way, as it keeps the reasoning and the
+first text.
+
 It lists **accounts** too: each Codex, Claude or other subscription account's
 tokens and cost, by the account that actually answered — the one that took
 over after a failover, the one `X-Magpie-Account` pinned. The account is named

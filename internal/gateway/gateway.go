@@ -2321,7 +2321,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			t.Usage = append(t.Usage, routeUsage(call.Provider, model, call.Usage)...)
 		}
 		t.Tokens = call.Usage.Input + call.Usage.Output + call.Usage.CacheRead + call.Usage.CacheWrite
-		t.Output, t.TTFT, t.FirstText = call.Usage.Output, call.TTFT, call.FirstText
+		t.Output, t.Reasoning, t.TTFT, t.FirstText = call.Usage.Output, call.Usage.Reasoning, call.TTFT, call.FirstText
 		if n := len(t.Tries); n > 0 && call.Status < 400 {
 			t.Served, t.Swapped, t.Routed = t.Tries[n-1].Served, t.Tries[n-1].Swapped, t.Tries[n-1].Routed
 			t.Upstream = t.Tries[n-1].Upstream

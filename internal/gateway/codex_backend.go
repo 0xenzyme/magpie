@@ -409,7 +409,7 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 					link.Reply = replyDigest
 					t.TitleLink = &link
 				}
-				t.Output, t.TTFT, t.FirstText = out, ttft, text
+				t.Output, t.Reasoning, t.TTFT, t.FirstText = out, uu.Reasoning, ttft, text
 				t.Usage = routeUsage("openai", model, uu)
 				t.Tries[0].Served, t.Tries[0].Swapped = served, swapped(model, served)
 				t.Served, t.Swapped = t.Tries[0].Served, t.Tries[0].Swapped
