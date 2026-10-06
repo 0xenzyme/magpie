@@ -497,6 +497,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /chat/completions", s.handle(provider.Chat))
 	mux.HandleFunc("POST /v1/responses", s.handle(provider.Responses))
 	mux.HandleFunc("POST /responses", s.handle(provider.Responses))
+	mux.HandleFunc("GET /v1/responses", responsesOverHTTP)
+	mux.HandleFunc("GET /responses", responsesOverHTTP)
 	mux.HandleFunc("POST /v1/messages", s.handle(provider.Anthropic))
 	mux.HandleFunc("POST /messages", s.handle(provider.Anthropic))
 	mux.HandleFunc("POST /v1/systemone", s.serveSystemOne)
@@ -524,6 +526,21 @@ func (s *Server) Handler() http.Handler {
 		writeError(w, provider.Chat, http.StatusNotFound, "magpie serves /v1/chat/completions, /v1/responses, /v1/messages, /v1/systemone, /v1/images/generations, /v1/images/edits, /v1/videos, /v1/embeddings, /v1/rerank and /v1beta/models/*")
 	})
 	return s.counted(callerGuard(withCaller(keyLimited(mux))))
+}
+
+// responsesOverHTTP answers a GET on /v1/responses, which is how a client
+// opens Responses over a WebSocket (#1005): magpie relays Responses over
+// HTTP alone, its stream as SSE, so the upgrade is told 426 — the answer a
+// client falls back to HTTP on at once (Codex does, as on CodexPath) — in
+// place of the 404 every unknown path gets, which read as a broken
+// gateway. A plain GET is told to POST.
+func responsesOverHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		writeError(w, provider.Responses, http.StatusUpgradeRequired, "magpie relays Responses over HTTP only: send POST /v1/responses (streamed as SSE); Responses over a WebSocket is not served")
+		return
+	}
+	w.Header().Set("Allow", "POST")
+	writeError(w, provider.Responses, http.StatusMethodNotAllowed, "POST /v1/responses")
 }
 
 func (s *Server) info(w http.ResponseWriter, r *http.Request) {
