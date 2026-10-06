@@ -527,6 +527,11 @@ button.rt-session { cursor: pointer; }
 .rt-day small { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .rt-day:hover { color: var(--fg); }
 .rt-day.on { color: var(--fg); border-color: var(--fg); }
+/* the days that fit, the rest under the last pill (#961) */
+.rt-days { overflow-x: hidden; }
+.rt-days .rt-day[hidden] { display: none; }
+.rt-day-more svg { flex: none; align-self: center; opacity: .7; transition: transform .15s var(--ease); }
+.rt-day-more.open svg { transform: rotate(180deg); }
 
 /* the tray panel's Routing tab: a small stage, then the gateway's latest
    requests, two lines each */

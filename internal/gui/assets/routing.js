@@ -92,6 +92,44 @@
   const reqs = el("div", "list rt-reqs");
   // the days the history keeps on disk, to look back at one: see listed
   const dayBar = el("div", "rt-days");
+  // the days past the bar's width go under one more pill, whose menu lists
+  // them (#961): the bar scrolled with its scrollbar hidden, so they were cut
+  // off and out of reach of a mouse wheel. The day looked at stays in
+  // sight: when it is one of them, the pill is named by it
+  const moreDays = el("button", "rt-day rt-day-more");
+  moreDays.type = "button";
+  moreDays.setAttribute("aria-haspopup", "menu");
+  moreDays.setAttribute("aria-expanded", "false");
+  let unseenDays = [];
+  moreDays.onclick = (e) => {
+    e.stopPropagation();
+    if (moreDays.classList.contains("open")) return closeProtoMenu();
+    openProtoMenu(moreDays, unseenDays.map((d) => ({ v: d.day, name: dayName(d.day), literalName: true, note: String(d.requests) })),
+      day, (v) => { if (v !== day) lookAt(v); }, "Earlier days", "rt-days-menu");
+  };
+  function nameMoreDays() {
+    const picked = unseenDays.find((d) => d.day === day);
+    moreDays.classList.toggle("on", !!picked);
+    moreDays.setAttribute("aria-pressed", String(!!picked));
+    moreDays.replaceChildren(el("span", "", picked ? dayName(picked.day) : t("Earlier days")),
+      ...(picked ? [el("small", "", String(picked.requests))] : []), svg(CHEV, 10, 1.6));
+  }
+  function fitDays() {
+    if (!dayBar.clientWidth) return; // out of sight: fitted when it shows
+    const pills = [...dayBar.children].filter((x) => x !== moreDays);
+    for (const x of pills) x.hidden = false;
+    unseenDays = [];
+    if (dayBar.scrollWidth <= dayBar.clientWidth + 1) { moreDays.remove(); return; }
+    dayBar.append(moreDays);
+    // pills[0] is Live, pills[i] days[i - 1], newest first: the oldest go
+    for (let i = pills.length - 1; i >= 1; i--) {
+      pills[i].hidden = true;
+      unseenDays.unshift(days[i - 1]);
+      nameMoreDays();
+      if (dayBar.scrollWidth <= dayBar.clientWidth + 1) break;
+    }
+  }
+  new ResizeObserver(() => fitDays()).observe(dayBar);
   const groupBar = el("div", "rt-group-by");
   let bySession = false;
   try { bySession = localStorage.getItem("magpie.routingBySession") === "1"; } catch {}
@@ -1486,6 +1524,7 @@
     dayBar.dataset.key = key;
     dayBar.replaceChildren(b("", t("Live")), ...days.map((d) => b(d.day, dayName(d.day), d.requests)));
     dayBar.hidden = !days.length && !day;
+    fitDays();
   }
   // the list's head, made once: a trace update redraws the list, and a
   // button made again each time is one WebKit may drop a click on

@@ -18703,14 +18703,17 @@ function keepHeld() {
 }
 addEventListener("click", (e) => {
   purposeUntil = flingUntil = 0; // what came before the click (Space pressed on a button, a tremble, the lift of a tap) is no scroll
-  const v = e.target.closest?.(".view");
+  // a pick in a menu (in body, outside any view) is a click on the pill that
+  // opened it: what it changes comes in around that pill, which stays put (#961)
+  const at = protoMenu?.box.contains(e.target) ? protoMenu.anchor : e.target;
+  const v = at.closest?.(".view");
   if (!v || v.hidden) { held = null; return; }
   // a click before a frame has held the one before it (a tab list's keys
   // pressed in quick turn) holds that one first: the page it shrank is put
   // back, so this one is taken where the reader left it, not at the top
   if (held?.v === v) hold(held);
   const chain = [];
-  const from = e.target.closest?.("[data-unrolls]")?.parentElement || e.target;
+  const from = at.closest?.("[data-unrolls]")?.parentElement || at;
   for (let n = from; n && n !== v; n = n.parentElement) {
     for (const m of [n, n.previousElementSibling, n.nextElementSibling]) if (m instanceof HTMLElement && m.offsetParent) chain.push([m, onScreen(m, v), pathIn(v, m)]);
   }

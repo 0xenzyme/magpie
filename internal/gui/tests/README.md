@@ -151,6 +151,14 @@ shared helper; a control under what it unrolls (`data-unrolls`) going down
 with it; a click that asks to go somewhere with `scrollOnPurpose(e)`;
 the room kept at the foot going as the reader scrolls back; and the wheel.
 
+`routing-days-fit.test.cjs` checks Routing › Requests' day bar with the 30
+days the gateway keeps (#961): at 1100px, 733px (1100 at 150% text size) and
+440px no pill is cut off at its edge and the days that don't fit are under its
+last pill, whose menu lists each with its count; the oldest picked from it is
+asked for and names the pill, with the bar held where it was; three days need
+no such pill; a window narrowed then widened fits again. Chromium and WebKit,
+in English, Chinese, Japanese and German.
+
 `agent-disconnect-preview.test.cjs` checks the disconnect confirmation's
 file previews fill the body instead of the editor's label column. omp and
 Codex previews, restored values, expanding hidden lines, scrolling, Cancel,
