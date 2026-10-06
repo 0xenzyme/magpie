@@ -54,6 +54,8 @@ var Vars = []string{
 	// MiMo Code, MiniMax Code, OpenHanako, Hermes, dsh, WorkBuddy, CodeBuddy Code
 	"MIMOCODE_HOME", "MINIMAX_DATA_DIR", "HANA_HOME", "HERMES_HOME", "DSH_HOME",
 	"WORKBUDDY_CONFIG_DIR", "CODEBUDDY_CONFIG_DIR",
+	// Reasonix Studio and its native CLI share this config home
+	"REASONIX_HOME",
 	// Mister Morph's config file
 	"MISTER_MORPH_CONFIG",
 	// T3 Code's base folder (its settings in userdata/)
