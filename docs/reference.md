@@ -758,6 +758,138 @@ including fixed headers for custom providers in
 subsequent changes to agent settings are not automatically copied to magpie.
 Entries that point back to magpie or only name an `env_key` are skipped.
 
+### How magpie picks an account
+
+When a subscription has several accounts on (Claude Code's or Codex's
+saved accounts, say), or a routing group has several members, the gateway
+orders them for each request in these steps. The Routing page shows the
+result for every request: who went first, and why.
+
+1. **Who can answer.** The account the agent is signed in to, unless it
+   is paused, and the other accounts that are ticked. An account set not
+   to serve the model, or held at its usage cap, is never tried. An account whose plan doesn't list the model (a Free one behind a
+   Plus) is tried only when no other lists it. A Claude account that has to
+   be signed in again stays in the list, but is passed over when its turn
+   comes, without resting.
+2. **The routing.** What is left is put in order by the routing the
+   subscription or group uses (below).
+3. **Rate limited ones last**, only with *Sink* on: an account a 429 rate
+   limited while it still had quota goes behind every one not rate limited
+   since.
+4. **The provider's fallback models** come after its own accounts.
+5. **Resting ones last.** An account resting after a failure goes to the
+   back, behind every fallback. It is never dropped: when it is the only
+   one, it is tried anyway.
+6. **The conversation's account first.** Once an account has answered a
+   conversation, it is moved to the front for the conversation's next
+   requests, as *Stays* says. In auto mode that is within a turn, and
+   across turns while at least 1,024 tokens of the last request were read
+   from the vendor's cache and it answered in the last 5 minutes. This
+   never brings back an account that is resting, nor one that has used 98%
+   of a window (100% In order).
+
+So routing decides who goes first only for a conversation nobody has
+answered yet. An account that has used 90% goes behind the others for new
+conversations, but a conversation already on it stays there until 98%.
+
+**The routings.** Smart, Least used first and Weekly pace go by the share
+used of the fullest window that counts the model, the 5-hour window
+included. Smart and Weekly pace put an account behind the others once a
+window is at 90% or more, and behind those once one is at 98% or more,
+each of these groups ordered by the share used.
+
+- **Smart** (the default): of the accounts under 90%, the one whose
+  allowance renews soonest goes first, because what it has left is lost at
+  the reset. The biggest window decides: the week, then the 5 hours only
+  when the weeks renew in the same hour. Reset times are compared to the
+  hour, by the clock: 13:55 and 14:05 are different hours, 14:05 and
+  14:55 the same. An account
+  with no week (Claude Enterprise) goes by its 5 hours. A Claude account
+  magpie knows nothing of yet goes first once, to learn what it has left
+  from the answer; any other unknown account goes after those known.
+- **In order**: the accounts in their order. The first takes every request
+  until it is used up (100%) or fails.
+- **In turn**: each turn of a conversation goes to the next account. A new
+  conversation goes to the account the fewest other conversations of the
+  last 30 minutes are on.
+- **Least used first**: the lowest share used first; then the account
+  magpie sent the fewest tokens lately (half of them stop counting after an
+  hour). An account not known counts as unused.
+- **Weekly pace**: the account with the highest pace first. Pace is the
+  share of the week left divided by the hours until the week renews (at
+  least 1): 60% left with 20 hours to go is 3 per hour. With two weekly
+  windows that count the model (Opus's own and the general one), the lower
+  pace counts. An account with no week goes by its 5 hours. Accounts whose
+  pace is within a tenth of the highest in their band count as alike, and
+  among them the one magpie sent the fewest tokens lately goes first. A
+  Claude account not known goes first once, as in Smart; another unknown
+  account counts as a fresh week.
+
+**Make first** sets the accounts' order. How much that order counts
+depends on the routing:
+
+| Routing | What the order decides |
+| --- | --- |
+| In order | Everything: the first takes every request it can. |
+| In turn | Where the rotation goes next. |
+| Smart | Only between accounts whose windows all renew in the same hours, or whose shares used are equal. |
+| Least used first | Only between accounts with the same share used and the same tokens sent lately. |
+| Weekly pace | Only between accounts in the same pace band that magpie sent the same tokens lately, in practice none since magpie started. |
+
+For Claude Code and Codex, *Make first* also signs the agent in to that
+account, because the account the agent is signed in to is first. With
+*Keep … signed in to* on, *Make first* changes only the gateway's order,
+and the agent stays signed in where it is kept.
+
+**When an account runs out.** A 429 that says the allowance is used up
+rests the account until it is back, and the same request goes to the next
+candidate at once, as long as none of the reply has been sent. How long it
+rests comes from the first of these that is known: the reset time in the
+refusal (Claude Code's `usage limit reached|<time>`, ChatGPT's
+`resets_at`), the reset of a window magpie last read as used up (98%, 100%
+In order), the vendor's `Retry-After` or rate-limit reset header (an hour
+at most), else 15 minutes. It is never longer than 8 days. The account's
+windows are read again right away. A 429 that is a short rate limit rests
+the account for as long as the vendor asks (an hour at most), or a
+minute, doubled each time it comes back right after its rest, up to 30
+minutes. Out of credit rests half an hour. Any other failure rests a minute, longer each time it fails
+again, up to 10 minutes; a subscription that fails with a window used up
+rests until that window renews.
+
+**Through the gateway, or on its own.** Everything above is the gateway's,
+for requests sent through magpie. Claude Code or Codex used on its own
+talks to the vendor with the account it is signed in to, and routing
+never sees it. For that, magpie looks at the account the agent is signed
+in to a minute after it starts and every 5 minutes after: once it has used
+98% of a window (100% In order), or reached its usage cap, magpie signs
+the agent in to the next ticked account, in their order, whose allowance
+is known and under that share. A saved Claude account magpie knows
+nothing of yet (see below) is not moved to. Once the account it moved the
+agent off has every window under 90% again, it signs the agent back in to
+it. *Keep … signed in to* turns this off: the agent stays on the first
+account, or on the account you picked, whatever it has left. It changes nothing in the gateway's routing.
+
+**How often an allowance is read.** Routing uses what was read last and
+never waits for a reading, except the first one after magpie starts (3
+seconds at most). A reading over a minute old is read again in the
+background as a request is routed, and an account that fails for its
+quota is read again at once. Codex and most other subscriptions read every
+account from the vendor this way. Claude is different: magpie never asks
+Anthropic itself. It reads only the account Claude Code is signed in to,
+by running Claude Code's `/usage`:
+
+- once after magpie starts;
+- when you open or refresh the Usage page (in the app or the TUI), or run
+  `magpie quota` or `magpie accounts`, at most every 30 seconds;
+- otherwise again after 5 to 15 minutes (drawn at random each time), and
+  only if Claude Code was used since.
+
+A saved Claude account that isn't signed in is never read. What it has
+left is known only from what Claude Code says as that account answers a
+request through the gateway, and its Usage card says so until then. So
+the windows routing goes by for such an account can be hours old; a window
+whose reset has passed counts as empty again.
+
 ### Signed-in agents as providers
 
 An agent you have signed in to is a subscription with models behind it, so
