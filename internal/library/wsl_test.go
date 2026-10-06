@@ -93,11 +93,20 @@ func TestWSLSkillsCopied(t *testing.T) {
 			t.Errorf("%s isn't the library's skill", d)
 		}
 	}
-	if !linked(filepath.Join(home(), ".claude/skills/pdf")) {
-		t.Error("this machine's Claude Code got a copy, not a link")
+	// Windows without the right to make symlinks (Developer Mode off, not
+	// elevated) gives copies: the library's is a copy of the folder, and
+	// this machine's Claude Code a marked copy of that (#973)
+	links := os.Symlink(t.TempDir(), filepath.Join(t.TempDir(), "link")) == nil
+	if local := filepath.Join(home(), ".claude/skills/pdf"); linked(local) != links || !ours(local, "pdf") {
+		t.Errorf("this machine's Claude Code: linked %v, symlinks here %v", linked(local), links)
 	}
-	// the skill is its folder: an edit there reaches the copies at the next sync
-	write(t, filepath.Join(src, "pdf/SKILL.md"), "---\nname: pdf\ndescription: Changed\n---\n")
+	// the skill is its folder: an edit there reaches the copies at the next
+	// sync; where the library holds a copy, the edit is made in that copy
+	edited := filepath.Join(src, "pdf/SKILL.md")
+	if !links {
+		edited = filepath.Join(skillDir("pdf"), "SKILL.md")
+	}
+	write(t, edited, "---\nname: pdf\ndescription: Changed\n---\n")
 	res := ok(t)(Sync())
 	if !slices.Contains(res.Changed, wslCodex) {
 		t.Errorf("changed: %v", res.Changed)
