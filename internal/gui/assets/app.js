@@ -12074,7 +12074,10 @@ function renderQuotas() {
       s.title = t("The {n} keys' balances added up", { n: subs.length });
       head.append(s);
     }
-    const folded = keys ? keysFolded(subs) : new Set();
+    // many accounts (Linx on X: twenty-odd on one plugin, 顶成擎天柱):
+    // the same, each still a row of its own
+    const accts = !keys && several && mode !== "panel" && subs.length > ACCTS_FOLD;
+    const folded = keys ? keysFolded(subs) : accts ? acctsFolded(subs) : new Set();
     for (const sub of subs) {
       if (folded.has(sub)) continue;
       // "Every model" by the account, or the card's name: where the click
@@ -12139,6 +12142,7 @@ function renderQuotas() {
     // (of the keys in sight: the ones folded away are the foot's button's)
     if (several) head.append(usageMore(folded.size ? subs.filter((q) => !folded.has(q)) : subs, "text quota-more"));
     if (keys && (folded.size || usageKeysAll.has(first.provider))) card.append(keysMore(first.provider, folded.size));
+    if (accts && (folded.size || usageAcctsAll.has(first.provider))) card.append(acctsMore(first.provider, folded.size));
     subscriptions.append(card);
   }
   restoreFlash();
@@ -12201,6 +12205,36 @@ function keysMore(provider, n) {
   b.onclick = () => {
     if (n) usageKeysAll.add(provider); else usageKeysAll.delete(provider);
     try { localStorage.setItem("magpie.usageKeysAll", JSON.stringify([...usageKeysAll])); } catch {}
+    renderQuotas();
+    backToReader($("#view-usage"));
+  };
+  return b;
+}
+// A card of more than ACCTS_FOLD accounts shows the first ACCTS_SHOWN, any
+// in full and the one carrying a check-in switch, the rest behind "Show N
+// more accounts" at its foot, as a card of keys does; remembered by
+// provider (magpie.usageAcctsAll). The tray panel leaves the ones in brief
+// out already.
+const ACCTS_FOLD = 8, ACCTS_SHOWN = 5;
+let usageAcctsAll = new Set();
+try { usageAcctsAll = new Set(JSON.parse(localStorage.getItem("magpie.usageAcctsAll") || "[]")); } catch {}
+function acctsFolded(subs) {
+  if (usageAcctsAll.has(subs[0].provider)) return new Set();
+  const shown = new Set(subs.slice(0, ACCTS_SHOWN));
+  for (const q of subs) {
+    if (usageAcctOpen(q, subs)) shown.add(q);
+    // the check-in switch is on the first account of each vendor's (checkinRow)
+    if (q.checkins && q === subs.find((x) => x.checkins && (x.checkinBy || "") === (q.checkinBy || ""))) shown.add(q);
+  }
+  return new Set(subs.filter((q) => !shown.has(q)));
+}
+function acctsMore(provider, n) {
+  const b = el("button", "text quota-keys-more quota-accts-more", n ? t(n === 1 ? "Show 1 more account" : "Show {n} more accounts", { n }) : t("Show fewer accounts"));
+  b.type = "button";
+  b.setAttribute("aria-expanded", String(!n));
+  b.onclick = () => {
+    if (n) usageAcctsAll.add(provider); else usageAcctsAll.delete(provider);
+    try { localStorage.setItem("magpie.usageAcctsAll", JSON.stringify([...usageAcctsAll])); } catch {}
     renderQuotas();
     backToReader($("#view-usage"));
   };

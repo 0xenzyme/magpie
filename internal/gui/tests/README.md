@@ -817,6 +817,16 @@ reload; DeepSeek's keys fold too, four keys aren't folded, a subscription's
 accounts aren't keys, an unread key leaves the sum out, and at 440px nothing
 is cut; in Chromium and WebKit, English and Chinese.
 
+`usage-accounts-fold.test.cjs` checks the Usage page's card of a subscription
+with many accounts (Linx on X: twenty-odd on one plugin made a very long
+card): of 22 WorkBuddy AI accounts the first five are in sight, the rest
+behind "Show 17 more accounts" at its foot; of nine Trae accounts the one in
+full and the one with the check-in switch stay in sight too; eight aren't
+folded. The button opens them in place without moving the page, is
+remembered across a reload and folds them again from the foot (the page
+resting at its end, the button in sight); at 440px nothing is cut, folded or
+open; in Chromium and WebKit, in English, Chinese, Japanese and German.
+
 `sessions-calendar-fill.test.cjs` checks that the Sessions overview's activity
 calendar fills its card: 118 days (17 weeks) at 1400 wide take over 90% of
 it, the weeks before the range coming in as empty cells without tooltips, the
