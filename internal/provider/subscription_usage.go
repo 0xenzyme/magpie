@@ -191,6 +191,17 @@ func SubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 	return withDailyCredits(out, time.Now())
 }
 
+// SubscriptionUsageReading says a read of the accounts' usage is under way:
+// what SubscriptionUsage just gave may be the stale copy it replaces, for a
+// page to ask again once it lands (#959: the panel, opened, kept the old
+// copy until refreshed by hand, while the window's next read had the new).
+func SubscriptionUsageReading() bool {
+	c := &subscriptionUsageCache
+	c.Lock()
+	defer c.Unlock()
+	return c.pending != nil
+}
+
 // visibleQuotas drops accounts removed from magpie since the last refresh.
 func visibleQuotas(all []SubscriptionQuota) []SubscriptionQuota {
 	hidden := map[string]bool{}

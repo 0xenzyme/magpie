@@ -441,7 +441,13 @@ func usageRoutes(mux *http.ServeMux, w Windows) {
 		defer cancel()
 		// a WorkBuddy (China) account's card says how its daily check-in
 		// went (#694)
-		writeJSON(rw, provider.WithCheckins(provider.Quotas(ctx)))
+		qs := provider.WithCheckins(provider.Quotas(ctx))
+		// an account's card may be the stale copy a read under way will
+		// replace: the page asks again until it has landed (#959)
+		if provider.SubscriptionUsageReading() {
+			rw.Header().Set("X-Magpie-Reading", "1")
+		}
+		writeJSON(rw, qs)
 	})
 	// One card read again, from its refresh button (#840): ?provider= and,
 	// of a card with several accounts, &user=; the others are left as they

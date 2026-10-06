@@ -63,13 +63,15 @@ const modelFavorites = new Set(Array.isArray(savedModelFavorites) ? savedModelFa
 const favoriteKey = (o) => o.ref || o.value;
 const isFavorite = (o) => modelFavorites.has(favoriteKey(o)) || modelFavorites.has(o.value);
 
-async function api(path, body) {
+// heads, when given, is shown the answer's headers (loadQuotas' X-Magpie-Reading)
+async function api(path, body, heads) {
   if (web && path === "open") { window.open(body.url, "_blank", "noopener"); return null; }
   const res = await fetch("/api/" + path, {
     method: body === undefined ? "GET" : "POST",
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  heads?.(res.headers);
   if (res.status === 204) return null;
   // a body that isn't JSON (a proxy's or a plain http.Error) is the error
   // itself, not WebKit's "did not match the expected pattern"
@@ -11923,13 +11925,27 @@ async function loadUsage(asked) {
 
 // An asked load is never swallowed by one already on its way that wasn't:
 // it goes after it.
-let quotasLoading = null;
-function loadQuotas(asked) {
+// An answer said to be read while the accounts' usage is being read again
+// (X-Magpie-Reading) can be the stale copy that read replaces: it is asked
+// for again, every 1.5s for half a minute at most, until the new one has
+// landed, so the tray panel, opened, shows what the window does without a
+// refresh by hand (#959). An answer the same as the last isn't drawn again.
+let quotasLoading = null, quotasLater = 0, quotasTries = 0;
+function loadQuotas(asked, again) {
   if (quotasLoading && (!asked || quotasLoading.asked)) return quotasLoading;
+  if (!again) quotasTries = 0;
+  let reading = false, same = false;
   const p = Promise.resolve(quotasLoading).catch(() => {})
-    .then(() => Promise.all([api("usage/quotas" + (asked ? "?asked=1" : "")), api("usage/quotas/history?days=35").catch(() => null)]))
-    .then(([q, h]) => { quotas = q || []; quotasAt = Date.now(); if (h) quotaHist = h; }, () => { quotas = quotas || []; })
-    .finally(() => { if (quotasLoading === p) quotasLoading = null; renderQuotas(); });
+    .then(() => Promise.all([api("usage/quotas" + (asked ? "?asked=1" : ""), undefined, (h) => { reading = h.get("X-Magpie-Reading") === "1"; }), api("usage/quotas/history?days=35").catch(() => null)]))
+    .then(([q, h]) => {
+      same = !!again && !!quotas && JSON.stringify(q || []) === JSON.stringify(quotas) && (!h || JSON.stringify(h) === JSON.stringify(quotaHist));
+      quotas = q || []; quotasAt = Date.now(); if (h) quotaHist = h;
+    }, () => { quotas = quotas || []; reading = false; })
+    .finally(() => {
+      if (quotasLoading === p) quotasLoading = null;
+      if (!same) renderQuotas();
+      if (reading && !quotasLater && ++quotasTries <= 20) quotasLater = setTimeout(() => { quotasLater = 0; loadQuotas(false, true); }, 1500);
+    });
   p.asked = !!asked;
   quotasLoading = p;
   return p;
