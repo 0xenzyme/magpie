@@ -23,7 +23,7 @@ agents RTK, a CLI that cuts shell output down before the model reads it.
 
 ## Runtime path
 
-1. **Edit.** The Library page or `magpie library` calls an exported function such as `SaveServer`, `ServerAgents`, `InstallSkills`, `SkillAgents` or `SetSkillHow`.
+1. **Edit.** The Library page or `magpie library` calls an exported function such as `SaveServer`, `ServerAgents`, `InstallSkills`, `SkillAgents` or `SetSkillHow`. The skills and servers pages each have Select, Turn all on, Turn all off and Remove all. Select's bar calls `SomeSkillsAgents` or `SomeServersAgents` (`/api/library/{skills,servers}/agents-some`), Turn all on or off calls `EverySkillAgents` or `EveryServerAgents` for the agents shown, and Remove all calls `RemoveSkills` or `RemoveServers`. Each of these is one change that takes every item out as a single removal would (#1027).
 2. **Change.** `change` edits `library.json` under the lock and calls `sync`.
 3. **Write.** For each target, `syncInstructions` and `syncMCP` write magpie's part in the agent's format and record it in `Applied`. Skills are linked or copied into the agent's skills folder. A copy edited since it was made is taken into the library first.
 4. **Result.** The `Result` lists the agents changed, a `Problem` for each thing that couldn't be given, and the backup folder.
@@ -40,9 +40,9 @@ agents RTK, a CLI that cuts shell output down before the model reads it.
 ## Verification
 
 ```sh
-go test -tags nogui ./internal/library -run 'TestTargets|TestServer|TestImportServer|TestCheck|TestInstructions|TestInstructionSets|TestSkill|TestEverySkillAgents|TestRTK'
+go test -tags nogui ./internal/library -run 'TestTargets|TestServer|TestImportServer|TestCheck|TestInstructions|TestInstructionSets|TestSkill|TestEverySkillAgents|TestEveryServerAgents|TestSomeServersAgents|TestRemoveServers|TestRTK'
 go test -tags nogui ./internal/library
-node --test internal/gui/tests/library-items.test.cjs internal/gui/tests/library-rtk-gain.test.cjs internal/gui/tests/library-rtk-nohook.test.cjs
+node --test internal/gui/tests/library-items.test.cjs internal/gui/tests/library-rtk-gain.test.cjs internal/gui/tests/library-rtk-nohook.test.cjs internal/gui/tests/library-servers-bulk.test.cjs
 ```
 
 The package's `TestMain` runs in a home of its own (`testenv`), never the

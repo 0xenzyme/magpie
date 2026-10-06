@@ -366,8 +366,12 @@ func libraryRoutes(mux *http.ServeMux, w Windows) {
 			res, err = library.ServerAgents(in.Name, in.Agents)
 		case "servers/agents-all":
 			res, err = library.EveryServerAgents(in.Agents, in.On)
+		case "servers/agents-some":
+			res, err = library.SomeServersAgents(in.Names, in.Agents, in.On)
 		case "servers/remove":
 			res, err = library.RemoveServer(in.Name)
+		case "servers/remove-all":
+			res, err = library.RemoveServers(in.Names)
 		case "servers/import":
 			res, err = library.ImportServer(in.Name)
 		case "skills/install":
