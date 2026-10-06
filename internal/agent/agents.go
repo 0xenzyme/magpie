@@ -940,7 +940,10 @@ func goose(home, cfg string) *Agent {
 				return pairSet(set, "GOOSE_PROVIDER", "GOOSE_MODEL")(v)
 			},
 			Options: func(cur map[string]string) []Option {
-				return append(ownOptions("", cur["model"], "anthropic", "openai", "google", "openrouter"), viaMagpie("goose", gooseProviderID+"/")...)
+				// only the native providers this goose is set up with (#987:
+				// every one of four was listed, OpenRouter's hundreds of
+				// models on a goose that had only magpie)
+				return append(ownOptions("", cur["model"], gooseConfigured(path)...), viaMagpie("goose", gooseProviderID+"/")...)
 			},
 		}, {
 			// GOOSE_THINKING_EFFORT, the effort goose asks of a model that

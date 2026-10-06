@@ -180,3 +180,53 @@ func TestGooseRunsOnMagpie(t *testing.T) {
 		t.Fatalf("model left: %q", f.Get())
 	}
 }
+
+// Goose's own providers are offered only when this goose is set up with
+// them (#987, EZN7L2C3: a Goose with only magpie listed OpenRouter and its
+// hundreds of models, which magpie's show/hide list can't hide): one its
+// providers map marks configured, one a legacy <name>_configured marker
+// names, the one it uses, and one whose key is in the environment.
+func TestGooseOffersOnlyItsConfiguredProviders(t *testing.T) {
+	home := syncHome(t)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	for _, k := range gooseKeys {
+		t.Setenv(k, "")
+	}
+	os.WriteFile(catalog.CachePath(), []byte(`{"zai":{"models":{"glm-4.6":{"id":"glm-4.6","name":"GLM-4.6"}}},`+
+		`"openrouter":{"name":"OpenRouter","models":{"x/a":{"id":"x/a","name":"A"},"x/b":{"id":"x/b","name":"B"}}},`+
+		`"anthropic":{"name":"Anthropic","models":{"claude-sonnet-4-5":{"id":"claude-sonnet-4-5","name":"Claude Sonnet 4.5"}}},`+
+		`"google":{"name":"Google","models":{"gemini-2.5-pro":{"id":"gemini-2.5-pro","name":"Gemini 2.5 Pro"}}},`+
+		`"openai":{"name":"OpenAI","models":{"gpt-5.5":{"id":"gpt-5.5","name":"GPT-5.5"}}}}`), 0o644)
+	catalog.Reset()
+	a := goose(home, filepath.Join(home, ".config"))
+	os.MkdirAll(filepath.Dir(a.Path), 0o755)
+	natives := func() map[string]bool {
+		got := map[string]bool{}
+		for _, o := range a.Field("model").Options(a.Values()) {
+			if p, _, ok := strings.Cut(o.Value, "/"); ok && p != gooseProviderID {
+				got[p] = true
+			}
+		}
+		return got
+	}
+	if len(catalog.Provider("openrouter")) == 0 || len(catalog.Provider("anthropic")) == 0 {
+		t.Fatal("the test catalog lists no OpenRouter or Anthropic models")
+	}
+
+	// the reporter's: magpie alone
+	os.WriteFile(a.Path, []byte("active_provider: magpie\nGOOSE_PROVIDER: magpie\nGOOSE_MODEL: zhipu/glm-5.3\nproviders:\n  magpie:\n    enabled: true\n    model: zhipu/glm-5.3\n    configured: true\n"), 0o644)
+	if got := natives(); len(got) != 0 {
+		t.Fatalf("a goose on magpie alone is offered %v", got)
+	}
+
+	os.WriteFile(a.Path, []byte("active_provider: magpie\nproviders:\n  magpie:\n    configured: true\n  anthropic:\n    enabled: true\n    model: claude-sonnet-4-5\n    configured: true\n  openai:\n    enabled: true\n    configured: false\ngoogle_configured: true\n"), 0o644)
+	got := natives()
+	if !got["anthropic"] || !got["google"] || got["openai"] || got["openrouter"] {
+		t.Fatalf("configured anthropic (map) and google (marker), not openai or openrouter; got %v", got)
+	}
+
+	t.Setenv("OPENROUTER_API_KEY", "k")
+	if got := natives(); !got["openrouter"] {
+		t.Fatalf("OpenRouter's key in the environment, not offered: %v", got)
+	}
+}

@@ -7,6 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
@@ -45,6 +49,63 @@ const gooseProviderID = magpieID
 // level offered for it would change nothing; it is declared without
 // reasoning rather than shown a picker that does nothing.
 var gooseThinks = regexp.MustCompile(`(?i)(?:^|[-/])(?:o\d+(?:$|-)|gpt-(?:5|6)(?:$|[-.]))`)
+
+// gooseKeys are the secrets goose reads for the native providers whose
+// models magpie can list, and which goose takes from the environment before
+// its keyring (Config::get_secret, crates/goose/src/config/base.rs; the keys
+// from crates/goose/src/providers/<name>_def.rs).
+var gooseKeys = map[string]string{
+	"anthropic":  "ANTHROPIC_API_KEY",
+	"openai":     "OPENAI_API_KEY",
+	"google":     "GOOGLE_API_KEY",
+	"openrouter": "OPENROUTER_API_KEY",
+}
+
+// gooseConfigured is the providers other than magpie that the Goose whose
+// config.yaml is at cfg has set up: the ones its providers map marks
+// configured or that it uses now (set_active_provider, crates/goose/src/
+// config/providers.rs), the ones a legacy <name>_configured marker names
+// (migrate_provider_config, config/migrations.rs), and a provider whose key
+// is in the environment. A key in goose's keyring can't be seen from here;
+// such a provider still counts once goose has used it, as each provider it
+// is set up with gets an entry.
+func gooseConfigured(cfg string) []string {
+	set := map[string]bool{}
+	if b, err := os.ReadFile(cfg); err == nil {
+		var c map[string]any
+		if yaml.Unmarshal(b, &c) == nil {
+			if ps, ok := c["providers"].(map[string]any); ok {
+				for name, v := range ps {
+					if e, ok := v.(map[string]any); ok && e["configured"] == true {
+						set[name] = true
+					}
+				}
+			}
+			for k, v := range c {
+				if name, ok := strings.CutSuffix(k, "_configured"); ok && v == true {
+					set[name] = true
+				}
+			}
+			for _, k := range []string{"active_provider", "GOOSE_PROVIDER"} {
+				if p, ok := c[k].(string); ok && p != "" {
+					set[p] = true
+				}
+			}
+		}
+	}
+	for p, k := range gooseKeys {
+		if os.Getenv(k) != "" {
+			set[p] = true
+		}
+	}
+	delete(set, gooseProviderID)
+	out := make([]string, 0, len(set))
+	for p := range set {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
+}
 
 // gooseProviderPath is magpie's custom provider file for the Goose whose
 // config.yaml is at cfg.
