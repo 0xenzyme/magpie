@@ -189,7 +189,12 @@ func readLogins() []savedLogin {
 // is written over, so the accounts in it can still be got back.
 func keepUnreadLogins(path string) {
 	b, err := os.ReadFile(path)
-	if err != nil || json.Valid(b) {
+	if err != nil {
+		return
+	}
+	// Match readLogins: valid JSON can still have unreadable field types.
+	var ls []savedLogin
+	if json.Unmarshal(b, &ls) == nil {
 		return
 	}
 	bad := path + ".bad-" + time.Now().Format("20060102-150405")
