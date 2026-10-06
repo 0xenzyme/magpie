@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log"
@@ -1130,10 +1131,13 @@ func entryFor(p Provider, m catalog.Model, s settings.Settings) Entry {
 	if override, ok := s.ModelImages[p.ID+"/"+m.ID]; ok {
 		images, imageInput = override, &override
 	}
-	e := Entry{ID: p.ID + "/" + m.ID, Model: m.ID, Family: p.Family, Name: m.Name, Efforts: effortsOf(m), Provider: p,
+	// a model its vendor lists with no name is called by its id: unnamed,
+	// an agent's list showed the whole magpie/<provider>/<model> (#955)
+	name := cmp.Or(m.Name, m.ID)
+	e := Entry{ID: p.ID + "/" + m.ID, Model: m.ID, Family: p.Family, Name: name, Efforts: effortsOf(m), Provider: p,
 		Images: images, ImageInput: imageInput, Context: ctx, Output: output, Free: m.Free, Rate: m.Rate, RateWas: m.RateWas}
 	if n, ok := modelNameIn(s.ModelNames, p.ID, m.ID); ok {
-		e.Name, e.Default = n, m.Name
+		e.Name, e.Default = n, name
 	}
 	// a model that thinks still does with the levels the user kept or
 	// none at all; one its source says nothing of thinks as most of the
