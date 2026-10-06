@@ -10,7 +10,8 @@ package agent
 // magpie in the llm-pi-ai entry's providers (what dsh's Models page writes
 // for "Add model provider"), with the gateway as its endpoint, the catalog
 // as its models and, as the key, a credential named in apiKeyEnv, which
-// magpie puts in ~/.dsh/.env; agent-default-model names the model new
+// magpie puts in ~/.dsh/.env and dsh's own key store (the desktop app reads
+// only the store); agent-default-model names the model new
 // sessions start on. dsh's own DeepSeek row (llm-deepseek) is left to dsh:
 // taken over, it read as DeepSeek in dsh's Models page, and a DeepSeek key
 // entered there went to the gateway under magpie's credential name, over
@@ -715,6 +716,9 @@ func dshCheck(dir, gw string) string {
 	creds := filepath.Join(dir, ".credentials.yaml")
 	if v, ok := edit.GetYAML(creds, "refs."+dshKeyRef); ok && v != keyAt(gw) {
 		return "DeepSeek Harness's own key store (" + creds + ") holds another " + dshKeyRef + ", which it uses over magpie's; remove it there (dsh's Models page, Magpie's key) to go through magpie"
+	} else if !ok && dshCredsOurs(creds) {
+		// the desktop app doesn't read .env (#969)
+		return "DeepSeek Harness's own key store (" + creds + ") doesn't hold " + dshKeyRef + ": the desktop app reads the key from there, not from .env, and its sessions fail with no credential for provider route " + dshRoute + " until it is written (Apply again)"
 	}
 	return ""
 }
@@ -783,9 +787,13 @@ func dshSet(dir, v, gw string) error {
 	return nil
 }
 
-// dshEnv puts the key for the gateway in $DSH_HOME/.env, or with on false
-// takes it out; the name magpie's llm-deepseek entry used goes either way.
+// dshEnv puts the key for the gateway in $DSH_HOME/.env and dsh's own key
+// store, or with on false takes it out; the name magpie's llm-deepseek entry
+// used goes either way.
 func dshEnv(dir, gw string, on bool) error {
+	if err := dshCreds(dir, gw, on); err != nil {
+		return err
+	}
 	env := filepath.Join(dir, ".env")
 	if on {
 		if v, ok := edit.GetEnvFile(env, dshKeyRef); !ok || v != keyAt(gw) {
@@ -803,6 +811,66 @@ func dshEnv(dir, gw string, on bool) error {
 		}
 	}
 	return nil
+}
+
+// dshCreds puts the key for the gateway in dsh's own key store,
+// $DSH_HOME/.credentials.yaml (refs), or with on false takes magpie's out.
+// Only the product CLI loads the .env files into what dsh resolves keys
+// from: the desktop app reads this store and its own environment, and with
+// the key in .env alone its sessions failed with "no credential for provider
+// route magpie" (#969). The store wins over .env, so a key of the user's
+// there is left as it is (the check says so). dsh refuses a store any other
+// user can read, so a new one is made owner-only; one in a layout other
+// than version 1 is dsh's to move and isn't touched.
+func dshCreds(dir, gw string, on bool) error {
+	creds := filepath.Join(dir, ".credentials.yaml")
+	raw, err := os.ReadFile(creds)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if !dshCredsOurs(creds) {
+		return nil
+	}
+	if on {
+		v, ok := edit.GetYAML(creds, "refs."+dshKeyRef)
+		if ok && (v == keyAt(gw) || !ourKey(v)) {
+			return nil
+		}
+		if len(bytes.TrimSpace(raw)) == 0 {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(creds, []byte("version: 1\n"), 0o600); err != nil {
+				return err
+			}
+		}
+		return edit.SetYAML(creds, edit.KV{Path: "refs." + dshKeyRef, Value: keyAt(gw)})
+	}
+	for _, k := range []string{dshKeyRef, dshOldKeyRef} {
+		if v, ok := edit.GetYAML(creds, "refs."+k); ok && ourKey(v) {
+			if err := edit.DelYAML(creds, "refs."+k); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// dshCredsOurs says whether magpie may write dsh's key store: there is none
+// yet, or it is in the version 1 layout.
+func dshCredsOurs(creds string) bool {
+	raw, err := os.ReadFile(creds)
+	if errors.Is(err, os.ErrNotExist) {
+		return true
+	}
+	if err != nil {
+		return false
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return true
+	}
+	v, ok := edit.GetYAML(creds, "version")
+	return ok && v == "1"
 }
 
 // dshSetFile writes v into one patch list; modern is the layout of dsh
