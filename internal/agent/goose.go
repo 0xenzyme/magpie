@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -175,4 +176,105 @@ func removeGooseProvider(path string) error {
 		return err
 	}
 	return nil
+}
+
+// Goose keeps the provider and model it uses in one of two layouts of its
+// config.yaml (crates/goose/src/config/providers.rs, migrations.rs). The
+// old one is two flat keys, GOOSE_PROVIDER and GOOSE_MODEL. The new one,
+// which goose migrates a config to on its next write, is active_provider
+// and an entry in the providers map holding that provider's model:
+//
+//	active_provider: magpie
+//	providers:
+//	  magpie:
+//	    enabled: true
+//	    model: zhipu/glm-5.3
+//	    configured: true
+//
+// goose reads active_provider before GOOSE_PROVIDER and the entry's model
+// before GOOSE_MODEL (get_active_provider, get_active_model), and once a
+// providers map is there its migration deletes the flat keys on the next
+// write (cleanup_legacy_provider_keys). So a model set with the flat keys
+// alone on a migrated config is never used, and lost.
+
+// gooseNewLayout reports whether the Goose config at cfg is in the new
+// layout: it has a providers map or an active_provider.
+func gooseNewLayout(cfg string) bool {
+	b, err := edit.Read(cfg)
+	if err != nil || b == nil {
+		return false
+	}
+	var c map[string]any
+	if yaml.Unmarshal(b, &c) != nil {
+		return false
+	}
+	_, providers := c["providers"]
+	_, active := c["active_provider"]
+	return providers || active
+}
+
+// gooseActive is the provider and model the Goose config at cfg uses, read
+// as goose reads them (the environment aside).
+func gooseActive(cfg string) (provider, model string) {
+	provider, _ = edit.GetYAMLTop(cfg, "active_provider")
+	if provider == "" {
+		provider, _ = edit.GetYAMLTop(cfg, "GOOSE_PROVIDER")
+	}
+	if provider != "" && !strings.Contains(provider, ".") {
+		model, _ = edit.GetYAML(cfg, "providers."+provider+".model")
+	}
+	if model == "" {
+		model, _ = edit.GetYAMLTop(cfg, "GOOSE_MODEL")
+	}
+	return provider, model
+}
+
+// gooseModel is the Goose config at cfg's model as provider/model.
+func gooseModel(cfg string) string {
+	p, m := gooseActive(cfg)
+	switch {
+	case m == "":
+		return ""
+	case p == "":
+		return m
+	}
+	return p + "/" + m
+}
+
+// setGooseModel makes v, a provider/model, the model the Goose config at
+// cfg uses, in the layout the config is in: on a new one as goose's own
+// set_active_provider writes it, other providers' entries kept; on an old
+// one the flat keys, which an old goose reads and a new one migrates.
+func setGooseModel(cfg, v string) error {
+	p, m, ok := strings.Cut(v, "/")
+	if !ok || p == "" || m == "" {
+		return fmt.Errorf("expected provider/model, got %q", v)
+	}
+	if !gooseNewLayout(cfg) {
+		return edit.SetYAMLTop(cfg, edit.KV{Path: "GOOSE_PROVIDER", Value: p}, edit.KV{Path: "GOOSE_MODEL", Value: m})
+	}
+	if strings.Contains(p, ".") {
+		return fmt.Errorf("goose provider %q: a dot can't be written into its providers map", p)
+	}
+	if err := edit.SetYAML(cfg,
+		edit.KV{Path: "active_provider", Value: p},
+		edit.KV{Path: "providers." + p + ".enabled", Value: true},
+		edit.KV{Path: "providers." + p + ".model", Value: m},
+		edit.KV{Path: "providers." + p + ".configured", Value: true},
+	); err != nil {
+		return err
+	}
+	// flat keys left beside the map would be read by no goose that reads
+	// the map, and deleted by the next one that writes
+	return edit.DelYAMLTop(cfg, "GOOSE_PROVIDER", "GOOSE_MODEL")
+}
+
+// clearGooseModel takes the Goose config at cfg off any model, as goose's
+// clear_active_provider does, and drops magpie's own providers entry, as
+// magpie's custom provider goes with it; other providers' entries are kept.
+func clearGooseModel(cfg string) error {
+	if err := edit.DelYAMLTop(cfg, "active_provider", "GOOSE_PROVIDER", "GOOSE_MODEL"); err != nil {
+		return err
+	}
+	return edit.DelYAML(cfg, "providers."+gooseProviderID)
 }
