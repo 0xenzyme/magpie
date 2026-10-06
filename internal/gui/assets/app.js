@@ -14892,10 +14892,28 @@ function drawLedColumns(box, l, split, metric, compact, chooseDay, focusDay) {
     };
     const by = p.by?.[split] || {};
     if (speed) {
-      if (totals[i] > 0) { draw("\0all", "var(--faint)", totals[i]); segs.at(-1).classList.add("all"); }
+      // the point's own speed, as a track the models' marks sit on: not a
+      // share of anything, and not the grey "Other" of the stacked charts
+      if (totals[i] > 0) { draw("\0all", "var(--pill)", totals[i]); segs.at(-1).classList.add("all"); }
       for (const c of top) {
         const v = ledSpeed(by[c.id]);
         if (!(v > 0)) continue;
+        // a model faster than the point's own leaves its mark above the
+        // column, in nothing: a leader line ties the two, so the mark reads
+        // as this column's rather than as a stray dash (huoranxuanyuan, #860).
+        // The colour goes through style, not the attribute: var() substitutes
+        // in a style and not in a presentation attribute. The line stops at
+        // the column's top when the mark is within a pixel of it, or it would
+        // be drawn back down into the column
+        if (v > totals[i]) {
+          const top = Y(totals[i]);
+          const stem = sv("line", {
+            x1: x + bw / 2, x2: x + bw / 2, y1: top, y2: Math.min(Y(v) + 1.5, top),
+            class: "col stem", "data-k": c.id, "data-day": p.time.slice(0, 10), "data-color": c.color,
+          }, { stroke: c.color, strokeWidth: 1, strokeOpacity: ".45" });
+          g.append(stem);
+          segs.push(stem);
+        }
         const r = sv("rect", { x, width: bw, y: Y(v) - 1.5, height: 3, rx: 1.5, class: "col mark", "data-k": c.id, "data-day": p.time.slice(0, 10), "data-color": c.color }, { fill: c.color });
         g.append(r);
         segs.push(r);
@@ -14954,8 +14972,11 @@ function drawLedColumns(box, l, split, metric, compact, chooseDay, focusDay) {
   box.emphasize = (key) => {
     for (const r of segs) {
       const dimDay = l.day && r.dataset.day !== l.day;
+      const color = dimDay ? "var(--faint)" : r.dataset.color;
       r.style.opacity = dimDay || key != null && r.dataset.k !== key ? ".22" : "";
-      r.style.fill = dimDay ? "var(--faint)" : r.dataset.color;
+      // a mark's leader line is a line, which is stroked, not filled
+      if (r.tagName === "line") r.style.stroke = color;
+      else r.style.fill = color;
     }
   };
   box.emphasize(null);

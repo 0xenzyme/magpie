@@ -807,8 +807,12 @@ body.window .field.solo { grid-column: auto; }
 .led-chart .axis { fill: var(--muted); font-size: 10.5px; }
 .led-chart .hot { fill: var(--pill); }
 .led-chart rect.col { transition: opacity .12s; }
-/* a speed chart's column is all the replies', each one told apart a mark on it */
-.led-chart rect.col.all { fill-opacity: .55; }
+/* a speed chart's column is the point's own speed: a track the marks sit on,
+   at full strength so it reads as the track and not as a fainter series */
+.led-chart rect.col.all { fill-opacity: 1; }
+/* a mark faster than its point's own leaves the column: the leader line ties
+   it back, so it reads as this column's and not as a stray dash */
+.led-chart line.stem { stroke-dasharray: 2 2; transition: opacity .12s; }
 .led-chart .led-day { cursor: pointer; outline: none; }
 .led-chart .led-day:focus-visible { stroke: var(--accent); stroke-width: 1; }
 .led-chart .tip { position: absolute; top: 2px; z-index: 2; min-width: 172px; max-width: 260px; padding: 8px 10px 7px; background: var(--pop-bg); border-radius: 9px; box-shadow: var(--shadow); font-size: 11.5px; pointer-events: none; }
