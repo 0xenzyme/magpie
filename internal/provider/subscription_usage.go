@@ -339,7 +339,9 @@ func fetchSubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 		if ls := accountsOf("claude"); len(ls) > 1 || p.Account.standIn {
 			fetches = append(fetches, perLogin(via("claude"), ls, "Claude Code", "claude-color")...)
 		} else {
-			fetches = append(fetches, withUser(ctx, p.Account.User, func() SubscriptionQuota { return claudeSubscriptionUsage(viaLogin("claude", p.Account.User), p.Account.User) }))
+			fetches = append(fetches, withUser(ctx, p.Account.User, func() SubscriptionQuota {
+				return claudeSubscriptionUsage(viaLogin("claude", p.Account.User), p.Account.User)
+			}))
 		}
 	}
 	if user, plan, ok := cursorIdentity(); !moved("cursor") && ok && !hidden["cursor"] {
