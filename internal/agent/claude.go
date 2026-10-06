@@ -35,6 +35,15 @@ var claudeEnv = []string{
 	"ANTHROPIC_SMALL_FAST_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL",
 }
 
+// claudeOwnEnv are the models of claudeEnv a user may have set for their
+// own endpoint, which magpie's take the place of while it is wired in and
+// gives back when it steps out
+var claudeOwnEnv = []string{
+	"ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
+	"ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL",
+	"ANTHROPIC_SMALL_FAST_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL",
+}
+
 // claudeTiers are the aliases Claude Code resolves (/model opus, a
 // subagent's "model: haiku", …), each of which can have a model of its own.
 // A tier that has none follows the main model.
@@ -594,6 +603,11 @@ func claudeIn(at place) *Agent {
 		}
 		was := unstash(at.key("claude.model"))
 		var back []edit.KV
+		for _, k := range claudeOwnEnv {
+			if v := unstash(at.key("claude.env." + k)); v != "" {
+				back = append(back, edit.KV{Path: "env." + k, Value: v})
+			}
+		}
 		if u := unstash(at.key("claude.base_url")); u != "" {
 			back = append(back, edit.KV{Path: "env.ANTHROPIC_BASE_URL", Value: u})
 		}
@@ -626,15 +640,27 @@ func claudeIn(at place) *Agent {
 				}
 			}
 			forget(at.key("claude.model"), at.key("claude.base_url"), at.key("claude.auth_token"), mainKey)
+			for _, k := range claudeOwnEnv {
+				forget(at.key("claude.env." + k))
+			}
 			return edit.DelJSON(path, keys...)
 		}
 		if isMagpie(v) {
 			if !routed() {
-				stash(map[string]string{
+				kept := map[string]string{
 					at.key("claude.model"):      model(),
 					at.key("claude.base_url"):   env("ANTHROPIC_BASE_URL"),
 					at.key("claude.auth_token"): env("ANTHROPIC_AUTH_TOKEN"),
-				})
+				}
+				// the user's own tiers and subagent model, for the
+				// endpoint they had: back with it when magpie steps out
+				// (#1050); an older gateway address's are magpie's
+				if !ourKey(env("ANTHROPIC_AUTH_TOKEN")) {
+					for _, k := range claudeOwnEnv {
+						kept[at.key("claude.env."+k)] = env(k)
+					}
+				}
+				stash(kept)
 			}
 			// tiers that followed the old model follow the new one; the
 			// ones given a model of their own keep it, the one the new
@@ -1055,6 +1081,9 @@ func claudeIn(at place) *Agent {
 				return err
 			}
 			forget(at.key("claude.model"), at.key("claude.base_url"), at.key("claude.auth_token"), mainKey)
+			for _, k := range claudeOwnEnv {
+				forget(at.key("claude.env." + k))
+			}
 			// magpie's level in the env goes alone: the effortLevel under
 			// it is the user's own, which Claude Code is back on
 			if e := env(claudeEffortEnv); e != "" && appliedOf(self.ID).Fields["effort"] == e {
