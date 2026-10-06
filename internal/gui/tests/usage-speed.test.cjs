@@ -151,9 +151,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // a model faster than the hour's own leaves its mark above the column:
         // a dotted leader line ties the two, so the mark reads as this hour's
         // rather than as a stray dash (huoranxuanyuan, #860). The hour(0)
-        // fixture is the one where that happens: 1890 tokens in 23.4 s is
-        // 80.8 tok/s for glm-fast against the hour's own 1910 in 25.4 s,
-        // 75.2, while kimi-slow answers 10
+        // fixture is the one where that happens: 1755 tokens in 23.4 s is
+        // 75.0 tok/s for glm-fast against the hour's own 1910 in 27.4 s,
+        // 69.7, while kimi-slow answers 10
         const stems = p.locator("#ledChart line.stem");
         assert.equal(await stems.count(), 1, "a leader line for the mark that leaves its column");
         const stem = await stems.first().evaluate((l) => ({ x1: l.x1.baseVal.value, x2: l.x2.baseVal.value, y1: l.y1.baseVal.value, y2: l.y2.baseVal.value }));
