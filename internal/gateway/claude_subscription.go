@@ -293,6 +293,27 @@ func sweepBridgeProjects(claudeDir, tempDir string) {
 	}
 }
 
+// sweepBridgeTemps removes the folders runs a gateway no longer running
+// left in the temp directory: a run's own magpie-claude-<n> (its tools.json,
+// its work folder when it has no shared one) is removed when it ends, but a
+// gateway quit for an update, or killed, ends none of its runs (#958).
+// Another gateway on the same account (a dev build) makes them in the same
+// folder, so only those untouched for as long as a session's passing files
+// are left (tempLongest) go: a run's helper reads its tools.json as it
+// starts, and a run working in its folder touches it.
+func sweepBridgeTemps(tempDir string) {
+	entries, _ := os.ReadDir(tempDir)
+	for _, e := range entries {
+		rest, ok := strings.CutPrefix(e.Name(), "magpie-claude-")
+		if !ok || !e.IsDir() || rest == "" || strings.Trim(rest, "0123456789") != "" {
+			continue
+		}
+		if path := filepath.Join(tempDir, e.Name()); untouchedFor(path, tempLongest) {
+			_ = os.RemoveAll(path)
+		}
+	}
+}
+
 // claudeWorkDir is the folder every run works in. Claude Code tells its
 // model the working directory in its system prompt, after its own fixed
 // part and before the conversation: a folder of its own for each run made
@@ -458,7 +479,12 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 	if err != nil {
 		return nil, nil, err
 	}
-	b.sweep.Do(func() { go sweepBridgeProjects(claudeConfigDir(), os.TempDir()) })
+	b.sweep.Do(func() {
+		go func() {
+			sweepBridgeProjects(claudeConfigDir(), os.TempDir())
+			sweepBridgeTemps(os.TempDir())
+		}()
+	})
 	tmp, err := os.MkdirTemp("", "magpie-claude-")
 	if err != nil {
 		return nil, nil, err
