@@ -144,9 +144,19 @@ var subscriptionUsageCache struct {
 	asked   bool          // the user asked (AskClaudeUsage): wait for the refresh
 }
 
-// OnSubscriptionUsage is told when a refresh has landed, for what shows a
-// stale copy meanwhile (the menu bar's text) to read the new one.
-var OnSubscriptionUsage func()
+// OnSubscriptionUsage sets what is told when a refresh has landed, for what
+// shows a stale copy meanwhile (the menu bar's text) to read the new one; nil
+// tells nothing. It is held atomically: a refresh runs in the background and
+// may be under way while it is set (#1023).
+func OnSubscriptionUsage(f func()) {
+	if f == nil {
+		onSubscriptionUsage.Store(nil)
+		return
+	}
+	onSubscriptionUsage.Store(&f)
+}
+
+var onSubscriptionUsage atomic.Pointer[func()]
 
 // subscriptionTimeout bounds one refresh; the vendors' endpoints can be
 // unreachable without a proxy, and then each fetch would hang to it.
@@ -181,10 +191,12 @@ func SubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 				c.at = time.Time{} // asked meanwhile: read again
 			}
 			c.Unlock()
-			close(done)
-			if f := OnSubscriptionUsage; f != nil {
-				f()
+			// told before done is closed, so whoever waits for the refresh
+			// has it finished, hook and all
+			if f := onSubscriptionUsage.Load(); f != nil {
+				(*f)()
 			}
+			close(done)
 		}()
 	}
 	pending := c.pending
