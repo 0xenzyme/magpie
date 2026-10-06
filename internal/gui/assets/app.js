@@ -2242,9 +2242,10 @@ async function openAgentModels(a, anchor, ev) {
     },
   };
   document.addEventListener("mousedown", loading.away, true);
-  // an agent whose list goes in the order dragged here (Codex's, #855)
-  let models, orderable = false, ordered = false;
-  try { ({ models, orderable, ordered } = await api("agent-models/" + encodeURIComponent(a.id))); }
+  // every agent's list goes in the order dragged here (Codex's, #855; the
+  // others', #1052)
+  let models, ordered = false;
+  try { ({ models, ordered } = await api("agent-models/" + encodeURIComponent(a.id))); }
   catch (e) {
     if (agentModelsLoading === loading) { loading.drop(); status(e.message, "err"); }
     return;
@@ -2270,8 +2271,7 @@ async function openAgentModels(a, anchor, ev) {
   const seg = el("div", "am-seg");
   const segAll = el("button", "on", t("All")), segOn = el("button", "", t("Shown")), segOrder = el("button", "", t("Order"));
   segAll.type = segOn.type = segOrder.type = "button";
-  seg.append(segAll, segOn);
-  if (orderable) seg.append(segOrder);
+  seg.append(segAll, segOn, segOrder);
   tools.append(search, seg);
   const list = el("div", "am-list");
   const foot = el("div", "am-foot");
@@ -2517,7 +2517,12 @@ async function openAgentModels(a, anchor, ev) {
     // ordering is of the whole list: no search, no provider picked, and the
     // foot puts magpie's own order back rather than showing or hiding
     box.classList.toggle("ordering", order);
-    footNote.textContent = order ? t("Drag to put them in the order {agent} lists them; new models go last", { agent: a.name }) : t("New models are shown");
+    // Codex's /model, in WSL too, lists them as handed (#855); another
+    // agent is handed them in it, and one that sorts its own menu may sort
+    // them again
+    footNote.textContent = !order ? t("New models are shown")
+      : a.id.split("@wsl:")[0] === "codex" ? t("Drag to put them in the order {agent} lists them; new models go last", { agent: a.name })
+      : t("Drag to put them in the order magpie hands them to {agent}; new models go last", { agent: a.name });
     if (order) foot.replaceChildren(footNote, el("span", "sp"), unorder);
     else foot.replaceChildren(footNote, el("span", "sp"), hideAll, el("span", "am-dot", "·"), reset);
     list.scrollTop = 0;
