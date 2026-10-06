@@ -4377,6 +4377,7 @@ async function loadProviders() {
   } else renderProviders();
   renderArchive();
   providersWhileFetching();
+  if (view === "providers") loadUpstream();
 }
 
 // Accounts' lists still on their way from their vendors (#541: the page no
@@ -4399,6 +4400,73 @@ function providersWhileFetching() {
     }
     else { providers.fetching = next.fetching; providersWhileFetching(); }
   }, 2500);
+}
+
+// What the vendors' own status pages say of the APIs the providers call
+// (#971, emo172): a vendor's API degraded or down is marked on its
+// providers' rows and usage cards, so its outage isn't taken for a sign-in
+// or quota problem. The gateway reads each page at most once in five
+// minutes; it is asked when the Providers or Usage page loads, and again
+// every five minutes while one stays open. A page that couldn't be read
+// marks nothing: unknown is not "all well", and not an outage either.
+let upstream = null, upstreamAsking = null;
+function loadUpstream() {
+  if (upstreamAsking) return upstreamAsking;
+  clearTimeout(loadUpstream.timer);
+  upstreamAsking = api("upstream").then((u) => {
+    if (Array.isArray(u?.vendors)) { upstream = u; markUpstream(); }
+  }, () => {}).finally(() => {
+    upstreamAsking = null;
+    loadUpstream.timer = setTimeout(() => { if (!document.hidden && (view === "providers" || view === "usage")) loadUpstream(); }, 5 * 60e3);
+  });
+  return upstreamAsking;
+}
+
+const UPSTREAM_LEVEL = { degraded: "API degraded", partial: "API outage", major: "API outage", maintenance: "API maintenance" };
+const UPSTREAM_PART = { degraded_performance: "degraded performance", partial_outage: "partial outage", major_outage: "major outage", under_maintenance: "under maintenance" };
+
+// the vendor's reading for a provider, when its page says the API is affected
+function upstreamOf(id) {
+  const v = upstream?.providers?.[id];
+  const s = v && upstream.vendors.find((x) => x.vendor === v);
+  return s && UPSTREAM_LEVEL[s.level] ? s : null;
+}
+
+function upstreamBadge(s) {
+  const b = el("button", "badge upstream " + s.level, t(UPSTREAM_LEVEL[s.level]));
+  b.type = "button";
+  const lines = [t("{vendor}'s status page says its API is affected", { vendor: s.name })];
+  for (const p of s.parts || []) lines.push("· " + p.name + ": " + t(UPSTREAM_PART[p.status] || p.status));
+  for (const i of s.incidents || []) lines.push("· " + i.name);
+  lines.push(t("Click to open the status page"));
+  b.title = lines.join("\n");
+  // the incident's own page when it has one, else the vendor's
+  b.onclick = (e) => { e.stopPropagation(); api("open", { url: s.incidents?.find((i) => i.url)?.url || s.page }).catch(() => {}); };
+  return b;
+}
+
+// marks (or unmarks) what is drawn; the lists call it after each redraw
+function markUpstream() {
+  const put = (box, s, after) => {
+    if (!box) return;
+    box.querySelector(":scope > .badge.upstream")?.remove();
+    if (!s) return;
+    // a row's name as a box of its own, to be the part cut short
+    if (!after && box.firstChild?.nodeType === Node.TEXT_NODE) {
+      const nm = el("span", "nm");
+      nm.append(box.firstChild);
+      box.prepend(nm);
+    }
+    const b = upstreamBadge(s);
+    if (after) after.after(b); else box.append(b);
+  };
+  for (const row of document.querySelectorAll("#providers .row.provider[data-id], #offProviders .row.provider[data-id]")) {
+    put(row.querySelector(".name"), upstreamOf(row.dataset.id));
+  }
+  for (const card of document.querySelectorAll("#subscriptionUsage > .subscription-card[data-provider]")) {
+    const head = card.querySelector(":scope > .subscription-head");
+    put(head, upstreamOf(card.dataset.provider), head?.querySelector(":scope > b"));
+  }
 }
 
 // Rows in the shape of the list while it is first asked for; a reload keeps
@@ -4525,6 +4593,7 @@ function renderProviders() {
   if (importing) dialog = renderImport(importing);
   if (importingApps) dialog = renderImportApps(importingApps);
   keptIcons = null;
+  markUpstream();
   view.scrollTop = top; // first: a closing dialog folds into its row where it is
   if (dialog) openModal(dialog); else closeModal();
 }
@@ -12000,6 +12069,7 @@ function loadQuotas(asked, again) {
     .finally(() => {
       if (quotasLoading === p) quotasLoading = null;
       if (!same) renderQuotas();
+      if (view === "usage") loadUpstream();
       if (reading && !quotasLater && ++quotasTries <= 20) quotasLater = setTimeout(() => { quotasLater = 0; loadQuotas(false, true); }, 1500);
     });
   p.asked = !!asked;
@@ -12217,6 +12287,7 @@ function renderQuotas() {
     if (accts && (folded.size || usageAcctsAll.has(first.provider))) card.append(acctsMore(first.provider, folded.size));
     subscriptions.append(card);
   }
+  markUpstream();
   restoreFlash();
   requestAnimationFrame(focusQuotaCard);
 }

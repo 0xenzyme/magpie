@@ -830,6 +830,16 @@ reload; DeepSeek's keys fold too, four keys aren't folded, a subscription's
 accounts aren't keys, an unread key leaves the sum out, and at 440px nothing
 is cut; in Chromium and WebKit, English and Chinese.
 
+`upstream-status.test.cjs` checks the vendors' status pages on the
+Providers and Usage pages (#971): with Anthropic's page saying its API is
+down, the Anthropic provider's row and the Claude subscription's row and
+usage card carry "API outage" beside the name, its title naming the part and
+the incident; a click opens the incident and not the row; a relay serving
+the same models, OpenAI (its page all well) and Moonshot (its page unread)
+carry nothing, and nothing does once the page is well again; at 440px the
+badge is whole (the name gives way) and nothing spills; in Chromium and
+WebKit, English and Chinese.
+
 `usage-accounts-fold.test.cjs` checks the Usage page's card of a subscription
 with many accounts (Linx on X: twenty-odd on one plugin made a very long
 card): of 22 WorkBuddy AI accounts the first five are in sight, the rest

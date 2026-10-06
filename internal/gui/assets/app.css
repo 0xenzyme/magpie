@@ -1770,6 +1770,10 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 /* a provider row: logo, name, the agents on it, key status */
 .provider .who { flex: 1 1 auto; }
 .provider .name .badge { margin-left: 6px; }
+/* a row whose name holds a vendor's outage badge (#971): the name gives
+   way to it, the badge is never the part cut */
+.provider .name:has(> .badge.upstream) { display: flex; align-items: center; }
+.provider .name > .nm { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .badge { font-size: 9.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; background: var(--amber-soft); color: var(--amber); vertical-align: 1px; }
 .provider.selected { background: var(--card-2); }
 /* switched off (#163): kept, dimmed, and said so by its name */
@@ -2068,6 +2072,14 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 /* a built-in subscription a community plugin can run: an outlined amber
    word, apart from the filled "sponsored" */
 .badge.deprecated { background: transparent; color: var(--amber); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
+/* a vendor's status page says its API is affected (#971): a button, its
+   page a click away; red for an outage, amber when degraded */
+.badge.upstream { border: 0; font-family: inherit; cursor: pointer; white-space: nowrap; flex: none; display: inline-flex; align-items: center; gap: 4px; letter-spacing: .02em; text-transform: none; }
+.badge.upstream::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.badge.upstream.partial, .badge.upstream.major { background: var(--red-soft); color: var(--red); }
+.badge.upstream.maintenance { background: var(--pill); color: var(--muted); }
+.badge.upstream:hover { filter: brightness(.95); }
+.badge.upstream:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* over the list: what is deprecated, why, and the way on */
 .deprecation { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); animation: fade-in .2s; }
 .deprecation .dep-dot { flex: none; align-self: flex-start; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--amber); }
