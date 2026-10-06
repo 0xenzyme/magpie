@@ -334,7 +334,7 @@ func fetchSubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 		if ls := accountsOf("claude"); len(ls) > 1 || p.Account.standIn {
 			fetches = append(fetches, perLogin(via("claude"), ls, "Claude Code", "claude-color")...)
 		} else {
-			fetches = append(fetches, withUser(ctx, p.Account.User, func() SubscriptionQuota { return claudeSubscriptionUsage(viaLogin("claude", p.Account.User)) }))
+			fetches = append(fetches, withUser(ctx, p.Account.User, func() SubscriptionQuota { return claudeSubscriptionUsage(viaLogin("claude", p.Account.User), p.Account.User) }))
 		}
 	}
 	if user, plan, ok := cursorIdentity(); !moved("cursor") && ok && !hidden["cursor"] {
@@ -491,13 +491,17 @@ type accountStatusError struct {
 
 func (e *accountStatusError) Error() string { return http.StatusText(e.status) }
 
-func claudeSubscriptionUsage(ctx context.Context) SubscriptionQuota {
+// claudeSubscriptionUsage is the allowance of user, the account Claude Code
+// is signed in to, by the name magpie gives it (claudeAccount): its
+// readings and what it said answering are kept under that name, which for
+// a Team seat isn't the email alone `claude auth status` gives.
+func claudeSubscriptionUsage(ctx context.Context, user string) SubscriptionQuota {
 	q := SubscriptionQuota{Provider: "claude", Name: "Claude Code", Icon: "claude-color", Windows: []QuotaWindow{}}
 	if _, _, ok := claudeCredential(); !ok {
 		q.Error = "Claude Code is signed out; run claude auth login"
 		return q
 	}
-	user, plan, _ := claudeIdentity()
+	_, plan, _ := claudeIdentity()
 	q.Plan = plan
 	var err error
 	q.Windows, err = claudeWindows(ctx, user, true)
