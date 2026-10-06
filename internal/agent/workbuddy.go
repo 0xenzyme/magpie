@@ -125,7 +125,15 @@ func workbuddyWrite(path string, on bool) error { return buddyWrite(path, "workb
 // WorkBuddy, or CodeBuddy Code (codebuddy.go), whose models go under the
 // agent's own key. A new file is a bare list for WorkBuddy, as it writes
 // one, and {"models":[…]} for CodeBuddy Code, as its docs give it.
-func buddyWrite(path, agent string, on bool) error {
+func buddyWrite(path, agent string, on bool) error { return buddyWriteAt(path, agent, on, place{}) }
+
+// buddyWriteAt is buddyWrite for the agent at a place. One in a WSL distro
+// (where.base set) is written the gateway as the distro reaches it, with the
+// key it takes from there, at every write: its address is the distro's
+// view of Windows, which moves, so it is never kept as a magpie of the
+// user's on another machine.
+func buddyWriteAt(path, agent string, on bool, where place) error {
+	away := where.base != nil
 	d, err := workbuddyRead(path)
 	if err != nil {
 		return err
@@ -136,6 +144,9 @@ func buddyWrite(path, agent string, on bool) error {
 	// the keys magpie's models are asked with: the gateway's, or that of a
 	// magpie on another machine the user pointed them at
 	keys := map[string]bool{gateway.TokenFor(agent): true}
+	if away {
+		keys[agentKeyAt(agent, where.gw())] = true
+	}
 	for _, raw := range d.models {
 		if e, ok := workbuddyMine(raw); ok && e.APIKey != "" {
 			keys[e.APIKey] = true
@@ -159,7 +170,7 @@ func buddyWrite(path, agent string, on bool) error {
 			if at < 0 {
 				at = len(kept)
 			}
-			if remote == "" && onAnotherMachine(e.URL) {
+			if !away && remote == "" && onAnotherMachine(e.URL) {
 				remote, remoteKey = e.URL, e.APIKey
 			}
 			ours = append(ours, e.ID)
@@ -194,6 +205,9 @@ func buddyWrite(path, agent string, on bool) error {
 						r["defaultEffort"] = keptEffort(was, r["supportedEfforts"].([]string), r["defaultEffort"].(string))
 					}
 				}
+			}
+			if away {
+				e["url"], e["apiKey"] = where.v1()+"/chat/completions", agentKeyAt(agent, where.gw())
 			}
 			if remote != "" {
 				e["url"] = remote
