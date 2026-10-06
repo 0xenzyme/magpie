@@ -156,8 +156,11 @@
 /* side by side, the accounts end where the requests do and scroll like
    them, not run on down the page beside an empty column: of no height of
    their own, they take what the requests give the row, and no less than a
-   few accounts' */
-@container rt-more (min-width: 860px) {
+   few accounts'. Only where the requests' column still keeps each request
+   on one line (wider than 760px, see below): narrower, one column of
+   one-line requests reads better than two with each request on three
+   (#860, huoranxuanyuan) */
+@container rt-more (min-width: 1150px) {
   .rt-cols { grid-template-columns: minmax(0, 1fr) clamp(280px, 32%, 400px); }
   .rt-cols:not(.solo) .rt-col:last-child { display: flex; flex-direction: column; }
   .rt-cols:not(.solo) .rt-acts { flex: 1 1 auto; height: 0; min-height: 216px; overflow-y: auto; overscroll-behavior: contain; }
