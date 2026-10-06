@@ -3120,7 +3120,9 @@ func (s *Server) markUnfit(providerID, model string, proto provider.Protocol) {
 // the provider says and hasn't turned it away, preferred first: Chat
 // Completions, which every OpenAI-compatible vendor serves alike, except
 // for OpenAI's own models where their makers serve them, whose newest are
-// Responses-first (and some Responses-only).
+// Responses-first (and some Responses-only), and Claude where Anthropic's
+// Messages API is served, which alone keeps its cache_control and
+// thinking (#997).
 func (s *Server) usable(p provider.Provider, model string) []provider.Protocol {
 	apis := p.APIs(model)
 	var out []provider.Protocol
@@ -3131,6 +3133,9 @@ func (s *Server) usable(p provider.Provider, model string) []provider.Protocol {
 	}
 	if p.ResponsesFirst(model) {
 		sort.SliceStable(out, func(i, j int) bool { return out[i] == provider.Responses && out[j] != provider.Responses })
+	}
+	if p.MessagesFirst(model) {
+		sort.SliceStable(out, func(i, j int) bool { return out[i] == provider.Anthropic && out[j] != provider.Anthropic })
 	}
 	return out
 }
