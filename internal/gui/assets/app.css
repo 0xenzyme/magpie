@@ -1795,7 +1795,9 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .jt-fold { display: inline-block; width: 0; height: 1em; overflow: visible; white-space: nowrap; vertical-align: -.15em; }
 .jt-fold svg { display: inline-block; margin-left: -12px; color: var(--faint); transition: transform .12s; }
 .jt-fold.open svg { transform: rotate(90deg); }
-.jt-fold:hover svg, .jt-fold:focus-visible svg { color: var(--fg); }
+.jt-fold:hover svg { color: var(--fg); }
+/* :focus-visible in a rule of its own: in a list, Safari before 15.4 drops the whole rule */
+.jt-fold:focus-visible svg { color: var(--fg); }
 .jt-key { color: var(--tk-f); cursor: copy; }
 .jt-key:hover { text-decoration: underline dotted; text-underline-offset: 2px; }
 .jt-copy { display: inline-block; width: 0; height: 1em; overflow: visible; white-space: nowrap; vertical-align: -.2em; opacity: 0; }
@@ -1804,7 +1806,8 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .jt-copy.done svg { color: var(--green); }
 /* faded, not hidden, so the pointer on its way across the gap to it still
    finds it there */
-.jt-head:hover > .jt-copy, .jt-copy:focus-visible, .jt-copy.done { opacity: 1; }
+.jt-head:hover > .jt-copy, .jt-copy.done { opacity: 1; }
+.jt-copy:focus-visible { opacity: 1; }
 .jt-kids[hidden], .jt-sum[hidden] { display: none; }
 .jt-sum { color: var(--muted); border-radius: 3px; }
 .jt-sum:hover { background: var(--pill-hover); color: var(--fg); }
