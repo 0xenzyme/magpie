@@ -947,7 +947,7 @@ func claudeIn(at place) *Agent {
 		return writeTiers(curTiers())
 	}
 	fields = append(fields, Field{
-		Key: "subagent", Label: "subagents", Quiet: true,
+		Key: "subagent", Label: "subagents", Quiet: true, Follows: "model",
 		Get: func() string { m, _ := subagentAt(); return m },
 		Set: func(v string) error {
 			if !routed() {
