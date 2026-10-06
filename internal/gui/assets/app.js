@@ -13288,14 +13288,15 @@ if (mode === "panel") {
 // the chart then tells its models apart. A click on someone in the ranking
 // picks them; "Open Usage" takes the window to their requests.
 let panelUse = null; // the answer for the period, and provider, shown
+// the window's Usage periods, All among them (#860)
+const PANEL_USE_PERIODS = [["today", "Today"], ["7d", "7 days"], ["30d", "30 days"], ["all", "All"]];
 let panelUsePeriod = "today", panelUseProvider = "", panelUseMetric = "tokens", panelUseComputer = "", panelUseDay = "";
 try {
   const p = localStorage.getItem("magpie.panelUsePeriod"), m = localStorage.getItem("magpie.panelUseMetric");
-  if (["today", "7d", "30d"].includes(p)) panelUsePeriod = p;
+  if (PANEL_USE_PERIODS.some(([id]) => id === p)) panelUsePeriod = p;
   if (["tokens", "cost", "calls"].includes(m)) panelUseMetric = m;
 } catch {}
 let panelUseAt = 0;
-const PANEL_USE_PERIODS = [["today", "Today"], ["7d", "7 days"], ["30d", "30 days"]];
 
 // One read at a time: a 10 s timer must not start a second behind a slow one,
 // and a read asked for while one is (a period or a provider picked, the tab
