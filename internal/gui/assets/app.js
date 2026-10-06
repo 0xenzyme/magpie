@@ -4506,6 +4506,7 @@ function markUpstream() {
   const put = (box, s, after) => {
     if (!box) return;
     box.querySelector(":scope > .badge.upstream")?.remove();
+    box.classList.remove("with-upstream");
     if (!s) return;
     // a row's name as a box of its own, to be the part cut short
     if (!after && box.firstChild?.nodeType === Node.TEXT_NODE) {
@@ -4515,6 +4516,8 @@ function markUpstream() {
     }
     const b = upstreamBadge(s);
     if (after) after.after(b); else box.append(b);
+    // a class, not :has(), which Safari 15.0 doesn't parse (#220)
+    box.classList.add("with-upstream");
   };
   for (const row of document.querySelectorAll("#providers .row.provider[data-id], #offProviders .row.provider[data-id]")) {
     put(row.querySelector(".name"), upstreamOf(row.dataset.id));
