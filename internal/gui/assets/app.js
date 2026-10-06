@@ -16957,8 +16957,16 @@ function renderSettings() {
   $("#lightweightRow").hidden = web;
   $("#lightweightSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.lightweight ? "on" : "off",
     (v) => savePrefs({ ...keep, lightweight: v === "on" })));
-  $("#keepAwakeSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.keepAwake ? "on" : "off",
-    (v) => savePrefs({ ...keep, keepAwake: v === "on" })));
+  // the display kept on too (#975): an agent recording the screen found it locked
+  $("#keepAwakeSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")], ["display", t("Screen on too")]],
+    !s.keepAwake ? "off" : s.keepAwakeDisplay ? "display" : "on",
+    (v) => savePrefs({ ...keep, keepAwake: v !== "off", keepAwakeDisplay: v === "display" })));
+  // its line says what the choice does; data-en keeps a language change on it
+  const awakeSub = $("#keepAwakeRow .sub");
+  awakeSub.dataset.en = s.keepAwake && s.keepAwakeDisplay
+    ? "Keeps this computer from going to sleep and its display on while agents work through magpie and for ten minutes after"
+    : "Keeps this computer from going to sleep by itself while agents work through magpie and for ten minutes after; the display may still turn off";
+  awakeSub.textContent = t(awakeSub.dataset.en);
   renderSessionTerminal(s, keep);
   renderBarIcon();
   // the system's record, set on its own, not with the other choices
@@ -18662,7 +18670,7 @@ function wbCheckinLine(r) {
 
 // prefsKeep is what the settings page sends of s, all of it each time.
 function prefsKeep(s) {
-  return { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, lightweight: !!s.lightweight, keepAwake: !!s.keepAwake, proxy: s.proxy || "",
+  return { theme: s.theme, lang: s.lang, tray: s.tray, dock: !!s.dock, dockWindow: !!s.dockWindow, lightweight: !!s.lightweight, keepAwake: !!s.keepAwake, keepAwakeDisplay: !!s.keepAwakeDisplay, proxy: s.proxy || "",
     sessionTerminal: s.sessionTerminal || "",
     otel: s.otel || {},
     trayUsages: s.trayUsages || [],

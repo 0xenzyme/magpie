@@ -223,6 +223,10 @@ type Settings struct {
 	// agents work through the gateway and for a while after (xiao_wang24004
 	// on X; internal/awake). This computer's own (KeepOwn).
 	KeepAwake bool `json:"keepAwake,omitempty"`
+	// KeepAwakeDisplay keeps the display on too while KeepAwake holds the
+	// computer awake (#975, Hu9956: an agent recording the screen to check
+	// its work found it locked). This computer's own (KeepOwn).
+	KeepAwakeDisplay bool `json:"keepAwakeDisplay,omitempty"`
 	// GatewayMode is whether `magpie web` shows only what a gateway serving
 	// other machines needs (Player on Discord): "on", "off", or "" to
 	// decide by itself — on for `magpie web --gateway`, or with no agents
@@ -673,7 +677,7 @@ func (s Settings) Compact() int {
 // Windows box that shows it).
 func (s *Settings) KeepOwn(cur Settings) {
 	s.Window, s.Proxy, s.Port, s.Dock, s.DockWindow, s.Lightweight = cur.Window, cur.Proxy, cur.Port, cur.Dock, cur.DockWindow, cur.Lightweight
-	s.KeepAwake = cur.KeepAwake
+	s.KeepAwake, s.KeepAwakeDisplay = cur.KeepAwake, cur.KeepAwakeDisplay
 	s.TrayUsages, s.TrayUsage, s.TrayUsageEvery, s.TrayNoLogos, s.TrayNoBird = cur.TrayUsages, cur.TrayUsage, cur.TrayUsageEvery, cur.TrayNoLogos, cur.TrayNoBird
 	s.GatewayMode = cur.GatewayMode
 }

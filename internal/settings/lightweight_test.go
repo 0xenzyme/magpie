@@ -37,21 +37,21 @@ func TestKeepAwakeKeptAndOwn(t *testing.T) {
 		t.Fatal("on by default")
 	}
 	s := Load()
-	s.KeepAwake = true
+	s.KeepAwake, s.KeepAwakeDisplay = true, true
 	if err := Save(s); err != nil {
 		t.Fatal(err)
 	}
-	if !Load().KeepAwake {
+	if l := Load(); !l.KeepAwake || !l.KeepAwakeDisplay {
 		t.Fatal("not kept")
 	}
 	from := Settings{}
 	from.KeepOwn(Load())
-	if !from.KeepAwake {
+	if !from.KeepAwake || !from.KeepAwakeDisplay {
 		t.Fatal("KeepOwn dropped it")
 	}
-	from = Settings{KeepAwake: true}
+	from = Settings{KeepAwake: true, KeepAwakeDisplay: true}
 	from.KeepOwn(Settings{})
-	if from.KeepAwake {
+	if from.KeepAwake || from.KeepAwakeDisplay {
 		t.Fatal("another computer's turned on here")
 	}
 }

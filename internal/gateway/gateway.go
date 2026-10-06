@@ -422,7 +422,15 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	go plugin.KeepUpdated(ctx)
 	go plugin.KeepBunUpdated(ctx)
 	// and, when settings say to, keeps the computer awake while agents work
-	go awake.Keep(ctx, func() bool { return settings.Load().KeepAwake }, func() awake.State {
+	go awake.Keep(ctx, func() awake.Level {
+		switch set := settings.Load(); {
+		case !set.KeepAwake:
+			return awake.Off
+		case set.KeepAwakeDisplay:
+			return awake.Display
+		}
+		return awake.System
+	}, func() awake.State {
 		b := s.Busy()
 		return awake.State{Busy: b.Any(), Last: b.Last}
 	})
