@@ -281,7 +281,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     test(`${engine} ${lang}: Settings has a Qoder check-in tab`, async (t) => {
       const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
       t.after(() => browser.close());
-      const page = await (await browser.newContext({ viewport: { width: 440, height: 1400 }, reducedMotion: "reduce" })).newPage();
+      const page = await (await browser.newContext({ viewport: { width: 440, height: 900 }, reducedMotion: "reduce" })).newPage();
       page.setDefaultTimeout(5000);
       const errors = [], asked = [];
       page.on("pageerror", (e) => errors.push(e.message));
@@ -302,6 +302,15 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await tab.waitFor();
       assert.equal(await tab.isHidden(), false);
       assert.equal(await page.locator("#warmTab-minimax").isHidden(), true, "MiniMax's tab with no MiniMax account");
+      // at 440x900 the tabs are below the fold: the reader scrolls to them
+      // with the wheel (a scroll of the script's own is put back, by design)
+      await page.mouse.move(220, 400);
+      for (let i = 0; i < 10; i++) {
+        const r = await tab.boundingBox(), foot = await page.locator("footer.foot").boundingBox();
+        if (r.y + r.height < foot.y - 8) break;
+        await page.mouse.wheel(0, 200);
+        await page.waitForTimeout(100);
+      }
       await tab.click();
       await page.locator("#qoderList").waitFor();
       const sub = await page.locator("#qoderCheckinSub").innerText();
