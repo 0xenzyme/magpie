@@ -43,6 +43,12 @@ type Library struct {
 	// kept is where a change put what it kept aside before the sync, for
 	// the sync to keep the agents' files beside it
 	kept *backups
+	// hashes are the library's skills' hashes as this change read them
+	// (libHash); one taken from an agent's edit is read again
+	hashes map[string]string
+	// untouched are the agents' copies takeEdits found unchanged since
+	// magpie made them, for the sync not to look through them again
+	untouched map[string]bool
 }
 
 // Instructions are one shared text, and for each agent whether it gets it
