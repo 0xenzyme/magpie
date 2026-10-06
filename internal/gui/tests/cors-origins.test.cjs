@@ -74,7 +74,7 @@ function server(lang, posts) {
 const words = {
   en: {
     head: "Web pages", name: "Web pages that may call magpie", add: "Add", remove: "Remove",
-    sub: "Scripts on these origins can call the gateway from a browser, each request with a gateway key from Gateway. Any other page gets no CORS headers",
+    sub: "Scripts on these origins can call the gateway from a browser, each request with a gateway key from Gateway. A page from any other site is refused; pages on this computer are not",
     wildcard: "Name each origin: a wildcard would let every web page use magpie",
     notOrigin: "Write an origin as http://localhost:3000 or https://app.example.com",
   },

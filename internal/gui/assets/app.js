@@ -19089,7 +19089,7 @@ function renderCORS(s) {
   const r = el("div", "row pref rule-row");
   const who = el("div", "who");
   who.append(el("div", "name", t("Web pages that may call magpie")),
-    el("div", "sub" + (d.err ? " err" : ""), d.err || t("Scripts on these origins can call the gateway from a browser, each request with a gateway key from Gateway. Any other page gets no CORS headers")));
+    el("div", "sub" + (d.err ? " err" : ""), d.err || t("Scripts on these origins can call the gateway from a browser, each request with a gateway key from Gateway. A page from any other site is refused; pages on this computer are not")));
   const val = el("div", "val rule-add");
   val.append(field, add);
   r.append(who, val);
