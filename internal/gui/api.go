@@ -367,6 +367,9 @@ type settingsJSON struct {
 	CodexWarmed *time.Time `json:"codexWarmed,omitempty"`
 	// and the Claude warm-up
 	ClaudeWarmed *time.Time `json:"claudeWarmed,omitempty"`
+	// the ChatGPT accounts signed in, each of which can have a daily
+	// warm-up time of its own (#957)
+	CodexUsers []string `json:"codexUsers,omitempty"`
 	// whether a WorkBuddy (China) account is signed in, and each one's
 	// last daily check-in
 	WorkBuddy         bool                        `json:"workbuddy"`
@@ -490,6 +493,7 @@ func settingsState() settingsJSON {
 		s.LANURLs, s.LANContainer = gateway.LANURLs(), gateway.ContainerAddrs()
 	}
 	s.CodexWarmed, s.ClaudeWarmed = latest(provider.CodexWarmed()), latest(provider.ClaudeWarmed())
+	s.CodexUsers = codexUsers()
 	s.WorkBuddy, s.WorkBuddyCheckins = provider.HasWorkBuddy(), provider.WorkBuddyCheckins()
 	s.Trae, s.TraeCheckins = provider.HasTrae(), provider.TraeCheckins()
 	s.MiniMax, s.MiniMaxCheckins = provider.HasMiniMax(), provider.MiniMaxCheckins()
@@ -984,6 +988,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		in.CodexAutoReset = cur.CodexAutoReset
 		// and which of them spend their credits, set there too
 		in.CodexNoCredits = cur.CodexNoCredits
+		// and each Codex account's own daily warm-up (codex-warm-at below)
+		in.CodexWarmAtOf = cur.CodexWarmAtOf
 		// and the text size, which the keyboard changes too (text-size below)
 		in.TextSize = cur.TextSize
 		// the version the Update pill was hidden for, set from the pill
@@ -1194,6 +1200,20 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 	})
 	// whether a Codex account spends one of its resets by itself once its
 	// week is used up, the Usage card's toggle, set on its own
+	// a Codex account's own daily warm-up time: "06:00", "off", or "" to
+	// follow the one for all (#957)
+	mux.HandleFunc("POST /api/settings/codex-warm-at", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ User, At string }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		if err := provider.SetCodexWarmAt(in.User, in.At); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, settingsState())
+	})
 	mux.HandleFunc("POST /api/settings/codex-auto-reset", func(rw http.ResponseWriter, r *http.Request) {
 		var in struct {
 			User string
@@ -1642,4 +1662,15 @@ func tilde(p string) string {
 		return "~" + p[len(home):]
 	}
 	return p
+}
+
+// codexUsers is the ChatGPT accounts signed in, by name, each once.
+func codexUsers() []string {
+	var out []string
+	for _, l := range provider.Logins("codex") {
+		if l.User != "" && !slices.ContainsFunc(out, func(u string) bool { return strings.EqualFold(u, l.User) }) {
+			out = append(out, l.User)
+		}
+	}
+	return out
 }

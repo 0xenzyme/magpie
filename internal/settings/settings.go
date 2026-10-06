@@ -112,6 +112,11 @@ type Settings struct {
 	// with CodexWarmup or without it. ClaudeWarmAt is the Claude accounts'.
 	CodexWarmAt  string `json:"codexWarmAt,omitempty"`
 	ClaudeWarmAt string `json:"claudeWarmAt,omitempty"`
+	// CodexWarmAtOf is a ChatGPT account's own time of day for that, by
+	// its name in lower case, "off" for none: two accounts started hours
+	// apart take over from one another, where at one time they run out
+	// together (#957). An account not in it has CodexWarmAt.
+	CodexWarmAtOf map[string]string `json:"codexWarmAtOf,omitempty"`
 	// CodexAutoReset are the ChatGPT accounts (lower-case) that spend one
 	// of their rate-limit resets by themselves once their weekly window is
 	// used up and no other account can take the request: at most one a
@@ -826,6 +831,11 @@ func Save(s Settings) error {
 			return fmt.Errorf("a warm-up's time of day must look like 06:00, not %q", at)
 		}
 	}
+	for user, at := range s.CodexWarmAtOf {
+		if _, _, ok := Clock(at); at != "off" && !ok {
+			return fmt.Errorf("%s's warm-up time of day must look like 06:00 or be off, not %q", user, at)
+		}
+	}
 	if !slices.Contains(TrayEvery, s.TrayUsageEvery) {
 		return fmt.Errorf("the menu bar's usage is refreshed every %v minutes, not %d", TrayEvery, s.TrayUsageEvery)
 	}
@@ -986,6 +996,24 @@ func (s Settings) normal() Settings {
 		*at = strings.TrimSpace(*at)
 		if h, m, ok := Clock(*at); ok {
 			*at = fmt.Sprintf("%02d:%02d", h, m)
+		}
+	}
+	// an account's own, by its name in lower case; one with none follows
+	// CodexWarmAt and isn't kept
+	if s.CodexWarmAtOf != nil {
+		of := map[string]string{}
+		for user, at := range s.CodexWarmAtOf {
+			user, at = strings.ToLower(strings.TrimSpace(user)), strings.ToLower(strings.TrimSpace(at))
+			if h, m, ok := Clock(at); ok {
+				at = fmt.Sprintf("%02d:%02d", h, m)
+			}
+			if user != "" && at != "" {
+				of[user] = at
+			}
+		}
+		s.CodexWarmAtOf = of
+		if len(of) == 0 {
+			s.CodexWarmAtOf = nil
 		}
 	}
 	return s
