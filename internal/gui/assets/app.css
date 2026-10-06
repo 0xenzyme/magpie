@@ -2286,6 +2286,9 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .editor .editor-error { grid-column: 1 / -1; font-size: 12px; line-height: 1.45; color: var(--red); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
 .editor .editor-error.warn { color: var(--amber); }
 .busy { opacity: .55; pointer-events: none; }
+.saving { opacity: 1; display: inline-flex; align-items: center; gap: 5px; }
+.saving svg { flex: none; animation: spin .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .saving svg { animation: none; } }
 
 /* agent chips: who is on this provider, click one to pick it a model */
 .achips { display: flex; flex-wrap: wrap; gap: 5px; }

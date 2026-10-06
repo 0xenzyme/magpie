@@ -7537,7 +7537,7 @@ function drawEditor(p, presetID) {
       const priceRate = priceRateOfDraft();
       if (priceRate === undefined) return priceRateError(ed);
       if (priceTypedError(ed)) return;
-      saveBtn.classList.add("busy"); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, outputs: ox.map, compacts: cpx.map, proxy, accountProxies: own.map, maxConcurrency, ...queue, priceRate, modelPrefs: modelPrefsOfDraft(), pinUpstream: !!draft.pinUpstream, ...routingOfDraft(p) }, t("{name} saved", { name: p.name })); };
+      saving(saveBtn, t("Saving…")); providerAction("save", { id: p.id, models: chosenIds(), unlisted: draft.unlisted, fallback: draft.fallback, contexts: cx.map, outputs: ox.map, compacts: cpx.map, proxy, accountProxies: own.map, maxConcurrency, ...queue, priceRate, modelPrefs: modelPrefsOfDraft(), pinUpstream: !!draft.pinUpstream, ...routingOfDraft(p) }, t("{name} saved", { name: p.name })); };
     bar.append(cancel, saveBtn);
     ed.append(bar);
     return ed;
@@ -7912,7 +7912,7 @@ function drawEditor(p, presetID) {
     if (isNew && custom && !body.chat && !body.anthropic && !body.responses && !body.decide) { url.focus(); return editorError(t("A base URL is needed"), "warn"); }
     if (endpoint && !body.chat && !body.responses) { endpoint.focus(); return editorError(t(pr.endpointNeeded || "Your resource's endpoint is needed"), "warn"); }
     editorError("");
-    saveBtn.classList.add("busy");
+    saving(saveBtn, t(isNew ? "Adding…" : "Saving…"));
     providerAction("save", body, t(isNew ? "{name} added" : "{name} saved", { name: draft.name || draft.id }));
   };
   saveBtn.onclick = save;
@@ -8335,7 +8335,7 @@ function renderImport(im) {
   const add = () => {
     const n = (im.name ?? p.name).trim();
     if (!n) { name.focus(); return status(t("Give it a name"), "warn"); }
-    addBtn.classList.add("busy");
+    saving(addBtn, t(im.replaces ? "Replacing…" : "Adding…"));
     providerAction("save", { ...p, name: n, key: (im.key ?? p.key ?? "").trim() }, t("{name} added", { name: n }));
   };
   addBtn.onclick = add;
@@ -11834,8 +11834,25 @@ async function providerAction(action, body, okMsg, base = "provider/") {
       } catch { /* the error below says enough */ }
     }
     if (!editorError(e.message, "err")) status(e.message, "err");
-    document.querySelector(".editor .busy")?.classList.remove("busy");
+    for (const b of document.querySelectorAll(".editor .busy")) doneSaving(b);
   }
+}
+
+// saving shows a button's save under way, a spinner and what it is doing in
+// place of its label (zola_xynb on X: Save asks the provider for its model
+// list, which can take seconds, and a button only faded looked as if the
+// click had done nothing); doneSaving puts the label back.
+function saving(b, text) {
+  b.dataset.label = b.textContent;
+  b.classList.add("busy", "saving");
+  b.setAttribute("aria-busy", "true");
+  b.replaceChildren(svg(CLI_SPIN, 11, 1.8), el("span", "", text));
+}
+
+function doneSaving(b) {
+  b.classList.remove("busy", "saving");
+  b.removeAttribute("aria-busy");
+  if (b.dataset.label !== undefined) { b.textContent = b.dataset.label; delete b.dataset.label; }
 }
 
 // saidMoved says what was done, and which agents it moved off models it
