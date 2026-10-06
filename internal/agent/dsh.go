@@ -151,7 +151,16 @@ func dshAt(at place) *Agent {
 			Get: func() string { return dshGet(dir) },
 			Set: func(v string) error { return dshSet(dir, v, gw()) },
 			Options: func(map[string]string) []Option {
-				return append(append([]Option{}, dshModels...), viaMagpie("dsh", magpieID+"/")...)
+				own := append([]Option{}, dshModels...)
+				// since 0.1.5 dsh's own go to DeepSeek on its own key, its
+				// llm-deepseek row left to it, and say so as every agent's
+				// own do (EZN7L2C3, #955); before, magpie took that row over
+				if len(dshProfiles(dir)) > 0 {
+					for i := range own {
+						own[i].Direct = "DeepSeek"
+					}
+				}
+				return append(own, viaMagpie("dsh", magpieID+"/")...)
 			},
 		}, {
 			// the thinking effort sessions start with: agent-default-model's
