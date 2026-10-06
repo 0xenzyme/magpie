@@ -131,6 +131,10 @@ type Settings struct {
 	// signed-in MiniMax Code (China) account (its plugin's) once a Beijing
 	// day, claiming the credits it gives (#811).
 	MiniMaxCheckin bool `json:"minimaxCheckin,omitempty"`
+	// QoderCheckin claims Qoder's daily credits for each signed-in Qoder
+	// and Qoder CN account (its plugin's) once a Beijing day (ARNO on
+	// Discord).
+	QoderCheckin bool `json:"qoderCheckin,omitempty"`
 	// MemberModel has a reply's model name the routing group's member
 	// that answered, as magpie's provider/model id (workbuddy/glm-5.3-flash),
 	// rather than the vendor's own name for it, for agents that count

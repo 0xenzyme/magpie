@@ -414,6 +414,8 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	// and the Trae CN accounts (#694), and the MiniMax Code ones (#811)
 	go provider.KeepTraeCheckedIn(ctx)
 	go provider.KeepMiniMaxCheckedIn(ctx)
+	// and the Qoder ones' daily credits
+	go provider.KeepQoderCheckedIn(ctx)
 	// and moves the built-in subscriptions being retired onto their plugins
 	go provider.KeepRetiringMoved(ctx)
 	// and keeps the community's plugins up to date, noting others' updates, and the Bun they run on

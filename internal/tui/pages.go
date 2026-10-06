@@ -614,6 +614,8 @@ var (
 	hasTrae      = provider.HasTrae
 	checkinMM    = provider.CheckInMiniMax
 	hasMiniMax   = provider.HasMiniMax
+	checkinQd    = provider.CheckInQoder
+	hasQoder     = provider.HasQoder
 )
 
 // checkinCmd presses WorkBuddy's daily check-in (签到) now for every
@@ -621,7 +623,8 @@ var (
 // as the app's Usage card's "Check in now" and magpie accounts checkin do:
 // the built-in's or the plugin's (akic404 on Discord: the TUI had no way
 // to); and Trae CN's (每日签到) for each Trae CN account (#694), and
-// MiniMax Code's for each MiniMax Code (China) account (#811). It says
+// MiniMax Code's for each MiniMax Code account (#811), and Qoder's daily
+// credits for each Qoder account. It says
 // how each account stands: the credits and streak, in
 // already today, or why not. A shared magpie's accounts are checked in
 // on that magpie, from its own app, TUI or CLI.
@@ -654,8 +657,16 @@ func checkinCmd() tea.Msg {
 			parts = append(parts, checkinWords(r))
 		}
 	}
+	if hasQoder() {
+		for _, r := range checkinQd(ctx) {
+			if r.Outcome == provider.CheckinFailed {
+				failed++
+			}
+			parts = append(parts, checkinWords(r))
+		}
+	}
 	if len(parts) == 0 {
-		return checkinMsg{text: "no WorkBuddy (China), Trae CN or MiniMax Code account is signed in · only they have the daily check-in"}
+		return checkinMsg{text: "no WorkBuddy (China), Trae CN, MiniMax Code or Qoder account is signed in · only they have the daily check-in"}
 	}
 	return checkinMsg{text: strings.Join(parts, "; "), ok: failed == 0}
 }
@@ -672,6 +683,10 @@ func checkinWords(r provider.WorkBuddyCheckin) string {
 		who = "MiniMax Code"
 	case r.By == "minimax":
 		who = "MiniMax Code " + who
+	case r.By == "qoder" && who == "":
+		who = "Qoder"
+	case r.By == "qoder":
+		who = "Qoder " + who
 	case who == "":
 		who = "WorkBuddy"
 	}

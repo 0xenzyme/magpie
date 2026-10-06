@@ -377,6 +377,9 @@ type settingsJSON struct {
 	// and a MiniMax Code (China) account (its plugin's), and theirs (#811)
 	MiniMax         bool                        `json:"minimax"`
 	MiniMaxCheckins []provider.WorkBuddyCheckin `json:"minimaxCheckins,omitempty"`
+	// and a Qoder or Qoder CN account (its plugin's), and theirs
+	Qoder         bool                        `json:"qoder"`
+	QoderCheckins []provider.WorkBuddyCheckin `json:"qoderCheckins,omitempty"`
 	// FX is the dollar-to-yuan rate the cny currency choice shows costs at
 	FX fxJSON `json:"fx"`
 	// NotifyProblem is why a usage alert set wouldn't be seen: "denied"
@@ -490,6 +493,7 @@ func settingsState() settingsJSON {
 	s.WorkBuddy, s.WorkBuddyCheckins = provider.HasWorkBuddy(), provider.WorkBuddyCheckins()
 	s.Trae, s.TraeCheckins = provider.HasTrae(), provider.TraeCheckins()
 	s.MiniMax, s.MiniMaxCheckins = provider.HasMiniMax(), provider.MiniMaxCheckins()
+	s.Qoder, s.QoderCheckins = provider.HasQoder(), provider.QoderCheckins()
 	s.VisionAuto, s.VisionModels = gateway.AutoVision(), []modelRef{}
 	for _, e := range provider.Served() {
 		if e.Images && (e.ImageInput == nil || *e.ImageInput) && (e.Group != "" || e.Provider.Ready()) {
@@ -1247,6 +1251,21 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		}
 		s := settings.Load()
 		s.MiniMaxCheckin = in.On
+		if err := settings.Save(s); err != nil {
+			fail(rw, err)
+			return
+		}
+		writeJSON(rw, settingsState())
+	})
+	// and Qoder's daily credits
+	mux.HandleFunc("POST /api/settings/qoder-checkin", func(rw http.ResponseWriter, r *http.Request) {
+		var in struct{ On bool }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			fail(rw, err)
+			return
+		}
+		s := settings.Load()
+		s.QoderCheckin = in.On
 		if err := settings.Save(s); err != nil {
 			fail(rw, err)
 			return
