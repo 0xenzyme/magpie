@@ -1412,6 +1412,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			fastPick(cands, pl, p.ID, model)
 		}
 	}
+	agentPick := provider.AgentEffort(agent)
 	if sealedTask {
 		cands, pl = sealedReaders(cands, pl)
 	}
@@ -1692,6 +1693,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			levels = groupLevels(g, ms, c)
 		}
 		fixed := cmp.Or(c.effort, withinLevels(askedEffort, levels))
+		if fixed == "" && effort == "" && agentPick != "" && c.p.Thinks(c.model) {
+			// the effort picked in magpie for an agent whose config can't
+			// carry one (Cursor Private Inference, #1003), in place of the
+			// level it sent, on a model that reasons; a member fixed at
+			// one, a suffix and the turn's pick are more particular
+			fixed = withinLevels(agentPick, levels)
+		}
 		if fixed != "" {
 			// a member fixed at an effort is asked for it, at the level its
 			// model has nearest, whatever the agent asked or the turn's
