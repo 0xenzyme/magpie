@@ -34,7 +34,7 @@ func copilotWindow(q SubscriptionQuota, name string) *QuotaWindow {
 }
 
 // The snapshots of a token-based-billing account's quota_snapshots, the way
-// GitHub sends them: a Pro+ (individual_max) account's, read from the real
+// GitHub sends them: a Max (individual_max) account's, read from the real
 // endpoint on 2026-10-07 with its ids and lists left out, and the
 // Business/Enterprise shapes VS Code's own parser is tested with
 // (chatEntitlementService.test.ts): entitlement as a string, has_quota
@@ -55,7 +55,7 @@ func TestCopilotUsageReadsEverySeat(t *testing.T) {
 		name, body string
 		premium    *want // nil: the card must say Premium requests are unlimited
 	}{
-		{"Pro+ with allowance left, the real response", `{"access_type_sku":"free_github_star_quota","copilot_plan":"individual_max","quota_reset_date":"2026-11-01","quota_snapshots":{` + copilotUnlimitedSnaps + `,
+		{"Max with allowance left, the real response", `{"access_type_sku":"free_github_star_quota","copilot_plan":"individual_max","quota_reset_date":"2026-11-01","quota_snapshots":{` + copilotUnlimitedSnaps + `,
 "premium_interactions":{"overage_count":0,"overage_permitted":false,"percent_remaining":99.9,"quota_id":"premium_interactions","quota_remaining":19999.9,"unlimited":false,"timestamp_utc":"2026-10-06T14:40:30.429-07:00","has_quota":true,"quota_reset_at":0,"token_based_billing":true,"credits_used":0,"overage_entitlement":0,"remaining":19999,"entitlement":20000}},
 "quota_reset_date_utc":"2026-11-01T00:00:00.000Z","token_based_billing":true}`,
 			&want{0.0005, "0.1 / 20000", false}},
@@ -68,7 +68,7 @@ func TestCopilotUsageReadsEverySeat(t *testing.T) {
 		{"Business used up (#1063)", `{"access_type_sku":"copilot_for_business_seat","copilot_plan":"business","quota_reset_date_utc":"2026-11-01T00:00:00.000Z","token_based_billing":true,"quota_snapshots":{` + copilotBusinessUnlimited + `,
 "premium_interactions":{"overage_count":0,"overage_entitlement":0,"overage_permitted":false,"percent_remaining":0,"unlimited":false,"entitlement":"300","quota_remaining":"0","has_quota":false}}}`,
 			&want{100, "300 / 300", false}},
-		{"Business used up, numbers as github.com sent the Pro+ one (#1063's card: Chat and Completions unlimited, nothing else)", `{"access_type_sku":"copilot_for_business_seat","copilot_plan":"business","quota_reset_date":"2026-11-01","quota_snapshots":{` + copilotUnlimitedSnaps + `,
+		{"Business used up, numbers as github.com sent the Max one (#1063's card: Chat and Completions unlimited, nothing else)", `{"access_type_sku":"copilot_for_business_seat","copilot_plan":"business","quota_reset_date":"2026-11-01","quota_snapshots":{` + copilotUnlimitedSnaps + `,
 "premium_interactions":{"overage_count":0,"overage_permitted":false,"percent_remaining":0.0,"quota_id":"premium_interactions","quota_remaining":0.0,"unlimited":false,"has_quota":false,"quota_reset_at":0,"token_based_billing":true,"credits_used":0,"overage_entitlement":0,"remaining":0,"entitlement":300}},
 "quota_reset_date_utc":"2026-11-01T00:00:00.000Z","token_based_billing":true}`,
 			&want{100, "300 / 300", false}},
