@@ -58,6 +58,7 @@ type vscodeKind struct {
 var (
 	vscodeStable   = vscodeKind{id: "vscode", name: "VS Code", folder: "Code", bin: "code", aliases: []string{"vs-code", "copilot-chat", "vscode-chat"}, ua: []string{vscodeUA}}
 	vscodeInsiders = vscodeKind{id: "vscode-insiders", name: "VS Code Insiders", folder: "Code - Insiders", bin: "code-insiders", aliases: []string{"vs-code-insiders", "code-insiders"}}
+	vscodiumKind   = vscodeKind{id: "vscodium", name: "VSCodium", folder: "VSCodium", bin: "codium", aliases: []string{"codium", "vscodium-chat"}}
 )
 
 // token is the bearer token its models send: Stable's the gateway's own,
@@ -74,6 +75,8 @@ func (k vscodeKind) token() string {
 func vscode(home, cfg string) *Agent { return vscodeOf(vscodeStable, home, cfg) }
 
 func vscodeInsidersAgent(home, cfg string) *Agent { return vscodeOf(vscodeInsiders, home, cfg) }
+
+func vscodium(home, cfg string) *Agent { return vscodeOf(vscodiumKind, home, cfg) }
 
 func vscodeOf(k vscodeKind, home, cfg string) *Agent {
 	switch runtime.GOOS {
@@ -161,6 +164,9 @@ func vscodeKindAt(k vscodeKind, dir string) *Agent {
 		},
 		Notice: func() string {
 			if joined() {
+				if k.id == "vscodium" {
+					return "VSCodium's Chat features must be enabled (chat.disableAIFeatures=false) and its product.json must include defaultChatAgent and trustedExtensionAuthAccess for GitHub.copilot-chat. Then run Developer: Reload Window in VSCodium."
+				}
 				return "magpie's models are in " + k.name + "'s Chat model picker, under magpie, in each of its profiles (VS Code 1.122 or later). If they don't show, run Developer: Reload Window in " + k.name + "."
 			}
 			return ""

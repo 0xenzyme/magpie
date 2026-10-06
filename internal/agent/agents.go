@@ -81,6 +81,7 @@ func All() []*Agent {
 		zed(home, cfg),
 		vscode(home, cfg),
 		vscodeInsidersAgent(home, cfg),
+		vscodium(home, cfg),
 		air(home, cfg),
 		copilot(home),
 		crush(home, cfg),

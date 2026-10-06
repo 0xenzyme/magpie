@@ -289,3 +289,74 @@ func TestVSCodeInsiders(t *testing.T) {
 		t.Fatal("disconnected, magpie's group kept")
 	}
 }
+
+func TestVSCodium(t *testing.T) {
+	syncHome(t)
+	c, err := Find("vscodium")
+	if err != nil {
+		t.Fatal(err)
+	}
+	vs, err := Find("vscode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Name != "VSCodium" || c.Bin != "codium" || c.UA != nil || !strings.Contains(c.Dir, filepath.Join("VSCodium", "User")) {
+		t.Fatalf("vscodium: %+v", c)
+	}
+	for _, alias := range []string{"codium", "vscodium-chat"} {
+		a, err := Find(alias)
+		if err != nil || a.ID != "vscodium" {
+			t.Fatalf("Find(%q): %v %v", alias, a, err)
+		}
+	}
+	writeFile(t, c.Path, "{}\n")
+	writeFile(t, vs.Path, `{"chat.defaultModel":"gpt-5"}`+"\n")
+	if !c.Detected() {
+		t.Fatal("VSCodium not detected")
+	}
+	if err := c.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	g, ok := edit.GetJSONItem(filepath.Join(c.Dir, "chatLanguageModels.json"), vscodeGroup)
+	if !ok || gjson.Get(g, "models.0.requestHeaders.Authorization").String() != "Bearer magpie-vscodium" || !c.Wired() || c.Check() != "" {
+		t.Fatalf("connected: %s %v %q", g, c.Wired(), c.Check())
+	}
+	if isFile(filepath.Join(vs.Dir, "chatLanguageModels.json")) || readFile(vs.Path) != `{"chat.defaultModel":"gpt-5"}`+"\n" || vs.Wired() {
+		t.Fatalf("VS Code touched:\n%s", readFile(vs.Path))
+	}
+	if got := usage.AgentOf("vscodium"); got != "vscodium" {
+		t.Fatalf("token: %q", got)
+	}
+	if err := c.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := edit.GetJSONItem(filepath.Join(c.Dir, "chatLanguageModels.json"), vscodeGroup); ok || c.Wired() {
+		t.Fatal("disconnected, magpie's group kept")
+	}
+}
+
+func TestVSCodiumModelsUseTheirOwnVisibility(t *testing.T) {
+	syncHome(t)
+	if err := provider.Save(provider.Provider{ID: "relay", Name: "Relay", Key: "k", Chat: "http://127.0.0.1:1/v1", Models: []string{"visible", "hidden"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.SetHiddenModels("vscodium", []string{"relay/hidden"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.SetHiddenModels("vscode", []string{"relay/visible"}); err != nil {
+		t.Fatal(err)
+	}
+	has := func(k vscodeKind, id string) bool {
+		b, err := json.Marshal(vscodeGroupJSON(k))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return gjson.GetBytes(b, "models.#(id==\""+id+"\")").Exists()
+	}
+	if has(vscodiumKind, "relay/hidden") || !has(vscodiumKind, "relay/visible") {
+		t.Fatal("VSCodium did not use its own hidden-model list")
+	}
+	if !has(vscodeStable, "relay/hidden") || has(vscodeStable, "relay/visible") {
+		t.Fatal("VS Code did not retain its own hidden-model list")
+	}
+}
