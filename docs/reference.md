@@ -201,6 +201,14 @@ Its list is the models the shared magpie's agents are shown, each named with
 its provider there (`Claude Sonnet 5 · Relay A · office`) — the ids stay ids
 (`office/relay-a/claude-sonnet-5`), only these labels carry the names — and its image
 models are listed under Settings → Images and draw through it.
+Its quotas show too: the Usage page, the menu bar and `magpie quota` list the
+shared magpie's cards named with it (`Codex · office`, id `office/codex`), as
+that magpie last read them — only the computer holding the sign-ins asks the
+vendors, and it answers from what it has kept (`GET /v1/magpie/quotas/cards`).
+A card's refresh here has it read that card once more
+(`POST /v1/magpie/quotas/refresh`, at most once in 30 seconds a card); until it
+has read anything, the remote's one card says so. Their history is shown with
+its own. A Codex reset or a check-in is pressed on that computer, not here.
 
 Codex's native image tool first asks the provider that served its conversation
 turn for the requested image model. If that provider does not list the model,

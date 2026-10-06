@@ -478,6 +478,8 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /v1/magpie/quotas", s.quotas)
 	mux.HandleFunc("GET /v1/magpie/quotas/history", s.quotasHistory)
+	mux.HandleFunc("GET "+provider.RemoteCardsPath, s.quotaCards)
+	mux.HandleFunc("POST "+provider.RemoteRefreshPath, s.quotaCardsRefresh)
 	mux.HandleFunc("GET /v1/magpie/route", s.sessionRoute)
 	mux.HandleFunc("GET /v1/magpie/concurrency", s.concurrency)
 	mux.HandleFunc("GET /v1/magpie/limit", s.keyLimit)
@@ -547,6 +549,60 @@ func (s *Server) quotasHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	writeJSON(w, 200, map[string]any{"object": "list", "data": provider.QuotaHistories(provider.QuotaHistorySince(q.Get("days"), time.Now()), q.Get("provider"), q.Get("user"))})
+}
+
+// quotaCards is the Usage page's cards as this magpie last read them, for
+// another magpie that has this one as its provider (remote-magpie) to
+// show: its own cache, however old, and no vendor asked for it.
+func (s *Server) quotaCards(w http.ResponseWriter, r *http.Request) {
+	if !local(r) && !sharedWith(r) {
+		writeError(w, provider.Chat, http.StatusForbidden, "magpie's quotas are told to another machine only when magpie is shared on the local network (Settings → Share on local network) and the request carries its API key (Authorization: Bearer <key> or x-api-key: <key>)")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"object": "list", "data": provider.CachedCards(time.Now())})
+}
+
+// remoteRefreshes is when another magpie last had each card read again
+// here: one refreshed by hand is read at most once in remoteRefreshGap,
+// however often it is asked, so the vendor sees no more than this
+// computer's own refresh button would make it.
+var remoteRefreshes = struct {
+	sync.Mutex
+	at map[string]time.Time
+}{at: map[string]time.Time{}}
+
+const remoteRefreshGap = 30 * time.Second
+
+// quotaCardsRefresh is a card's refresh pressed on another magpie: the
+// card (?provider=, &user=) is read again here, or every card when none
+// is named, then the cards are answered as quotaCards answers them.
+func (s *Server) quotaCardsRefresh(w http.ResponseWriter, r *http.Request) {
+	if !local(r) && !sharedWith(r) {
+		writeError(w, provider.Chat, http.StatusForbidden, "magpie's quotas are told to another machine only when magpie is shared on the local network (Settings → Share on local network) and the request carries its API key (Authorization: Bearer <key> or x-api-key: <key>)")
+		return
+	}
+	id, user := r.URL.Query().Get("provider"), r.URL.Query().Get("user")
+	if strings.Contains(id, "/") || provider.IsRemoteCard(id) { // a card this magpie has from another: not passed on
+		writeError(w, provider.Chat, http.StatusBadRequest, "this magpie reads only its own cards again")
+		return
+	}
+	key := id + "|" + strings.ToLower(user)
+	remoteRefreshes.Lock()
+	due := time.Since(remoteRefreshes.at[key]) >= remoteRefreshGap
+	if due {
+		remoteRefreshes.at[key] = time.Now()
+	}
+	remoteRefreshes.Unlock()
+	if due {
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		if id == "" {
+			provider.ReadAllCards(ctx)
+		} else {
+			provider.RefreshUsage(ctx, id, user)
+		}
+		cancel()
+	}
+	writeJSON(w, 200, map[string]any{"object": "list", "data": provider.CachedCards(time.Now())})
 }
 
 func modelObject(e provider.Entry) map[string]any {

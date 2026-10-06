@@ -357,6 +357,12 @@ func quotaMatches(q provider.Quota, only []string) bool {
 		if strings.EqualFold(q.Provider, o) || strings.EqualFold(q.Name, o) || strings.EqualFold(q.Kind, o) {
 			return true
 		}
+		// a remote magpie's card: by the remote ("office", or its name)
+		// or by the provider there ("codex" is office/codex too)
+		if rid, there, ok := strings.Cut(q.Provider, "/"); ok && q.From != "" &&
+			(strings.EqualFold(rid, o) || strings.EqualFold(q.From, o) || strings.EqualFold(there, o)) {
+			return true
+		}
 	}
 	return false
 }
@@ -408,9 +414,15 @@ func quotaHistoryCmd(args []string) error {
 	}
 	now := time.Now()
 	hs := []provider.QuotaHistory{}
-	for _, h := range provider.QuotaHistories(provider.QuotaHistorySince(days, now), "", "") {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	all := provider.QuotaHistories(provider.QuotaHistorySince(days, now), "", "")
+	// and each remote magpie's, as it keeps them (office/codex)
+	all = append(all, provider.RemoteQuotaHistories(ctx, days)...)
+	for _, h := range all {
+		rid, there, _ := strings.Cut(h.Provider, "/")
 		if len(only) == 0 || slices.ContainsFunc(only, func(o string) bool {
-			return o == h.Provider || o == h.User || o == h.Provider+"/"+h.User
+			return o == h.Provider || o == h.User || o == h.Provider+"/"+h.User || there != "" && (o == rid || o == there || o == there+"/"+h.User)
 		}) {
 			hs = append(hs, h)
 		}

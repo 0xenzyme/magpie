@@ -117,6 +117,12 @@ type SubscriptionQuota struct {
 	Checkins  bool              `json:"checkins,omitempty"`
 	CheckinBy string            `json:"checkinBy,omitempty"`
 	Checkin   *WorkBuddyCheckin `json:"checkin,omitempty"`
+	// Kind is the card's kind as another magpie is told it (CachedCards):
+	// subscription, plan or balance; "" here.
+	Kind string `json:"kind,omitempty"`
+	// From is the remote magpie a card is that one's (remote_quotas.go),
+	// by its name here; "" for this computer's own.
+	From string `json:"from,omitempty"`
 	// In-process read order, separate from the vendor's ReadAt and never
 	// persisted: restarting starts a new sequence.
 	readSeq uint64

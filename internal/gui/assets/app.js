@@ -10625,6 +10625,9 @@ function quotaError(err) {
   if (/violation of Terms of Service/i.test(err)) return t("Google has suspended this account — hover for details");
   if (/access token is invalid or expired|didn't take the access token/.test(err)) return t("AiHubMix didn't take the access token — paste a new one in the provider's settings");
   if (/this key has no limit/.test(err)) return t("This key has no limit — add the account's access token in the provider's settings to see its balance");
+  // a remote magpie's card (remote_quotas.go)
+  if (/^nothing read on that magpie yet/.test(err)) return t("Nothing read on that computer yet — refresh this card to have it read");
+  if (/^remote magpie doesn't share its quotas/.test(err)) return t("That computer's magpie doesn't share its quotas yet — update magpie there");
   return balanceError(err) || t("Allowance unavailable");
 }
 

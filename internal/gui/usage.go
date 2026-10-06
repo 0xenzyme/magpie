@@ -508,7 +508,12 @@ func usageRoutes(mux *http.ServeMux, w Windows) {
 	// what was left of each window over time, for the quota cards' curves
 	// (#651); ?days= back
 	mux.HandleFunc("GET /api/usage/quotas/history", func(rw http.ResponseWriter, r *http.Request) {
-		writeJSON(rw, provider.QuotaHistories(provider.QuotaHistorySince(r.URL.Query().Get("days"), time.Now()), "", ""))
+		days := r.URL.Query().Get("days")
+		hs := provider.QuotaHistories(provider.QuotaHistorySince(days, time.Now()), "", "")
+		// and a remote magpie's, for its cards (office/codex)
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		writeJSON(rw, append(hs, provider.RemoteQuotaHistories(ctx, days)...))
 	})
 	// spends one of a Codex account's rate-limit resets, which the page
 	// has asked the user about first; what it did comes back
