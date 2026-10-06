@@ -23,10 +23,13 @@ package agent
 // local API, which saves them and reloads its models at once:
 //
 //	PUT /api/config               {"providers":{"magpie":{…}|null}}
-//	PUT /api/agents/:id/config    {"models":{"chat":{"id","provider"}|null}}
+//	PUT /api/agents/:id/config    {"models":{"chat":{"id","provider"}}}
+//	GET /api/models               {"models":[{"id","provider",…}]}
 //
 // Otherwise magpie writes the files, which it reads when it starts. The
-// model the agent had is stashed and put back when magpie steps out.
+// model the agent had is stashed and put back when magpie steps out; since
+// 1.0 the API takes no agent without a model, so with none stashed, or one
+// it no longer has, the agent goes to the first of OpenHanako's own.
 
 import (
 	"bytes"
@@ -139,9 +142,11 @@ func hanako(home string) *Agent {
 						return errSealed("take magpie out of")
 					}
 					if onMagpie() {
-						if err := hanakoChat(dir, agent, unstash(key())); err != nil {
+						// the stash goes only once the model is back
+						if err := hanakoBack(dir, agent, stashLoad()[key()]); err != nil {
 							return err
 						}
+						forget(key())
 					}
 					return hanakoRemove(dir)
 				}
@@ -411,6 +416,76 @@ func hanakoChat(dir, agent, v string) error {
 		return edit.DelYAML(path, "models.chat")
 	}
 	return edit.SetYAML(path, edit.KV{Path: "models.chat", Value: chat})
+}
+
+// hanakoBack puts an agent's chat model back off magpie's: prev, the one
+// it had, if there is one. Running, OpenHanako takes only a model it has, as
+// provider/id: no model at all or an id alone is a 400 ("models.chat requires
+// provider/id"). So prev is looked up in its models (an id alone, from
+// before its migration #5, by its id), and when magpie has none for this
+// agent (it was put on magpie in OpenHanako, or under another agent) or its
+// provider has gone, the agent goes to the first model of OpenHanako's own.
+func hanakoBack(dir, agent, prev string) error {
+	s := hanakoLive(dir)
+	if s == nil || agent == "" {
+		return hanakoChat(dir, agent, prev)
+	}
+	models, err := s.models()
+	if err != nil {
+		return err
+	}
+	pick := ""
+	p, id, ref := strings.Cut(prev, "/")
+	for _, m := range models {
+		if m.Provider == "" || m.Provider == magpieID || m.ID == "" {
+			continue
+		}
+		if (ref && m.Provider == p && m.ID == id) || (!ref && prev != "" && m.ID == prev) {
+			pick = m.Provider + "/" + m.ID
+			break
+		}
+		if pick == "" && prev == "" {
+			pick = m.Provider + "/" + m.ID
+		}
+	}
+	if pick == "" && prev != "" {
+		return hanakoBack(dir, agent, "")
+	}
+	if pick == "" {
+		return errors.New("OpenHanako has no model of its own to go back to — add a provider in OpenHanako's settings, then turn magpie off again")
+	}
+	return hanakoChat(dir, agent, pick)
+}
+
+type hanakoAvail struct {
+	ID       string `json:"id"`
+	Provider string `json:"provider"`
+}
+
+// models lists the models OpenHanako can chat with, as its model picker
+// does: GET /api/models.
+func (s *hanakoServer) models() ([]hanakoAvail, error) {
+	req, err := http.NewRequest("GET", s.url("/api/models"), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+s.Token)
+	resp, err := hanakoClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("OpenHanako: %w", err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Models []hanakoAvail `json:"models"`
+		Error  string        `json:"error"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&out); err != nil || resp.StatusCode/100 != 2 {
+		if out.Error == "" && err != nil {
+			out.Error = err.Error()
+		}
+		return nil, fmt.Errorf("OpenHanako: %s /api/models: %s", resp.Status, out.Error)
+	}
+	return out.Models, nil
 }
 
 // hanakoServer is a running OpenHanako's API, as server-info.json gives it.
