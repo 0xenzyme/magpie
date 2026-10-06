@@ -336,6 +336,23 @@ Only a valid, enabled key is attributed to its named identity.
 Without sharing, an explicitly exposed `MAGPIE_ADDR` keeps its original open
 access, including old `sk-magpie-…` tokens, without key authentication.
 
+A request that reaches loopback through a proxy or tunnel on this computer
+(Cloudflare Tunnel's `cloudflared`, ngrok, Tailscale serve or funnel, frp's
+HTTP proxy, Caddy, nginx) is someone else's, and is answered as one from
+another machine (#1022): it carries a forwarding header (`Forwarded`,
+`X-Forwarded-For`, `X-Real-IP`, `Cf-Connecting-IP`, `True-Client-IP`,
+`Tailscale-User-Login`), which no agent sends. Without sharing it is refused;
+with sharing it needs an enabled gateway key, as from the network. This
+covers every route: the model APIs, quotas, MCP sign-ins. To serve magpie
+through a Cloudflare Tunnel, turn on **Settings → Share on local network**,
+add a gateway key for each client, point the tunnel's service at
+`http://127.0.0.1:3425`, and give clients the tunnel's address with that key.
+A tunnel that forwards bare TCP (frp's `tcp`, `ssh -R`, socat) adds no header
+and can't be told from an agent here: point it at this computer's LAN
+address with sharing on, not at loopback. A proxy here that signs its
+clients in itself can be trusted with `MAGPIE_TRUST_PROXY=1`, which keeps
+what it forwards local, as before.
+
 **Usage → Overview → Gateway keys** groups calls by the client's key, never
 the provider's credential. **Usage → Requests** offers the same filter;
 CSV includes `caller_key_id` and `caller_key_name`. Deleted keys keep their
@@ -803,9 +820,10 @@ Settings → Share on local network and use an enabled gateway key
 its own — a reverse proxy's `https://magpie.example.com` — is the address
 `magpie web` prints for its own page too, so the proxy must forward `/v1`
 and `/v1beta` to the gateway's port and the rest to the page's. When the
-proxy and magpie run on the same machine, requests forwarded over loopback
-are treated as local and need no key, so the proxy must authenticate those
-clients itself.
+proxy and magpie run on the same machine, a request it forwards over
+loopback carries a forwarding header and needs a gateway key as one from
+the network does (see [Providers and the gateway](#providers-and-the-gateway)); a proxy that
+authenticates its clients itself can be trusted with `MAGPIE_TRUST_PROXY=1`.
 
 It exposes:
 
@@ -1144,8 +1162,8 @@ configure providers. Turn on *Share on local network*, then create a gateway
 key for each remote agent host. After that, change the gateway mapping to
 `3425:3425` (or bind it only to the NAS interface or VPN address) and recreate
 the container so remote agents can reach it. For Internet access, prefer a
-VPN such as Tailscale or WireGuard; if a reverse proxy is used, it must
-authenticate clients itself when it forwards to Magpie over loopback.
+VPN such as Tailscale or WireGuard; a reverse proxy or tunnel forwarding to
+Magpie over loopback needs a gateway key from its clients, as the network does.
 
 ### Developing
 
