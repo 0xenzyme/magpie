@@ -649,8 +649,8 @@ func restLast(out []candidate, pl planned) ([]candidate, planned) {
 // restingOf is why c rests, by its own key or else its provider's, while
 // it does. A key resting out of its own windows has them read again as it
 // is planned, behind the request and once a minute at most: an ordered
-// group, or a provider with one key, weighs nothing by them, and a
-// reading that finds them full no more is what brings it back (renewed).
+// group weighs nothing by them, and a reading that finds them full no
+// more is what brings it back (renewed).
 func restingOf(c candidate) (Rest, bool) {
 	r, ok := restOf(c.restKey())
 	if !ok && c.restID() != c.restKey() {

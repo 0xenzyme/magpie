@@ -656,10 +656,12 @@ func weigh(p provider.Provider, cs []candidate, model string, from provider.Prot
 // weighRouted is weigh by the routing alone.
 func weighRouted(p provider.Provider, cs []candidate, model string, from provider.Protocol) ([]candidate, weighing) {
 	var wg weighing
-	if len(cs) < 2 {
+	if len(cs) == 0 {
 		return cs, wg
 	}
-	// each account's own agent's: a group weighs accounts of several
+	// each account's own agent's: a group weighs accounts of several. One
+	// alone is weighed against nobody, but what it has left is still
+	// told: the Routing page shows it (#1016)
 	known := map[string]map[string]provider.Allowance{}
 	now := time.Now()
 	wg.lefts = map[allowanceKey]left{}
@@ -685,6 +687,9 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 			wg.lefts[c.allowanceKey()] = left{used: u, renews: r, soon: a.Renewal(c.model, now), pace: pc, due: due, amount: amt, of: of, unit: unit,
 				restarts: rs, dueRestart: !rs.IsZero() && due.Equal(rs)} // one not known counts as unused
 		}
+	}
+	if len(cs) < 2 {
+		return cs, wg
 	}
 	lefts := wg.lefts
 	shareOf := func(c candidate) float64 { return lefts[c.allowanceKey()].used }
