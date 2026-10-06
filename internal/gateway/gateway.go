@@ -2746,6 +2746,11 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 			body, searchFn = searchAsFunction(body)
 		}
 		body = forVendor(p, body)
+		if strings.HasSuffix(p.Host(), "openai.com") || p.IsAzure() {
+			// reasoning magpie gave Codex, an id with nothing sealed in
+			// it, which they'd look up and not find (#1008)
+			body = withoutBareReasoning(body)
+		}
 		// Relays enforce OpenAI's item ID prefixes too, including during
 		// compaction. call_id stays unchanged so tool outputs remain paired.
 		body = callItemIDs(body)
