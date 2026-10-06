@@ -217,6 +217,11 @@ sign-in with pasteCallback shows) in a narrow Chinese
 dark window: invalid input remains editable, retry reaches the callback route,
 and a pending or accepted submission cannot be submitted twice.
 
+`signin-paste-plugin.test.cjs` checks a plugin's browser sign-in that comes
+back to a port on magpie's machine: the plugin's words, the pasted-address
+field posted to the sign-in, and the plugin's API key way, in a 360px window.
+English and Chinese, Chromium and WebKit.
+
 `plugin-updates.test.cjs` checks the dot on Plugins while a plugin's update
 waits for the reader, gone once it's updated, and the "Auto-updated" chip on a
 plugin magpie updated by itself.
