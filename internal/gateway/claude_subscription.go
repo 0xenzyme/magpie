@@ -122,7 +122,10 @@ type subscriptionRun struct {
 	model  string
 	cmd    *exec.Cmd
 	tree   *proc.Tree // cmd once started, with all it starts
-	tmp    string
+	// the read ends of Claude Code's output, and their readers
+	outputs []*os.File
+	reading sync.WaitGroup
+	tmp     string
 	// schema says the client asked for an answer fitting a JSON schema,
 	// which Claude Code gives as its StructuredOutput call
 	schema bool
@@ -551,16 +554,22 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 		cleanup()
 		return nil, nil, err
 	}
-	stdout, err := cmd.StdoutPipe()
+	// Claude Code's output comes through pipes of the run's own, not
+	// cmd.StdoutPipe's, which Wait closes as Claude Code exits: what it
+	// wrote last, or the reading under way as it was stopped, failed
+	// "file already closed", and the client heard that for an error.
+	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	stderr, err := cmd.StderrPipe()
+	stderr, stderrW, err := os.Pipe()
 	if err != nil {
+		_, _ = stdout.Close(), stdoutW.Close()
 		cleanup()
 		return nil, nil, err
 	}
+	cmd.Stdout, cmd.Stderr = stdoutW, stderrW
 
 	run := &subscriptionRun{bridge: b, token: token, model: model, cmd: cmd, tmp: tmp, schema: len(req.Schema) > 0, pending: map[string]chan mcpToolResult{}, stdin: stdin, owner: owner, effort: req.Effort, sessions: sessions}
 	run.safeguardBeta = req.SafeguardBeta
@@ -575,14 +584,24 @@ func (b *subscriptionBridge) start(ctx context.Context, req *Request, model, con
 	b.runs[token] = run
 	b.mu.Unlock()
 
-	if err := run.launch(); err != nil {
+	run.outputs = []*os.File{stdout, stderr}
+	run.reading.Add(2)
+	err = run.launch()
+	_, _ = stdoutW.Close(), stderrW.Close() // Claude Code has its own
+	if err != nil {
+		_, _ = stdout.Close(), stderr.Close()
 		b.removeRun(run)
 		return nil, nil, err
 	}
 	go func() {
+		defer run.reading.Done()
 		_, _ = io.Copy(&lockedWriter{run: run}, io.LimitReader(stderr, 1<<20))
+		_, _ = io.Copy(io.Discard, stderr)
 	}()
-	go run.readOutput(stdout)
+	go func() {
+		defer run.reading.Done()
+		run.readOutput(stdout)
+	}()
 
 	if len(req.Safeguards) > 0 {
 		// Initialize the SDK before applying settings. Send the potentially
@@ -2117,7 +2136,7 @@ func (r *subscriptionRun) readOutput(rd io.Reader) {
 	pmu.Lock()
 	defer pmu.Unlock()
 	settle()
-	if err := s.Err(); err != nil {
+	if err := s.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
 		r.emit(Event{Kind: KError, Text: err.Error()})
 	} else if cut {
 		failed("and Claude Code stopped")
@@ -2795,9 +2814,32 @@ func (r *subscriptionRun) launch() error {
 	r.mu.Unlock()
 	go func() {
 		_ = t.Wait()
+		r.drain()
 		r.finish()
 	}()
 	return nil
+}
+
+// outputDrain is how long the run's output is read once Claude Code has
+// exited and its group been ended: a process that left the group may
+// still hold the pipes, and is not waited for longer.
+var outputDrain = 2 * time.Second
+
+// drain waits for what Claude Code wrote to be read, so its last lines
+// reach the client before the run ends, then closes its pipes.
+func (r *subscriptionRun) drain() {
+	read := make(chan struct{})
+	go func() {
+		r.reading.Wait()
+		close(read)
+	}()
+	select {
+	case <-read:
+	case <-time.After(outputDrain):
+	}
+	for _, f := range r.outputs {
+		_ = f.Close()
+	}
 }
 
 func (r *subscriptionRun) abort() {
