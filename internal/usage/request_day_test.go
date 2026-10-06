@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/yetone/magpie/internal/testenv"
 )
 
 func TestRequestPageDay(t *testing.T) {
@@ -63,9 +65,7 @@ func TestDayFilterDST(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := time.Local
-	time.Local = loc
-	t.Cleanup(func() { time.Local = old })
+	testenv.Zone(t, loc)
 	for _, day := range []string{"2026-03-08", "2026-11-01"} {
 		start, err := time.ParseInLocation(time.DateOnly, day, loc)
 		if err != nil {

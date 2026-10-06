@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/yetone/magpie/internal/agentenv"
 )
@@ -214,6 +215,16 @@ func StandIns(bin string, names []string) error {
 		}
 	}
 	return nil
+}
+
+// Zone sets time.Local for the test, and puts it back after. It first
+// waits out the stand-ins' first runs: they os.Stat what ran, which reads
+// time.Local, so a test that swaps it while they are under way races them.
+func Zone(t testing.TB, loc *time.Location) {
+	warming.Wait()
+	old := time.Local
+	time.Local = loc
+	t.Cleanup(func() { time.Local = old })
 }
 
 // warming is the stand-ins' first runs under way.

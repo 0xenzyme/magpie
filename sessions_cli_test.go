@@ -14,6 +14,7 @@ import (
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/sessions"
 	"github.com/yetone/magpie/internal/settings"
+	"github.com/yetone/magpie/internal/testenv"
 )
 
 // sessionsHome is a sandbox HOME with the sessions package's fixtures as
@@ -40,8 +41,9 @@ func sessionsHome(t *testing.T) time.Time {
 		}
 		t.Setenv(env, dir)
 	}
-	oldZone, oldPrice := time.Local, sessions.PriceOf
-	time.Local = time.UTC
+	// put back after the Reset below, whose index write reads the zone
+	testenv.Zone(t, time.UTC)
+	oldPrice := sessions.PriceOf
 	sessions.PriceOf = func(_ settings.Settings, m string) (catalog.Price, bool) {
 		switch m {
 		case "claude-opus-5-5":
@@ -55,7 +57,7 @@ func sessionsHome(t *testing.T) time.Time {
 		// the index is written behind the page: let that write finish before
 		// the zone it reads (a stat of the file it writes) goes back
 		sessions.Reset()
-		time.Local, sessions.PriceOf = oldZone, oldPrice
+		sessions.PriceOf = oldPrice
 	})
 	sessions.Reset()
 	return time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
