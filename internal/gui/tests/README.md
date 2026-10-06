@@ -358,6 +358,16 @@ the pick remembered. A 450-event stream draws 200 at a time from a button under
 the box that stays where it is, the page too; a body that isn't a stream is as
 before. English and Chinese, Chromium and WebKit.
 
+`json-tree.test.cjs` opens a JSON request and response in the Gateway page's
+recent calls: keys, strings, numbers and keywords each have their colour, the
+body's text is still the pretty-printed JSON, an object or array folds to
+`{…}` with its count and unfolds from its arrow or that summary with the page
+kept where it is, a fold outlives the list being drawn again, a value's copy
+button (shown on hovering its line) copies a string's text or an object's
+JSON, a click on a key copies its name, and a stream's events and its reply
+fold the same way. English, Chinese, Japanese and German, 1000px and 440px,
+Chromium and WebKit.
+
 `routing-kind.test.cjs` lists calls Codex makes for itself (a guardian review,
 a title, memories, a turn on Luna Reserve, a kind it does not know yet): each
 has a grey tag by its model in the Requests list, in English and Chinese, the

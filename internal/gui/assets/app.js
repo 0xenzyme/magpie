@@ -5688,6 +5688,90 @@ function formatWireBody(raw) {
   try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
 }
 
+// A JSON body as a tree: each object and array folds at its bracket, its
+// parts in the snippets' colours; the copy button a line shows on hover
+// copies its value, and a click on a key copies the key. The text is the
+// JSON pretty-printed, as before, so what is selected and copied by hand
+// still reads as JSON. What is folded is kept by the body's key and the
+// node's path, across the redraws a new call brings.
+const jsonFolds = new Set();
+function jsonTree(v, key) {
+  const code = el("code", "jt");
+  code.append(jtNode(v, undefined, "", key + "|", ""));
+  return code;
+}
+function jtNode(v, k, indent, path, comma) {
+  const f = document.createDocumentFragment();
+  const head = el("span", "jt-head");
+  f.append(indent, head);
+  if (k !== undefined) {
+    const ks = el("span", "jt-key", JSON.stringify(k));
+    ks.title = t("Click to copy the key");
+    // a click copies; a drag selects, as in any text
+    ks.onclick = (ev) => {
+      ev.stopPropagation();
+      if (!String(getSelection())) copy(String(k), String(k), null);
+    };
+    head.append(ks, ": ");
+  }
+  const copyV = el("button", "jt-copy");
+  copyV.type = "button";
+  copyV.title = t("Copy value");
+  copyV.append(svg(COPY_ICON, 11, 1.5));
+  // a string's value is its text, not the JSON that quotes it
+  copyV.onclick = (ev) => {
+    ev.stopPropagation();
+    copy(typeof v === "string" ? v : JSON.stringify(v, null, 2), k !== undefined ? String(k) : t("Value"), copyV);
+  };
+  if (v === null || typeof v !== "object") {
+    head.append(el("span", typeof v === "string" ? "tk-s" : typeof v === "number" ? "tk-n" : "tk-k", JSON.stringify(v)), copyV);
+    f.append(comma);
+    return f;
+  }
+  const arr = Array.isArray(v);
+  const keys = arr ? v.map((_, i) => i) : Object.keys(v);
+  const [o, c] = arr ? ["[", "]"] : ["{", "}"];
+  if (!keys.length) {
+    head.append(o + c, copyV);
+    f.append(comma);
+    return f;
+  }
+  const tog = el("button", "jt-fold");
+  tog.type = "button";
+  tog.append(svg(CHEV_R, 10, 1.6));
+  const kids = el("span", "jt-kids");
+  const sum = el("button", "jt-sum", "…");
+  sum.type = "button";
+  sum.title = t("Unfold");
+  sum.dataset.n = t(keys.length === 1 ? "1 item" : "{n} items", { n: keys.length });
+  // the summary is on the head's line: what a click on it holds in place is
+  // then its neighbours there, not the line after, which the unfolding pushes down
+  head.prepend(tog);
+  head.append(o, sum, copyV);
+  f.append(kids, c, comma);
+  let built = false;
+  const set = (folded) => {
+    if (!folded && !built) { // its insides are drawn the first time it opens
+      built = true;
+      keys.forEach((kk, i) => kids.append("\n", jtNode(v[kk], arr ? undefined : kk, indent + "  ", path + "/" + kk, i < keys.length - 1 ? "," : "")));
+      kids.append("\n" + indent);
+    }
+    kids.hidden = folded;
+    sum.hidden = !folded;
+    tog.classList.toggle("open", !folded);
+    tog.setAttribute("aria-expanded", String(!folded));
+    tog.title = t(folded ? "Unfold" : "Fold");
+    if (folded) jsonFolds.add(path); else jsonFolds.delete(path);
+  };
+  // the box keeps its height across a fold, so what is below it, and the
+  // page, stay where they are
+  const keep = () => { const pre = tog.closest("pre"); if (pre) pre.style.minHeight = pre.offsetHeight + "px"; };
+  tog.onclick = (ev) => { ev.stopPropagation(); keep(); set(!kids.hidden); };
+  sum.onclick = (ev) => { ev.stopPropagation(); keep(); set(false); };
+  set(jsonFolds.has(path));
+  return f;
+}
+
 // A streamed body (server-sent events) as its events: each one's name and
 // its data, the data lines joined. Anything else is not one: null.
 function parseSSE(raw) {
@@ -5833,10 +5917,11 @@ function sseReply(events) {
 }
 
 // The data of each event, as JSON where it is JSON, under its name.
-function sseEventNode(e) {
+function sseEventNode(e, key) {
   const box = el("span", "sse-ev");
   if (e.event) box.append(el("span", "sse-name", "event: " + e.event + "\n"));
-  box.append(sseData(e.data));
+  const d = jsonOr(e.data);
+  box.append(d !== null && typeof d === "object" ? jtNode(d, undefined, "", key + "|", "") : e.data); // [DONE] as it is
   return box;
 }
 function sseData(data) {
@@ -5873,7 +5958,7 @@ function sseBodyPanel(label, raw, truncated, id) {
   let code = null, shown = 0;
   const more = () => {
     const upto = Math.min(events.length, Math.max(sseShown.get(id) || 0, shown + SSE_PAGE));
-    for (; shown < upto; shown++) code.append(sseEventNode(events[shown]));
+    for (; shown < upto; shown++) code.append(sseEventNode(events[shown], id + "|ev" + shown));
     if (shown > SSE_PAGE) sseShown.set(id, shown);
     foot.hidden = view !== "events" || shown >= events.length;
     shownNote.textContent = t("{n} of {total} events shown", { n: shown, total: events.length });
@@ -5884,12 +5969,11 @@ function sseBodyPanel(label, raw, truncated, id) {
     // the box keeps its height across a switch, so what is below it, and
     // the page, stay where they are
     if (pre.isConnected) pre.style.minHeight = pre.offsetHeight + "px";
-    code = el("code");
+    code = view === "reply" ? jsonTree(reply, id + "|reply") : el("code", view === "events" ? "jt" : "");
     pre.replaceChildren(code);
     pre.scrollTop = 0;
     shown = 0;
-    if (view === "reply") code.textContent = JSON.stringify(reply, null, 2);
-    else if (view === "raw") code.textContent = raw;
+    if (view === "raw") code.textContent = raw;
     if (view === "events") more(); else foot.hidden = true;
   };
   // what is copied is what is shown: the reply, every event, or the body
@@ -5903,7 +5987,9 @@ function sseBodyPanel(label, raw, truncated, id) {
   return panel;
 }
 
-function callBodyPanel(label, raw, truncated, id) {
+// id, given, is a response's, whose stream reads as its events; key names
+// the body for what is folded in it
+function callBodyPanel(label, raw, truncated, id, key = id) {
   if (id) {
     const sse = sseBodyPanel(label, raw, truncated, id);
     if (sse) return sse;
@@ -5916,9 +6002,13 @@ function callBodyPanel(label, raw, truncated, id) {
   if (formatted) head.append(el("span", "grow"), copyBtn(raw, t(label)));
   panel.append(head);
   const pre = el("pre");
-  const code = el("code", "", formatted || t("No body captured"));
-  if (!formatted) code.classList.add("empty");
-  pre.append(code);
+  const v = formatted ? jsonOr(raw) : undefined;
+  if (v !== null && typeof v === "object") pre.append(jsonTree(v, key));
+  else {
+    const code = el("code", "", formatted || t("No body captured"));
+    if (!formatted) code.classList.add("empty");
+    pre.append(code);
+  }
   panel.append(pre);
   return panel;
 }
@@ -6014,7 +6104,7 @@ async function downloadArchive(name, b) {
 
 // one body read back from the archive: shown, or, past 256 KB, only its
 // size — the server leaves it out — for the file to be downloaded whole
-function archiveBodyPanel(label, part, id) {
+function archiveBodyPanel(label, part, id, key = id) {
   if (part.omitted) {
     const panel = el("section", "call-body");
     const head = el("div", "call-body-head");
@@ -6024,7 +6114,7 @@ function archiveBodyPanel(label, part, id) {
   }
   // cut where the archive stops: its limit, or 256 KB in one from before #447
   const cut = part.truncated && (part.size ? t("first {n} of {size}", { n: fmtBytes(new Blob([part.body]).size), size: fmtBytes(part.size) }) : true);
-  return callBodyPanel(label, part.body, cut, id);
+  return callBodyPanel(label, part.body, cut, id, key);
 }
 
 // A call the archive kept, by "<date>/<id>": read back when asked, and its
@@ -6066,7 +6156,7 @@ function archivePanel(name, id, redraw) {
   grid.append(
     headersPanel(t("Request Headers"), `${got.request.method || ""} ${got.request.path || ""}`.trim(), got.request.headers),
     headersPanel(t("Response Headers"), got.response.status ? `HTTP ${got.response.status}` : "", got.response.headers),
-    archiveBodyPanel("Request Body", got.request),
+    archiveBodyPanel("Request Body", got.request, undefined, id + "|archive|req"),
     archiveBodyPanel("Response Body", got.response, id + "|archive"),
   );
   box.append(grid);
@@ -6113,7 +6203,7 @@ function renderActivity() {
     if (open) {
       const details = el("div", "call-details");
       details.append(
-        callBodyPanel("Request Body", c.requestBody, c.requestTruncated),
+        callBodyPanel("Request Body", c.requestBody, c.requestTruncated, undefined, id + "|req"),
         callBodyPanel("Response Body", c.responseBody, c.responseTruncated, id),
       );
       item.dataset.id = id;
