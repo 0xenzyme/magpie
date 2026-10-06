@@ -491,7 +491,10 @@ func GroupFinder() func(id string) (Group, []Member, bool) {
 		read    bool
 	)
 	return func(id string) (Group, []Member, bool) {
-		gid, ok := strings.CutPrefix(strings.TrimSpace(id), GroupPrefix)
+		// the mark Claude Code puts on a 1M window rides on the group's
+		// id, as it does on a model's: GroupFor takes it off for the
+		// gateway, and a ref the gateway routes is a group here too
+		gid, ok := strings.CutPrefix(strings.TrimSuffix(strings.TrimSpace(id), "[1m]"), GroupPrefix)
 		if !ok {
 			return Group{}, nil, false
 		}
