@@ -18,9 +18,9 @@ import (
 func TestTOMLPreservingKeepsAValueTOMLCanParse(t *testing.T) {
 	// Control bytes Go escapes with \x and TOML defines no escape for.
 	values := []string{
-		"a" + string(rune(1)) + "b",     // SOH
-		"a" + string(rune(0x7f)) + "b",  // DEL
-		"a" + string(rune(0x0b)) + "b",  // VT
+		"a" + string(rune(1)) + "b",    // SOH
+		"a" + string(rune(0x7f)) + "b", // DEL
+		"a" + string(rune(0x0b)) + "b", // VT
 		"tab\there",
 		"nl\nhere",
 		"quote\"here",
