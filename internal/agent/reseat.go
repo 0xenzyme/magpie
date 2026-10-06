@@ -136,7 +136,7 @@ func served(ref string) bool {
 func sameModel(opts []Option, ref string) Option {
 	// a group's id carries Claude Code's [1m] mark as a model's does, and
 	// this ref comes from the agent's own settings
-	if gid, ok := strings.CutPrefix(strings.TrimSuffix(strings.TrimSpace(ref), "[1m]"), provider.GroupPrefix); ok {
+	if gid, ok := provider.GroupIDOf(ref); ok {
 		if !strings.HasPrefix(gid, "auto-") {
 			return Option{}
 		}
