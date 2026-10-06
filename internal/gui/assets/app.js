@@ -13293,15 +13293,16 @@ function resetsWords(r, q) {
     if (r.until) {
       const at = new Date(r.until);
       w.append(el("span", "resets-until", " · " + t("until {when}", { when: resetClock(at) })));
-      w.title += "\n" + t("The first runs out {when}", { when: at.toLocaleString() });
+      if (!r.each?.length) w.title += "\n" + t("The first runs out {when}", { when: at.toLocaleString() });
     }
+    if (r.each?.length) w.title += "\n" + resetsEach(r);
     return w;
   }
   w.append(el("span", "resets-n", "↺ " + t(r.count === 1 ? "1 reset" : "{n} resets", { n: r.count })));
   if (r.until) {
     const at = new Date(r.until);
     w.append(el("span", "resets-until", " · " + t("until {when}", { when: resetClock(at) })));
-    w.title = t("The first runs out {when}", { when: at.toLocaleString() });
+    w.title = r.each?.length ? resetsEach(r) : t("The first runs out {when}", { when: at.toLocaleString() });
     // whether the one that runs out first is kept from going to waste:
     // with Auto-use on it is used shortly before it does (#624, #719)
     if (q && autoResetKept(q)) {
@@ -13310,8 +13311,20 @@ function resetsWords(r, q) {
       w.title += "\n" + t(on ? "Auto-use is on: the reset that runs out first is used about half an hour before it does, if this account's windows have been used, so what they have left can be used until then and it isn't lost; at once if the account is held up until after then."
         : "Auto-use is off: the reset that runs out first is lost unless it's used by hand before then.");
     }
-  }
+  } else if (r.each?.length) w.title = resetsEach(r);
   return w;
+}
+
+// resetsEach lists every reset left and when it runs out, a line each,
+// soonest first, as the vendor said them (#960: the hover only named the
+// first, which the card already shows).
+function resetsEach(r) {
+  return r.each.map((c, i) => {
+    const when = c.until ? new Date(c.until).toLocaleString() : "";
+    if (c.window === "fiveHour") return when ? t("Five-hour reset runs out {when}", { when }) : t("Five-hour reset never runs out");
+    if (c.window === "weekly") return when ? t("Weekly reset runs out {when}", { when }) : t("Weekly reset never runs out");
+    return when ? t("Reset {n} runs out {when}", { n: i + 1, when }) : t("Reset {n} never runs out", { n: i + 1 });
+  }).join("\n");
 }
 
 // resetUseTitle says which reset a use spends: the one that runs out
