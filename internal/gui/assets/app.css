@@ -396,6 +396,8 @@ body.panel #agents > .row .ag-handle::before { left: -10px; }
 .ag-fix:focus-visible { outline: 1.5px solid var(--drift); outline-offset: 1px; }
 .ag-fix.busy { pointer-events: none; opacity: .7; }
 .ag-fix.busy svg { animation: spin .8s linear infinite; }
+/* what has to listen at an address no agent reaches magpie by (#1013): long addresses wrap, and it can be copied */
+.drift-why { overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
 /* the agent's CLI on its name's line (#202): its version faint, and a quiet
    pill that updates it when a newer one is out — the row keeps its height */
 body.window .row.agent .who { display: flex; align-items: center; gap: 7px; container-type: inline-size; }

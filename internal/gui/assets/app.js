@@ -754,23 +754,56 @@ function profileDetail(p, footed) {
 // driftFix is the one thing a drifted agent shows: an amber pill after its
 // name that sets magpie's settings again. What is off is its tooltip; taking
 // the config as it is now is in the row's menu.
+// An agent whose config is right but whose address doesn't answer (#1013)
+// has nothing to set again: its pill says what has to listen there, unless
+// WSL now reaches Windows at another address, which it moves the config to.
 function driftFix(a, label = "Apply again") {
   const d = a.drift, f = a.fields.find((x) => x.key === d.field);
   const want = (f && optionFor(f, d.want)?.label) || d.want;
   const fix = el("button", "ag-fix");
   fix.type = "button";
   fix.title = `${t(DRIFT_WHY[d.kind] || DRIFT_WHY.unwired, { agent: a.name, model: want })}\n${d.detail}`;
+  const deaf = d.kind === "unreachable";
+  if (deaf && d.move) label = t("Use {url}", { url: d.move.replace(/^https?:\/\//, "") });
+  else if (deaf) label = "How to fix";
   fix.setAttribute("aria-label", t(label));
-  fix.append(svg(REAPPLY, 11, 1.8), el("span", "", t(label)));
-  fix.onclick = (e) => { e.stopPropagation(); reapplyAgent(a, fix); };
+  fix.append(svg(deaf && !d.move ? INFO_I : REAPPLY, 11, 1.8), el("span", "", t(label)));
+  fix.onclick = (e) => {
+    e.stopPropagation();
+    if (deaf && !d.move) explainDrift(a);
+    else reapplyAgent(a, fix);
+  };
   return fix;
+}
+
+// explainDrift: what has to listen at an address an agent can't reach
+// magpie by — too long for the status line, so a dialog of its own.
+function explainDrift(a) {
+  const ed = el("div", "editor");
+  const head = el("div", "ehead");
+  head.append(el("b", "", t(DRIFT_WHY.unreachable, { agent: a.name })));
+  ed.append(head);
+  ed.append(el("p", "lib-confirm drift-why", a.drift.detail));
+  const bar = el("div", "bar");
+  const ok = el("button", "text primary", t("OK"));
+  ok.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); };
+  bar.append(el("span", "grow"), ok);
+  ed.append(bar);
+  confirmAsk = ed;
+  openModal(ed);
+  $("#modal").classList.add("lib");
+  ok.focus({ preventScroll: true });
 }
 
 const DRIFT_WHY = {
   unwired: "{agent} no longer goes through magpie — its config was changed",
   replaced: "{agent} was switched off {model} outside magpie",
   bypassed: "{agent} was used without going through magpie — restart it after applying",
+  unreachable: "{agent} is set up, but nothing answers at the address it reaches magpie by",
 };
+
+// an i in a circle: the pill that explains rather than acts
+const INFO_I = "M8 14.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM8 7.25V11M8 5v.01";
 
 const REAPPLY = "M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3.25h-3.25";
 

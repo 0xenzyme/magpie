@@ -172,6 +172,17 @@ Set `ARTIFACT_DIR` to retain screenshots.
 node --test internal/gui/tests/agent-disconnect-preview.test.cjs
 ```
 
+`agent-unreachable.test.cjs` checks an agent whose config is right but whose
+address doesn't answer (#1013): its line says so in red with the advice as
+its tooltip, its pill is "How to fix", which opens the advice in a dialog and
+sets nothing, and when WSL reaches Windows at another address now the pill is
+"Use <address>" and posts the reapply. The window at 560px and the tray panel
+at 440px, in English, Chinese, Japanese and German on Chromium and WebKit.
+
+```sh
+node --test internal/gui/tests/agent-unreachable.test.cjs
+```
+
 `agent-layout.test.cjs` keeps the main window's agent names readable at 520,
 560 and 600 CSS pixels, while the model and effort controls stay inside their
 rows. At 601, the default 660 and 960 pixels, controls remain aligned beside
