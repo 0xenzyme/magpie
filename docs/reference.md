@@ -59,7 +59,10 @@ line; agents connected to magpie lose it when it quits.
 - **Real model lists, nothing compiled in.** With a key in hand magpie asks
   the vendor which models it serves and offers exactly those; the
   [models.dev](https://models.dev) catalog fills in names, reasoning efforts
-  and the list for vendors that have none, and refreshes itself in the
+  and the list for vendors that have none (a model the vendor's own entry
+  doesn't list is named as the other providers serving it name it, so
+  glm-5-turbo reads GLM-5-Turbo under Zhipu as under ZCode; an Azure
+  deployment keeps its own name), and refreshes itself in the
   background once it goes stale. Choose which models each provider exposes,
   or expose them all — a model released this morning is in the picker on
   the next refresh.

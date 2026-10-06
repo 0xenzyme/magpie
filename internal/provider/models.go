@@ -76,7 +76,14 @@ func (p Provider) available() []catalog.Model {
 			// levels aren't taken off by a known model of its id
 			return collapseAntigravityModels(catalog.Decorate(live, known))
 		}
-		return catalog.Decorate(live, known)
+		if p.IsAzure() {
+			// a deployment is named as the user named it
+			return catalog.Decorate(live, known)
+		}
+		// a model the provider's catalog doesn't list reads as it does
+		// under the other providers serving it (GLM-5-Turbo, not
+		// glm-5-turbo, beside ZCode's)
+		return catalog.Named(catalog.Decorate(live, known))
 	}
 	if p.IsAzure() {
 		// an Azure resource serves its deployments alone, named as the
@@ -716,7 +723,11 @@ func (p Provider) Exposed() []catalog.Model {
 				// with the levels the gateway fits an effort to (Known),
 				// not the none effortsOf takes a vendor's word for: the
 				// vendor's list doesn't have it, so it gave no word (#597)
-				out = append(out, catalog.Model{ID: id, Name: id, Provider: p.firstCatalog(), Efforts: p.knownElsewhere(id)})
+				m := catalog.Model{ID: id, Name: id, Provider: p.firstCatalog(), Efforts: p.knownElsewhere(id)}
+				if !p.IsAzure() {
+					m = catalog.Named([]catalog.Model{m})[0]
+				}
+				out = append(out, m)
 			}
 		}
 		return out
