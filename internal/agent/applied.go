@@ -201,7 +201,7 @@ func (a *Agent) Drift() *Drift {
 		}
 	}
 	if a.LastUsed != nil && onMagpie {
-		if used := a.LastUsed(); bypassed(used, rec.At, usage.LastSeen(a.ID)) {
+		if used := a.LastUsed(); bypassed(used, rec.At, lastSeen(a.ID)) {
 			return &Drift{Kind: "bypassed", Field: on.Key, Now: vals[on.Key], Want: vals[on.Key],
 				Detail: a.Name + " was used at " + used.Format("15:04") + " but none of its requests reached magpie — one started before magpie set it up still runs on its old config: restart it"}
 		}
@@ -235,6 +235,11 @@ func (a *Agent) theInstalled() bool {
 // bypassed: the agent was used — while this gateway was up and after magpie
 // last set it — and no request of it arrived since. A request leaves within
 // moments of the prompt; a little grace keeps one in flight from counting.
+// lastSeen is when the agent's last request reached this process's gateway
+// (usage.LastSeen). What usage.Saw records lasts as long as the process, so
+// a test that stands for a request gives its own here.
+var lastSeen = usage.LastSeen
+
 func bypassed(used, applied, seen time.Time) bool {
 	const grace = 30 * time.Second
 	return !used.IsZero() && used.After(started) && used.After(applied) &&

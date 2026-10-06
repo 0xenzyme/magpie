@@ -296,3 +296,18 @@ func TestFormatCost(t *testing.T) {
 		}
 	}
 }
+
+// A request Saw note is LastSeen's answer at once, before any record of it
+// is written.
+func TestSawIsLastSeen(t *testing.T) {
+	const agent = "saw-is-last-seen"
+	t.Cleanup(func() { seen.Delete(agent) }) // the record lasts the process
+	if at := LastSeen(agent); !at.IsZero() {
+		t.Fatalf("before any request: %v", at)
+	}
+	before := time.Now()
+	Saw(agent)
+	if at := LastSeen(agent); at.Before(before) || time.Since(at) > time.Minute {
+		t.Fatalf("after a request: %v", at)
+	}
+}
