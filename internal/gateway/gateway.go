@@ -2261,7 +2261,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			if hit == nil || !hit.Compact {
 				unanswered(stuck, c)
 			}
-			if lateRests(call.Error) {
+			if hw.refusedAfter {
+				// the vendor's filter refused the turn it had begun, as it
+				// refused one before any of it was said (#248): the account
+				// is at fault no more for it, and nobody rests
+				try.Fail = failRefused
+			} else if lateRests(call.Error) {
 				rest := s.restAfter(c, call.Status, hw.header, []byte(call.Error))
 				try.Fail, try.Rest = rest.Why, &rest
 			}
