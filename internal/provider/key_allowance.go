@@ -31,6 +31,9 @@ type keyAllowance struct {
 	a       Allowance
 	at      time.Time // when read; zero to read again at the next ask
 	loading bool
+	// stale: made stale (StaleKeyAllowance) while a reading was out, which
+	// was asked before the key said it was out and is followed by another
+	stale bool
 }
 
 // keyAllowanceAge is how long a key's windows as read go unasked again;
@@ -124,6 +127,10 @@ func readKeyAllowance(p Provider, id string, gen int) {
 	}
 	e.loading, e.at = false, now
 	renewed := err == nil && e.keep(allowanceOf(ws, now), SpentShareOf(p.Routing), now)
+	if e.stale {
+		e.stale, e.loading, e.at = false, true, time.Time{}
+		go readKeyAllowance(p, id, gen)
+	}
 	c.Unlock()
 	if renewed {
 		tellRenewed("", id)
@@ -215,7 +222,7 @@ func StaleKeyAllowance(p Provider) {
 	c := &keyAllowances
 	c.Lock()
 	if e := c.m[keyAllowanceID(p)]; e != nil {
-		e.at = time.Time{}
+		e.at, e.stale = time.Time{}, e.loading
 	}
 	c.Unlock()
 }
@@ -228,7 +235,7 @@ func forgetKeyAllowances() {
 	c := &keyAllowances
 	c.Lock()
 	for _, e := range c.m {
-		e.at, e.loading = time.Time{}, false
+		e.at, e.loading, e.stale = time.Time{}, false, false
 	}
 	c.gen++
 	c.Unlock()
