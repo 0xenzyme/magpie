@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -107,6 +108,10 @@ type SubscriptionQuota struct {
 	// Resets are the rate-limit resets a Codex account holds, nil when it
 	// holds none (codex_resets.go).
 	Resets *ResetCredits `json:"resets,omitempty"`
+	// Held is set on a ChatGPT account the Codex app sends nothing for
+	// now (codexHeld): not on a window at 100% alone, which credits get
+	// past.
+	Held bool `json:"held,omitempty"`
 	// Daily is a WorkBuddy account's credits used day by day, as magpie
 	// counted them from its readings (credits_daily.go).
 	Daily *DailyCredits `json:"daily,omitempty"`
@@ -771,7 +776,7 @@ func codexSubscriptionUsage(ctx context.Context, path string) SubscriptionQuota 
 		q.Error = err.Error()
 		return q
 	}
-	q.Plan, q.Windows, q.Resets, q.Balance, err = codexWindows(ctx, token, accountID)
+	q.Plan, q.Windows, q.Resets, q.Balance, q.Held, err = codexWindows(ctx, token, accountID)
 	if b, rerr := os.ReadFile(path); rerr == nil {
 		q.Until = codexUntil(b, time.Now())
 	}
@@ -800,29 +805,14 @@ func codexUntil(auth []byte, now time.Time) *time.Time {
 // codexWindows is the plan, allowance, rate-limit resets and credits of
 // the ChatGPT account token signs in to. credits is what is left of the
 // credits the account bought or was given (#571), which Codex spends once
-// a window is used up, "" when it holds none or they are unlimited.
-func codexWindows(ctx context.Context, token, accountID string) (plan string, out []QuotaWindow, resets *ResetCredits, credits string, err error) {
-	var data struct {
-		PlanType string `json:"plan_type"`
-		// as Codex's /status reads it: {"has_credits":true,
-		// "unlimited":false,"balance":"1234.5"}
-		Credits *struct {
-			Has       bool   `json:"has_credits"`
-			Unlimited bool   `json:"unlimited"`
-			Balance   string `json:"balance"`
-		} `json:"credits"`
-		RateLimit struct {
-			Primary   *codexWindow `json:"primary_window"`
-			Secondary *codexWindow `json:"secondary_window"`
-		} `json:"rate_limit"`
-		Resets *struct {
-			Available int `json:"available_count"`
-		} `json:"rate_limit_reset_credits"`
-	}
+// a window is used up, "" when it holds none or they are unlimited. held
+// is whether the Codex app sends nothing for the account now (codexHeld).
+func codexWindows(ctx context.Context, token, accountID string) (plan string, out []QuotaWindow, resets *ResetCredits, credits string, held bool, err error) {
+	var data codexUsage
 	base := strings.TrimSuffix(CodexBase, "/codex")
 	out = []QuotaWindow{}
 	if err = accountJSON(ctx, base+"/wham/usage", token, map[string]string{"chatgpt-account-id": accountID}, &data); err != nil {
-		return "", out, nil, "", err
+		return "", out, nil, "", false, err
 	}
 	if c := data.Credits; c != nil && c.Has && !c.Unlimited {
 		if n, perr := strconv.ParseFloat(strings.TrimSpace(c.Balance), 64); perr == nil && n > 0 {
@@ -838,7 +828,94 @@ func codexWindows(ctx context.Context, token, accountID string) (plan string, ou
 	if data.RateLimit.Secondary != nil {
 		out = append(out, data.RateLimit.Secondary.window())
 	}
-	return data.PlanType, out, resets, credits, nil
+	return data.PlanType, out, resets, credits, codexHeld(data), nil
+}
+
+// codexUsage is what /wham/usage tells of a ChatGPT account.
+type codexUsage struct {
+	PlanType string `json:"plan_type"`
+	// as Codex's /status reads it: {"has_credits":true,
+	// "unlimited":false,"balance":"1234.5"}
+	Credits *struct {
+		Has       bool   `json:"has_credits"`
+		Unlimited bool   `json:"unlimited"`
+		Balance   string `json:"balance"`
+		// a workspace's spending past its allowance, still open (false)
+		OverageReached *bool `json:"overage_limit_reached"`
+	} `json:"credits"`
+	RateLimit struct {
+		// false, or limit_reached true, once its allowance is used up;
+		// held only with no credits to go on with (codexHeld)
+		Allowed      *bool        `json:"allowed"`
+		LimitReached *bool        `json:"limit_reached"`
+		Primary      *codexWindow `json:"primary_window"`
+		Secondary    *codexWindow `json:"secondary_window"`
+	} `json:"rate_limit"`
+	SpendControl *struct {
+		Reached bool `json:"reached"`
+	} `json:"spend_control"`
+	// why the account is held: "rate_limit_reached", or a workspace's
+	// "workspace_owner_usage_limit_reached" and the like
+	ReachedType *struct {
+		Type *string `json:"type"`
+	} `json:"rate_limit_reached_type"`
+	Resets *struct {
+		Available int `json:"available_count"`
+	} `json:"rate_limit_reset_credits"`
+}
+
+// codexWorkspacePlans are the plans of a ChatGPT workspace: every plan
+// /wham/usage names (codex-rs codex-backend-openapi-models PlanType) but
+// guest, free, go, plus, pro, prolite and promax, and Codex's own "hc".
+var codexWorkspacePlans = []string{"free_workspace", "team", "self_serve_business_prolite", "self_serve_business_usage_based",
+	"business", "ent26", "enterprise_cbp_automation", "enterprise_cbp_usage_based", "enterprise", "hc",
+	"education", "edu", "edu_plus", "edu_pro", "quorum", "k12"}
+
+// codexReservePlans are the workspace plans the Codex app's reserve
+// experiment covers; under it the app holds them on no credits whatever
+// their overage says.
+var codexReservePlans = []string{"team", "self_serve_business_prolite"}
+
+// codexHeld reports whether the Codex app (ChatGPT Desktop) holds its
+// composer for the account, sending nothing at all, whichever model the
+// turn is on: the backend says the account isn't allowed now (allowed
+// false or limit_reached true), and it is at a spend cap or past its
+// overage, or has no credits to go on with (has_credits or unlimited) and
+// isn't a workspace one still within its overage. A window's percent never
+// says it: a Pro account reads 100% on its week and is not allowed, while
+// its credits carry every turn on (the app's composer stays open and the
+// backend answers). Not said is not held.
+//
+// A spend cap or a reached overage holds it whatever its credits say, as
+// the app's readiness check reads it (26.930: `spend_control?.reached||
+// credits?.overage_limit_reached` is `limited` before `has_credits`), where
+// its composer gate alone (`hP`) lets credits through first: the backend
+// refuses an account at its cap, and magpie as Codex's provider can serve
+// the turn elsewhere. Where the app goes by what usage can't show (an
+// experiment's gate, the reserve it may send on, a reset redeemed in the
+// app), this says held too: wrongly held costs the app its ChatGPT extras
+// while magpie serves the turn, wrongly not held leaves it sending nothing
+// at all.
+func codexHeld(u codexUsage) bool {
+	r := u.RateLimit
+	if (r.Allowed == nil || *r.Allowed) && (r.LimitReached == nil || !*r.LimitReached) {
+		return false
+	}
+	c := u.Credits
+	spent := u.SpendControl != nil && u.SpendControl.Reached
+	if spent || c != nil && c.OverageReached != nil && *c.OverageReached {
+		return true
+	}
+	if c != nil && (c.Has || c.Unlimited) {
+		return false
+	}
+	why := u.ReachedType != nil && u.ReachedType.Type != nil && *u.ReachedType.Type != "rate_limit_reached"
+	plan := strings.ToLower(u.PlanType)
+	workspace := slices.Contains(codexWorkspacePlans, plan) && !slices.Contains(codexReservePlans, plan)
+	if workspace && c != nil && c.OverageReached != nil && !why {
+		return false
+	}
+	return true
 }
 
 type codexWindow struct {
