@@ -1121,6 +1121,18 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 					if in.Key == old.Key {
 						in.KeyName, in.KeyProtocol, in.KeyWeight = old.KeyName, old.KeyProtocol, old.KeyWeight
 					}
+					// what the editor doesn't show, set from the CLI or the
+					// TUI, is kept: its tag, website and key page, and on a
+					// preset's provider its Balance and Models URLs too,
+					// which only a custom one's editor has fields for
+					in.Family = cmp.Or(in.Family, old.Family)
+					in.Website = cmp.Or(in.Website, old.Website)
+					in.KeysURL = cmp.Or(in.KeysURL, old.KeysURL)
+					if provider.Preset(in.Preset) != nil {
+						in.BalanceURL = cmp.Or(in.BalanceURL, old.BalanceURL)
+						in.BalancePath = cmp.Or(in.BalancePath, old.BalancePath)
+						in.ModelsURL = cmp.Or(in.ModelsURL, old.ModelsURL)
+					}
 				}
 				// the Base URL's API, as picked in the editor; a save that
 				// doesn't say keeps it
