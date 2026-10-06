@@ -17626,6 +17626,7 @@ function renderSettings() {
   renderOTel(s, keep);
   renderPort(s);
   renderLAN(s);
+  renderCORS(s);
   renderSync();
 
   const about = $("#about");
@@ -19024,6 +19025,60 @@ function renderPort(s) {
   val.append(field, save);
   r.append(who, val);
   box.replaceChildren(r); // swapped whole: the list is never laid out empty
+}
+
+// renderCORS: the web pages whose scripts may call the gateway from a
+// browser (#1051), by origin — a row to add one, and one row each to take
+// it away. A page listed calls with a gateway key; none listed, no page
+// can read what the gateway answers, as before.
+let corsDraft = { value: "", err: "" };
+// corsSays is the gateway's word on an origin it didn't take, in the
+// page's language
+function corsSays(m) {
+  if (/wildcard/.test(m)) return t("Name each origin: a wildcard would let every web page use magpie");
+  if (/is not an origin/.test(m)) return t("Write an origin as http://localhost:3000 or https://app.example.com");
+  return t(m);
+}
+function renderCORS(s) {
+  const box = $("#corsList");
+  box.replaceChildren();
+  const origins = s.corsOrigins || [];
+  const d = corsDraft;
+  const set = (next, done) => writingPrefs(api("settings/cors", { origins: next }))
+    .then((ns) => { prefs = ns; d.err = ""; done?.(); renderSettings(); status(t("Saved"), "ok", 1500); })
+    .catch((e) => { d.err = corsSays(e.message); status(d.err, "err"); renderSettings(); });
+  const field = input(d.value, "http://localhost:3000");
+  field.className = "words rule-match";
+  field.setAttribute("aria-label", t("Web page origin"));
+  field.autocomplete = "off";
+  field.spellcheck = false;
+  const add = el("button", "text", t("Add"));
+  add.onclick = () => {
+    d.value = field.value.trim();
+    if (!d.value) return field.focus();
+    set([...origins, d.value], () => { corsDraft = { value: "", err: "" }; });
+  };
+  field.oninput = () => { d.value = field.value; };
+  field.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") add.onclick(); };
+  const r = el("div", "row pref rule-row");
+  const who = el("div", "who");
+  who.append(el("div", "name", t("Web pages that may call magpie")),
+    el("div", "sub" + (d.err ? " err" : ""), d.err || t("Scripts on these origins can call the gateway from a browser, each request with a gateway key from Gateway. Any other page gets no CORS headers")));
+  const val = el("div", "val rule-add");
+  val.append(field, add);
+  r.append(who, val);
+  box.append(r);
+  for (const o of origins) {
+    const row = el("div", "row pref");
+    const w = el("div", "who");
+    w.append(el("div", "name", o));
+    const x = el("button", "text", t("Remove"));
+    x.onclick = () => set(origins.filter((v) => v !== o));
+    const v = el("div", "val");
+    v.append(x);
+    row.append(w, v);
+    box.append(row);
+  }
 }
 
 // renderLAN: the gateway shared on the local network, for agents on other
