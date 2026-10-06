@@ -296,6 +296,7 @@ body.window .top.inrow .actions { margin-left: 0; }
 /* ---- lists ---------------------------------------------------------------- */
 .view { flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 4px; display: flex; flex-direction: column; animation: view-in .24s var(--ease); }
 @keyframes view-in { from { opacity: 0; transform: translateY(5px); } }
+@media (prefers-reduced-motion: reduce) { .view { animation-name: fade-in; } }
 body.window .view { padding: 2px 16px 8px; }
 /* a page of rows and settings keeps to a width the eye can follow across,
    centred in a maximized window, rather than its name at one edge and its
