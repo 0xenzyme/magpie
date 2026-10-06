@@ -268,6 +268,27 @@ func TestWSLMagpieImage(t *testing.T) {
 	}
 }
 
+// TJHHHH on Discord: magpie kept starting WSL while they repaired it. An
+// agent made while its distro ran, which the user then stops (wsl
+// --shutdown), is no target: writing the library there would start it.
+// Giving it something says the distro isn't running.
+func TestWSLStoppedSinceNoTarget(t *testing.T) {
+	wslSandbox(t)
+	tg := targetByID(wslCodex)
+	if tg == nil {
+		t.Fatalf("not a target while running: %v", ids(Targets()))
+	}
+	agent.StopFakeWSL("Ubuntu-24.04")
+	if wslTargetOf(tg.Agent) != nil {
+		t.Fatal("a target in the stopped distro")
+	}
+	for _, t2 := range Targets() {
+		if t2.Agent.WSL != "" {
+			t.Fatalf("%s is a target while its distro is stopped", t2.Agent.ID)
+		}
+	}
+}
+
 func TestLinuxHome(t *testing.T) {
 	for in, want := range map[string]string{
 		`\\wsl.localhost\Ubuntu\home\me`: "/home/me",
