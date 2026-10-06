@@ -522,7 +522,11 @@ func Save(p Provider) error {
 	if p.ID == "" {
 		p.ID = Slug(p.Name)
 	}
-	if p.ID == "" || p.ID != Slug(p.ID) {
+	// an id stored already is the provider's, whatever it is: one put in
+	// providers.json by hand ("b.ai") was refused on every Save, so the
+	// editor could neither change it nor rename it to one that is right
+	// (01huadalang on Discord: 我不管改成什么都显示不能用 b.ai)
+	if p.ID == "" || p.ID != Slug(p.ID) && !stored(p.ID) {
 		return fmt.Errorf("provider id must be lowercase letters, digits and dashes, not %q", p.ID)
 	}
 	if p.ID == "magpie" {
