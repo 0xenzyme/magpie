@@ -104,6 +104,7 @@ func All() []*Agent {
 		grok(home),
 		zcode(home),
 		workbuddy(home),
+		codebuddy(home),
 		pencil(home),
 		t3code(home),
 		hanako(home),
