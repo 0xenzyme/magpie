@@ -1392,7 +1392,9 @@ client session ID takes precedence over a Magpie routing override; unknown
 sessions retain gateway traces, including WSL mirrored and Docker Desktop
 clients whose sessions are not visible locally. Requests without a session ID
 fall back to recent observations for that agent.
-Claude Code/Cowork readers also follow `<session>/subagents/*.jsonl`. Child
+Claude Code/Cowork readers also follow `<session>/subagents/*.jsonl` and a
+workflow's (ultracode) `<session>/subagents/workflows/<run>/agent-*.jsonl`
+(not its `journal.jsonl`). Child
 interactions share their parent session and use separate trace/span IDs, even
 when a user UUID is copied. Child final responses are combined across content
 blocks and exported when the transcript is unchanged for two seconds; no
@@ -1421,7 +1423,7 @@ Supported clients and formats:
 | Codex | JSONL rollouts (`token_usage_record`, `item_completed`, `response_item`) | Recorded operations and paired native tools; inferred model/native-tool intervals |
 | Pi | Version-3 JSONL; optional `timing-final` | Recorded model times; inferred tool intervals |
 | Oh My Pi | Pi-compatible JSONL, including `model_usage` | Pi timing; auxiliary calls have inferred zero duration |
-| Claude Code / Cowork | `projects/*/*.jsonl` and `<session>/subagents/*.jsonl`, repeated assistant blocks and paired tool results | Inferred model/tool starts; recorded transcript boundaries |
+| Claude Code / Cowork | `projects/*/*.jsonl`, `<session>/subagents/*.jsonl` and `<session>/subagents/workflows/*/agent-*.jsonl`, repeated assistant blocks and paired tool results | Inferred model/tool starts; recorded transcript boundaries |
 | OpenCode | SQLite V1/V2 (`message`/`part` or `session_message`); legacy JSON storage | Recorded model and tool timestamps |
 | Gemini CLI | `~/.gemini/tmp/*/chats/session-*.json[l]`, including patches and rewinds | Inferred intervals from message/tool event boundaries |
 
