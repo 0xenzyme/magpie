@@ -651,7 +651,9 @@ func githubSource(s string) (Source, bool) {
 	}
 	src := Source{Kind: "github", Repo: parts[0] + "/" + strings.TrimSuffix(parts[1], ".git")}
 	if len(parts) >= 4 && (parts[2] == "tree" || parts[2] == "blob") {
-		src.Ref = parts[3]
+		if src.Ref = parts[3]; src.Ref == "HEAD" {
+			src.Ref = "" // the default branch, as a source without a ref is
+		}
 		src.Path = strings.Join(parts[4:], "/")
 		src.Path = strings.TrimSuffix(strings.TrimSuffix(src.Path, "SKILL.md"), "/")
 	}
@@ -872,62 +874,75 @@ func InstallSkills(input string, paths, agents []string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return change(func(l *Library) error {
-		for _, path := range paths {
-			i := slices.IndexFunc(p.Candidates, func(c Candidate) bool { return c.Path == path })
-			if i < 0 {
-				return fmt.Errorf("no skill at %q", path)
-			}
-			c := p.Candidates[i]
-			if err := checkName("skill", c.Name); err != nil {
-				return err
-			}
-			if l.skill(c.Name) != nil {
-				return fmt.Errorf("the library already has a skill called %s", c.Name)
-			}
-			from := filepath.Join(p.root, filepath.FromSlash(c.Path))
-			src := p.src
-			if err := os.MkdirAll(skillsDir(), 0o755); err != nil {
-				return err
-			}
-			// a folder already in the library's own (#595): linked to itself
-			// it fails, and copied onto itself every file of it was emptied
-			if src.Kind == "folder" && realDir(from) == realDir(skillDir(c.Name)) {
-				return fmt.Errorf("%s is in the library's folder already: bring it in from the skills found there", c.Name)
-			}
-			// something by that name in the library's folder that the
-			// library doesn't list is never written into: that would mix
-			// two skills' files, and a failed copy would take it away
-			if _, err := os.Lstat(skillDir(c.Name)); err == nil {
-				return fmt.Errorf("the library's folder already has a %s in it (%s)", c.Name, skillDir(c.Name))
-			}
-			if src.Kind == "folder" {
-				src.Dir = from
-				if err := dirLink(from, skillDir(c.Name)); err != nil {
-					if errors.Is(err, fs.ErrExist) {
-						return fmt.Errorf("the library already has a skill called %s", c.Name)
-					}
-					if err := copyDir(from, skillDir(c.Name)); err != nil {
-						os.RemoveAll(skillDir(c.Name))
-						return err
-					}
+	return change(func(l *Library) error { return installFrom(l, p, paths, agents, true) })
+}
+
+// installFrom adds the skills at those paths of a probe's source to the
+// library. shown is whether the user saw every skill the probe found, in
+// the picker: those not picked aren't offered as new by a check.
+func installFrom(l *Library, p *Probe, paths, agents []string, shown bool) error {
+	for _, path := range paths {
+		i := slices.IndexFunc(p.Candidates, func(c Candidate) bool { return c.Path == path })
+		if i < 0 {
+			return fmt.Errorf("no skill at %q", path)
+		}
+		c := p.Candidates[i]
+		if err := checkName("skill", c.Name); err != nil {
+			return err
+		}
+		if l.skill(c.Name) != nil {
+			return fmt.Errorf("the library already has a skill called %s", c.Name)
+		}
+		from := filepath.Join(p.root, filepath.FromSlash(c.Path))
+		src := p.src
+		if err := os.MkdirAll(skillsDir(), 0o755); err != nil {
+			return err
+		}
+		// a folder already in the library's own (#595): linked to itself
+		// it fails, and copied onto itself every file of it was emptied
+		if src.Kind == "folder" && realDir(from) == realDir(skillDir(c.Name)) {
+			return fmt.Errorf("%s is in the library's folder already: bring it in from the skills found there", c.Name)
+		}
+		// something by that name in the library's folder that the
+		// library doesn't list is never written into: that would mix
+		// two skills' files, and a failed copy would take it away
+		if _, err := os.Lstat(skillDir(c.Name)); err == nil {
+			return fmt.Errorf("the library's folder already has a %s in it (%s)", c.Name, skillDir(c.Name))
+		}
+		if src.Kind == "folder" {
+			src.Dir = from
+			if err := dirLink(from, skillDir(c.Name)); err != nil {
+				if errors.Is(err, fs.ErrExist) {
+					return fmt.Errorf("the library already has a skill called %s", c.Name)
 				}
-			} else {
-				src.Path = c.Path
 				if err := copyDir(from, skillDir(c.Name)); err != nil {
 					os.RemoveAll(skillDir(c.Name))
 					return err
 				}
 			}
-			sk := &Skill{Name: c.Name, Source: &src, Agents: slices.Clone(agents)}
-			if src.Kind == "github" {
-				sk.Hash = hashDir(skillDir(c.Name))
+		} else {
+			src.Path = c.Path
+			if err := copyDir(from, skillDir(c.Name)); err != nil {
+				os.RemoveAll(skillDir(c.Name))
+				return err
 			}
-			forgetCheck(c.Name)
-			l.Skills = append(l.Skills, sk)
 		}
-		return nil
-	})
+		sk := &Skill{Name: c.Name, Source: &src, Agents: slices.Clone(agents)}
+		if src.Kind == "github" {
+			sk.Hash = hashDir(skillDir(c.Name))
+			// every skill the picker showed was offered: a check
+			// offers only those the repository adds later
+			l.seenAt(src.Repo, src.Ref, c.Path)
+			if shown {
+				for _, c := range p.Candidates {
+					l.seenAt(src.Repo, src.Ref, c.Path)
+				}
+			}
+		}
+		forgetCheck(c.Name)
+		l.Skills = append(l.Skills, sk)
+	}
+	return nil
 }
 
 // UpdateSkill fetches a skill from GitHub again, in place: the agents'

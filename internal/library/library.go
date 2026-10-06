@@ -40,6 +40,11 @@ type Library struct {
 	// copy (#896, skill_how.go)
 	CopySkills bool              `json:"copySkills,omitempty"`
 	SkillHow   map[string]string `json:"skillHow,omitempty"`
+	// SeenSkills are, by repository and ref ("owner/repo@ref"), the
+	// folders of skills there the page has offered: picked or not at
+	// install, or set aside after a check. A check offers only the others
+	// as new (skillnew.go).
+	SeenSkills map[string][]string `json:"seenSkills,omitempty"`
 	// kept is where a change put what it kept aside before the sync, for
 	// the sync to keep the agents' files beside it
 	kept *backups
