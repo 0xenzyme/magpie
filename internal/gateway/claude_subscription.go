@@ -3018,6 +3018,16 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 		if name == "Claude Code" {
 			err = run.setSafeguards(req)
 		}
+		// the tools are the run's before its agent is handed them: from
+		// then on it may answer, finish the turn and be shelved, or be
+		// asked whether it offers them, before this goroutine goes on
+		if err == nil && more != nil {
+			run.mu.Lock()
+			for _, t := range req.Tools {
+				run.tools[t.Name] = true
+			}
+			run.mu.Unlock()
+		}
 		if err == nil {
 			events, err = run.continueWith(results, more)
 		}
@@ -3026,12 +3036,6 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 			// it ended while it waited: a new one is told the whole
 			// conversation
 			run, how = nil, runExpired
-		} else if more != nil {
-			run.mu.Lock()
-			for _, t := range req.Tools {
-				run.tools[t.Name] = true
-			}
-			run.mu.Unlock()
 		}
 	}
 	// how tool results found the run waiting on them, or why a new one is
@@ -3042,15 +3046,18 @@ func (s *Server) serveSubscription(w http.ResponseWriter, r *http.Request, from 
 	if run == nil {
 		run, events, err = start(r.Context(), req)
 		if err == nil {
-			run.tools = map[string]bool{}
+			// its agent is running already: what it was told is set
+			// under the run's lock, as offers and shelve read it
+			tools := map[string]bool{}
 			for _, t := range req.Tools {
-				run.tools[t.Name] = true
+				tools[t.Name] = true
 			}
+			run.mu.Lock()
+			run.tools = tools
 			if search.Name != "" {
-				run.mu.Lock()
 				run.search, run.searchName = s.webSearch, search.Name
-				run.mu.Unlock()
 			}
+			run.mu.Unlock()
 		}
 	}
 	if err != nil {
