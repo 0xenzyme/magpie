@@ -25,7 +25,7 @@ type keyModelJSON struct {
 	Name         string `json:"name"`
 	Provider     string `json:"provider,omitempty"`
 	ProviderName string `json:"providerName,omitempty"`
-	Group        bool   `json:"group,omitempty"` // a routing group (Magic_zero on Discord)
+	Group        bool   `json:"group,omitempty"`   // a routing group (Magic_zero on Discord)
 	Account      bool   `json:"account,omitempty"` // a signed-in account the key may be held to (#905)
 	Key          bool   `json:"key,omitempty"`     // one of a provider's keys, by its KeyID
 	Plan         string `json:"plan,omitempty"`    // the account's subscription, for the menu's note

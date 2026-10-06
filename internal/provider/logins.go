@@ -64,7 +64,7 @@ type savedLogin struct {
 	// gateway key held to accounts names it by this, not by a name that
 	// moves. Until the logins are next written, one made of the name
 	// stands in, so an entry made before stands.
-	ID        string    `json:"id,omitempty"`
+	ID string `json:"id,omitempty"`
 	// Order is the user-arranged routing order within this agent. Zero keeps
 	// the original alphabetical order for accounts not arranged yet.
 	Order     int       `json:"order,omitempty"`
