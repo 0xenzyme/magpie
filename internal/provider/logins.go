@@ -273,6 +273,9 @@ func writePrivate(path string, b []byte) error {
 
 func upsertLogin(ls []savedLogin, l savedLogin) []savedLogin {
 	l.User = codexName(ls, l)
+	if claudeSignInOfAnother(ls, l) {
+		return ls
+	}
 	for i := range ls {
 		if sameLogin(ls[i], l) {
 			// a refused Claude credential stays refused while it is the
@@ -1198,4 +1201,38 @@ func forgetAccountCaches() {
 	subscriptionUsageCache.at = time.Time{}
 	subscriptionUsageCache.data = nil
 	subscriptionUsageCache.Unlock()
+}
+
+// claudeSignInOfAnother says the Claude sign-in l carries is another saved
+// account's, not the one its profile names: Claude Code's credential and
+// ~/.claude.json were read from two moments, as when magpie switches
+// Claude Code (keeping it signed in to one account) and a Claude Code
+// started on the account before writes that one's profile after. Saved,
+// it put the one account's sign-in and plan under the other's name, whose
+// runs and Usage card then were the first's (netfishx on X). The account
+// the profile names holding the sign-in already, it is that one's.
+func claudeSignInOfAnother(ls []savedLogin, l savedLogin) bool {
+	if l.Agent != "claude" {
+		return false
+	}
+	c, ok := parseClaudeCredentials(l.Auth)
+	if !ok {
+		return false
+	}
+	holds := func(x savedLogin) bool {
+		o, ok := parseClaudeCredentials(x.Auth)
+		return ok && (c.OAuth.AccessToken != "" && o.OAuth.AccessToken == c.OAuth.AccessToken ||
+			c.OAuth.RefreshToken != "" && o.OAuth.RefreshToken == c.OAuth.RefreshToken)
+	}
+	another := false
+	for _, x := range ls {
+		if x.Agent != "claude" || !holds(x) {
+			continue
+		}
+		if sameLogin(x, l) {
+			return false
+		}
+		another = true
+	}
+	return another
 }
