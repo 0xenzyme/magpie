@@ -51,6 +51,10 @@ func fresh(t *testing.T) {
 	classified.Lock()
 	classified.m, classified.failed = map[string]classifiedAs{}, map[string]classifyFailure{}
 	classified.Unlock()
+	levelled.Lock()
+	levelled.m = map[string]levelling{}
+	levelled.Unlock()
+	provider.ForgetCopilotForTest()
 	forgetRouting()
 }
 
