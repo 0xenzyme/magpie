@@ -1010,6 +1010,9 @@ details.cx-part[open] > summary .cx-h { margin-bottom: 2px; }
 .sess-chart-head .segs .opt { height: 20px; padding: 0 9px; font-size: 11px; }
 .chart .sess-chart-head .peak { margin: 0; align-self: flex-end; }
 .sess-list { margin-top: 8px; }
+/* the list is drawn in pages: the button that appends the next one, under
+   the rows it follows, as a card's "+N more" is */
+.sess-page-more { align-self: flex-start; margin: 6px 0 2px; font-size: 12px; }
 /* the overview: six figures, the calendar, and four cards two by two */
 .sess-pane { container-type: inline-size; }
 .stats.six { grid-template-columns: repeat(6, minmax(0, 1fr)); }
