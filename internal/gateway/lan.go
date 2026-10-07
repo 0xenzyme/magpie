@@ -342,10 +342,10 @@ func callerKeys(r *http.Request) []string {
 	return out
 }
 
-// managedKey: the request carries a named gateway key's form (sk-magpie-…)
-// in any of the places a key is read.
+// managedKey: the request carries a named gateway key's form (sk-magpie-…),
+// or a key's own value a user gave it, in any of the places a key is read.
 func managedKey(r *http.Request) bool {
-	return slices.ContainsFunc(callerKeys(r), access.Managed)
+	return slices.ContainsFunc(callerKeys(r), access.Named)
 }
 
 // refusedKey says why a caller's key was turned away: none came, or the
