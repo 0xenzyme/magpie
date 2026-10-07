@@ -1,0 +1,18 @@
+<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>#1122 界面预览 · 570f1fb</title>
+<style>:root{color-scheme:light dark;--bg:#f6f6f7;--fg:#1d1d1f;--muted:#6e6e73;--card:#fff;--line:#e5e5ea}
+@media (prefers-color-scheme:dark){:root{--bg:#111113;--fg:#f2f2f4;--muted:#9a9aa0;--card:#1c1c1f;--line:#2c2c30}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:28px 16px 60px}h1{font-size:20px;margin:0 0 4px}.m{color:var(--muted);font-size:13px;margin:0 0 20px}
+video,img{display:block;width:100%;border-radius:10px;border:1px solid var(--line);background:var(--card)}figure{margin:0 0 28px}figcaption{color:var(--muted);font-size:13px;margin-top:8px}
+a{color:inherit}</style>
+<main><h1>#1122 界面预览</h1><p class="m">commit 570f1fb · <a href="https://github.com/yetone/magpie/pull/1122">回到 PR</a> · 「添加供应商」里新增 Google Vertex AI 预设：它的编辑器用项目 ID、位置、凭据文件和服务账号取代 API 密钥，端点栏按项目与位置显示地址，供应商行用 pill 说明由哪份 Google 凭据签名；「用量 → 请求」把 Gemini 的 streamGenerateContent 也判为 Gemini。</p>
+<figure><video src="preview.mp4" controls autoplay muted playsinline poster="poster.png"></video><figcaption>红线是鼠标走过的轨迹，红色圆环是一次点击；底部文字是这一步在做什么。空格暂停，← → 逐段查看。</figcaption></figure>
+<figure><img src="01-add-sheet.png" alt="预设列表里的 Google Vertex AI"><figcaption>添加 Google Vertex AI：用项目代替密钥 · 预设列表里的 Google Vertex AI</figcaption></figure>
+<figure><img src="02-vertex-fields.png" alt="编辑器：项目 ID、位置、凭据文件、服务账号取代了 API 密钥"><figcaption>添加 Google Vertex AI：用项目代替密钥 · 编辑器：项目 ID、位置、凭据文件、服务账号取代了 API 密钥</figcaption></figure>
+<figure><img src="03-project-refused.png" alt="保存被拒时的提示"><figcaption>添加 Google Vertex AI：用项目代替密钥 · 保存被拒时的提示</figcaption></figure>
+<figure><img src="04-vertex-endpoint.png" alt="填入项目后出现的端点地址"><figcaption>添加 Google Vertex AI：用项目代替密钥 · 填入项目后出现的端点地址</figcaption></figure>
+<figure><img src="05-vertex-endpoint-region.png" alt="端点地址随位置变化"><figcaption>添加 Google Vertex AI：用项目代替密钥 · 端点地址随位置变化</figcaption></figure>
+<figure><img src="06-vertex-row.png" alt="供应商列表里的这一行，pill 说明用哪份 Google 凭据签名"><figcaption>添加 Google Vertex AI：用项目代替密钥 · 供应商列表里的这一行，pill 说明用哪份 Google 凭据签名</figcaption></figure>
+<figure><img src="07-ledger-gemini-tag.png" alt="请求列表里 Gemini 的 streamGenerateContent 请求带的标签"><figcaption>用量 → 请求：Gemini 的流式请求 · 请求列表里 Gemini 的 streamGenerateContent 请求带的标签</figcaption></figure>
+</main></html>

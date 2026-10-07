@@ -1,0 +1,61 @@
+{
+  "summary": "「添加供应商」里新增 Google Vertex AI 预设：它的编辑器用项目 ID、位置、凭据文件和服务账号取代 API 密钥，端点栏按项目与位置显示地址，供应商行用 pill 说明由哪份 Google 凭据签名；「用量 → 请求」把 Gemini 的 streamGenerateContent 也判为 Gemini。",
+  "scenes": [
+    {
+      "title": "添加 Google Vertex AI：用项目代替密钥",
+      "shots": [
+        {
+          "file": "01-add-sheet.png",
+          "caption": "预设列表里的 Google Vertex AI",
+          "width": 2496
+        },
+        {
+          "file": "02-vertex-fields.png",
+          "caption": "编辑器：项目 ID、位置、凭据文件、服务账号取代了 API 密钥",
+          "width": 1296
+        },
+        {
+          "file": "03-project-refused.png",
+          "caption": "保存被拒时的提示",
+          "width": 1296
+        },
+        {
+          "file": "04-vertex-endpoint.png",
+          "caption": "填入项目后出现的端点地址",
+          "width": 1120
+        },
+        {
+          "file": "05-vertex-endpoint-region.png",
+          "caption": "端点地址随位置变化",
+          "width": 1120
+        },
+        {
+          "file": "06-vertex-row.png",
+          "caption": "供应商列表里的这一行，pill 说明用哪份 Google 凭据签名",
+          "width": 2492
+        }
+      ]
+    },
+    {
+      "title": "用量 → 请求：Gemini 的流式请求",
+      "shots": [
+        {
+          "file": "07-ledger-gemini-tag.png",
+          "caption": "请求列表里 Gemini 的 streamGenerateContent 请求带的标签",
+          "width": 2560
+        }
+      ]
+    }
+  ],
+  "video": "preview.mp4",
+  "poster": "poster.png",
+  "errors": [
+    "用量 → 请求：Gemini 的流式请求 · shot #usagePane: nothing visible matches #usagePane (1 in the page)"
+  ],
+  "leak": false,
+  "skipped": null,
+  "mismatch": "",
+  "unseen": "沙箱里没有真实的 Google 凭据和 Vertex AI 项目，无法真正发出请求：编辑器里「测试」的成功结果、经过 Vertex AI 的请求在「用量 → 请求」里记下的端点（…/publishers/google/models/<型号>:streamGenerateContent?alt=sse）连同它的 Gemini 标签、以及 400 后的重试（thinking level、thought signature）都看不到。请求列表里可能带 Gemini 标签的只是沙箱已有的 Gemini CLI 流式请求，不是走 Vertex AI 的。另外「需要项目」的 pill 只能来自手工改过的 providers.json——界面上不填项目保存会被直接拒绝。",
+  "interactive": true,
+  "pages": 3
+}

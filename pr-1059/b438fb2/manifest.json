@@ -1,0 +1,39 @@
+{
+  "summary": "自定义供应商的「余额令牌」提示里，除 new-api 的 /api/user/self 外新增了 sub2api 的 /api/v1/user/profile 快捷按钮：点它会写入余额查询地址，并把余额字段填成该地址对应的表达式（$data.balance），提示文案也一并改成同时说明两个接口。",
+  "scenes": [
+    {
+      "title": "余额令牌提示里的两个快捷地址",
+      "shots": [
+        {
+          "file": "01-balance-fields.png",
+          "caption": "展开后的余额查询地址与余额字段",
+          "width": 1224
+        },
+        {
+          "file": "02-balance-fields.png",
+          "caption": "展开后的余额查询地址与余额字段",
+          "width": 1224
+        }
+      ]
+    }
+  ],
+  "video": "preview.mp4",
+  "poster": "poster.png",
+  "errors": [
+    "余额令牌提示里的两个快捷地址 · type .editor .bal-url: nothing visible matches .editor .bal-url (1 in the page)",
+    "余额令牌提示里的两个快捷地址 · type .editor .bal-url: nothing visible matches .editor .bal-url (1 in the page)",
+    "余额令牌提示里的两个快捷地址 · type .editor input.bal-url: nothing visible matches .editor input.bal-url (1 in the page)",
+    "余额令牌提示里的两个快捷地址 · type input[aria-label=\"名称\"]: nothing visible matches input[aria-label=\"名称\"] (0 in the page)",
+    "余额令牌提示里的两个快捷地址 · type input[aria-label=\"Base URL\"][type=\"url\"]: nothing visible matches input[aria-label=\"Base URL\"][type=\"url\"] (0 in the page)",
+    "余额令牌提示里的两个快捷地址 · type input[type=\"password\"][aria-label=\"账户余额\"]: nothing visible matches input[type=\"password\"][aria-label=\"账户余额\"] (0 in the page)",
+    "余额令牌提示里的两个快捷地址 · shot .editor .bal-fix: nothing visible matches .editor .bal-fix (0 in the page)",
+    "余额令牌提示里的两个快捷地址 · click .editor .bal-fix button: nothing visible matches .editor .bal-fix button with \"/api/v1/user/profile\" (0 in the page)",
+    "余额令牌提示里的两个快捷地址 · shot .editor details.more: nothing visible matches .editor details.more (0 in the page)"
+  ],
+  "leak": false,
+  "skipped": null,
+  "mismatch": "",
+  "unseen": "这条提示只在余额令牌缺少可用余额地址、或地址是 …/api/usage/token 时出现；若沙盒里 Sub2API Relay 的余额地址已按自身数据配好，它默认不显示，场景在表单里把地址改成 …/api/usage/token（不保存）才把两个按钮调出来。因此看不到新地址真的去取 sub2api 面板余额的结果（本地 mock 不会按这个地址返回真实数据），也看不到保存后的效果——场景不点保存。",
+  "interactive": true,
+  "pages": 1
+}

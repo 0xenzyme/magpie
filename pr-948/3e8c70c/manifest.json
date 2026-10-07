@@ -1,0 +1,49 @@
+{
+  "summary": "请求页（用量 › 请求）在汇总下面新增一排可点击的来源方块：「全部请求 / 经过 magpie / 不经过 magpie」，点击即按来源筛选并带 aria-pressed，URL 支持 ?via=；来自会话文件的行在「供应商·账号」列会显示文件里记下的供应商 id（有账号时账号优先），对应角标的提示也区分「文件记的供应商」与「只认得出账号」。",
+  "scenes": [
+    {
+      "title": "请求页的三个来源方块与筛选",
+      "shots": [
+        {
+          "file": "01-via-cells-default.png",
+          "caption": "请求列表上方新增的三个来源方块，当前是「全部请求」",
+          "width": 2560
+        },
+        {
+          "file": "02-via-through.png",
+          "caption": "点击「经过 magpie」后的请求页",
+          "width": 2560
+        },
+        {
+          "file": "03-via-direct.png",
+          "caption": "点击「不经过 magpie」后的请求页",
+          "width": 2560
+        },
+        {
+          "file": "04-via-all-again.png",
+          "caption": "回到「全部请求」后的请求页",
+          "width": 2560
+        }
+      ]
+    },
+    {
+      "title": "会话文件读来的行在供应商列显示什么",
+      "shots": [
+        {
+          "file": "05-direct-rows-where.png",
+          "caption": "不经过 magpie 的列表：供应商·账号列与会话角标",
+          "width": 2560
+        }
+      ]
+    }
+  ],
+  "video": "preview.mp4",
+  "poster": "poster.png",
+  "errors": [],
+  "leak": false,
+  "skipped": null,
+  "mismatch": "",
+  "unseen": "沙箱里没有 dsh / ZCode / WorkBuddy 的会话文件（这些 Agent 未安装），这三路新增读到的用量，以及 WorkBuddy 依 models.json 判断是否走网关的取舍，在画面上都看不到；「不经过 magpie」一栏只能看到 Claude Code / Codex / OpenCode / Gemini CLI 的会话文件，且其中是否出现「文件记了供应商但没账号」的行取决于这些文件本身记不记供应商。",
+  "interactive": true,
+  "pages": 1
+}

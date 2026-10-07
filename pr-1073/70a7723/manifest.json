@@ -1,0 +1,44 @@
+{
+  "summary": "这次改动把设置里三项模型选择的保存校验从 provider.Resolve（已知供应商下任何拼写都接受）换成各自挑选列表的校验：图像识别模型和 Codex 会话标题模型按 provider.Served，图像生成模型按 provider.Drawers（imageGens）。界面上没有新增元素，变化在于用户在设置里保存一个已经不被服务的模型时会被拒绝并保留原值。",
+  "scenes": [
+    {
+      "title": "Codex 会话标题的模型选择",
+      "shots": [
+        {
+          "file": "01-settings-codex-titles.png",
+          "caption": "「Codex 会话标题」的模型选择项",
+          "width": 2492
+        },
+        {
+          "file": "02-codex-titles-options.png",
+          "caption": "打开后的候选模型菜单",
+          "width": 2560
+        }
+      ]
+    },
+    {
+      "title": "模型标签下的模型选择",
+      "shots": [
+        {
+          "file": "03-settings-models-tab.png",
+          "caption": "「模型」标签：图像识别与图像生成的模型选择在这里",
+          "width": 2560
+        },
+        {
+          "file": "04-settings-models-tab-lower.png",
+          "caption": "再往下看到的模型选择项",
+          "width": 2560
+        }
+      ]
+    }
+  ],
+  "video": "preview.mp4",
+  "poster": "poster.png",
+  "errors": [],
+  "leak": false,
+  "skipped": null,
+  "mismatch": "",
+  "unseen": "沙盒里所有供应商的模型都在服务目录里，设置中已保存的也是可用模型，因此无法在界面上造出「已下架/拼错的模型」来看到保存被拒绝（400）与错误提示；图像识别和图像生成的选择项所在页面区域也没有出现在给定的大纲里，只能展示切到「模型」标签后的画面。选择列表本身的内容与改动前相同。",
+  "interactive": true,
+  "pages": 1
+}

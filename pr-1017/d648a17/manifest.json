@@ -1,0 +1,34 @@
+{
+  "summary": "打开 Usage 页（直接进入、刷新或从链接进来）时，show(\"usage\")/load() 现在会同时加载 providers 状态，于是「请求」栏右上角由 renderArchive 画的请求存档开关不再因为 providers 为空而在这一页的所有 tab 上隐藏。",
+  "scenes": [
+    {
+      "title": "直接打开 Usage 页时的请求存档开关",
+      "shots": [
+        {
+          "file": "01-usage-opened-directly.png",
+          "caption": "直接开在 Usage 页：概览与「概览 / 请求 / 会话」三个页签",
+          "width": 2560
+        },
+        {
+          "file": "02-requests-tab.png",
+          "caption": "「请求」页签：请求列表与它的合计",
+          "width": 2560
+        },
+        {
+          "file": "03-archive-switch.png",
+          "caption": "「请求」栏右上角这条线上的请求存档开关",
+          "width": 1120
+        }
+      ]
+    }
+  ],
+  "video": "preview.mp4",
+  "poster": "poster.png",
+  "errors": [],
+  "leak": false,
+  "skipped": null,
+  "mismatch": "",
+  "unseen": "沙盒跑的是本 PR 的代码，无法在同一段录制里回放修复前的样子（providers 未加载、开关不出现）；另外开关是否可用取决于网关是否已配置请求存档，若未配置，它只会显示为待设置的样式。",
+  "interactive": true,
+  "pages": 1
+}
