@@ -3217,7 +3217,7 @@ body.window .row + .row.agent.conn > .who { min-height: 41px; } /* the line abov
   .ag-vl > .fields > .field.main, .ag-vl > .fields > .field.solo { flex: 1 1 100%; min-width: 0; }
   .ag-vl > .fields > .field.side { flex: 1 0 124px; }
   .ag-vl > .fields > .extras-cell { flex-wrap: wrap; max-width: 100%; }
-  .ag-vl .field.ag-pick { flex: 1 1 160px; width: auto; min-width: 0; }
+  .ag-vl .field.ag-pick { flex: 0 0 220px; width: 220px; min-width: 0; }
   /* short of room, the model it starts on takes a line of its own under
      the name, the link and the switch staying beside it */
   .row.agent.conn > .field.ag-start, .row.agent.conn > .who + .field.ag-start { order: 1; flex: 1 1 100%; width: auto; margin: 9px 0 0 34px; }
