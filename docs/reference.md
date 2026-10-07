@@ -341,6 +341,10 @@ permissive: any token works, including a stale or disabled gateway key.
 Only a valid, enabled key is attributed to its named identity.
 Without sharing, an explicitly exposed `MAGPIE_ADDR` keeps its original open
 access, including old `sk-magpie-…` tokens, without key authentication.
+Sharing listens on every interface, unless `MAGPIE_ADDR` names a host of its
+own: `MAGPIE_ADDR=127.0.0.1:3425` behind Tailscale Serve, or one interface's
+address, stays where it is while shared, and what reaches it from elsewhere
+still needs an enabled gateway key (#1112).
 
 A request that reaches loopback through a proxy or tunnel on this computer
 (Cloudflare Tunnel's `cloudflared`, ngrok, Tailscale serve or funnel, frp's
