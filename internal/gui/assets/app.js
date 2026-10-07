@@ -114,6 +114,19 @@ function el(tag, cls, text) {
   if (text !== undefined) e.textContent = text;
   return e;
 }
+// replaceKeeping is parent.replaceChildren(...nodes) that leaves a node
+// already in parent where it is, rather than taking it out and putting it
+// back. A filter redrawn from its own input event is one: taken out of the
+// page while an IME commits, it gets the text twice (#1055: 1, 2 → 1122).
+function replaceKeeping(parent, nodes) {
+  const keep = new Set(nodes);
+  for (const n of [...parent.childNodes]) if (!keep.has(n)) n.remove();
+  let at = parent.firstChild;
+  for (const n of nodes) {
+    if (n === at) at = at.nextSibling;
+    else parent.insertBefore(n, at);
+  }
+}
 function svg(d, size = 12, stroke = 1.6) {
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   s.setAttribute("viewBox", "0 0 16 16");
@@ -11755,11 +11768,16 @@ function keyFoldRows(p, fold) {
   q.className = "keys-filter";
   q.dataset.provider = p.id;
   q.setAttribute("aria-label", q.placeholder);
+  // typing redraws the keys list around the filter, which stays in the
+  // page: taken out and put back, an IME's text lands twice (#1055)
   q.oninput = () => {
     keysOpen[p.id].q = q.value;
-    const at = q.selectionStart;
-    renderProviders();
-    focusKeyFilter(p.id, at);
+    const list = q.closest(".accts.keys"), fresh = renderKeyAccounts(p);
+    const fbar = fresh.querySelector(".keys-tools"), fq = fbar?.querySelector(".keys-filter");
+    if (!list || !fq) { renderProviders(); return; }
+    replaceKeeping(bar, [...fbar.childNodes].map((n) => n === fq ? q : n));
+    list.className = fresh.className;
+    replaceKeeping(list, [...fresh.childNodes].map((n) => n === fbar ? bar : n));
   };
   q.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") { if (q.value) q.oninput(q.value = ""); else { delete keysOpen[p.id]; renderProviders(); } } };
   const count = el("span", "hint keys-count", fold.matched.length === all.length ? t("{n} keys", { n: all.length }) : t("{n} of {m} keys", { n: fold.matched.length, m: all.length }));
@@ -11791,11 +11809,8 @@ function keyFoldRows(p, fold) {
   else if (fold.matched.length > fold.shown.length) after.push(el("div", "hint keys-rest", t("{n} more — type to narrow them down", { n: fold.matched.length - fold.shown.length })));
   return { before: [bar], after };
 }
-function focusKeyFilter(id, at) {
-  const q = document.querySelector(`.keys-filter[data-provider="${CSS.escape(id)}"]`);
-  if (!q) return;
-  q.focus({ preventScroll: true });
-  if (at != null) q.setSelectionRange(at, at);
+function focusKeyFilter(id) {
+  document.querySelector(`.keys-filter[data-provider="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
 }
 
 // splitKeys is the keys in text pasted at once, as provider.SplitKeys
